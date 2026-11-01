@@ -9,14 +9,14 @@ paper over. So membership is **server-held**: the backend keeps the agent presen
 in the room (a lease, refreshed on every call) and the durable transcript is the
 delivery queue. The agent participates with two plain, stateless HTTP calls:
 
-* ``GET  /rooms/{room}/await``  — long-poll: block until the next message addressed
-  to the handle (a mediator tick or an ``@``-mention) appears past a **persistent
+* ``GET  /rooms/{room}/await``  — long-poll: block until the next message that asks
+  the handle for something (:mod:`app.services.asks`) appears past a **persistent
   per-handle cursor**, then return it. Because the cursor rides the durable
   transcript, a tick is *never missed* in the gap between one await and the next —
   which is exactly what the client-held one-shot ``await`` could not guarantee.
 * ``POST /rooms/{room}/reply`` — publish the agent's reply as an ``exchange`` message
-  (role ``agent``) recorded into the transcript, which the aligner's poll scores
-  as a position.
+  (role ``agent``) recorded into the transcript, where the conductor reads its
+  stance.
 
 Both take an optional **thread** — the episode URN of a task, or of a
 negotiation inside one. A thread is a tag over the room's own channel, so this is
@@ -33,17 +33,36 @@ commands, which is all a headless/allowlisted agent can safely issue.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import activity, actor, markers, message_format, principals, room_channels, tasks
+from app.schemas import AwaitConfirmRead, AwaitNothing, AwaitTurn, ReplyRead, refusals
+from app.services import (
+    activity,
+    actor,
+    approvals,
+    groups,
+    markers,
+    message_format,
+    principals,
+    room_channels,
+    room_people,
+    schedules,
+    subscriptions,
+    tasks,
+    wake_digest,
+)
 from app.services.agent_registry import norm_handle
+from app.services.asks import Wake, asks, wakes_for
 from app.services.filesystem import room_exists
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content, serialize_envelope
-from app.services.persister import _conversational_text, record_episode
+from app.services.persister import _conversational_text, read_id, record_episode
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -59,15 +78,6 @@ _last_tick: dict[tuple[str, str], dict[str, Any]] = {}
 _POLL_INTERVAL_S = 0.4
 _MAX_WAIT_S = 3600.0
 
-# Payloads that are never an addressed turn however they are actor-labeled:
-# presence/keepalive are liveness, a ``ping`` is the signal that a *thread* moved,
-# and a ``notice`` is the signal that the *board* moved (a task filed, claimed,
-# resolved) — all nudges to look, not turns to take. Excluded structurally here so
-# a resident loop consumes one silently rather than reasoning about it.
-_UNADDRESSED_PAYLOADS = frozenset(
-    {"presence", "keepalive", message_format.PING_PAYLOAD_TYPE, message_format.NOTICE_PAYLOAD_TYPE}
-)
-
 
 def _norm(handle: str) -> str:
     return norm_handle(handle) or ""
@@ -75,37 +85,8 @@ def _norm(handle: str) -> str:
 
 # An agent may end a reply with a position marker like
 # ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
-# message payload so the aligner can score convergence, and stripped from the prose.
+# message payload, where the conductor reads the stance, and stripped from the prose.
 _parse_marker = markers.parse_marker
-
-
-def _addressed_to(content: dict[str, Any], handle: str) -> bool:
-    """True when a transcript record is an exchange addressed to ``handle``.
-
-    Addressed = the handle is a message recipient, or ``@handle`` appears in the human
-    text — and the sender is not the handle itself (loop guard). Presence/keepalive
-    are never addressed turns.
-    """
-    env = content.get("l9") or {}
-    header = env.get("header") or {}
-    if header.get("kind") != "exchange":
-        return False
-    if ((env.get("payload") or {}).get("type")) in _UNADDRESSED_PAYLOADS:
-        return False
-    actors = (header.get("participants") or {}).get("actors") or []
-    sender = actors[0].get("id") if actors and isinstance(actors[0], dict) else None
-    if sender and _norm(sender) == _norm(handle):
-        return False
-    recipients = [a.get("id") for a in actors[1:] if isinstance(a, dict)]
-    if any(_norm(r) == _norm(handle) for r in recipients if r):
-        return True
-    text = (content.get("content") or "").lower()
-    needle = f"@{handle.lower()}"
-    idx = text.find(needle)
-    if idx == -1:
-        return False
-    nxt = text[idx + len(needle)] if idx + len(needle) < len(text) else ""
-    return not (nxt.isalnum() or nxt in "_-")
 
 
 def _refuse_thread_write(refusal: tasks.ThreadRefusal | None) -> None:
@@ -149,7 +130,7 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
             continue
         if record.sender and _norm(record.sender) == _norm(handle):
             break
-        if _addressed_to(record.content, handle):
+        if asks(record.content, handle):
             break
         text = _conversational_text(record.content)
         if text is None:
@@ -198,10 +179,42 @@ def _describe(
         "message_id": record.message_id,
         # What was said here before the message that addressed the handle.
         "earlier": earlier or [],
+        **_answer_of(record),
     }
 
 
-@router.get("/await")
+def _answer_of(record: Any) -> dict[str, Any]:
+    """``{"answer": …}`` when the message answers an ask, so the agent reads the
+    decision as a value; nothing otherwise, so the key stays unset."""
+    answer = approvals.answer_on(record)
+    return {"answer": answer} if answer is not None else {}
+
+
+def _ask_of(room: str, record: Any) -> dict[str, Any]:
+    """One message asking for the handle, as ``await`` lists them all: who,
+    what, where and when, and the id the room's history gives it."""
+    episode = record_episode(record)
+    return {
+        "sender": record.sender,
+        "prompt": record.content.get("content") or "",
+        "episode": episode,
+        "task": _task_of(room, episode),
+        "message_id": record.message_id,
+        "id": str(read_id(record)),
+        "at": record.recorded_at,
+        **_answer_of(record),
+    }
+
+
+# Unset excluded: a turn carries only the keys its branch set (a schedule's
+# turn has no ``asks``, ``delivered`` comes only with ``confirm``), as it did
+# before it had a model, rather than every optional key as null.
+@router.get(
+    "/await",
+    response_model=AwaitTurn | AwaitNothing,
+    response_model_exclude_unset=True,
+    responses=refusals(403, 404),
+)
 async def await_message(
     room_name: str,
     request: Request,
@@ -219,6 +232,26 @@ async def await_message(
             )
         ),
     ] = None,
+    confirm: Annotated[
+        bool,
+        Query(
+            description=(
+                "Leave what is handed over unread until the caller confirms it "
+                "(POST await/confirm with the turn's `delivered`), so a response lost "
+                "on the way is handed over again by the next await."
+            )
+        ),
+    ] = False,
+    confirmed: Annotated[
+        int | None,
+        Query(
+            description=(
+                "A turn's `delivered.position` whose confirmation didn't land: confirmed "
+                "here, before waiting, so a caller that can't reach await/confirm isn't "
+                "handed the same turn forever."
+            )
+        ),
+    ] = None,
 ):
     """Long-poll for the next message addressed to ``handle`` (server-held member).
 
@@ -229,6 +262,14 @@ async def await_message(
     never eats mentions made to it elsewhere. The thread's own position is
     persisted the same way, so a restart mid-thread resumes rather than
     re-serving.
+
+    The turn carries ``digest``: the text a herdr wake types into its agent
+    (``wake_digest``), so an agent on any harness is told the same thing. With
+    ``confirm`` the read position stays put until the caller confirms the
+    turn arrived (``await/confirm``, or ``confirmed`` on its next await);
+    without it, handing the turn over moves it. Either way a
+    caller that hangs up while waiting is let go, so nothing is handed over to
+    a connection nobody is reading.
     """
     import time as _time
 
@@ -269,14 +310,56 @@ async def await_message(
         else:
             persister.advance_cursor(handle, pos)
 
+    # A confirmation that couldn't be posted rides along on the next await:
+    # the read position moves forward to it (never back) before waiting.
+    if confirmed is not None:
+        _commit(confirmed)
+
     loop = asyncio.get_event_loop()
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)
     while True:
+        # A schedule's wake waits here for a handle with no herdr pane: the
+        # next ``await`` is when a resident loop is free to take a turn.
+        scheduled = schedules.take_pending(room_name, _norm(handle), scoped)
+        if scheduled is not None:
+            room_channels.manager.refresh_lease(room_name, handle)
+            activity.signal(room_name, handle, "responding", episode=scheduled.get("episode"))
+            wake = {
+                "handle": handle,
+                "reason": "schedule",
+                "title": scheduled["schedule"],
+                "episode": scheduled.get("episode"),
+            }
+            return {
+                "room": room_name,
+                "handle": handle,
+                "prompt": scheduled["prompt"],
+                "sender": "scheduler",
+                "episode": scheduled.get("episode"),
+                "task": scheduled.get("task"),
+                "topic": None,
+                "message_id": None,
+                "earlier": [],
+                "schedule": scheduled["schedule"],
+                "digest": _digest(room_name, wake, persister.log.records),
+            }
         records = persister.log.records
-        i = _position()
-        while i < len(records):
+        read_from = _position()
+        # Every unread message that asks for the handle, in one hand-over: the
+        # wake shows them all, so the read takes them all, and the newest (the
+        # one the wake leads with) is the turn. Handing them over one call at a
+        # time served the oldest first, so the agent read something the wake
+        # had already moved past while what woke it waited. What falls under a
+        # subscription the handle made comes with them, kept apart: it is the
+        # turn only when nothing asks.
+        end = len(records)
+        # Ended ones too: each record is held to the subscription as it stood
+        # when the record was made (``Subscription.live_at``).
+        mine = [s for s in subscriptions.load(room_name) if s.handle == _norm(handle)]
+        unread: list[tuple[int, Any]] = []
+        watched: list[tuple[int, Any, Wake]] = []
+        for i in range(read_from, end):
             record = records[i]
-            i += 1
             ep = record_episode(record)
             if scoped and ep != scoped:
                 continue
@@ -287,26 +370,75 @@ async def await_message(
                 # No fork needed on *this* side: EpisodeCursors.position() already
                 # defaults an un-forked thread's position to the room-wide one
                 # (its own docstring — "the fork happens where it is standing"),
-                # and _commit(i) below is about to move that room-wide position to
-                # exactly here, so the next scoped reader's default lands right
-                # past this record with no extra write.
-                if persister.episode_position(handle, ep) >= i:
+                # and _commit(end) below moves that room-wide position past it,
+                # so the next scoped reader's default lands past this record
+                # with no extra write.
+                if persister.episode_position(handle, ep) > i:
                     continue
-            if _addressed_to(record.content, handle):
-                _commit(i)
-                _last_tick[key] = record.content
-                room_channels.manager.refresh_lease(room_name, handle)
-                # The turn is handed over: from here until this handle's reply
-                # lands, the room is waiting on it. Transient, bus-only (#513).
-                activity.signal(room_name, handle, "responding", episode=ep)
-                _metrics.record_await_poll(
-                    room=room_name,
-                    handle=handle,
-                    duration_ms=(_time.monotonic() - _t0) * 1000.0,
-                    delivered=True,
-                )
-                earlier = _said_earlier(room_name, handle, records, i - 1)
-                return _describe(room_name, handle, record, earlier=earlier)
+            wake = wakes_for(room_name, record, handle, mine)
+            if wake is None:
+                continue
+            if wake.reason == "subscribed":
+                watched.append((i, record, wake))
+            else:
+                unread.append((i, record))
+        if unread or watched:
+            # Confirmed, the position moves when the caller says the turn
+            # arrived (``await/confirm``); until then the next await hands the
+            # same messages over again, so a response lost on the way loses
+            # nothing.
+            if not confirm:
+                _commit(end)
+            # What it posts while answering these wakes none of their senders
+            # by subscription (``subscriptions.answering``).
+            subscriptions.answering(
+                room_name,
+                handle,
+                {r.sender for _, r in unread} | {r.sender for _, r, _ in watched},
+            )
+            subscribed = None if unread else watched[-1][2]
+            at, record = unread[-1] if unread else watched[-1][:2]
+            _last_tick[key] = record.content
+            room_channels.manager.refresh_lease(room_name, handle)
+            # The turn is handed over: from here until this handle's reply
+            # lands, the room is waiting on it. Transient, bus-only (#513). A
+            # wake already said where it's replying (the thread its digest
+            # named); scoped to a task, the agent chose the thread, so that wins.
+            if scoped or not activity.is_responding(room_name, handle):
+                activity.signal(room_name, handle, "responding", episode=record_episode(record))
+            _metrics.record_await_poll(
+                room=room_name,
+                handle=handle,
+                duration_ms=(_time.monotonic() - _t0) * 1000.0,
+                delivered=True,
+            )
+            turn = _describe(
+                room_name, handle, record, earlier=_said_earlier(room_name, handle, records, at)
+            )
+            # All of them, oldest first, the turn last: what the wake showed.
+            turn["asks"] = [_ask_of(room_name, r) for _, r in unread]
+            # What the handle's subscriptions caught, each with the one that did.
+            turn["watching"] = [
+                {**_ask_of(room_name, r), "why": w.why, "subscription": w.subscription}
+                for _, r, w in watched
+            ]
+            # Why this is the handle's turn: how it asks, or the subscription
+            # it fell under when nothing asks.
+            if subscribed is not None:
+                turn["reason"], turn["why"] = "subscribed", subscribed.why
+            else:
+                turn["reason"], turn["why"] = asks(record.content, handle), None
+            wake = {
+                "handle": handle,
+                "reason": turn["reason"] or "mention",
+                "from": record.sender,
+                "episode": record_episode(record),
+                wake_digest.READ_FROM: read_from,
+            }
+            turn["digest"] = _digest(room_name, wake, records)
+            if confirm:
+                turn["delivered"] = {"position": end, "episode": scoped}
+            return turn
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
         _commit(len(records))
@@ -318,8 +450,60 @@ async def await_message(
                 delivered=False,
             )
             return {"room": room_name, "handle": handle, "message": None}
+        if await _hung_up(request):
+            # Nobody is reading: a turn handed over now would be lost with the
+            # connection (a proxy that cuts idle requests, say).
+            return {"room": room_name, "handle": handle, "message": None}
         room_channels.manager.refresh_lease(room_name, handle)
         await asyncio.sleep(_POLL_INTERVAL_S)
+
+
+async def _hung_up(request: Request) -> bool:
+    """Whether the caller has gone; ``False`` when that can't be told (a bare
+    request in a unit test has no channel to ask)."""
+    try:
+        return await request.is_disconnected()
+    except Exception:  # no telling is not a hang-up
+        return False
+
+
+def _digest(room: str, wake: dict[str, Any], records: list[Any]) -> str | None:
+    """What a herdr wake would type for this turn, told it was handed over by
+    ``await`` (so it doesn't say to run ``await`` first); ``None`` if it can't
+    be built, since the turn itself still says what was asked."""
+    try:
+        return wake_digest.build(room, wake, records, awaited=True)
+    except Exception:
+        logger.exception("await digest failed for @%s in %s", wake.get("handle"), room)
+        return None
+
+
+class ConfirmBody(BaseModel):
+    handle: str = Field(..., description="The handle the turn was handed to")
+    position: int = Field(..., description="The turn's `delivered.position`")
+    episode: str | None = Field(None, description="The turn's `delivered.episode`")
+
+
+@router.post("/await/confirm", response_model=AwaitConfirmRead, responses=refusals(403, 404))
+async def confirm_delivery(room_name: str, body: ConfirmBody, request: Request):
+    """Mark a turn from ``await?confirm=true`` read, now that it arrived.
+
+    Moves the handle's read position (the thread's, for a thread-scoped await)
+    to where the turn ended. It never moves back, so confirming twice, or late,
+    is harmless.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    actor.authorize_handle(request, room_name, body.handle)
+    managed = await room_channels.manager.provision(room_name)
+    if managed is None or managed.persister is None:
+        return {"room": room_name, "handle": body.handle, "confirmed": False}
+    persister = managed.persister
+    if body.episode and not message_format.is_live_episode(room_name, body.episode):
+        persister.advance_episode_cursor(body.handle, body.episode, body.position)
+    else:
+        persister.advance_cursor(body.handle, body.position)
+    return {"room": room_name, "handle": body.handle, "confirmed": True}
 
 
 class ReplyBody(BaseModel):
@@ -334,9 +518,9 @@ class ReplyBody(BaseModel):
     )
 
 
-@router.post("/reply")
+@router.post("/reply", response_model=ReplyRead, responses=refusals(403, 404, 409, 503))
 async def post_reply(room_name: str, body: ReplyBody, request: Request):
-    """Publish ``handle``'s reply as an agent exchange message the aligner scores."""
+    """Publish ``handle``'s reply as an agent exchange message."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     # A verified token names the replier; unauthenticated, the body's handle does.
@@ -395,8 +579,10 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         payload_data=payload_data or {"action": "reply"},
         parents=parents,
     )
-    content = serialize_content(envelope, extra={"content": clean})
-    # Record into the transcript (the aligner polls it for positions). SLIM does
+    # ``@here`` and ``@all`` reach who they reach now, kept on the reply.
+    extra, _by_group = groups.on_message(room_name, text=clean, episode=episode, sender=handle)
+    content = serialize_content(envelope, extra=extra)
+    # Record into the transcript (the conductor reads stances from it). SLIM does
     # not echo a broadcast back to its own sender, so a local record is required —
     # then also broadcast so any client-connected members / the UI see it.
     # ``list_write=True`` so the reply is visible in the room view immediately, the
@@ -410,11 +596,11 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # broadcast (attribution degrades to app-level for that one message; liveness is
     # preserved). Under the PSK default ``send_as_custodian`` is a no-op and this is
     # the prior moderator send.
-    wire = serialize_envelope(envelope, extra={"content": clean})
+    wire = serialize_envelope(envelope, extra=extra)
     sent_as_actor = await room_channels.manager.send_as_custodian(room_name, handle, wire)
     if not sent_as_actor:
         try:
-            await managed.channel.send(envelope, extra={"content": clean})
+            await managed.channel.send(envelope, extra=extra)
         except Exception:
             pass
     await room_channels.manager.raise_ping(
@@ -425,13 +611,8 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     )
     # The reply is the turn ending; say so, in case the reader missed the message.
     activity.signal(room_name, handle, "done", episode=episode)
-    # herdr wake-on-mention, agent→agent leg: a reply that tags another handle
-    # should wake it the same as a human's tag does. Shares the one hook the
-    # human POST /messages path uses; ``exclude`` skips a self-mention so a reply
-    # naming its own handle doesn't enqueue a self-wake.
-    room_channels.manager.enqueue_herdr_wakes_for_mentions(
-        room_name, clean, exclude=handle, episode=episode
-    )
+    # A person replying from the CLI has joined the room, as one posting does.
+    room_people.joined_by_message(room_name, handle)
     return {
         "room": room_name,
         "handle": handle,

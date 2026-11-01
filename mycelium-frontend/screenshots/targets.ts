@@ -2,16 +2,18 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * The seam between captured shots and the two consumers that publish them:
- * the docs site (`docs/`) and the splash repo (`mycelium-io.github.io/`).
+ * The seam between captured shots and the consumers that publish them: the
+ * docs site (`docs/`), the splash repo (`mycelium-io.github.io/`) and the
+ * themes repo (`themes/`, see `themes.ts`).
  *
  * Paths are resolved relative to this file so a capture run works from any cwd.
- * Both trees receive committed PNGs — normal doc/splash builds never touch a
+ * Every tree receives committed PNGs — normal doc/splash builds never touch a
  * browser, and the splash repo builds standalone.
  */
 
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { THEMES_REPO, themeFiles } from "./themes.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -43,21 +45,11 @@ export interface Target {
  * but not published (useful while iterating on a new fixture).
  */
 export const TARGETS: Record<string, Target[]> = {
-  home: [{ dir: SPLASH_DIR, name: "app-home", retina: true }],
-  "room-channel": [
-    { dir: SPLASH_DIR, name: "app-channel", retina: true },
-    { dir: DOCS_DIR, name: "app-room-channel", retina: true },
-  ],
-  "room-board": [
-    { dir: DOCS_DIR, name: "app-room-board", retina: true },
-    { dir: SPLASH_DIR, name: "app-hero", retina: true },
-  ],
-  "room-start": [{ dir: SPLASH_DIR, name: "app-start", retina: true }],
+  "room-channel": [{ dir: DOCS_DIR, name: "app-room-channel", retina: true }],
+  "room-board": [{ dir: DOCS_DIR, name: "app-room-board", retina: true }],
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
-  "room-memory": [{ dir: SPLASH_DIR, name: "app-memory", retina: true }],
-  "room-network": [{ dir: SPLASH_DIR, name: "app-network", retina: true }],
   // The docs' concept and guide pages.
-  "board-columns": [{ dir: DOCS_DIR, name: "app-board-columns", retina: true }],
+  "board-epic": [{ dir: DOCS_DIR, name: "app-board-epic", retina: true }],
   "thread-flow": [{ dir: DOCS_DIR, name: "app-thread-flow", retina: true }],
   "swarm-dialog": [{ dir: DOCS_DIR, name: "app-swarm", retina: true }],
   machines: [{ dir: DOCS_DIR, name: "app-machines", retina: true }],
@@ -67,5 +59,23 @@ export const TARGETS: Record<string, Target[]> = {
   "walk-add-agent": [{ dir: DOCS_DIR, name: "walk-add-agent", retina: true }],
   "walk-task": [{ dir: DOCS_DIR, name: "walk-task", retina: true }],
   "walk-thread": [{ dir: DOCS_DIR, name: "walk-thread", retina: true }],
-  "walk-aligner": [{ dir: DOCS_DIR, name: "walk-aligner", retina: true }],
+  // The home page's steps, each cropped to the part it's about.
+  "home-add-agent": [{ dir: SPLASH_DIR, name: "step-agent", retina: true }],
+  "home-room": [{ dir: SPLASH_DIR, name: "step-room", retina: true }],
+  "home-thread": [{ dir: SPLASH_DIR, name: "step-task", retina: true }],
+  "home-mention": [{ dir: SPLASH_DIR, name: "step-wake", retina: true }],
+  "home-memory": [{ dir: SPLASH_DIR, name: "step-memory", retina: true }],
+  // The themes repo: each theme's picture, beside its file.
+  ...Object.fromEntries(
+    themeFiles().map(({ file }) => [`theme-${file}`, [{ dir: join(THEMES_REPO, "screens"), name: file }]]),
+  ),
+  // The verifier: docs/verifier.html and its engine page, each in both themes.
+  ...Object.fromEntries(
+    ["line", "line-sure", "show-why", "fine", "settings", "channel"].flatMap((shot) =>
+      ["", "-light"].map((t) => [
+        `verifier-${shot}${t}`,
+        [{ dir: DOCS_DIR, name: `app-verifier-${shot}${t}`, retina: true }],
+      ]),
+    ),
+  ),
 };

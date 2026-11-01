@@ -4,7 +4,7 @@
 /**
  * What people come to a room wanting, mapped to the engine that does it.
  *
- * The engines (conductor, aligner, synthesizer) are how the room works; these
+ * The engines (conductor, synthesizer) are how the room works; these
  * are how a person asks for it. Each intent says in one sentence when you
  * would reach for it, which agents it needs, and the summon it sends, so
  * nobody has to know an engine's name or its grammar to use it.
@@ -74,10 +74,10 @@ export const INTENTS: Intent[] = [
     id: "settle",
     label: "Settle",
     when: "Agents want different things and need to agree on one.",
-    then: "The aligner finds where they differ and proposes terms until they agree, or reports that they can't.",
+    then: "Each agent suggests an option and rates the others. The least happy one suggests a fix, until everyone is satisfied or the best option so far stands.",
     roles: [],
     minGroup: 2,
-    summon: ({ group }, note) => `@aligner ${handles(group)}${colon(note)}`,
+    summon: ({ group }, note) => `@conductor concord ${handles(group)}${colon(note) || ": the task above"}`,
   },
   {
     id: "catch-up",

@@ -13,7 +13,8 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Filter, Link2, RotateCcw, Unlink } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Filter, Link2, Network, RotateCcw, Unlink } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import type { MemoryGraph as MemoryGraphData, MemoryGraphNode } from "@/lib/api";
 import { computeForceLayout, type GraphLayoutEdge, type GraphLayoutNode } from "@/lib/memory-graph-layout";
 import { isBrokenLinkError, linkErrorLabel, LINK_ERRORS } from "@/lib/memory-links";
@@ -650,12 +651,17 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           // Blames the filter only when a filter is what emptied the canvas.
           // `MemoryGraph` is exported on its own, so it can also be handed a
           // payload with no nodes at all.
-          <p
-            role="status"
-            className="pointer-events-none absolute inset-0 flex items-center justify-center text-label text-muted-foreground"
-          >
-            {graph.nodes.length === 0 ? "Nothing to show." : "Every namespace is hidden — nothing to show."}
-          </p>
+          <div role="status" className="pointer-events-none absolute inset-x-0 top-0">
+            {graph.nodes.length === 0 ? (
+              <EmptyState icon={Network} title="Nothing to show" />
+            ) : (
+              <EmptyState
+                icon={Filter}
+                title="Every namespace is hidden"
+                description="Turn one back on in the legend."
+              />
+            )}
+          </div>
         )}
 
         {/* Legend — floats over the canvas, outside the pan/zoom transform, and

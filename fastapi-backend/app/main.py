@@ -32,8 +32,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.a2a_agents import router as a2a_agents_router
 from app.routes.a2a_server import router as a2a_server_router
 from app.routes.a2a_state import router as a2a_state_router
+from app.routes.agent_pauses import router as agent_pauses_router
 from app.routes.agents import router as agents_router
+from app.routes.approvals import router as approvals_router
 from app.routes.assignments import router as assignments_router
+from app.routes.board import router as board_router
 from app.routes.briefing import router as briefing_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
@@ -41,23 +44,31 @@ from app.routes.fields import router as fields_router
 from app.routes.hub import router as hub_router
 from app.routes.joins import router as joins_router
 from app.routes.links import router as links_router
+from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
+from app.routes.mention_groups import router as mention_groups_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
 from app.routes.patterns import router as patterns_router
 from app.routes.protocols import router as protocols_router
+from app.routes.room_settings import router as room_settings_router
 from app.routes.rooms import router as rooms_router
 from app.routes.runners import router as runners_router
+from app.routes.schedules import router as schedules_router
 from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
+from app.routes.subscriptions import router as subscriptions_router
 from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
 from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
-from app.services.auth import auth_gate
+from app.routes.verifier import router as verifier_router
+from app.routes.voice import router as voice_router
+from app.schemas import HealthRead, WhoamiRead, refusals
+from app.services.auth import GATE_REFUSALS, auth_gate
 from app.services.filesystem import UnsafePathError
 
 from .config import settings
@@ -80,6 +91,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Uvicorn has set up its loggers by now: put every handler behind a queue,
+    # so a stdout nobody drains drops lines instead of freezing the hub.
+    from app.services import log_queue
+
+    log_queue.install()
     logger.info("Mycelium backend starting up")
     # Say plainly whether the HTTP surface is gated — "is this hub open?" should
     # never require reading config to answer.
@@ -102,6 +118,7 @@ async def lifespan(app: FastAPI):
     telemetry_service.setup()  # providers only — FastAPIInstrumentor wired at app-creation time
 
     # Usage: the hub coming up is the first thing it counts.
+    from app.services import agreed
     from app.services import analytics as usage
 
     await asyncio.to_thread(usage.hub_started)
@@ -138,6 +155,24 @@ async def lifespan(app: FastAPI):
 
     start_lease_sweep()
 
+    # Upstream watch: raises the `upstream` timeline notice when a pull request
+    # a row links changes (review, CI, merge). GitHub can't call a hub on
+    # localhost, so this looks once a minute instead.
+    from app.services.status.watch import start_watch, stop_watch
+
+    start_watch()
+
+    # Schedules: fires each agent's due check-ins (pre-check, then the wake).
+    from app.services import schedules as _schedules
+
+    _schedules.start_sweep()
+
+    # Voice on and its model missing: fetch it now, in the background, rather
+    # than when the first person turns on a mic. Off, this does nothing.
+    from app.services import voice as _voice
+
+    _voice.prefetch()
+
     # Pre-load embedding model so first request isn't slow
     from app.services.embedding import warmup as warmup_embeddings
 
@@ -146,25 +181,25 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Embedding warmup failed (non-fatal): %s", exc)
 
-    # Wire the SIEP aligner into every room's summon seam before any
-    # channel is provisioned, so all persisters pick it up. Dormant until an
-    # @-summon of its reserved handle arrives — zero idle cost.
-    # Several handlers share the one summon seam: the engine kinds (aligner,
-    # synthesizer, hello, conductor, persona) plus the A2A responder. Each self-selects by the summoned
-    # handle's manifest (kind for engines, adapter=a2a for the responder), so a
-    # fan-out dispatcher is enough — no central table. Only one ever acts per
-    # summon since a handle maps to a single runtime.
+    # Wire the engines into every room's summon seam before any channel is
+    # provisioned, so all persisters pick them up. Each is dormant until an
+    # @-summon of a handle registered with its kind arrives — zero idle cost.
+    # Several handlers share the one summon seam: the engine kinds (synthesizer,
+    # hello, conductor, persona, worker), the retired aligner's reply, and the
+    # A2A responder. Each self-selects by the summoned handle's manifest (kind
+    # for engines, adapter=a2a for the responder), so a fan-out dispatcher is
+    # enough — no central table. Only one ever acts per summon since a handle
+    # maps to a single runtime.
     from app.services.a2a_bridge import A2aResponder
-    from app.services.aligner import AlignerEngine
     from app.services.conductor import ConductorEngine
     from app.services.persona_engine import PersonaEngine
     from app.services.probe_engine import ProbeEngine
+    from app.services.retired_aligner import RetiredAligner
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
-    from app.services.task_sync import TaskSyncEngine
     from app.services.worker_engine import WorkerEngine
 
-    app.state.aligner = AlignerEngine(room_channel_manager)
+    app.state.retired_aligner = RetiredAligner(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
     app.state.hello = ProbeEngine(room_channel_manager)
     app.state.conductor = ConductorEngine(room_channel_manager)
@@ -176,12 +211,15 @@ async def lifespan(app: FastAPI):
     app.state.conductor.on_step = app.state.standing.on_step
     app.state.persona = PersonaEngine(room_channel_manager)
     app.state.worker = WorkerEngine(room_channel_manager)
+    from app.services.verifier import VerifierEngine
+
+    app.state.verifier = VerifierEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
     app.state.a2a_responder = A2aResponder(room_channel_manager)
     _engine_handlers = (
-        app.state.aligner.handle_summon,
+        app.state.retired_aligner.handle_summon,
         app.state.synthesizer.handle_summon,
         app.state.hello.handle_summon,
         app.state.conductor.handle_summon,
@@ -205,27 +243,18 @@ async def lifespan(app: FastAPI):
 
     room_channel_manager.on_summon = _dispatch_summon
 
-    # A turn whose text names nobody, put to one member as its message recipient —
-    # the way the aligner and the conductor address one member. The members
-    # the hub plays (persona, worker) answer it; a member living in herdr gets
-    # its doorbell rung, since it would otherwise only wake on a text mention.
-    # Each self-selects by the handle, like the summon handlers.
-    def _dispatch_addressed(room: str, handle: str, envelope: Any, message_text: str) -> None:
+    # A turn put to one member (its message recipient), the way the conductor
+    # asks one member. The members the hub plays (persona, worker)
+    # answer it; the manager rings a herdr member's doorbell itself. Each
+    # self-selects by the handle, like the summon handlers.
+    def _dispatch_turn(room: str, handle: str, envelope: Any, message_text: str) -> None:
         for fire in (app.state.persona.handle_addressed, app.state.worker.handle_addressed):
             try:
                 fire(room, handle, envelope, message_text)
             except Exception:
-                logger.exception("addressed handler failed for @%s in %s", handle, room)
-        from app.services.persister import envelope_sender
+                logger.exception("turn handler failed for @%s in %s", handle, room)
 
-        room_channel_manager.herdr_wake_addressed(
-            room,
-            handle,
-            sender=envelope_sender(envelope),
-            episode=envelope.header.message.episode if envelope.header.message else None,
-        )
-
-    room_channel_manager.on_addressed = _dispatch_addressed
+    room_channel_manager.on_turn = _dispatch_turn
 
     # The board moving: a row filed for a worker gets worked, a finished split
     # gets wrapped up, and a row filed for a herdr member rings its doorbell.
@@ -241,10 +270,21 @@ async def lifespan(app: FastAPI):
             logger.exception("usage notice handler failed in %s", room)
 
     room_channel_manager.on_notice = _dispatch_notice
+
+    # Every recorded message: the verifier reads agents' prose in rooms that
+    # added it, and adds a line under a claim the records don't back up; a
+    # `conflict:` line in a task's thread goes onto its shared summary.
+    def _dispatch_recorded(room: str, record: Any) -> None:
+        app.state.verifier.handle_recorded(room, record)
+        try:
+            agreed.handle_recorded(room, record)
+        except Exception:
+            logger.exception("shared summary conflict handler failed in %s", room)
+
+    room_channel_manager.on_recorded = _dispatch_recorded
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s, hello @%s, conductor @%s, "
+        "engines wired (synthesizer @%s, hello @%s, conductor @%s, "
         "persona @%s, workers by kind; llm=pi via %s)",
-        app.state.aligner.handle,
         app.state.synthesizer.handle,
         app.state.hello.handle,
         app.state.conductor.handle,
@@ -252,18 +292,11 @@ async def lifespan(app: FastAPI):
         settings.ALIGNER_PI_BINARY,
     )
 
-    # Wire the converged→plan→memory-sync consumer onto the same seam:
-    # a ``commit:converged`` the aligner emits fires task_compiler → work/ rows
-    # and a ``knowledge`` push that syncs the compiled plan to every store.
-    app.state.task_sync = TaskSyncEngine(room_channel_manager)
-    room_channel_manager.on_converged = app.state.task_sync.handle_converged
-    logger.info("task-sync consumer wired (commit:converged → task_compiler → work/ rows)")
-
     # Re-provision every room's SLIM channel on startup. Provision is
     # idempotent and best-effort; without this, a backend restart left every
     # existing room channel-less (a zombie) with no recovery path until it was
-    # deleted + recreated. Runs after the aligner/plan-sync hooks are wired so
-    # each restarted persister picks them up.
+    # deleted + recreated. Runs after the engine hooks are wired so each
+    # restarted persister picks them up.
     reprovisioned = 0
     restored_custody = 0
     for _room in list_room_names():
@@ -285,6 +318,11 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()
+    stop_watch()
+    from app.services import voice_worker
+
+    voice_worker.stop()
+    _schedules.stop_sweep()
 
     # Flush and shut down the OTel SDK so spans are not lost on a clean restart.
     from app.services import telemetry as telemetry_service
@@ -310,6 +348,7 @@ async def lifespan(app: FastAPI):
         logger.warning("SLIM channel teardown failed (non-fatal): %s", exc)
 
     logger.info("Mycelium backend shutting down")
+    log_queue.uninstall()
 
 
 def _read_pkg_version() -> str:
@@ -355,6 +394,11 @@ from app.services.telemetry import instrument_app as _instrument_app  # noqa: E4
 
 _instrument_app(app)
 
+# One spelling per room, whatever case a caller typed (``app/room_names.py``).
+from app.room_names import CanonicalRoomMiddleware  # noqa: E402
+
+app.add_middleware(CanonicalRoomMiddleware)  # ty: ignore[invalid-argument-type]
+
 # CORS — starlette types CORSMiddleware as a class but typeshed expects a factory.
 app.add_middleware(
     CORSMiddleware,  # ty: ignore[invalid-argument-type]
@@ -365,38 +409,50 @@ app.add_middleware(
 )
 
 
-# Core routes. Health endpoints stay top-level for orchestrator probes.
-app.include_router(agents_router, prefix="/api")
-app.include_router(a2a_agents_router, prefix="/api")
+# Core routes. Health endpoints stay top-level for orchestrator probes. Every
+# route a router holds is gated, so the router declares the gate's refusals;
+# joins and a2a_server each serve one public route, so they declare them per route.
+app.include_router(agents_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(agent_pauses_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(a2a_agents_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(a2a_server_router, prefix="/api")
-app.include_router(a2a_state_router, prefix="/api")
-app.include_router(engines_router, prefix="/api")
-app.include_router(rooms_router, prefix="/api")
-app.include_router(messages_router, prefix="/api")
-app.include_router(assignments_router, prefix="/api")
-app.include_router(fields_router, prefix="/api")
-app.include_router(tasks_router, prefix="/api")
-app.include_router(swarms_router, prefix="/api")
-app.include_router(runners_router, prefix="/api")
+app.include_router(a2a_state_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(engines_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(rooms_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(messages_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(members_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(mention_groups_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(assignments_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(fields_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(tasks_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(board_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(swarms_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")
-app.include_router(episodes_router, prefix="/api")
-app.include_router(participate_router, prefix="/api")
-app.include_router(sessions_router, prefix="/api")
-app.include_router(stream_router, prefix="/api")
-app.include_router(memory_router, prefix="/api")
-app.include_router(links_router, prefix="/api")
-app.include_router(briefing_router, prefix="/api")
-app.include_router(users_router, prefix="/api")
-app.include_router(search_router, prefix="/api")
-app.include_router(skills_router, prefix="/api")
-app.include_router(uploads_router, prefix="/api")
-app.include_router(patterns_router, prefix="/api")
-app.include_router(protocols_router, prefix="/api")
-app.include_router(status_router, prefix="/api")
-app.include_router(hub_router, prefix="/api")
+app.include_router(episodes_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(participate_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(approvals_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(sessions_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(stream_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(memory_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(links_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(briefing_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(users_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(search_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(schedules_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(subscriptions_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(skills_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(room_settings_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(uploads_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(voice_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(verifier_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(patterns_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(protocols_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(status_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(hub_router, prefix="/api", responses=GATE_REFUSALS)
 
 
-@app.get("/api/whoami", tags=["auth"])
+@app.get("/api/whoami", tags=["auth"], response_model=WhoamiRead, responses=GATE_REFUSALS)
 async def whoami(request: Request):
     """Who the hub resolves this caller to, from the bearer token it verified.
 
@@ -423,8 +479,8 @@ async def whoami(request: Request):
     }
 
 
-@app.get("/", tags=["health"])
-@app.get("/health", tags=["health"])
+@app.get("/", tags=["health"], response_model=HealthRead, response_model_exclude_unset=True)
+@app.get("/health", tags=["health"], response_model=HealthRead, response_model_exclude_unset=True)
 async def root(
     check_llm: bool = False,
     llm_probe: str = "provider",
@@ -516,7 +572,7 @@ async def root(
     return result
 
 
-@app.get("/api/observability", tags=["metrics"])
+@app.get("/api/observability", tags=["metrics"], responses=GATE_REFUSALS)
 async def get_metrics():
     """Return a snapshot of backend-collected metrics (embeddings, LLM, indexer, etc.).
 
@@ -529,7 +585,7 @@ async def get_metrics():
     return snapshot()
 
 
-@app.get("/api/observability/usage", tags=["metrics"])
+@app.get("/api/observability/usage", tags=["metrics"], responses=GATE_REFUSALS)
 async def get_usage(days: int = 30):
     """What this hub is used for, as KPIs, from the usage events it records.
 
@@ -544,7 +600,12 @@ async def get_usage(days: int = 30):
     return await asyncio.to_thread(usage.kpis, max(1, min(days, 365)))
 
 
-@app.get("/api/observability/collector", tags=["metrics"])
+# The collector proxies below also pass a collector's own non-200 status
+# through as it came, which the hub can't name in advance; 502 is the hub's own.
+_COLLECTOR_REFUSALS = {**GATE_REFUSALS, **refusals(502)}
+
+
+@app.get("/api/observability/collector", tags=["metrics"], responses=_COLLECTOR_REFUSALS)
 async def get_collector_metrics():
     """Proxy to the OTLP collector's ``/collector/metrics`` endpoint.
 
@@ -557,7 +618,7 @@ async def get_collector_metrics():
     return await _proxy_collector("/collector/metrics")
 
 
-@app.get("/api/observability/traces/recent", tags=["metrics"])
+@app.get("/api/observability/traces/recent", tags=["metrics"], responses=_COLLECTOR_REFUSALS)
 async def get_recent_traces(limit: int = 100, host: str | None = None):
     """Proxy to the OTLP collector's ``/collector/traces`` endpoint.
 
@@ -572,7 +633,7 @@ async def get_recent_traces(limit: int = 100, host: str | None = None):
     return await _proxy_collector(path)
 
 
-@app.get("/api/observability/hosts", tags=["metrics"])
+@app.get("/api/observability/hosts", tags=["metrics"], responses=_COLLECTOR_REFUSALS)
 async def get_hosts():
     """Proxy to the OTLP collector's ``/collector/hosts`` endpoint.
 

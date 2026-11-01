@@ -20,9 +20,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { EmptyNote } from "@/components/empty-state";
 import { Loader2 } from "lucide-react";
 import { restartMachineAgents, type MachineAgent, type MachineProblem, type Runner } from "@/lib/api";
 import { signFor } from "@/lib/device-key";
+import { useThisMachine } from "@/lib/desktop";
+import { AgentScreenPeek } from "@/components/agent-screen-peek";
 import { JOB_STATUS_LABEL, jobSettled, pairingNote, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -57,6 +60,10 @@ function tilde(path: string | null): string {
 export function MachineAgents({ runner }: { runner: Runner }) {
   const report = runner.machine;
   const [restarting, setRestarting] = useState<MachineAgent[] | null>(null);
+  // The agent whose terminal is open, in the same drawer Members opens. Only
+  // this machine's terminals can be shown, by the desktop app, so only its rows offer it.
+  const [viewing, setViewing] = useState<MachineAgent | null>(null);
+  const here = useThisMachine() === runner.id;
   if (!report) return null;
   const agents = report.workspaces.flatMap((w) => w.agents);
   const restart = (handles: string[]) =>
@@ -94,9 +101,7 @@ export function MachineAgents({ runner }: { runner: Runner }) {
         </div>
       )}
       {report.workspaces.length === 0 ? (
-        <p className="text-label text-muted-foreground">
-          No agents on this machine yet. Start one from a room&apos;s Members panel, under Invite.
-        </p>
+        <EmptyNote>No agents on this machine yet. Start one from a room&apos;s Members panel, under Invite.</EmptyNote>
       ) : (
         report.workspaces.map((w) => (
           <section key={w.id}>
@@ -112,7 +117,7 @@ export function MachineAgents({ runner }: { runner: Runner }) {
               )}
             </div>
             {w.agents.length === 0 ? (
-              <p className="px-1 text-micro text-muted-foreground">No agents bound here yet.</p>
+              <EmptyNote className="px-1">No agents bound here yet.</EmptyNote>
             ) : (
               <div className="overflow-x-auto rounded-md border border-border">
                 <table className="w-full text-left text-label">
@@ -161,7 +166,12 @@ export function MachineAgents({ runner }: { runner: Runner }) {
                             </span>
                           )}
                         </td>
-                        <td className="px-2.5 py-1.5 text-right">
+                        <td className="whitespace-nowrap px-2.5 py-1.5 text-right">
+                          {here && a.state !== "gone" && (
+                            <Button size="xs" variant="ghost" onClick={() => setViewing(a)}>
+                              View
+                            </Button>
+                          )}
                           {a.restartable && (
                             <Button size="xs" disabled={!runner.connected} onClick={() => setRestarting([a])}>
                               Restart
@@ -178,12 +188,35 @@ export function MachineAgents({ runner }: { runner: Runner }) {
         ))
       )}
       {restarting && <RestartDialog runner={runner} agents={restarting} onClose={() => setRestarting(null)} />}
+      {viewing && (
+        <AgentScreenPeek
+          key={`${viewing.room}/${viewing.handle}`}
+          onClose={() => setViewing(null)}
+          room={viewing.room}
+          handle={viewing.handle}
+        />
+      )}
     </div>
   );
 }
 
+/**
+ * What a restart does to what they remember. One whose agent CLI can resume
+ * comes back in its own session; any other starts a new one and catches up.
+ */
+export function restartSaid(agents: Pick<MachineAgent, "resumes">[]): string {
+  const start = "Each starts again in its own folder, as itself.";
+  if (agents.every((a) => a.resumes)) {
+    return `${start} It comes back in its own session, so it keeps its conversation.`;
+  }
+  if (!agents.some((a) => a.resumes)) {
+    return `${start} It starts a new session, so it reads its notes and catches up from the room.`;
+  }
+  return `${start} Those in their own session keep their conversation. Those in a new session read their notes and catch up from the room.`;
+}
+
 /** What restarting does, said before anything starts. The machine asks once more. */
-function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: MachineAgent[]; onClose: () => void }) {
+export function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: MachineAgent[]; onClose: () => void }) {
   const revalidate = useRunnersRevalidate();
   const [picked, setPicked] = useState(() => new Set(agents.map((a) => `${a.room}/${a.handle}`)));
   const [jobId, setJobId] = useState<string | null>(null);
@@ -228,10 +261,7 @@ function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: Ma
         <DialogTitle>
           Restart {agents.length} {agents.length === 1 ? "agent" : "agents"} on {name}?
         </DialogTitle>
-        <DialogDescription>
-          Each starts again in its own folder, as itself. It won&apos;t remember what it was doing, so it reads its
-          notes and catches up from the room.
-        </DialogDescription>
+        <DialogDescription>{restartSaid(agents)}</DialogDescription>
         <ul className="space-y-2">
           {agents.map((a) => {
             const key = `${a.room}/${a.handle}`;
@@ -258,6 +288,7 @@ function RestartDialog({ runner, agents, onClose }: { runner: Runner; agents: Ma
                   </span>
                   <p className="mt-0.5 text-micro text-faint">
                     {a.state === "stopped" ? `In its pane, ${a.pane}` : "In a new pane beside its room's"}
+                    {a.resumes ? ", in its own session" : ", in a new session"}
                   </p>
                 </div>
               </li>

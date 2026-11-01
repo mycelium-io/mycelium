@@ -16,6 +16,7 @@ from starlette.requests import Request
 
 from app.routes import participate
 from app.services import message_format, persister
+from app.services.asks import asks
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content
 
@@ -124,6 +125,30 @@ async def test_await_consumes_the_message_it_serves(wired):
 
 
 @pytest.mark.asyncio
+async def test_await_hands_over_every_unread_ask_led_by_the_newest(wired):
+    """The wake shows every ask and leads with the newest, so one ``await``
+    hands over the same: all of them, oldest first, with the newest as the turn.
+    Serving the oldest first gave the agent a message the wake had moved past."""
+    log = persister.DeliveryLog()
+    for mid in ("m1", "m2", "m3"):
+        log.record(
+            _addressed_record(mid, to="claude-code-agent"),
+            delivered_to=set(),
+            recipients=["claude-code-agent"],
+        )
+
+    wired(log)
+    turn = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=0)
+    assert turn["message_id"] == "m3"
+    assert [a["message_id"] for a in turn["asks"]] == ["m1", "m2", "m3"]
+    assert turn["asks"][-1]["prompt"] == turn["prompt"]
+    assert turn["asks"][0]["id"] == str(persister.read_id(log.records[0]))
+
+    again = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
+    assert again["message"] is None  # all three were handed over
+
+
+@pytest.mark.asyncio
 async def test_await_ignores_turns_addressed_to_others(wired):
     """A handle only wakes on turns addressed to it — an observer broadcast to a
     peer is consumed silently, never returned."""
@@ -152,8 +177,50 @@ def test_a_silent_mention_is_not_a_turn():
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": "@reviewer look, cc @~claude-code-agent"})
-    assert participate._addressed_to(content, "reviewer")
-    assert not participate._addressed_to(content, "claude-code-agent")
+    assert asks(content, "reviewer")
+    assert not asks(content, "claude-code-agent")
+
+
+@pytest.mark.asyncio
+async def test_await_does_not_serve_a_handle_quoted_in_code(wired):
+    """A handle inside code is quoted, not mentioned: the send path makes it no
+    recipient, and ``await`` reads the text by the same rule, so a message whose
+    only mention of the handle is in code is never served to it."""
+    text = "quoting `ask @claude-code-agent to look` for @reviewer"
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.episode_urn("r", "live"),
+        sender="avery",
+        sender_role="human",
+        recipients=persister.parse_mentions(text),
+        topic=message_format.topic_urn("r"),
+        message_id="m1",
+        payload_type="message",
+    )
+    content = serialize_content(env, extra={"content": text})
+    assert asks(content, "reviewer")
+    assert not asks(content, "claude-code-agent")
+
+    log = persister.DeliveryLog()
+    log.record(persister.record_from(env, content), delivered_to=set(), recipients=["reviewer"])
+    wired(log)
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
+    assert result["message"] is None
+
+
+def test_an_interrupting_mention_addresses_by_text():
+    """``@!handle`` in the text addresses the handle like ``@handle`` does."""
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.episode_urn("r", "live"),
+        sender="avery",
+        sender_role="human",
+        recipients=[],
+        topic=message_format.topic_urn("r"),
+        payload_type="message",
+    )
+    content = serialize_content(env, extra={"content": "@!Coder stop, wrong checkout"})
+    assert asks(content, "coder")
 
 
 @pytest.mark.asyncio
@@ -186,6 +253,32 @@ async def test_a_served_turn_says_the_handle_is_responding(wired):
     assert frame["state"] == "responding"
     assert frame["episode"] == message_format.episode_urn("r", "live")
     assert len(log.records) == 1  # nothing was written to the transcript
+
+
+@pytest.mark.asyncio
+async def test_await_keeps_the_thread_a_wake_already_named(wired):
+    """A wake said where the agent is replying; await serves the oldest message
+    first and must not move the room's "responding in" line to an older place."""
+    from app.bus import bus, room_channel
+    from app.services import activity
+
+    log = persister.DeliveryLog()
+    log.record(
+        _addressed_record("m1", to="claude-code-agent"),
+        delivered_to=set(),
+        recipients=["claude-code-agent"],
+    )
+    wired(log)
+    activity.signal("r", "claude-code-agent", "responding", episode="urn:the-newest-thread")
+    queue = bus.subscribe(room_channel("r"))
+    try:
+        result = await participate.await_message(
+            "r", _REQUEST, handle="claude-code-agent", timeout=0
+        )
+        assert result["message_id"] == "m1"
+        assert queue.empty()  # nothing re-raised over the wake's thread
+    finally:
+        bus.unsubscribe(room_channel("r"), queue)
 
 
 def _said(
@@ -344,3 +437,96 @@ async def test_a_turn_in_a_tasks_thread_names_the_task(wired, monkeypatch):
     result = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
     assert result["episode"] == thread
     assert result["task"] == "work/fix-receipt"
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_that_never_landed_rides_on_the_next_await(wired):
+    """A caller that can't reach await/confirm passes the position on its
+    next await, so it isn't handed the same turn over and over."""
+    wired(_log(_said("m1", "@agent ship it?")))
+    first = await participate.await_message("r", _REQUEST, handle="agent", timeout=0, confirm=True)
+    after = await participate.await_message(
+        "r",
+        _REQUEST,
+        handle="agent",
+        timeout=1,
+        confirm=True,
+        confirmed=first["delivered"]["position"],
+    )
+    assert after["message"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("thread", ["live", "t3"])
+async def test_a_confirmed_position_past_the_transcript_is_held_to_its_end(
+    wired, monkeypatch, thread
+):
+    """A position owed from a room deleted and made again under the same
+    name, or any bad number, can't move the read position past messages not
+    said yet: the next one said still wakes the agent, in the room or a thread."""
+    monkeypatch.setattr(participate.tasks, "row_of_episode", lambda *_a: None)
+    log = _log(_said("m1", "@agent ship it?", thread=thread))
+    wired(log)
+    episode = None if thread == "live" else message_format.episode_urn("r", thread)
+    await participate.await_message("r", _REQUEST, handle="agent", timeout=0, episode=episode)
+    await participate.confirm_delivery(
+        "r", participate.ConfirmBody(handle="agent", position=10**6, episode=episode), _REQUEST
+    )
+    await participate.await_message(
+        "r", _REQUEST, handle="agent", timeout=1, episode=episode, confirm=True, confirmed=10**6
+    )
+    _add(log, _said("m2", "@agent and now?", thread=thread))
+    turn = await participate.await_message(
+        "r", _REQUEST, handle="agent", timeout=0, episode=episode
+    )
+    assert turn["message_id"] == "m2"
+
+
+@pytest.mark.asyncio
+async def test_a_confirmed_await_hands_the_turn_over_again_until_it_is_confirmed(wired):
+    """With ``confirm``, a turn whose response never arrived is handed over by
+    the next await; confirming it is what marks it read."""
+    log = _log(_said("m1", "@agent ship it?"))
+    wired(log)
+    first = await participate.await_message("r", _REQUEST, handle="agent", timeout=0, confirm=True)
+    assert first["message_id"] == "m1"
+    assert first["delivered"] == {"position": 1, "episode": None}
+
+    # The response was lost on the way: the next await hands it over again.
+    again = await participate.await_message("r", _REQUEST, handle="agent", timeout=0, confirm=True)
+    assert again["message_id"] == "m1"
+
+    await participate.confirm_delivery(
+        "r", participate.ConfirmBody(handle="agent", **again["delivered"]), _REQUEST
+    )
+    after = await participate.await_message("r", _REQUEST, handle="agent", timeout=1, confirm=True)
+    assert after["message"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_turn_carries_the_wake_digest_with_the_reply_as_its_next_step(wired):
+    """``await`` prints what a herdr wake types, minus the step to run
+    ``await``: it already did."""
+    wired(_log(_said("m1", "@agent ship it?")))
+    turn = await participate.await_message("r", _REQUEST, handle="agent", timeout=0)
+    digest = turn["digest"]
+    assert digest.startswith("mycelium wake for @agent in r")
+    assert "ship it?" in digest
+    assert "mycelium await" not in digest
+    assert "Next:    " in digest
+    assert "mycelium respond --room r --handle agent" in digest
+
+
+@pytest.mark.asyncio
+async def test_an_await_whose_caller_hung_up_hands_nothing_over(wired, monkeypatch):
+    """A caller gone while it waited (a proxy cut it) is let go, so a message
+    said afterwards is left for its next await rather than lost."""
+    log = _log()
+    wired(log)
+
+    async def gone(_request):
+        return True
+
+    monkeypatch.setattr(participate, "_hung_up", gone)
+    result = await participate.await_message("r", _REQUEST, handle="agent", timeout=30)
+    assert result["message"] is None

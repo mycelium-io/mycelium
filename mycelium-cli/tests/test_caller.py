@@ -24,6 +24,7 @@ from mycelium import caller, identity
 from mycelium.cli import app
 from mycelium.client import auth_headers
 from mycelium.config import MyceliumConfig
+from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
 
@@ -69,6 +70,96 @@ def test_without_a_membership_the_machine_answers(isolated_home: Path):
     assert caller.hub(config).source == caller.MACHINE
     assert caller.room(config).source == caller.DEFAULT
     assert caller.config_overlay() == {}
+
+
+# ── the desktop app in client mode names the hub ────────────────────────────
+
+APP_HUB = "https://hub.example.com"
+
+
+def _app(home: Path, mode: str = "client", hub_url: str | None = APP_HUB + "/") -> None:
+    folder = home / ".mycelium"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "desktop.json").write_text(json.dumps({"mode": mode, "hubUrl": hub_url}))
+
+
+def _config_toml(home: Path, api_url: str) -> None:
+    (home / ".mycelium" / "config.toml").write_text(f'[server]\napi_url = "{api_url}"\n')
+
+
+def test_a_fresh_home_in_client_mode_uses_the_app_s_hub(isolated_home: Path):
+    """Only the app's setting, as a first run in client mode leaves it."""
+    _app(isolated_home)
+    config = MyceliumConfig.load()
+    assert config.server.api_url == APP_HUB
+    assert caller.hub(config) == caller.Answer(APP_HUB, caller.DESKTOP)
+    assert ("hub", APP_HUB, caller.DESKTOP) in caller.explain(config)
+
+
+def test_whoami_sources_says_the_hub_came_from_the_app(isolated_home: Path):
+    _app(isolated_home)
+    result = runner.invoke(app, ["whoami", "--sources"])
+    assert result.exit_code == 0, result.output
+    assert APP_HUB in result.output
+    assert "desktop app" in result.output
+
+
+def test_a_hub_this_machine_set_wins_over_the_app(isolated_home: Path):
+    _app(isolated_home)
+    _config_toml(isolated_home, "https://other.example.com")
+    config = MyceliumConfig.load()
+    assert caller.hub(config) == caller.Answer("https://other.example.com", caller.MACHINE)
+
+
+def test_a_saved_default_hub_is_no_hub_of_its_own(isolated_home: Path):
+    """A whole-config save writes the default too; it doesn't hide the app's hub."""
+    _app(isolated_home)
+    _config_toml(isolated_home, caller.DEFAULT_HUB)
+    assert MyceliumConfig.load().server.api_url == APP_HUB
+
+
+def test_the_environment_wins_over_the_app(isolated_home: Path, monkeypatch):
+    _app(isolated_home)
+    monkeypatch.setenv("MYCELIUM_API_URL", "http://env.test:9000")
+    config = MyceliumConfig.load()
+    assert caller.hub(config) == caller.Answer("http://env.test:9000", caller.ENVIRONMENT)
+
+
+@pytest.mark.parametrize(("mode", "hub_url"), [("hub", None), ("client", None), ("client", "")])
+def test_an_app_running_its_own_hub_or_naming_none_changes_nothing(
+    isolated_home: Path, mode: str, hub_url: str | None
+):
+    _app(isolated_home, mode=mode, hub_url=hub_url)
+    config = MyceliumConfig.load()
+    assert config.server.api_url == caller.DEFAULT_HUB
+    assert caller.hub(config).source == caller.MACHINE
+
+
+def test_login_asks_the_app_s_hub_what_it_trusts(isolated_home: Path, monkeypatch):
+    from mycelium.commands import login
+
+    _app(isolated_home)
+    asked: list[str] = []
+
+    def answer(request: httpx.Request):
+        asked.append(str(request.url))
+        return 503, {"detail": "starting"}
+
+    install_stand_in_hub(monkeypatch).answer = answer
+    login._hub_issuers(MyceliumConfig.load())
+    assert asked
+    assert asked[0].startswith(APP_HUB + "/health")
+
+
+def test_saving_the_config_never_copies_the_app_s_hub(isolated_home: Path):
+    """Read, never written: leave client mode and the CLI follows the app."""
+    _app(isolated_home)
+    config = MyceliumConfig.load()
+    config.save()
+    saved = (isolated_home / ".mycelium" / "config.toml").read_text()
+    assert APP_HUB not in saved
+    _app(isolated_home, mode="hub", hub_url=None)
+    assert MyceliumConfig.load().server.api_url == caller.DEFAULT_HUB
 
 
 # ── a membership answers for its folder and everything below it ─────────────
@@ -155,7 +246,7 @@ class _Hub:
     """Stands in for ``POST /api/joins/redeem``."""
 
     def __init__(self, status: int = 200, body: dict | None = None) -> None:
-        self.calls: list[tuple[str, dict, dict]] = []
+        self.calls: list[tuple[str, dict, httpx.Headers]] = []
         self.status = status
         self.body = body or {
             "room": "checkout",
@@ -164,25 +255,27 @@ class _Hub:
             "token_expires_at": None,
         }
 
-    def post(self, url: str, *, json: dict, timeout: float, **kwargs: Any) -> httpx.Response:
-        self.calls.append((url, json, kwargs))
-        return httpx.Response(self.status, json=self.body, request=httpx.Request("POST", url))
+    def answer(self, request: httpx.Request) -> tuple[int, dict]:
+        self.calls.append((str(request.url), json.loads(request.content), request.headers))
+        return self.status, self.body
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> _Hub:
+        install_stand_in_hub(monkeypatch).answer = self.answer
+        return self
 
 
 @pytest.fixture
 def hub(monkeypatch: pytest.MonkeyPatch) -> _Hub:
-    fake = _Hub()
-    monkeypatch.setattr("mycelium.commands.join.httpx.post", fake.post)
-    return fake
+    return _Hub().install(monkeypatch)
 
 
 def test_join_saves_the_membership_and_sends_no_credential(isolated_home: Path, hub: _Hub):
     result = runner.invoke(app, ["join", "abcd-efgh-jkmn", "--hub", "http://hub.test:8000/"])
     assert result.exit_code == 0, result.output
-    url, body, extra = hub.calls[0]
+    url, body, headers = hub.calls[0]
     assert url == "http://hub.test:8000/api/joins/redeem"
     assert body == {"code": "abcd-efgh-jkmn"}
-    assert "headers" not in extra
+    assert "authorization" not in headers
     member = caller.find_membership()
     assert member is not None
     assert (member.hub, member.room, member.handle) == (
@@ -209,8 +302,7 @@ def test_join_refuses_a_folder_that_belongs_to_a_member_without_spending_the_cod
 
 
 def test_join_reports_a_refused_code(isolated_home: Path, monkeypatch: pytest.MonkeyPatch):
-    fake = _Hub(status=400, body={"detail": "that join code isn't valid"})
-    monkeypatch.setattr("mycelium.commands.join.httpx.post", fake.post)
+    _Hub(status=400, body={"detail": "that join code isn't valid"}).install(monkeypatch)
     result = runner.invoke(app, ["join", "nope-nope-nope", "--hub", "http://hub.test:8000"])
     assert result.exit_code == 1
     assert "isn't valid" in result.output
@@ -364,6 +456,113 @@ def test_a_pane_mapped_to_two_agents_guesses_neither_and_says_so(
     err = capsys.readouterr().err
     assert "@coder, @designer" in err
     assert "--as" in err
+
+
+# ── a pane's agent finds the token the runner keeps for it ──────────────────
+
+
+def _jwt(exp: float) -> str:
+    import base64
+
+    def seg(data: dict[str, Any]) -> str:
+        return base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip("=")
+
+    return f"{seg({'alg': 'ES256'})}.{seg({'sub': 'coder', 'exp': exp})}.sig"
+
+
+def _keep(room: str, handle: str, token: str) -> None:
+    from mycelium.agent_credentials import member_token_path
+
+    path = member_token_path(room, handle)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(token)
+
+
+def test_an_agent_started_before_panes_got_a_token_file_finds_its_token(
+    isolated_home: Path, monkeypatch
+):
+    """No token variable in its environment: the pane's agent says which file."""
+    import time
+
+    token = _jwt(time.time() + 3600)
+    _keep("checkout", "coder", token)
+    _map("checkout", "coder", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    answer = caller.credential(MyceliumConfig.load())
+    assert answer == caller.Answer(token, caller.PANE)
+    assert auth_headers(MyceliumConfig.load()) == {"Authorization": f"Bearer {token}"}
+
+
+def test_a_pane_the_runner_started_finds_its_token_by_its_environment(
+    isolated_home: Path, monkeypatch
+):
+    import time
+
+    token = _jwt(time.time() + 3600)
+    _keep("checkout", "coder", token)
+    monkeypatch.setenv("MYCELIUM_AGENT_PANE", "1")
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder")
+    monkeypatch.setenv("MYCELIUM_ROOM_ID", "checkout")
+
+    assert caller.credential(MyceliumConfig.load()) == caller.Answer(token, caller.PANE)
+
+
+def test_an_expired_kept_token_is_not_sent(isolated_home: Path, monkeypatch):
+    _keep("checkout", "coder", _jwt(1000.0))
+    _map("checkout", "coder", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    assert caller.credential(MyceliumConfig.load()).value is None
+
+
+def test_another_agents_pane_in_a_joined_folder_never_carries_the_membership_token(
+    isolated_home: Path, monkeypatch
+):
+    """The folder joined as @agora-coding; @builder works in it with no kept token yet."""
+    _join(isolated_home, handle="agora-coding", token="tok-agora")
+    _map("checkout", "builder", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer("builder", caller.PANE)
+    assert caller.credential(config).value is None
+    assert auth_headers(config) == {}
+
+
+def test_the_joined_agents_own_pane_still_carries_its_membership_token(
+    isolated_home: Path, monkeypatch
+):
+    _join(isolated_home, handle="agora-coding", token="tok-agora")
+    _map("checkout", "agora-coding", "w1:p2")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p2")
+
+    assert caller.credential(MyceliumConfig.load()) == caller.Answer("tok-agora", caller.MEMBERSHIP)
+
+
+def test_a_pane_mapped_to_two_agents_never_falls_to_the_folders_membership(
+    isolated_home: Path, monkeypatch
+):
+    _identity(isolated_home, "operator")
+    _join(isolated_home, handle="agora-coding", token="tok-agora")
+    _map("checkout", "coder", "w1:p3")
+    _map("checkout", "designer", "w1:p3")
+    monkeypatch.setenv("HERDR_PANE_ID", "w1:p3")
+    caller._WARNED.clear()
+
+    config = MyceliumConfig.load()
+    assert caller.handle(config) == caller.Answer("operator", caller.MACHINE)
+    assert caller.credential(config).value is None
+
+
+def test_a_persons_terminal_never_reads_an_agents_kept_token(isolated_home: Path, monkeypatch):
+    import time
+
+    _keep("checkout", "coder", _jwt(time.time() + 3600))
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder")
+    monkeypatch.setenv("MYCELIUM_ROOM_ID", "checkout")
+
+    assert caller.credential(MyceliumConfig.load()).value is None
 
 
 # ── a folder config never quietly names someone else ────────────────────────

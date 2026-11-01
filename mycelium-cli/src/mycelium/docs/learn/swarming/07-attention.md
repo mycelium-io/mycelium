@@ -11,7 +11,7 @@ section is to need less of it without losing control:
    each other for everything else.
 4. **Reading results:** you hand off a goal and read one summary at the end.
 
-Getting from the second rung to the fourth isn't about smarter agents. It's
+Getting from the second step to the fourth isn't about smarter agents. It's
 about a **self-organizing team**, meaning agents that set each other to work.
 When one finishes, it tells the next one to start. When one finds work for
 another, it files it for them. When one is stuck, it asks a teammate before it

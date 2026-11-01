@@ -5,6 +5,11 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
+from mycelium._console import use_utf8_console
+
+# First, before any module creates a Rich Console (a no-op off Windows).
+use_utf8_console()
+
 try:
     __version__ = version("mycelium-cli")
 except PackageNotFoundError:

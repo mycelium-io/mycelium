@@ -6,7 +6,7 @@
   "thumb": "walk-thread.png",
   "needs": [
     "A coding agent you already use, such as Claude Code or Codex",
-    "Mycelium on your machine with its runner going. The Mac app runs it for you.",
+    "Mycelium on your machine with its runner going. The desktop app runs it for you.",
     "A repository with a task you'd normally spend an afternoon on"
   ],
   "takeaway": "A PM brief tuned to how you work and a pair you can hand features to.",

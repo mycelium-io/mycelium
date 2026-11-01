@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { EpisodeSummary, FlowTraceEntry, RoomFloor } from "@/lib/api";
+import type { EpisodeSummary, FlowStep, FlowTraceEntry, RoomFloor } from "@/lib/api";
 import { lockSummary, tallySummary } from "@/lib/conductor-line";
 import { FlowGraph } from "@/components/flow-graph";
 
@@ -45,8 +45,16 @@ function outcomeTone(outcome: string): string {
   return "var(--accent)";
 }
 
-/** One step taken, as the trace line reads it. */
-function TraceRow({ entry }: { entry: FlowTraceEntry }) {
+/** Whether a step's replies carry a stance: it asks for one, or branches on one. */
+function takesStance(step: FlowStep | undefined): boolean {
+  if (!step) return false;
+  if (step.require === "stance") return true;
+  return typeof step.next === "object" && step.next !== null && ("accept" in step.next || "reject" in step.next);
+}
+
+/** One step taken, as the trace line reads it. A step that takes no stance
+ *  (Accord's, Concord's) never reads "no stance". */
+function TraceRow({ entry, stanced }: { entry: FlowTraceEntry; stanced: boolean }) {
   const who = entry.asked?.join(", ") ?? "";
   // A pick says what it picked and how that went, a count or the shared
   // summary what it found; a second asking says so.
@@ -59,7 +67,7 @@ function TraceRow({ entry }: { entry: FlowTraceEntry }) {
         ? lockSummary(entry.lock)
         : entry.again
           ? "asked again"
-          : (entry.stance ?? (entry.asked?.length ? "no stance" : ""));
+          : (entry.stance ?? (stanced && entry.asked?.length ? "no stance" : ""));
   const good =
     entry.stance === "accept" || picked?.outcome === "feasible" || (entry.lock?.outcome === "locked" && entry.lock.saved);
   const bad =
@@ -174,7 +182,9 @@ export function FlowPanel({
       </div>
       {trace.length > 0 && (
         <div className="mt-2">
-          {trace.map((entry, i) => <TraceRow key={i} entry={entry} />)}
+          {trace.map((entry, i) => (
+            <TraceRow key={i} entry={entry} stanced={takesStance(flow.steps.find((s) => s.id === entry.step))} />
+          ))}
         </div>
       )}
       {/* The record is the run: where the flow and the trace are filed, and

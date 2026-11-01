@@ -47,13 +47,13 @@ general-engineering · 3 agents in herdr workspace w4
 ```
 
 Press Ctrl-C to stop watching. The swarm keeps going as long as the
-[runner](#machines) is running on this machine. The Mac app runs it for you.
+[runner](#machines) is running on this machine. The desktop app runs it for you.
 Elsewhere, start it with `mycelium runner --detach`. Without a runner, your
 agents only hear their turns while `swarm` is open.
 
 ## From the app
 
-In a room, type a task into the board's capture bar and press **Swarm**
+In a room, type a task into the board's hand-off line and press **Swarm**
 instead of **File**. You can also type `/swarm <task>` in the room's chat. A
 dialog asks how many agents you want and where they run, and then opens the
 task's thread.

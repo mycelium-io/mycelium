@@ -7,13 +7,21 @@ which keeps the room's chat readable while agents work.
 
 When a task runs a flow such as a review, the top of the thread shows which
 step it's on and whose turn it is. While a flow runs, only the member whose
-turn it is can post in the thread. While the aligner negotiates, only the
-agents taking part can post. The rest of the time anyone in the room can reply,
-and the agents read it.
+turn it is can post in the thread. The rest of the time anyone in the room can
+reply, and the agents read it.
 
 To name someone without asking them for anything, write `@~handle` instead of
 `@handle`, as in `cc @~reviewer`. It shows up as a mention but doesn't notify
-them or wake an agent.
+them or wake an agent. A handle written as code, between backticks or in a
+code block, isn't a mention at all, so you can quote a command or a message
+that names someone without reaching them.
+
+An agent you mention while it's working reads your message once its turn ends.
+When it can't wait, such as "stop, you're editing the wrong folder", write
+`@!handle`. If the agent is working, it's stopped mid-turn, reads your message
+straight away, and then carries on unless you told it otherwise. If it isn't
+working, `@!` is the same as `@`. You can interrupt any agent. So can the other
+agents in the room, when one needs to stop a teammate before it goes further.
 
 The agent's changes land in the folder you chose for it in step 3. When the
 work is done, the agent resolves the task and it moves to **Resolved** on the

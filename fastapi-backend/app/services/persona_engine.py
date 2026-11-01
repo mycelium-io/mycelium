@@ -13,17 +13,17 @@ each one's notes, and the room has members that answer without a resident
 session behind any of them.
 
 It answers on two seams. A text ``@``-mention is a summon, like any engine's.
-An **addressed turn** — an exchange naming it as a message recipient with nobody
-mentioned in the text, which is how the aligner and the conductor put a
-question to one member — reaches it through the persister's addressed hook,
+An **addressed turn**, a ``message`` naming it as recipient without mentioning
+it (``asks.py``), which is how the conductor puts a question to
+one member, reaches it through the manager's turn hook (``on_turn``),
 so a persona can fill a protocol role or a negotiation seat. Either way it
 answers where it was asked, in the thread the turn rode.
 
 A reply ending in a position marker is lifted the way the reply route lifts
 one: the stance lands on the message payload and the prose is posted clean, so a
 guardian played by a persona blocks a gated step the same as a resident agent
-would. Every ``@`` in what it says is neutralized before posting, so a persona
-can never summon anything, and two personas cannot ping-pong.
+would. What it says is posted as it said it: a mention in it asks whoever it
+names, by the same rule as anyone's (``asks.py``).
 
 Dormant by default and fail-loud like the other engines: a Pi error or an
 empty answer is posted as a readable reason rather than silence.
@@ -40,7 +40,9 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import activity, markers, message_format, turns
-from app.services.aligner import _norm, _registered_engine_kind
+from app.services.engine_kinds import norm as _norm
+from app.services.engine_kinds import registered_engine_kind
+from app.services.engines_model import failed_turn
 from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
@@ -187,10 +189,7 @@ class PersonaEngine:
         floor it just took, and leave the persona busy when its real turn came.
         """
         for other in co_summons or ():
-            if (
-                _norm(other) != _norm(handle)
-                and _registered_engine_kind(room, other) == "conductor"
-            ):
+            if _norm(other) != _norm(handle) and registered_engine_kind(room, other) == "conductor":
                 return
         self._fire(room, handle, envelope, message_text)
 
@@ -201,7 +200,7 @@ class PersonaEngine:
         self._fire(room, handle, envelope, message_text)
 
     def _fire(self, room: str, handle: str, envelope: MyceliumMessage, message_text: str) -> None:
-        if _registered_engine_kind(room, handle) != ENGINE_KIND:
+        if registered_engine_kind(room, handle) != ENGINE_KIND:
             return
         if settings.ENGINE_RUNTIME == "host":
             logger.info("engine @%s summoned in %s but ENGINE_RUNTIME=host", handle, room)
@@ -263,7 +262,9 @@ class PersonaEngine:
         managed = self._manager.get(room)
         where = episode or message_format.live_episode_urn(room)
         in_thread = not message_format.is_live_episode(room, where)
-        system = _persona_text(room, me)
+        from app.services.asks import MENTION_ETIQUETTE
+
+        system = f"{_persona_text(room, me)}\n\n{MENTION_ETIQUETTE}"
         said = await asyncio.to_thread(_agreed_in, room, where)
         prompt = _build_prompt(room, me, sender, text, in_thread=in_thread, agreed=said)
         activity.signal(room, me, "responding", episode=where)
@@ -274,7 +275,9 @@ class PersonaEngine:
             )
         except Exception:
             logger.exception("persona @%s: Pi turn failed in room %s", me, room)
-            await self._say(managed, where, me, "Pi turn timed out or errored; ask me again.")
+            await self._say(
+                managed, where, me, failed_turn("Pi turn timed out or errored; ask me again.")
+            )
             return None
         finally:
             activity.signal(room, me, "done", episode=where)
@@ -285,7 +288,6 @@ class PersonaEngine:
             await self._say(managed, where, me, "Pi returned an empty response; ask me again.")
             return None
         payload, clean = markers.parse_marker(reply)
-        clean = turns.neutralize_mentions(clean)
         await self._say(managed, where, me, clean, payload=payload)
         return clean
 

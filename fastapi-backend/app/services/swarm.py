@@ -26,5 +26,7 @@ def team_handles(size: int) -> list[str]:
 
 def kickoff_text(team: list[str], task: str) -> str:
     """The message that summons the conductor to run the kickoff over the team."""
-    names = " ".join(f"@{h}" for h in team)
+    # Silent mentions: they bind the roles and wake nobody; the conductor asks
+    # each member in its turn.
+    names = " ".join(f"@~{h}" for h in team)
     return f"@{CONDUCTOR} {FLOW} {names}: {task}"

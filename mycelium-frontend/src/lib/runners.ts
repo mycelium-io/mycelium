@@ -94,17 +94,21 @@ export function useRunnersRevalidate(): () => void {
   }, [mutate]);
 }
 
-/** Frameworks as a picker lists them: startable first, then found, then missing. */
+/** Frameworks as a picker lists them: startable and found first, then startable,
+ *  then the rest, found ones first. */
 export function sortFrameworks(frameworks: Framework[]): Framework[] {
-  const rank = (f: Framework) => (f.installed ? (f.launchable ? 0 : 1) : 2);
+  const rank = (f: Framework) => (f.launchable ? 0 : 2) + (f.installed ? 0 : 1);
   return [...frameworks].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
-/** Frameworks a machine can start right now: installed, startable by its host,
- *  and its host running there. Empty on a machine whose host isn't running. */
+/** Frameworks a machine can start right now: its host can start the kind and is
+ *  running there. One the scan didn't find is included: the host starts it from
+ *  the person's own shell, which may have it, and the start says if it doesn't.
+ *  Found ones first, so the first is a sensible default. Empty on a machine
+ *  whose host isn't running. */
 export function launchable(runner: Runner): Framework[] {
   if (!runner.herdr) return [];
-  return runner.frameworks.filter((f) => f.installed && f.launchable);
+  return sortFrameworks(runner.frameworks.filter((f) => f.launchable));
 }
 
 /**
@@ -159,6 +163,8 @@ export function describeJob(job: RunnerJob): string {
       return `Start ${handle ?? "an agent"}`;
     case "stop":
       return `Stop ${handle ?? "an agent"}`;
+    case "interrupt":
+      return `Interrupt ${handle ?? "an agent"}`;
     case "scan":
       return "Scan for agent CLIs";
     case "swarm":
@@ -170,6 +176,10 @@ export function describeJob(job: RunnerJob): string {
     }
     case "pair":
       return typeof spec.name === "string" ? `Pair “${spec.name}”` : "Pair a device";
+    case "adopt":
+      return `Bring ${handle ?? "an agent"} into ${typeof spec.room === "string" ? spec.room : "a room"}`;
+    case "rename":
+      return `Restart ${handle ?? "an agent"} as @${typeof spec.to === "string" ? spec.to : "?"}`;
   }
 }
 
@@ -179,6 +189,180 @@ export function pairingNote(job: Pick<RunnerJob, "pairing">): string | null {
   if (!p) return null;
   if (p.accepted) return `Started without approval (paired as “${p.name}”).`;
   return p.reason ? `Needs approval on the machine: ${p.reason}.` : null;
+}
+
+/**
+ * How far a start got on its machine, as the runner reports it on the job
+ * (`hosts.STEP_*`): a terminal opened for the agent, then its shell and the
+ * agent CLI in it, then the agent itself, then its introduction handed over.
+ */
+export type StartStep = "terminal" | "shell" | "agent" | "intro";
+
+/**
+ * Why a start stopped, in the runner's one word for it: the terminal's shell
+ * never reached a prompt, the agent CLI ran but is showing something of its
+ * own (an update, a sign-in, a first-run question), it exited before it came
+ * up, it isn't installed on the machine, it needs setting up there first (a
+ * sign-in, found before anything started), the machine isn't signed in to a
+ * hub with sign-in on (so the agent could get no credential of its own; also
+ * found before anything started), or the host refused.
+ */
+export type StartWhy = "shell" | "cli" | "exited" | "missing" | "setup" | "signin" | "host";
+
+export interface StartReport {
+  step: StartStep | null;
+  why: StartWhy | null;
+  /** The terminal the start left open, for the person to look at. What it
+   *  shows never comes through the hub: the desktop app shows it live. */
+  pane: string | null;
+  /** What the host said, word for word, for whoever is debugging. */
+  detail: string | null;
+  /** Still starting, but the terminal's shell is slow to reach a prompt. */
+  slow: boolean;
+  /** Started, but stopped at something only the person there can answer (a
+   *  sign-in, a question), in the runner's words; its introduction is held. */
+  waiting: string | null;
+  /** What the machine answered for the person on the way, from their choice
+   *  to start it there ("Trusted the folder for Claude Code"). */
+  passed: string[];
+}
+
+const STEPS: readonly string[] = ["terminal", "shell", "agent", "intro"];
+const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "setup", "signin", "host"];
+
+/** What a start job's result says about how far it got. Empty for any other job. */
+export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): StartReport {
+  const r = (job?.result ?? {}) as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const step = text(r.step);
+  const why = text(r.why);
+  return {
+    step: step && STEPS.includes(step) ? (step as StartStep) : null,
+    why: why && WHYS.includes(why) ? (why as StartWhy) : null,
+    pane: text(r.pane),
+    detail: text(r.detail),
+    slow: r.slow === true,
+    waiting: text(r.waiting),
+    passed: Array.isArray(r.passed) ? r.passed.filter((p): p is string => typeof p === "string" && p !== "") : [],
+  };
+}
+
+/** What happened to a start that stopped, and what to do, step by step. */
+export interface StartHelp {
+  /** One sentence: what happened. */
+  happened: string;
+  /** What to do next, in order. */
+  steps: string[];
+  /** A few words for a status line with no room for the rest. */
+  short: string;
+}
+
+/** The person's way through a start that stopped, by why it stopped. */
+export function startHelp(
+  why: StartWhy | null,
+  {
+    machine,
+    cli,
+    handle,
+    detail = null,
+  }: {
+    machine: string;
+    cli: string;
+    handle: string;
+    /** What the host said, when it refused for a reason of its own. */
+    detail?: string | null;
+  },
+): StartHelp {
+  if (why === "shell") {
+    return {
+      happened: `The terminal opened for @${handle} on ${machine} didn't get to its shell prompt in time, so ${cli} never started.`,
+      steps: [
+        `Look at the terminal on ${machine}. It's still open, and may just need a few more seconds.`,
+        `If it stays blank or shows an error, the shell's startup files (like ~/.zshrc) are slow or failing. Open a new terminal window on ${machine} to check that it starts normally.`,
+        `Once it shows a prompt, try again. It reuses the same terminal.`,
+      ],
+      short: `its terminal on ${machine} didn't get to a prompt in time`,
+    };
+  }
+  if (why === "setup") {
+    // Found before anything started, so there's no terminal to look at: what
+    // the CLI needs is in the runner's own words.
+    return {
+      happened: `${cli} needs setting up on ${machine} before an agent can start in it.`,
+      steps: detail
+        ? [detail]
+        : [`Run ${cli} once in a terminal on ${machine} and finish its first-run setup.`, `Then try again.`],
+      short: `${cli} needs setting up on ${machine}`,
+    };
+  }
+  if (why === "signin") {
+    // Found before anything started: the hub has sign-in on and wouldn't give
+    // the agent a credential for this machine, so nothing was opened.
+    return {
+      happened:
+        detail ?? `${machine} isn't signed in to this hub, so @${handle} couldn't get its own credential here.`,
+      steps: [
+        `In a terminal on ${machine}, run mycelium login and finish signing in.`,
+        `Then try again. @${handle} is already in the room; starting it again picks up where this stopped.`,
+      ],
+      short: `${machine} isn't signed in to this hub`,
+    };
+  }
+  if (why === "missing") {
+    return {
+      happened: `${cli} isn't installed on ${machine}.`,
+      steps: [
+        `Look at its terminal on ${machine}. It's still open, showing what its shell said.`,
+        `Install ${cli} on ${machine}, and check that a new terminal window there can run it.`,
+        `Then try again.`,
+      ],
+      short: `${cli} isn't installed on ${machine}`,
+    };
+  }
+  if (why === "exited") {
+    return {
+      happened: `${cli} exited before it started on ${machine}.`,
+      steps: [
+        `Look at its terminal on ${machine}. It's still open, showing what ${cli} printed when it exited.`,
+        `Fix what it says, often a setting in ${cli}'s own config.`,
+        `Then try again.`,
+      ],
+      short: `${cli} exited before it started on ${machine}`,
+    };
+  }
+  if (why === "cli") {
+    return {
+      happened: `${cli} opened on ${machine} but didn't finish starting. It's most likely waiting for you: an update, a sign-in, or a first-run question.`,
+      steps: [
+        `Look at its terminal on ${machine}. It's still open.`,
+        `Answer what ${cli} is asking: let it update, sign in, or pick an option.`,
+        `Once ${cli} shows its normal prompt, try again.`,
+      ],
+      short: `${cli} is waiting for something in its terminal on ${machine}`,
+    };
+  }
+  if (why === "host" && detail) {
+    // The host refused and said why (herdr: "agent name builder is already
+    // used"). That is the cause, so lead with it rather than suggesting the
+    // CLI itself is broken.
+    return {
+      happened: `${machine} couldn't start ${cli}: ${detail}`,
+      steps: [
+        `Fix what it says above, then try again.`,
+        `For the full error, open Logs → Agent starts in the Mycelium menu on ${machine}, or ~/.mycelium/runner/runner.log.`,
+      ],
+      short: `${machine} couldn't start ${cli}`,
+    };
+  }
+  return {
+    happened: `${machine} couldn't start ${cli}.`,
+    steps: [
+      `Check that ${cli} starts when you run it yourself in a terminal on ${machine}.`,
+      `For the full error, open Logs → Agent starts in the Mycelium menu on ${machine}, or ~/.mycelium/runner/runner.log.`,
+      `Then try again.`,
+    ],
+    short: `${machine} couldn't start ${cli}`,
+  };
 }
 
 export const JOB_STATUS_LABEL: Record<RunnerJob["status"], string> = {

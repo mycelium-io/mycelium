@@ -23,6 +23,7 @@ from app.schemas import (
     EventStatusUpdate,
     FacetBucket,
     MessageAmend,
+    MessageAmended,
     MessageCreate,
     MessageListResponse,
     MessageRead,
@@ -30,15 +31,18 @@ from app.schemas import (
     MessageSearchResponse,
     MessageSearchScope,
     MessageType,
+    refusals,
 )
 from app.services import (
     actor,
+    approvals,
     in_memory_store,
     message_format,
     message_search,
     persister,
     principals,
     room_channels,
+    room_people,
     tasks,
 )
 from app.services.filesystem import room_exists
@@ -81,7 +85,7 @@ def _room_episode(
     return episode or message_format.live_episode_urn(room)
 
 
-@router.post("", response_model=MessageRead, status_code=201)
+@router.post("", response_model=MessageRead, status_code=201, responses=refusals(403, 404, 409))
 async def send_message(room_name: str, payload: MessageCreate, request: Request):
     """Send a message to a room; publish it to the room's live stream."""
     channel, coord = _resolve_channel(room_name)
@@ -195,15 +199,17 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     await room_channels.manager.raise_ping(
         base_room, episode=msg.episode, sender=msg.sender_handle, message_id=msg.message_id
     )
-    # herdr wake-on-mention: the backend is herdr-blind, but it sees every tag. If
-    # a mention targets a handle that's alive in herdr but NOT a joined member
-    # (would otherwise ignore the tag), enqueue a wake for the host-side sync
-    # bridge to run `herdr agent prompt`. This is the "commands down" leg that
-    # makes tagging-from-the-UI actually reach a resident-but-idle herdr agent.
+    # A mention rings its herdr doorbell where every message's does: as the room
+    # records it (``room_channels.ring_asked``), not here. Unpublished, it isn't
+    # recorded, so nothing rings; the wake log says why.
     if coord is None and msg.message_type == MessageType.BROADCAST:
-        room_channels.manager.enqueue_herdr_wakes_for_mentions(
-            base_room, msg.content or "", sender=msg.sender_handle, episode=msg.episode
-        )
+        if not published:
+            room_channels.manager.note_unrecorded_asks(
+                base_room, sender=msg.sender_handle, text=msg.content or "", episode=msg.episode
+            )
+        # A person who posts in a room has joined it; an agent or an unknown
+        # handle hasn't (``room_people``).
+        room_people.joined_by_message(base_room, msg.sender_handle)
     return MessageRead.model_validate(msg)
 
 
@@ -220,7 +226,7 @@ def _read_messages(
     return persister.room_conversation(channel)
 
 
-@router.get("", response_model=MessageListResponse)
+@router.get("", response_model=MessageListResponse, responses=refusals(404))
 async def list_messages(
     room_name: str,
     limit: int = Query(50, le=500),
@@ -240,6 +246,14 @@ async def list_messages(
     ),
     episode: str | None = Query(
         None, description="Only messages belonging to this episode URN (one negotiation/session)"
+    ),
+    message: str | None = Query(
+        None,
+        alias="id",
+        description=(
+            "Only the message whose id starts with this (the eight characters a "
+            "wake names a message by, or the whole id)"
+        ),
     ),
 ):
     """List messages in a room (or coordination session), newest first."""
@@ -265,6 +279,8 @@ async def list_messages(
             continue
         if episode and m.episode != episode:
             continue
+        if message and not str(m.id).startswith(message.strip().lower()):
+            continue
         filtered.append(m)
 
     filtered.sort(key=lambda m: m.created_at, reverse=True)
@@ -272,12 +288,28 @@ async def list_messages(
     page = filtered[offset : offset + limit]
 
     return MessageListResponse(
-        messages=[MessageRead.model_validate(m) for m in page],
+        messages=_with_decisions(channel, [MessageRead.model_validate(m) for m in page]),
         total=total,
     )
 
 
-@router.get("/search", response_model=MessageSearchResponse)
+def _with_decisions(room: str, messages: list[MessageRead]) -> list[MessageRead]:
+    """Each ask on the page with its decision folded on, so the card reads one
+    message. Worked out from the transcript on read, never stored."""
+    if not any(m.metadata and "ask" in m.metadata for m in messages):
+        return messages
+    found = approvals.asked(approvals.records(room), room)
+    out = []
+    for m in messages:
+        ask = (m.metadata or {}).get("ask")
+        hit = found.get(str(ask.get("id"))) if isinstance(ask, dict) else None
+        if hit is not None and hit.answer is not None:
+            m = m.model_copy(update={"metadata": {**(m.metadata or {}), "ask": hit.folded()}})
+        out.append(m)
+    return out
+
+
+@router.get("/search", response_model=MessageSearchResponse, responses=refusals(404))
 async def search_messages(
     room_name: str,
     q: str = Query(
@@ -341,7 +373,7 @@ async def search_messages(
     )
 
 
-@router.get("/wire")
+@router.get("/wire", responses=refusals(404))
 async def list_wire(
     room_name: str,
     limit: int = Query(200, le=1000),
@@ -351,7 +383,7 @@ async def list_wire(
 ) -> list[dict]:
     """The room's wire feed, replayed from the transcript (oldest first).
 
-    Backfills the live message inspector: the SSE bus carries no history, so a freshly
+    Backfills the channel and Stream: the SSE bus carries no history, so a freshly
     opened tab would otherwise start empty. Frames are the exact shape the bus
     pushes, so the client projects backfill and live frames identically.
 
@@ -388,7 +420,12 @@ def _find_amend_target(
     return matched[0] if len(matched) == 1 else None
 
 
-@router.post("/{message_id}/amend", response_model=MessageRead, status_code=201)
+@router.post(
+    "/{message_id}/amend",
+    response_model=MessageAmended,
+    status_code=201,
+    responses=refusals(403, 404, 409),
+)
 async def amend_message(
     room_name: str,
     message_id: str,
@@ -493,12 +530,20 @@ async def amend_message(
     )
 
     # Answer with the folded message — the row the room now reads — rather than
-    # the amendment, so a client refreshes to exactly what it was handed.
+    # the amendment, so a client refreshes to exactly what it was handed. With it,
+    # the text it replaced and the task it's in: an amend of the wrong message is
+    # then plain from the answer, not only from someone reading the room later.
     revised = _find_amend_target(_read_messages(channel, coord), str(target.id))
-    return MessageRead.model_validate(revised or msg)
+    row = tasks.row_of_episode(base_room, target.episode) if target.episode else None
+    return MessageAmended(
+        **MessageRead.model_validate(revised or msg).model_dump(),
+        replaced=target.content,
+        task=row[1] if row else None,
+        task_key=row[0] if row else None,
+    )
 
 
-@router.patch("/{message_id}", response_model=MessageRead)
+@router.patch("/{message_id}", response_model=MessageRead, responses=refusals(404, 409))
 async def update_event_status(
     room_name: str,
     message_id: UUID,

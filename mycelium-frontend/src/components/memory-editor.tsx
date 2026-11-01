@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import type { MarkdownEditorHandle } from "@/components/markdown-editor";
 import { Check, Copy, Loader2, Pencil } from "lucide-react";
 import { ApiError, createMemories, type Memory, type MemoryCreate } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,9 @@ interface Props {
   onNavigate?: (key: string) => void;
   /** More controls at the end of the editor's header (a tab's View toggle). */
   headerExtra?: React.ReactNode;
+  /** Something around it already names the memory (a tab, a pane's title), so
+   *  the header leaves the key out until the editor goes full screen over it. */
+  named?: boolean;
 }
 
 /**
@@ -84,6 +87,7 @@ export function MemoryEditor({
   onDirtyChange,
   onNavigate,
   headerExtra,
+  named = false,
 }: Props) {
   const original = memory.content_text ?? (typeof memory.value === "string" ? memory.value : "");
   const originalTags = useMemo(() => memory.tags ?? [], [memory.tags]);
@@ -170,7 +174,9 @@ export function MemoryEditor({
       content_text: body,
       created_by: actor || memory.created_by,
       base_version: memory.version,
-      ...(tags.length > 0 && { tags }),
+      // Always sent, even empty: the store keeps a memory's tags when a write
+      // names none, so leaving them out would make removing the last one a no-op.
+      tags,
       // Always sent, both true and false: the backend carries unmanaged
       // frontmatter forward across writes, so omitting the flag when unchecked
       // would leave a previously-set `expandable: true` on disk.
@@ -241,14 +247,16 @@ export function MemoryEditor({
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Pencil className="size-3.5 flex-shrink-0 text-accent" />
-          <span className="min-w-0 truncate font-mono text-label text-text" title={memory.key}>
-            {crumbs.map((part, i) => (
-              <span key={i}>
-                {i > 0 && <span className="text-faint">/</span>}
-                {part}
-              </span>
-            ))}
-          </span>
+          {(!named || fullscreen) && (
+            <span className="min-w-0 truncate font-mono text-label text-text" title={memory.key}>
+              {crumbs.map((part, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="text-faint">/</span>}
+                  {part}
+                </span>
+              ))}
+            </span>
+          )}
           <span className="flex-shrink-0 text-micro text-faint tabular">v{memory.version}</span>
           <span
             className={cn(

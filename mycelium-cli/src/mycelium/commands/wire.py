@@ -4,7 +4,7 @@
 """``message send`` / ``slim send``: hidden dev/testing plumbing.
 
 There's no way to put **wire traffic** (or arbitrary SLIM messages) into a
-room without running a full aligner-mediated negotiation. These two commands
+room without running a full conductor flow. These two commands
 are ``git cat-file``-style escape hatches for exercising the real path (SLIM
 channel -> backend persister -> bus -> SSE) directly, QA'ing the frontend message
 inspector, demoing the AOP layer, reproducing protocol edge cases (odd
@@ -12,7 +12,7 @@ subkinds, deep ``parents`` chains, missing metrics).
 
 Deliberately **undocumented**: registered ``hidden=True`` and never
 ``@doc_ref``'d, so they never show up in ``mycelium --help`` or the generated
-docs site. They bypass the aligner entirely and are for testing/demo only,
+docs site. They bypass the engines entirely and are for testing/demo only,
 never a coordination shortcut.
 """
 
@@ -32,7 +32,7 @@ from mycelium.slim.client import SlimError
 from mycelium.slim.member import DEFAULT_WORKSPACE, publish_once
 
 _BANNER = (
-    "bypasses the aligner: real SLIM wire traffic for testing/demo only, "
+    "bypasses the engines: real SLIM wire traffic for testing/demo only, "
     "never a coordination shortcut"
 )
 

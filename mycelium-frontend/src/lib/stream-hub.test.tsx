@@ -383,6 +383,65 @@ describe("stream hub", () => {
     expect(other).toHaveBeenCalledExactlyOnceWith({ id: "m1" });
   });
 
+  // A consumer whose handler throws on every frame draws nothing while the
+  // feed says Live and every other consumer keeps drawing. It's told, so it
+  // can catch up and subscribe again, and the app's log hears why.
+  it("tells a consumer when its handler fails on several frames in a row", () => {
+    let fail = true;
+    const onBroken = vi.fn();
+    const handler = vi.fn(() => {
+      if (fail) throw new Error("bad state");
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const posted = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", posted);
+    function Fragile() {
+      useRoomStream("sprint", handler, { onBroken });
+      return null;
+    }
+    render(<Fragile />);
+
+    act(() => roomConnection().emit({ id: "m1" }));
+    act(() => roomConnection().emit({ id: "m2" }));
+    expect(onBroken).not.toHaveBeenCalled();
+    act(() => roomConnection().emit({ id: "m3" }));
+    expect(onBroken).toHaveBeenCalledOnce();
+    expect(posted).toHaveBeenCalledWith("/api/client-log", expect.objectContaining({ method: "POST" }));
+
+    // A frame it handles starts the count again.
+    fail = false;
+    act(() => roomConnection().emit({ id: "m4" }));
+    fail = true;
+    act(() => roomConnection().emit({ id: "m5" }));
+    act(() => roomConnection().emit({ id: "m6" }));
+    expect(onBroken).toHaveBeenCalledOnce();
+  });
+
+  it("subscribes again on a new epoch, and keeps the room's connection for its other consumers", () => {
+    const handler = vi.fn();
+    function Feed({ epoch }: { epoch: number }) {
+      useRoomStream("sprint", handler, { epoch });
+      return null;
+    }
+    const view = render(
+      <>
+        <RoomFeed room="sprint" />
+        <Feed epoch={0} />
+      </>,
+    );
+    const before = roomConnection();
+    view.rerender(
+      <>
+        <RoomFeed room="sprint" />
+        <Feed epoch={1} />
+      </>,
+    );
+
+    act(() => roomConnection().emit({ id: "m1" }));
+    expect(roomConnection()).toBe(before);
+    expect(handler).toHaveBeenCalledExactlyOnceWith({ id: "m1" });
+  });
+
   it("drops a malformed frame without disturbing the connection", () => {
     const room = vi.fn();
     render(<RoomFeed room="sprint" onFrame={room} />);

@@ -78,7 +78,7 @@ class StoredMessage:
     event_status: str | None = None
     event_expires_at: datetime | None = None
     # The episode URN this message belongs to, when it rode an envelope that
-    # carried one (an agent's negotiation turn carries the mediator's episode; a
+    # carried one (an agent's turn in a flow carries the conductor's episode; a
     # casual reply carries the room's default). Lets the UI group/fold a
     # negotiation's turns under their episode instead of interleaving them inline.
     episode: str | None = None

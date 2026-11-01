@@ -59,8 +59,15 @@ class TestContract:
         assert CONTRACT["derived_states"] == list(assignments.DERIVED_STATES)
         assert CONTRACT["stale_after"] == assignments.STALE_AFTER
         assert CONTRACT["default_ttl_minutes"] == assignments.DEFAULT_TTL_MINUTES
+        assert CONTRACT["assignee_field"] == assignments.ASSIGNEE_FIELD
         assert CONTRACT["runtime_author"] == assignments.RUNTIME_AUTHOR
         assert CONTRACT["assignable_namespaces"] == list(assignments.ASSIGNABLE_NAMESPACES)
+
+    @pytest.mark.parametrize("case", CONTRACT["hold_cases"], ids=lambda c: str(c["meta"]))
+    def test_who_holds_a_row_matches_the_contract(self, case):
+        now = datetime(2026, 10, 13, tzinfo=UTC)
+        assert assignments.state_of(case["meta"], now) == case["state"]
+        assert assignments.holder(case["meta"], now) == case["holder"]
 
 
 class TestDerivation:
@@ -95,11 +102,18 @@ class TestDerivation:
     def test_held_by_nobody_is_not_held(self):
         assert assignments.state_of(self.held(1, owner=None), self.now()) == "unclaimed"
 
-    def test_an_undatable_claim_cannot_be_shown_to_be_alive(self):
-        assert (
-            assignments.state_of({"assignment": "held", "owner": "@growth"}, self.now())
-            == "expired"
-        )
+    def test_a_hold_with_no_timer_stays_held_whatever_the_clock_says(self):
+        # #1136: only a lease drains; a hold with no ttl ends on what the hub sees.
+        meta = {
+            "assignment": "held",
+            "owner": "@growth",
+            "claimed_at": (self.now() - timedelta(days=3)).isoformat(),
+        }
+        assert assignments.state_of(meta, self.now()) == "held"
+
+    def test_a_row_given_to_someone_is_held_by_them_with_no_claim(self):
+        assert assignments.state_of({"assignee": "growth"}, self.now()) == "held"
+        assert assignments.holder({"assignee": "@growth"}, self.now()) == "growth"
 
 
 @pytest.mark.asyncio

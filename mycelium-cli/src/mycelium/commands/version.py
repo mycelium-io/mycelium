@@ -5,7 +5,6 @@
 
 import json
 
-import httpx
 import typer
 
 from mycelium import __version__
@@ -15,14 +14,10 @@ from mycelium.doc_ref import doc_ref
 
 
 def hub_version(api_url: str, timeout: float = 3.0) -> str | None:
-    """The hub's version from its `/health`, or None when it can't be read."""
-    try:
-        resp = httpx.get(f"{api_url.rstrip('/')}/health", timeout=timeout)
-        resp.raise_for_status()
-        version = resp.json().get("version")
-    except (httpx.HTTPError, ValueError, AttributeError):
-        return None
-    return version if isinstance(version, str) and version else None
+    """The hub's version from its health answer, or None when it can't be read."""
+    from mycelium.hub_check import health
+
+    return health(api_url, timeout=timeout).version or None
 
 
 @doc_ref(
@@ -43,10 +38,25 @@ def version(
         typer.echo(json.dumps({"cli": __version__}) if json_output else __version__)
         return
 
-    api_url = MyceliumConfig.load().server.api_url
+    from mycelium.hub_check import credential
+
+    config = MyceliumConfig.load()
+    api_url = config.server.api_url
     hub = hub_version(api_url)
+    # Asked only of a hub that answered: an unreachable one has nothing to say.
+    check = credential(config) if hub else None
     if json_output:
-        typer.echo(json.dumps({"cli": __version__, "hub": hub, "hub_url": api_url}, indent=2))
+        body: dict = {"cli": __version__, "hub": hub, "hub_url": api_url}
+        if check is not None:
+            body["credential"] = {
+                "accepted": check.accepted,
+                "as": check.handle,
+                "source": check.source,
+                "fix": check.fix,
+            }
+        typer.echo(json.dumps(body, indent=2))
         return
     typer.echo(f"cli  {__version__}")
     typer.echo(f"hub  {hub or 'unreachable'}  ({api_url})")
+    if check is not None:
+        typer.echo(f"     {check.line()}")

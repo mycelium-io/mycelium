@@ -10,6 +10,10 @@ tests.
 
 What stands in for what:
 
+* :class:`StandInHub` (:func:`install_stand_in_hub`, the ``stand_in_hub``
+  fixture) — the hub, answering at httpx's transport, so the typed client and
+  ``hub_client`` both reach it. No real request gets out: every test runs with
+  a guard that fails one.
 * :class:`FakeSlimClient` — ``mycelium.slim.client.SlimClient`` with a scripted
   inbox, for the member/daemon message-stream tests.
 * :class:`FakeResp` + the :func:`fake_httpx` fixture (sync + async clients) —
@@ -28,18 +32,118 @@ See ``tests/README.md`` for the "test a command without a live stack" recipe.
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
+from collections.abc import Iterator
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, Mock
 
-import httpx
-import pytest
+# ── never the real home ──────────────────────────────────────────────────────
+# Set before anything from mycelium is imported. ``MyceliumConfig.save()`` with
+# no path writes ``~/.mycelium/config.toml``, so a test that saves without
+# ``isolated_home`` would replace the developer's own config (their LLM key,
+# server and SLIM secret) with a test's defaults. Every test runs with HOME in
+# a temp folder; ``isolated_home`` still gives a test one of its own.
+_REAL_HOME = Path.home()
+_REAL_CONFIG = _REAL_HOME / ".mycelium" / "config.toml"
+_TEST_HOME = tempfile.mkdtemp(prefix="mycelium-cli-tests-home-")
+os.environ["HOME"] = _TEST_HOME
+os.environ["USERPROFILE"] = _TEST_HOME  # what Path.home() reads on Windows
 
-from mycelium.slim.client import SlimReceiveTimeout
+import httpx  # noqa: E402
+import pytest  # noqa: E402
+
+from mycelium.slim.client import SlimReceiveTimeout  # noqa: E402
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
+
+
+def _stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+    return st.st_mtime_ns, st.st_size
+
+
+_REAL_CONFIG_STAMP = _stamp(_REAL_CONFIG)
+
+
+@pytest.fixture(autouse=True)
+def _never_the_real_home(request: pytest.FixtureRequest):
+    """Fail the test, by name, that reached the real ``~/.mycelium``."""
+    assert Path.home() != _REAL_HOME, "a test is running with the real HOME"
+    yield
+    assert _stamp(_REAL_CONFIG) == _REAL_CONFIG_STAMP, (
+        f"{request.node.nodeid} changed the real {_REAL_CONFIG}. "
+        "Tests must save config under a temp HOME (see isolated_home)."
+    )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_sync_memory() -> None:
+    """What a sync pass remembers between passes (manifests it saw on the hub,
+    rooms the hub doesn't have) is per process; each test starts with none."""
+    from mycelium.commands import herdr
+
+    herdr._manifest_seen.clear()
+    herdr._unknown_rooms.clear()
+    herdr._pass_clients.clear()
+
+
+@pytest.fixture(autouse=True)
+def _never_a_real_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test reaches a real hub over the network.
+
+    A test that stubs the wrong layer would otherwise send its call to whatever
+    answers at the configured address, which on a developer's machine is their
+    own hub, and write to it (users, memories, messages). Every real request
+    fails here instead; a test answers with :func:`install_stand_in_hub` or a
+    ``MockTransport``, neither of which comes through this transport.
+    """
+
+    def refuse(_self: httpx.HTTPTransport, request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(f"tests never reach a real hub: {request.url}", request=request)
+
+    async def refuse_async(
+        _self: httpx.AsyncHTTPTransport, request: httpx.Request
+    ) -> httpx.Response:
+        raise httpx.ConnectError(f"tests never reach a real hub: {request.url}", request=request)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", refuse_async)
+
+
+@pytest.fixture(autouse=True)
+def _no_remembered_hub_gate() -> None:
+    """Whether a hub has sign-in on is remembered per process; each test asks anew."""
+    from mycelium import client
+
+    client._GATED.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_remembered_session() -> None:
+    """A process keeps the sign-in it read in memory; each test reads anew."""
+    from mycelium import session_store
+
+    session_store._SESSIONS.clear()
+
+
+@pytest.fixture(autouse=True)
+def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test finds the developer's own agent CLIs in their install folders.
+
+    The scan and ``AgentKind.offers`` look in ``~/.nvm``, Homebrew's folders and
+    the like when a CLI isn't on the process's PATH, which in a test is most of
+    them. A test that wants one there stubs ``install_dirs``.
+    """
+    from mycelium.runner import frameworks
+
+    monkeypatch.setattr(frameworks, "install_dirs", list)
 
 
 # ── SLIM transport ────────────────────────────────────────────────────────────
@@ -256,6 +360,68 @@ def stub_typed_client(
         monkeypatch.setattr(module, "_resolve_room", lambda *_a, **_k: room)
 
 
+# ── a hub answering over HTTP (hub_client and the typed client alike) ────────
+
+
+class StandInHub:
+    """A hub that answers at httpx's transport, so every client reaches it.
+
+    A command's calls go through the generated typed client, ``hub_client`` or
+    bare ``httpx``; stubbing one of those misses the others. This answers every
+    request a sync ``httpx.Client`` sends. ``answer(request)`` returns a payload
+    (sent as a 200), a ``(status, payload)`` pair, or an ``httpx.Response``;
+    ``requests`` keeps what was sent. The typed client parses what comes back
+    against ``openapi.json``, so a payload has to be the shape the hub really
+    answers with (:func:`memory_read` fills in a memory).
+    """
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+        self.answer: Callable[[httpx.Request], Any] = lambda _r: {}
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        answered = self.answer(request)
+        if isinstance(answered, httpx.Response):
+            return answered
+        status, payload = answered if isinstance(answered, tuple) else (200, answered)
+        return httpx.Response(status, json=payload, request=request)
+
+    def sent(self, method: str, path: str) -> list[httpx.Request]:
+        """The requests sent as ``method`` to ``path``, oldest first."""
+        return [r for r in self.requests if r.method == method and r.url.path == path]
+
+
+def install_stand_in_hub(monkeypatch: pytest.MonkeyPatch) -> StandInHub:
+    """A :class:`StandInHub` answering every sync HTTP request from here on."""
+    hub = StandInHub()
+    monkeypatch.setattr(
+        httpx.HTTPTransport, "handle_request", lambda _self, request: hub.handle(request)
+    )
+    return hub
+
+
+@pytest.fixture
+def stand_in_hub(monkeypatch: pytest.MonkeyPatch) -> StandInHub:
+    """:func:`install_stand_in_hub`, as a fixture."""
+    return install_stand_in_hub(monkeypatch)
+
+
+def memory_read(key: str, room: str = "demo", **fields: Any) -> dict[str, Any]:
+    """A memory as the hub's ``MemoryRead`` answers it, with ``fields`` laid over."""
+    return {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "room_name": room,
+        "key": key,
+        "value": "",
+        "created_by": "julia",
+        "version": 1,
+        "created_at": "2026-08-24T10:00:00+00:00",
+        "updated_at": "2026-08-24T10:00:00+00:00",
+        **fields,
+    }
+
+
 @pytest.fixture
 def backend(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
     """A helper that stubs a command module's typed-client plumbing.
@@ -288,6 +454,7 @@ def backend(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
 #: bare one. The suite owns its environment, so every test starts without them.
 AGENT_AUTH_ENV_VARS = (
     "MYCELIUM_AGENT_AUTH_TOKEN",
+    "MYCELIUM_AGENT_AUTH_TOKEN_FILE",
     "MYCELIUM_AGENT_AUTH_CLIENT_ID",
     "MYCELIUM_AGENT_AUTH_CLIENT_SECRET",
     "MYCELIUM_AGENT_AUTH_ISSUER",
@@ -301,7 +468,7 @@ AGENT_AUTH_ENV_VARS = (
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Strip ambient agent credentials so no test inherits a real identity.
 
     Autouse and function-scoped: the tests that exercise the agent-auth path set
@@ -310,6 +477,25 @@ def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     for name in AGENT_AUTH_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    # Starting an agent asks the hub for its token, through the real client:
+    # no test does that unless it says so (``test_agent_member_token``), so a
+    # runner or swarm test never reaches whatever hub is on localhost.
+    from mycelium import agent_credentials
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", lambda *_a, **_k: None)
+    # Nor a pane: the developer's own terminal may be an agent's herdr pane.
+    for name in ("HERDR_PANE_ID", "MYCELIUM_AGENT_PANE"):
+        monkeypatch.delenv(name, raising=False)
+    # No test ever reaches the real keychain: by default there's none (so a
+    # person's sign-in goes to the test's file), and a test that wants one
+    # installs its own.
+    import keyring
+    from keyring.backends import fail
+
+    previous = keyring.get_keyring()
+    keyring.set_keyring(fail.Keyring())
+    yield
+    keyring.set_keyring(previous)
 
 
 @pytest.fixture

@@ -15,6 +15,7 @@
 
 import { NOTICE_TYPE, PING_TYPE, noticeOf, pingOf } from "@/lib/threads";
 import { conductorLineOf, type ConductorLine } from "@/lib/conductor-line";
+import { answerOf, askOf, type ApprovalAsk, type AskReply } from "@/lib/approvals";
 
 export interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -22,8 +23,12 @@ export interface Event {
   id: string;
   /** The backend's id for this message, where it has one. Stable across reads
    *  (the transcript derives it from the envelope id), which is what a search
-   *  result points at. */
+   *  result points at. A live frame names it as `read_id`, so a message that
+   *  arrived live and the same one read from history share it. */
   messageId: string | null;
+  /** A live frame's own id, the envelope id that an edit or a ping names the
+   *  message by; `null` for a message read from history. */
+  wireId: string | null;
   type: string;
   content: string;
   sender: string;
@@ -49,7 +54,16 @@ export interface Event {
   /** A conductor post's structured line, which the feed draws instead of its
    *  prose (the prompt its members read). Null on everything else. */
   conductor: ConductorLine | null;
+  /** An agent's ask of one person (an approval), which the feed draws as a
+   *  card. Null on everything else. */
+  ask: ApprovalAsk | null;
+  /** The answer this message carries to an ask, which the feed folds into
+   *  that ask's card. Null on everything else. */
+  answers: AskReply | null;
   raw: Record<string, unknown>;
+  /** The message as the hub sent it, before any of the above was read off it,
+   *  for "View raw message". */
+  wire?: Record<string, unknown>;
 }
 
 export const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
@@ -175,6 +189,10 @@ export function parseEvent(msg: Record<string, unknown>): Event {
           for: notice.assignee,
           speakers: notice.speakers,
           released: notice.released,
+          change: notice.change,
+          ref: notice.ref,
+          url: notice.url,
+          who: notice.who,
         };
         break;
       }
@@ -207,6 +225,10 @@ export function parseEvent(msg: Record<string, unknown>): Event {
         assignments: data.assignments,
         metrics: data.metrics,
         episode: message?.episode,
+        // A conductor run's close line and its last pick, for the channel's
+        // line about how the run ended.
+        conductor: data.conductor,
+        select: data.select,
       };
       mtype = "coordination_consensus";
       break;
@@ -256,7 +278,9 @@ export function parseEvent(msg: Record<string, unknown>): Event {
 
   return {
     id: `${Date.now()}-${Math.random()}`,
-    messageId: typeof msg.id === "string" ? msg.id : null,
+    messageId:
+      typeof msg.read_id === "string" ? msg.read_id : typeof msg.id === "string" ? msg.id : null,
+    wireId: typeof msg.read_id === "string" && typeof msg.id === "string" ? msg.id : null,
     type: mtype,
     content,
     sender,
@@ -271,6 +295,9 @@ export function parseEvent(msg: Record<string, unknown>): Event {
     conductor: CHAT_TYPES.has(mtype)
       ? conductorLineOf({ content: msg.content, metadata: msg.metadata })
       : null,
+    ask: CHAT_TYPES.has(mtype) ? askOf({ content: msg.content, metadata: msg.metadata }) : null,
+    answers: CHAT_TYPES.has(mtype) ? answerOf({ content: msg.content, metadata: msg.metadata }) : null,
     raw,
+    wire: msg,
   };
 }

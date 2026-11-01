@@ -4,25 +4,40 @@
 "use client";
 
 import React from "react";
+import { MessageSquareText } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
+import { MarkdownTable } from "@/components/markdown-table";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
-import { SILENT_MENTION_SIGIL } from "@/lib/mentions";
+import { INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { typeset } from "@/lib/typeset";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
 // body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
 // wins. A silent mention `@~handle` (`lib/mentions.ts`) is its own token, drawn
-// quieter than one that asked for something. A skill reference `/name` (from
+// quieter than one that asked for something; an interrupting `@!handle` is one
+// too, with a tooltip saying what it did. A skill reference `/name` (from
 // the composer's `/` trigger) is only a token at a word boundary — `(?<![^\s])`
 // requires it be preceded by whitespace or the start — so a path, URL, or
-// `and/or` never lights up.
+// `and/or` never lights up. A thread's short id is eight hex characters
+// standing alone: not inside a longer word or hash, a path, a URL or a
+// `urn:…:id`, which are written to be read whole.
 const TOKEN_RE =
-  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@~[A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)/g;
+  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@~[A-Za-z0-9][\w-]*|@![A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?|(?<![\w\-/#.:@])[0-9a-f]{8}(?![\w\-/]))/g;
+
+const THREAD_ID = /^[0-9a-f]{8}$/;
+
+/** A task a thread id in prose names: its thread, and what the task is called
+ *  (null where several rows share the thread). */
+export interface ThreadTarget {
+  episode: string;
+  title: string | null;
+}
 
 const SILENT_HINT = "Mentioned silently, not notified";
+const INTERRUPT_HINT = "Interrupts the agent if it's working, so it reads this now";
 
 // `[[mycelium: confidence=0.85 stance=accept]]` is the agent skill's directive
 // syntax, not a link. A word followed by a colon *and whitespace* is a
@@ -121,8 +136,11 @@ interface LinkProps {
 
 function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
   const text = link.label ?? (link.anchor ? `${link.target}#${link.anchor}` : link.target);
+  // Inline, like the words around it: a long key wraps where the line ends
+  // rather than dropping to a line of its own as a box. The rounding and
+  // padding follow it onto the next line.
   const base =
-    "inline-flex items-baseline gap-1 rounded px-1 font-mono text-[0.92em] transition-colors";
+    "inline rounded px-1 font-mono text-[0.92em] transition-colors [overflow-wrap:anywhere] [box-decoration-break:clone]";
 
   if (broken) {
     return (
@@ -131,7 +149,7 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
           aria-description={`${link.target} — no such memory`}
           className={`${base} text-muted-foreground line-through decoration-red/60`}
         >
-          {link.transclusion && <span aria-hidden className="not-italic">⧉</span>}
+          {link.transclusion && <span aria-hidden className="mr-1 not-italic">⧉</span>}
           {text}
         </span>
       </Tooltip>
@@ -140,7 +158,7 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
 
   const body = (
     <>
-      {link.transclusion && <span aria-hidden className="not-italic">⧉</span>}
+      {link.transclusion && <span aria-hidden className="mr-1 not-italic">⧉</span>}
       {text}
     </>
   );
@@ -149,18 +167,29 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
     return <span className={`${base} text-accent`}>{body}</span>;
   }
   const action = link.transclusion ? `Embeds ${link.target}` : `Open ${link.target}`;
+  const open = () => onClick(link.target);
   return (
     <Tooltip content={action}>
+      {/* A span, not a button: a browser lays a button out as a box whatever
+          its display, so it couldn't wrap with the text. It still takes focus
+          and opens on Enter or Space, as a button would. */}
       {/* aria-description is ARIA 1.3 — jsx-a11y doesn't recognize it yet */}
       {/* eslint-disable-next-line jsx-a11y/role-supports-aria-props */}
-      <button
-        type="button"
-        onClick={() => onClick(link.target)}
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={open}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            open();
+          }
+        }}
         aria-description={action}
-        className={`${base} text-accent hover:bg-accent-soft hover:underline`}
+        className={`${base} cursor-pointer text-accent outline-none hover:bg-accent-soft hover:underline focus-visible:ring-1 focus-visible:ring-accent`}
       >
         {body}
-      </button>
+      </span>
     </Tooltip>
   );
 }
@@ -182,9 +211,62 @@ interface Props {
   /** A find-in-page query to mark in the prose. `active` says this is the
    *  message the find bar has stepped to, so its marks are drawn louder. */
   highlight?: Highlight;
+  /** The room's threads by short id. A thread id in the prose that names one
+   *  gets a link to its task beside it; any other (a commit hash, say) stays text. */
+  threads?: ReadonlyMap<string, ThreadTarget>;
+  /** Opens a thread; without it, thread ids stay text. */
+  onOpenThread?: (episode: string) => void;
 }
 
-export function MarkdownContent({ children, className, onLinkClick, brokenLinks, highlight }: Props) {
+/** A thread id that names a task: the id exactly as written, then a small
+ *  thread icon that is the link, showing the task on hover and opening its
+ *  thread on a click. The app's mark, not words in the agent's mouth. */
+function ThreadIdLink({
+  id,
+  target,
+  onOpen,
+  code = false,
+}: {
+  id: string;
+  target: ThreadTarget;
+  onOpen: (episode: string) => void;
+  /** It was written as a code span, and stays one. */
+  code?: boolean;
+}) {
+  return (
+    <>
+      {code ? <code>{id}</code> : id}
+      <Tooltip
+        content={
+          <span className="flex items-center gap-1.5">
+            <MessageSquareText aria-hidden className="size-3 shrink-0" />
+            {target.title ?? "Open its thread"}
+          </span>
+        }
+      >
+        <button
+          type="button"
+          onClick={() => onOpen(target.episode)}
+          aria-label={`Open ${target.title ? `“${target.title}”` : `thread ${id}`}`}
+          // Centered on the line's lowercase letters, not sitting on the baseline.
+          className="ml-0.5 inline-flex size-[1.15em] items-center justify-center rounded align-[-0.075em] text-accent/80 transition-colors hover:bg-accent-soft hover:text-accent"
+        >
+          <MessageSquareText aria-hidden className="size-[0.8em]" />
+        </button>
+      </Tooltip>
+    </>
+  );
+}
+
+export function MarkdownContent({
+  children,
+  className,
+  onLinkClick,
+  brokenLinks,
+  highlight,
+  threads,
+  onOpenThread,
+}: Props) {
   const marked = useHighlighter(highlight);
 
   // Plain prose, drawn with typographic punctuation (`lib/typeset.ts`); the
@@ -198,15 +280,31 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
   );
 
   const renderText = React.useCallback(
-    (text: string): React.ReactNode => {
+    (text: string, linkThreads = true): React.ReactNode => {
       const parts = text.split(TOKEN_RE);
       return parts.map((part, i) => {
         // Odd indices are the captured tokens; even indices are plain text.
         if (i % 2 === 0) return renderProse(part, i);
+        // A thread id stays as written. One that names a task in this room gets
+        // the thread icon after it; any other is plain text, undimmed.
+        if (THREAD_ID.test(part)) {
+          const target = linkThreads && onOpenThread ? threads?.get(part) : undefined;
+          if (target && onOpenThread) return <ThreadIdLink key={i} id={part} target={target} onOpen={onOpenThread} />;
+          return renderProse(part, i);
+        }
         if (part.startsWith(SILENT_MENTION_SIGIL)) {
           return (
             <Tooltip key={i} content={SILENT_HINT}>
               <span aria-description={SILENT_HINT} className="text-muted-foreground font-semibold">
+                {marked(part)}
+              </span>
+            </Tooltip>
+          );
+        }
+        if (part.startsWith(INTERRUPT_MENTION_SIGIL)) {
+          return (
+            <Tooltip key={i} content={INTERRUPT_HINT}>
+              <span aria-description={INTERRUPT_HINT} className="text-accent font-semibold">
                 {marked(part)}
               </span>
             </Tooltip>
@@ -244,29 +342,38 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
         );
       });
     },
-    [onLinkClick, brokenLinks, marked, renderProse],
+    [onLinkClick, brokenLinks, marked, renderProse, threads, onOpenThread],
   );
 
   const processNode = React.useCallback(
-    function walk(node: React.ReactNode): React.ReactNode {
-      if (typeof node === "string") return renderText(node);
+    // `linkThreads` is off inside a link's own text, which a button can't sit in.
+    function walk(node: React.ReactNode, linkThreads = true): React.ReactNode {
+      if (typeof node === "string") return renderText(node, linkThreads);
       if (Array.isArray(node))
-        return node.map((n, i) => <React.Fragment key={i}>{walk(n)}</React.Fragment>);
+        return node.map((n, i) => <React.Fragment key={i}>{walk(n, linkThreads)}</React.Fragment>);
       if (React.isValidElement(node)) {
         // A code span/block is prose *about* syntax, not a link — e.g. a
         // glossary row showing `![[key]]` as an example must stay inert text,
         // not become a chip that navigates to a literal memory named "key".
+        // The one exception: a code span that is exactly a thread id, the way
+        // agents quote one, links like a bare id and keeps its code look.
+        if (node.type === "code" && linkThreads && onOpenThread) {
+          const text = (node.props as { children?: React.ReactNode }).children;
+          const target = typeof text === "string" && THREAD_ID.test(text) ? threads?.get(text) : undefined;
+          if (target) return <ThreadIdLink id={text as string} target={target} onOpen={onOpenThread} code />;
+        }
         if (node.type === "code" || node.type === "pre") return node;
-        const props = node.props as { children?: React.ReactNode };
+        const props = node.props as { children?: React.ReactNode; href?: string };
         return React.cloneElement(
           node as React.ReactElement<{ children?: React.ReactNode }>,
           undefined,
-          walk(props.children),
+          // A link's own text is walked here, before the link draws it.
+          walk(props.children, linkThreads && props.href === undefined),
         );
       }
       return node;
     },
-    [renderText],
+    [renderText, threads, onOpenThread],
   );
 
   // `[label](myc://key)` is an ordinary markdown link whose scheme no browser
@@ -290,10 +397,10 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
       // back into this hub (a room, a memory page) stays in place.
       return isExternalHref(href) ? (
         <a href={href} target="_blank" rel="noopener noreferrer">
-          {processNode(children)}
+          {processNode(children, false)}
         </a>
       ) : (
-        <a href={href}>{processNode(children)}</a>
+        <a href={href}>{processNode(children, false)}</a>
       );
     },
     [processNode, onLinkClick, brokenLinks],
@@ -317,8 +424,17 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks,
           li: ({ children }) => <li>{processNode(children)}</li>,
           strong: ({ children }) => <strong>{processNode(children)}</strong>,
           em: ({ children }) => <em>{processNode(children)}</em>,
-          td: ({ children }) => <td>{processNode(children)}</td>,
-          th: ({ children }) => <th>{processNode(children)}</th>,
+          // The table's own Markdown, sliced from the source by its position,
+          // so Copy keeps links, code and emphasis in the cells as written.
+          table: ({ children: rows, node }) => {
+            const start = node?.position?.start.offset;
+            const end = node?.position?.end.offset;
+            const source = start !== undefined && end !== undefined ? children.slice(start, end) : undefined;
+            return <MarkdownTable source={source}>{rows}</MarkdownTable>;
+          },
+          // `style` carries the column's alignment (`:--:`, `--:`).
+          td: ({ children, style }) => <td style={style}>{processNode(children)}</td>,
+          th: ({ children, style }) => <th style={style}>{processNode(children)}</th>,
           h1: ({ children }) => <h1>{processNode(children)}</h1>,
           h2: ({ children }) => <h2>{processNode(children)}</h2>,
           h3: ({ children }) => <h3>{processNode(children)}</h3>,

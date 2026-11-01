@@ -12,6 +12,7 @@ import pytest
 
 from mycelium import identity
 from mycelium.config import MyceliumConfig
+from mycelium_backend_client.models import WhoamiRead
 
 
 @pytest.fixture
@@ -32,7 +33,9 @@ def _clear(monkeypatch: pytest.MonkeyPatch):
 
 
 def _whoami(monkeypatch: pytest.MonkeyPatch, value: dict | None) -> None:
-    monkeypatch.setattr(identity, "_hub_whoami", lambda _cfg: value)
+    """What the hub's ``/api/whoami`` answers; ``None`` is a hub that can't say."""
+    answer = WhoamiRead.from_dict(value) if value is not None else None
+    monkeypatch.setattr(identity, "_hub_whoami", lambda _cfg: answer)
 
 
 def test_override_wins_over_everything(config, monkeypatch):

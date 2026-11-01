@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock, Mock
 from uuid import uuid4
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -29,8 +30,12 @@ from mycelium import cli_options
 from mycelium.board.model import ItemSource, LiveItem
 from mycelium.cli import app as cli_app
 from mycelium.commands import board as board_cmd
+from tests.conftest import install_stand_in_hub, memory_read
+from tests.hub_answers import ok
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from mycelium.config import MyceliumConfig
 
 runner = CliRunner()
@@ -67,12 +72,17 @@ def _hub(
     memories: list[dict],
     posts: list | None = None,
     keyed: dict[str, dict] | None = None,
+    older: list[dict] | None = None,
 ):
     """Stand in for every hub read the board makes, plus the write it may do.
 
-    ``keyed`` is the by-key memory read, which is how a chat verb reaches a
-    memory the board never projects. A key absent from it 404s.
+    ``memories`` are the room's recently changed ones, which the log reads
+    (``memory?limit=50``); the board reads each of its namespaces whole, which
+    adds ``older``, the tasks that haven't changed lately. ``keyed`` is the
+    by-key memory read, which is how a chat verb reaches a memory the board
+    never projects. A key absent from it 404s.
     """
+    every = memories + (older or [])
     fake_config = SimpleNamespace(
         server=SimpleNamespace(api_url="http://localhost:8000"),
         get_active_room=lambda: ROOM,
@@ -81,51 +91,62 @@ def _hub(
     monkeypatch.setattr(board_cmd.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
     monkeypatch.setattr(board_cmd, "_resolve_room", lambda *_a, **_k: ROOM)
 
-    class _Resp:
-        def __init__(self, payload, status: int = 200):
-            self._payload = payload
-            self.status_code = status
-            self.text = ""
-
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return self._payload
-
-    routes = {
-        f"/api/rooms/{ROOM}/episodes": {"episodes": []},
-        f"/api/rooms/{ROOM}/memory?limit=50": memories,
-        f"/api/rooms/{ROOM}/status": None,
-        f"/api/rooms/{ROOM}/agents": [],
-        f"/api/rooms/{ROOM}/sessions/members": {"members": []},
-        f"/api/rooms/{ROOM}/messages?limit=300": {"messages": []},
+    base = f"/api/rooms/{ROOM}"
+    reads = {
+        f"{base}/episodes": {"episodes": []},
+        f"{base}/status": (404, {"detail": "no status"}),
+        f"{base}/agents": [],
+        f"{base}/sessions/members": {"members": []},
+        f"{base}/messages": {"messages": [], "total": 0},
+        f"{base}/board": (404, {"detail": "no board"}),
     }
 
-    class _Client:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_exc):
-            return False
-
-        def get(self, path, **_kw):
-            prefix = f"/api/rooms/{ROOM}/memory/"
-            if path.startswith(prefix) and "?" not in path:
-                key = path[len(prefix) :]
-                if key not in (keyed or {}):
-                    return _Resp({"detail": "Memory not found"}, status=404)
-                return _Resp({"key": key, **(keyed or {})[key]})
-            return _Resp(routes.get(path, {}))
-
-        def post(self, path, json=None, **_kw):  # noqa: A002 — httpx's own name
+    def answer(request: httpx.Request):
+        path, params = request.url.path, request.url.params
+        if request.method == "POST":
+            body = json.loads(request.content)
             if posts is not None:
-                posts.append((path, json))
-            return _Resp(
-                {"key": "work/ship-passkey-login", "episode": THREAD, "value": "Ship passkey login"}
-            )
+                posts.append((path, body))
+            if path == f"{base}/tasks":
+                return 201, memory_read(
+                    "work/ship-passkey-login", ROOM, value="Ship passkey login", episode=THREAD
+                )
+            return _assignment(body.get("key", ""), body.get("handle"))
+        if path == f"{base}/memory":
+            prefix = params.get("prefix")
+            if prefix is None:
+                return [_full(m) for m in memories]
+            return [_full(m) for m in every if m["key"].startswith(prefix)]
+        if path.startswith(f"{base}/memory/"):
+            key = path[len(f"{base}/memory/") :]
+            if key not in (keyed or {}):
+                return 404, {"detail": "Memory not found"}
+            return memory_read(key, ROOM, **(keyed or {})[key])
+        return reads.get(path, {})
 
-    monkeypatch.setattr(board_cmd, "hub_client", lambda *_a, **_k: _Client())
+    install_stand_in_hub(monkeypatch).answer = answer
+
+
+def _full(memory: dict) -> dict:
+    """One of this file's memories, filled out to the hub's whole answer."""
+    return memory_read(memory["key"], ROOM, **{k: v for k, v in memory.items() if k != "key"})
+
+
+def _assignment(key: str, handle: str | None) -> dict:
+    """What the hub answers a claim, release or resolve with."""
+    return {
+        "key": key,
+        "assignment": "held",
+        "waiting_on": [],
+        "owner": handle,
+        "assignee": None,
+        "claimed_at": None,
+        "ttl_minutes": None,
+        "freshness": None,
+        "version": 2,
+        "assignment_note": None,
+        "assignment_note_by": None,
+    }
 
 
 def _chat(monkeypatch: pytest.MonkeyPatch) -> dict:
@@ -238,6 +259,78 @@ class TestBeyondTheBoard:
         assert sent["post"]["episode"] == THREAD
 
 
+#: An open task that hasn't changed in a while, assigned and marked gone quiet:
+#: the board's read of the room's most recent memories leaves it out.
+QUIET_KEY = "work/add-a-rule-that-a-pr-touches-the-docs-only-when"
+QUIET_THREAD = "urn:ioc:mycelium:episode:atlas:5bd40de8"
+QUIET = {
+    "key": QUIET_KEY,
+    "value": {"text": "Add a rule that a PR touches the docs only when a reader has something new"},
+    "updated_by": "runtime",
+    "updated_at": "2026-08-20T20:37:39Z",
+    "meta": {
+        "kind": "action",
+        "status": "open",
+        "assignee": "reviewer",
+        "hold_flagged_at": "2026-08-20T20:37:39Z",
+    },
+    "episode": QUIET_THREAD,
+}
+
+
+class TestATaskThatHasntChangedLately:
+    """The board lists, and resolve, claim, release and block find, every live
+    task, not just the ones among the room's most recently changed memories."""
+
+    def _quiet_hub(self, monkeypatch: pytest.MonkeyPatch) -> list:
+        posts: list = []
+        _hub(monkeypatch, memories=[_unit()], posts=posts, older=[QUIET])
+        return posts
+
+    def test_the_board_lists_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._quiet_hub(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["--filter", "all"], env={"COLUMNS": "200"})
+        assert result.exit_code == 0, result.output
+        # Both tasks: the recent one and the quiet one, elided, held by reviewer.
+        assert "Actions 2" in result.output
+        assert "y-when  held @reviewer" in result.output
+
+    @pytest.mark.parametrize("typed", [QUIET_KEY, f"memory:{QUIET_KEY}", "5bd40de8"])
+    def test_resolve_finds_it_by_key_or_thread(
+        self, monkeypatch: pytest.MonkeyPatch, typed: str
+    ) -> None:
+        posts = self._quiet_hub(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["resolve", typed])
+        assert result.exit_code == 0, result.output
+        assert "No row" not in result.output
+        assert posts[-1][0] == f"/api/rooms/{ROOM}/assignments/resolve"
+        assert posts[-1][1]["key"] == QUIET_KEY
+
+    def test_release_and_block_find_it_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        posts = self._quiet_hub(monkeypatch)
+        for args in (["release", QUIET_KEY], ["block", QUIET_KEY, "--on", "#1435"]):
+            result = runner.invoke(board_cmd.app, args)
+            assert "No row" not in result.output, args
+        assert [p for p, _b in posts] == [
+            f"/api/rooms/{ROOM}/assignments/release",
+            f"/api/rooms/{ROOM}/fields",
+        ]
+
+    def test_claim_finds_it_and_says_it_is_assigned(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._quiet_hub(monkeypatch)
+        result = runner.invoke(board_cmd.app, ["claim", QUIET_KEY])
+        assert "No row" not in result.output
+
+    def test_a_key_outside_the_board_or_not_there_is_still_no_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._quiet_hub(monkeypatch)
+        for typed in ("work/never-filed", "context/notes", "deadbeef"):
+            result = runner.invoke(board_cmd.app, ["resolve", typed])
+            assert result.exit_code == 1, typed
+            assert "No row" in result.output, typed
+
+
 class TestChatVerbs:
     def test_send_posts_into_the_thread_and_says_which(
         self, monkeypatch: pytest.MonkeyPatch
@@ -273,16 +366,33 @@ class TestChatVerbs:
         sent = _chat(monkeypatch)
         monkeypatch.setattr(
             "mycelium.commands.agent._load_manifest_remote",
+            lambda *_a: SimpleNamespace(handle="conductor", adapter="engine", kind="conductor"),
+        )
+        monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
+        result = runner.invoke(
+            board_cmd.app, ["coordinate", SHORT, "conductor", "concord @~api @~sec: storage"]
+        )
+        assert result.exit_code == 0, result.output
+        post = sent["post"]
+        assert post["content"] == "@conductor concord @~api @~sec: storage"
+        assert post["episode"] == THREAD
+
+    def test_coordinating_with_an_old_aligner_says_what_to_run_instead(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _hub(monkeypatch, memories=[_unit()])
+        sent = _chat(monkeypatch)
+        monkeypatch.setattr(
+            "mycelium.commands.agent._load_manifest_remote",
             lambda *_a: SimpleNamespace(handle="aligner", adapter="engine", kind="aligner"),
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
         result = runner.invoke(
             board_cmd.app, ["coordinate", SHORT, "aligner", "converge on storage"]
         )
-        assert result.exit_code == 0, result.output
-        post = sent["post"]
-        assert post["content"] == "@aligner converge on storage"
-        assert post["episode"] == THREAD
+        assert result.exit_code == 1
+        assert "The aligner was retired" in result.output
+        assert "post" not in sent
 
     def test_coordinating_with_a_plain_agent_is_refused_with_the_verb_that_does_work(
         self, monkeypatch: pytest.MonkeyPatch
@@ -312,6 +422,50 @@ class TestCreation:
         assert path == f"/api/rooms/{ROOM}/tasks"
         assert body == {"title": "Ship passkey login", "handle": "julia", "assignee": "sec"}
         assert SHORT in result.output
+
+    @pytest.mark.parametrize(
+        "how",
+        [
+            ["The plan, in full."],
+            ["--body", "The plan, in full."],
+            ["-b", "The plan, in full."],
+        ],
+    )
+    def test_new_files_the_task_with_its_body(
+        self, monkeypatch: pytest.MonkeyPatch, how: list[str]
+    ) -> None:
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship passkey login", *how])
+        assert result.exit_code == 0, result.output
+        _path, body = posts[0]
+        assert body["title"] == "Ship passkey login"
+        assert body["content"] == "The plan, in full."
+
+    def test_new_reads_the_body_from_a_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        brief = tmp_path / "brief.md"
+        brief.write_text("# Passkeys\n\n- keep passwords as a fallback\n")
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship passkey login", "--file", str(brief)])
+        assert result.exit_code == 0, result.output
+        assert posts[0][1]["content"] == "# Passkeys\n\n- keep passwords as a fallback\n"
+
+    def test_new_with_no_body_sends_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship passkey login"])
+        assert result.exit_code == 0, result.output
+        assert "content" not in posts[0][1]
+
+    def test_new_refuses_a_body_given_twice(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        posts: list = []
+        _hub(monkeypatch, memories=[], posts=posts)
+        result = runner.invoke(board_cmd.app, ["new", "Ship it", "one", "--body", "two"])
+        assert result.exit_code != 0
+        assert posts == []
 
     def test_a_parent_is_resolved_against_the_board_before_it_is_sent(
         self, monkeypatch: pytest.MonkeyPatch
@@ -377,10 +531,20 @@ class TestUnitScopedParticipation:
         captured: dict = {}
 
         def fake_await(_cfg, room_name, handle, timeout, episode=None):
+            from mycelium_backend_client.models import AwaitTurn
+
             captured.update(
                 {"room": room_name, "handle": handle, "timeout": timeout, "episode": episode}
             )
-            return {"room": room_name, "handle": handle, "prompt": "@me?", "sender": "sec"}
+            return AwaitTurn(
+                room=room_name,
+                handle=handle,
+                prompt="@me?",
+                sender="sec",
+                episode=None,
+                topic=None,
+                message_id=None,
+            )
 
         monkeypatch.setattr(participate_cmd, "_await_once", fake_await)
         result = runner.invoke(cli_app, ["await", "--handle", "me", "--task", SHORT, "--json"])
@@ -396,21 +560,16 @@ class TestUnitScopedParticipation:
         _hub(monkeypatch, memories=[_unit()])
         monkeypatch.setattr(participate_cmd, "_resolve_room", lambda *_a, **_k: ROOM)
         bodies: list = []
+        # The board reads still go to `_hub`'s answers; the reply is answered here.
+        board_reads = httpx.HTTPTransport().handle_request
 
-        class _Client:
-            def __enter__(self):
-                return self
+        def answer(request: httpx.Request):
+            if request.url.path == f"/api/rooms/{ROOM}/reply":
+                bodies.append(json.loads(request.content))
+                return {"room": ROOM, "handle": "me", "message_id": "m1"}
+            return board_reads(request)
 
-            def __exit__(self, *_exc):
-                return False
-
-            def post(self, _path, json=None, **_kw):  # noqa: A002 — httpx's own name
-                bodies.append(json)
-                return SimpleNamespace(
-                    raise_for_status=lambda: None, json=lambda: {"message_id": "m1"}
-                )
-
-        monkeypatch.setattr(participate_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = answer
         result = runner.invoke(
             cli_app, ["respond", "ok, claiming it", "--handle", "me", "--task", SHORT]
         )
@@ -466,11 +625,11 @@ def test_the_thread_read_is_the_room_read_with_one_argument(
 
     def fake_sync(**kwargs):
         captured.update(kwargs)
-        return MessageListResponse(messages=_messages(THREAD), total=1)
+        return ok(MessageListResponse(messages=_messages(THREAD), total=1))
 
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
         fake_sync,
     )
     monkeypatch.setattr("mycelium.commands.room._agent_owner_map", lambda _r: {})
@@ -488,8 +647,8 @@ def test_board_messages_json_after_the_command_prints_the_thread(
     _hub(monkeypatch, memories=[_unit()])
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
-        lambda **_k: MessageListResponse(messages=_messages(THREAD), total=1),
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
     )
 
     result = runner.invoke(board_cmd.app, ["messages", SHORT, "--json"])
@@ -520,8 +679,8 @@ def test_a_thread_with_nothing_in_it_says_so_rather_than_no_messages(
 
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
-        lambda **_k: MessageListResponse(messages=[], total=0),
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=[], total=0)),
     )
     chat.read(
         _config(),
@@ -582,6 +741,17 @@ def test_a_ping_draws_the_thread_that_moved_and_not_what_was_said() -> None:
     assert "keychain" not in line
 
 
+def _replay(request: httpx.Request, history: list[dict]):
+    """The hub's answers to the reads ``room watch`` opens with: who joined, then
+    the room's recent messages, each filled out to a whole message record."""
+    if request.url.path.endswith("/sessions"):
+        return {"participants": [], "total": 0}
+    messages = [
+        {"id": str(uuid4()), "created_at": "2026-08-24T10:00:00+00:00", **m} for m in history
+    ]
+    return {"messages": messages, "total": len(messages)}
+
+
 class TestTheRoomShowsThePingAndNotTheProse:
     """The property the whole epic rests on, asserted where a reader would see it.
 
@@ -629,7 +799,6 @@ class TestTheRoomShowsThePingAndNotTheProse:
         only worth anything if the thing that renders actually asks it."""
         from mycelium.commands import room as room_cmd
 
-        requested: list[dict] = []
         frames = [
             _bus_frame(_prose_frame(THREAD)),
             _bus_frame(_ping_frame(), sender="system"),
@@ -655,15 +824,11 @@ class TestTheRoomShowsThePingAndNotTheProse:
             def __exit__(self, *_exc):
                 return False
 
-            def get(self, path, params=None, **_kw):
-                requested.append({"path": path, "params": params or {}})
-                body = {"sessions": []} if path.endswith("/sessions") else {"messages": []}
-                return SimpleNamespace(status_code=200, json=lambda: body)
-
             def stream(self, _method, _path):
                 return _Stream()
 
         monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = lambda request: _replay(request, [])
         monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
         room_cmd._watch_room(_config(), ROOM, 0)
 
@@ -722,14 +887,11 @@ class TestTheRoomShowsThePingAndNotTheProse:
             def __exit__(self, *_exc):
                 return False
 
-            def get(self, path, params=None, **_kw):  # noqa: ARG002
-                body = {"sessions": []} if path.endswith("/sessions") else {"messages": history}
-                return SimpleNamespace(status_code=200, json=lambda: body)
-
             def stream(self, _method, _path):
                 return _Stream()
 
         monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = lambda request: _replay(request, history)
         monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
         room_cmd._watch_room(_config(), ROOM, 0)
 
@@ -746,8 +908,152 @@ def test_a_json_dump_of_the_thread_is_still_json(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
     monkeypatch.setattr(
-        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",
-        lambda **_k: MessageListResponse(messages=_messages(THREAD), total=1),
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
     )
     chat.read(_config(), ROOM, limit=10, episode=THREAD, json_output=True)
     assert json.loads(capsys.readouterr().out)["total"] == 1
+
+
+TASK = ("work/passkey-login", "Passkey login")
+
+
+def test_the_room_read_names_the_task_a_thread_message_came_from(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from mycelium import chat
+    from mycelium_backend_client.models import MessageListResponse
+
+    monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
+    )
+    monkeypatch.setattr("mycelium.chat.thread_tasks", lambda _c, _r: {THREAD: TASK})
+    monkeypatch.setattr("mycelium.commands.room._agent_owner_map", lambda _r: {})
+
+    chat.read(_config(), ROOM, limit=10)
+    assert 'in "Passkey login"' in capsys.readouterr().out
+
+
+def test_a_thread_no_row_carries_is_named_by_its_id(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from mycelium import chat
+    from mycelium_backend_client.models import MessageListResponse
+
+    monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: _null_cm())
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync_detailed",
+        lambda **_k: ok(MessageListResponse(messages=_messages(THREAD), total=1)),
+    )
+    monkeypatch.setattr("mycelium.chat.thread_tasks", lambda _c, _r: {})
+    monkeypatch.setattr("mycelium.commands.room._agent_owner_map", lambda _r: {})
+
+    chat.read(_config(), ROOM, limit=10)
+    assert f"in thread {SHORT}" in capsys.readouterr().out
+
+
+def _notice_frame(subkind: str) -> dict:
+    return {
+        "l9": {
+            "header": {"kind": "exchange", "message": {"episode": LIVE}},
+            "payload": {
+                "type": "notice",
+                "data": {
+                    "subkind": subkind,
+                    "key": TASK[0],
+                    "title": TASK[1],
+                    "by": "sec",
+                    "episode": THREAD,
+                },
+            },
+        }
+    }
+
+
+class TestWatchAllFollowsEveryThread:
+    """``room watch --all``: what the room's own view leaves to the thread."""
+
+    @staticmethod
+    def _watch(monkeypatch: pytest.MonkeyPatch, frames: list[dict], history: list[dict]) -> None:
+        from mycelium.commands import room as room_cmd
+
+        class _Stream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            @staticmethod
+            def iter_lines():
+                for frame in frames:
+                    yield f"data: {json.dumps(frame)}"
+
+        class _Client:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def stream(self, _method, _path):
+                return _Stream()
+
+        monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        install_stand_in_hub(monkeypatch).answer = lambda request: _replay(request, history)
+        monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
+        monkeypatch.setattr("mycelium.chat.thread_tasks", lambda _c, _r: {THREAD: TASK})
+        room_cmd._watch_room(_config(), ROOM, 0, everything=True)
+
+    def test_a_thread_s_message_is_printed_with_its_task(
+        self, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        frames = [
+            _bus_frame(_prose_frame(THREAD)),
+            _bus_frame(_ping_frame(), sender="system"),
+            _bus_frame(_prose_frame(LIVE, "standup in five")),
+        ]
+        self._watch(monkeypatch, frames, [])
+
+        out = capsys.readouterr().out
+        assert "Passkey login" in out
+        assert "WebCrypto fallback" in out
+        # The message draws itself, so the ping announcing it would be a repeat.
+        assert "activity in" not in out
+        assert "standup in five" in out
+
+    def test_a_board_change_is_a_line(self, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        self._watch(monkeypatch, [_bus_frame(_notice_frame("claimed"), sender="system")], [])
+
+        out = capsys.readouterr().out
+        assert "sec" in out
+        assert "took" in out
+        assert "Passkey login" in out
+
+    def test_the_replay_labels_a_thread_s_message_too(
+        self, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        history = [
+            {
+                "message_type": "broadcast",
+                "sender_handle": "sec",
+                "content": "in the keychain",
+                "episode": THREAD,
+            },
+        ]
+        self._watch(monkeypatch, [], history)
+
+        out = capsys.readouterr().out
+        assert "in the keychain" in out
+        assert "Passkey login" in out
+
+    def test_agent_text_is_escaped_and_cut(self, monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+        long = "\n".join(["[red]not markup[/]", *[f"line {i}" for i in range(20)]])
+        self._watch(monkeypatch, [_bus_frame(_prose_frame(THREAD, long))], [])
+
+        out = capsys.readouterr().out
+        assert "[red]not markup[/]" in out
+        assert "line 19" not in out
+        assert "board messages work/passkey-login" in out

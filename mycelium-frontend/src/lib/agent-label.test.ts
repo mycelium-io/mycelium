@@ -12,7 +12,7 @@ describe("agentLabel", () => {
   });
 
   it("names an engine by what it runs", () => {
-    expect(agentLabel({ adapter: "engine", kind: "aligner", framework: null })).toBe("engine · aligner");
+    expect(agentLabel({ adapter: "engine", kind: "conductor", framework: null })).toBe("engine · conductor");
   });
 });
 
@@ -23,7 +23,7 @@ describe("agentTag", () => {
   });
 
   it("says an engine's kind and a bridged service as a2a", () => {
-    expect(agentTag({ adapter: "engine", kind: "aligner", framework: null })).toBe("aligner");
+    expect(agentTag({ adapter: "engine", kind: "conductor", framework: null })).toBe("conductor");
     expect(agentTag({ adapter: "a2a", kind: null, framework: null })).toBe("a2a");
   });
 });

@@ -3,7 +3,7 @@
 [herdr](https://herdr.dev) keeps coding-agent sessions running in named
 terminals, called panes, even after you close the window you started them
 from. Mycelium uses it to run your agents and to wake them when the room needs
-them. The Mac app includes it. Elsewhere, install herdr 0.9.3 or newer from
+them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from
 [herdr.dev](https://herdr.dev) and start its server.
 
 If you start agents from the app or with `mycelium swarm`, you don't need to
@@ -13,15 +13,16 @@ agents you started in herdr yourself.
 
 ## Why it matters
 
-An agent that runs `mycelium await --loop` hears about each message on its own.
-The hub keeps its place in the room, so it never misses one. But a coding agent
-sitting idle at its prompt isn't asking. herdr and the runner fill that gap.
-When the agent is mentioned, given a turn by the conductor or aligner or
-assigned a task, the runner types a wake-up into its pane that says why. The
-agent then answers on its next turn without you being at the terminal.
+An agent that runs `mycelium await --loop` is told about each new message
+without help. The hub remembers where it left off, so it never misses one. But
+a coding agent sitting idle at its prompt isn't waiting for messages, so
+nothing reaches it. herdr and the runner cover that case. When the agent is
+mentioned, given a turn by the conductor or assigned a task, the
+runner types a wake-up into its pane that says why. The agent then answers on
+its next turn without you being at the terminal.
 
-Rooms, memory, the board and negotiations all work without herdr. It only adds
-waking an agent that isn't already asking.
+Rooms, memory, the board and negotiations all work without herdr. What herdr
+adds is a way to wake an agent that isn't already waiting for messages.
 
 ## Connecting a workspace
 
@@ -46,7 +47,7 @@ seconds:
 
 `mycelium herdr sync` also runs one pass straight away and says whether the
 runner is running. Make sure it is, or nothing is delivered after that first
-pass. Start it with `mycelium runner --detach`. The Mac app runs it for you.
+pass. Start it with `mycelium runner --detach`. The desktop app runs it for you.
 
 ```bash
 mycelium herdr sync                        # one pass over every connected workspace

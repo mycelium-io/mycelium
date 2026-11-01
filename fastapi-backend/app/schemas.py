@@ -7,10 +7,19 @@ Minimal schemas for Mycelium's core models.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Literal
+from http import HTTPStatus
+from typing import Annotated, Any, Literal, get_args
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from fastapi.encoders import jsonable_encoder
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    field_validator,
+    model_validator,
+)
 from pydantic.json_schema import SkipJsonSchema
 
 # Two shape rules, deliberately distinct. A *handle* is an identity and can be
@@ -21,6 +30,31 @@ from pydantic.json_schema import SkipJsonSchema
 # import this package.
 HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
 SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
+
+# ── Refusal ───────────────────────────────────────────────────────────────────
+
+
+class Refusal(BaseModel):
+    """The body the hub refuses a request with, from an ``HTTPException`` or request validation.
+
+    ``detail`` is a sentence for most refusals. A refusal that names more than a
+    reason sends an object, kept whole: a lease or field refusal names the row and
+    its holder, or what the row waits on (``waiting_on``). A request that fails
+    validation sends FastAPI's list of errors.
+    """
+
+    detail: str | dict[str, Any] | list[Any]
+
+
+def refusals(*codes: int) -> dict[int | str, dict[str, Any]]:
+    """A route's ``responses=`` for the statuses it refuses with, each a :class:`Refusal`.
+
+    Declaring 422 here replaces FastAPI's default ``HTTPValidationError`` for that
+    route, so a route that raises its own 422 with a sentence declares it, and its
+    validation errors still parse (``detail`` takes a list).
+    """
+    return {code: {"model": Refusal, "description": HTTPStatus(code).phrase} for code in codes}
+
 
 # ── Room ──────────────────────────────────────────────────────────────────────
 
@@ -93,6 +127,16 @@ class RoomRead(BaseModel):
     pattern_task: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class RoomReindexRead(BaseModel):
+    """What re-indexing a room's files into its search index did."""
+
+    status: Literal["complete"]
+    indexed: int = Field(..., description="Memories (re-)embedded and written to the index")
+    skipped: int = Field(..., description="Memories whose index entry was already current")
+    pruned: int = Field(..., description="Index entries dropped because their file is gone")
+    errors: int = Field(..., description="Memories that failed to index")
 
 
 # ── Message ───────────────────────────────────────────────────────────────────
@@ -251,6 +295,23 @@ class MessageRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class MessageAmended(MessageRead):
+    """An amended message as the room now reads it, with the text it replaced.
+
+    The replaced text is what the room showed just before (the newest version
+    when it had been amended already), so whoever amended can see at once
+    whether they revised the message they meant to.
+    """
+
+    replaced: str = Field(..., description="The message's text just before this amendment")
+    task: str | None = Field(
+        None, description="The title of the task whose thread the message is in; None in the room"
+    )
+    task_key: str | None = Field(
+        None, description="That task's key, to answer in its thread (`--task`); None in the room"
+    )
 
 
 class MessageAmend(BaseModel):
@@ -555,6 +616,146 @@ class MemorySearchResponse(BaseModel):
     total: int
 
 
+# ── Memory links (``app/services/links.py``) ─────────────────────────────────
+
+
+class LinkRead(BaseModel):
+    """One edge between memories, and whether it resolves in the room right now."""
+
+    target: str = Field(..., description="The memory key the edge points at")
+    kind: str = Field(..., description="uri, wikilink, transclusion or relation")
+    anchor: str | None = Field(..., description="A heading in the target, after `#`")
+    label: str | None = Field(..., description="Display text, after `|`")
+    relation: str | None = Field(..., description="The frontmatter key of a typed edge")
+    raw: str = Field(..., description="The edge as written")
+    source: str | None = Field(..., description="The memory the edge leaves; none on outbound")
+    resolved: bool
+    error: str | None = Field(
+        ...,
+        description="Why the edge doesn't resolve: cross_room, not_found, no_anchor or not_expandable",
+    )
+
+
+class MemoryLinksRead(BaseModel):
+    """One memory's edges both ways: what it points at, and what points at it."""
+
+    key: str
+    outbound: list[LinkRead]
+    backlinks: list[LinkRead]
+
+
+class LinkGraphNode(BaseModel):
+    key: str
+    expandable: bool
+    outbound: int = Field(..., description="Edges leaving it that parse")
+    inbound: int = Field(..., description="Resolved edges arriving at it")
+
+
+class LinkGraphEdge(BaseModel):
+    source: str
+    target: str
+    kind: str
+    relation: str | None
+    resolved: bool
+    error: str | None
+
+
+class LinkGraphRead(BaseModel):
+    """A room's link graph: one node per memory, one edge per link."""
+
+    nodes: list[LinkGraphNode]
+    edges: list[LinkGraphEdge]
+
+
+class LinkIntegrityRead(BaseModel):
+    """Broken links, and the memories no link reaches or leaves, across a room."""
+
+    broken: list[LinkRead]
+    orphans: list[str] = Field(..., description="No links in or out")
+    roots: list[str] = Field(..., description="Links out, none in")
+    leaves: list[str] = Field(..., description="Links in, none out")
+    total_memories: int
+    total_links: int
+
+
+class TransclusionRead(BaseModel):
+    """What became of one ``![[…]]`` marker in an expanded body."""
+
+    target: str
+    anchor: str | None
+    raw: str
+    expanded: bool
+    error: str | None = Field(..., description="Why it was left as written")
+
+
+class ExpandedMemoryRead(BaseModel):
+    """A memory's body with its ``![[…]]`` markers expanded, one level deep."""
+
+    key: str
+    rendered: str
+    expansions: list[TransclusionRead]
+    found: bool
+
+
+# ── Assignments and fields (a board row's custody and its writable fields) ────
+# Frontmatter values come back from YAML as whatever it parsed: a timestamp may
+# be a ``datetime`` or a ``str``. These serialize such a value the way the
+# routes did before they declared a model (``jsonable_encoder``, so a datetime
+# keeps its ``+00:00``), rather than reformatting it.
+
+FrontmatterTime = Annotated[
+    str | datetime | None, PlainSerializer(jsonable_encoder, when_used="json")
+]
+FrontmatterFields = Annotated[dict[str, Any], PlainSerializer(jsonable_encoder, when_used="json")]
+
+
+class AssignmentRead(BaseModel):
+    """A board row's assignment as it stands: who holds it, for how long, and why it moved."""
+
+    key: str = Field(..., description="Memory key of the row")
+    assignment: str = Field(..., description="held, unclaimed, released, resolved or expired")
+    waiting_on: list[str] = Field(
+        ..., description="Keys of the unresolved rows this one depends on"
+    )
+    owner: str | None = Field(None, description="Who holds it, without the @")
+    assignee: str | None = Field(None, description="Who it was given to, without the @")
+    claimed_at: FrontmatterTime = None
+    ttl_minutes: int | float | str | None = Field(
+        None, description="The lease's window; none for a hold with no timer"
+    )
+    freshness: Literal["fresh", "stale", "expired"] | None = Field(
+        None, description="How much of the lease is spent; none for a hold with no timer"
+    )
+    version: int | None = None
+    assignment_note: str | None = Field(None, description="Why it last moved")
+    assignment_note_by: str | None = Field(
+        None, description="Who wrote the note; the runtime's name for a lease that expired"
+    )
+
+
+class AssignmentWatchRead(AssignmentRead):
+    """A watched lease: its assignment, and the token to wait on its next move."""
+
+    since: str = Field(..., description="Pass back as `since` to wait for the next transition")
+    changed: bool = Field(..., description="Whether it moved since the `since` passed in")
+
+
+class AssignmentsRenewed(BaseModel):
+    """The leases a resident loop's heartbeat re-dated (only those due for it)."""
+
+    room: str
+    handle: str
+    renewed: list[AssignmentRead]
+
+
+class FieldsRead(BaseModel):
+    """A row's writable fields: its frontmatter outside what the store manages."""
+
+    key: str
+    fields: FrontmatterFields
+    version: int | None = None
+
+
 # ── Skills (global, reusable invokable skills) ────────────────────────────────
 # Same grain as memory (markdown + frontmatter) but a distinct, project-level
 # store — skills are reusable across rooms. See app/services/skills.py.
@@ -600,6 +801,19 @@ class SkillListResponse(BaseModel):
     total: int
 
 
+class UploadOrigin(BaseModel):
+    """The message an upload was posted with."""
+
+    message_id: str = Field(..., description="The message's id, as the room's history reads it")
+    sender: str
+    at: datetime
+    episode: str | None = Field(
+        None, description="The task thread it was said in; none when it was said in the channel"
+    )
+    task: str | None = Field(None, description="That thread's board row key, when a row carries it")
+    task_title: str | None = None
+
+
 class UploadRead(BaseModel):
     """A file the room keeps: an ``uploads/<name>`` memory and the bytes it names."""
 
@@ -616,6 +830,13 @@ class UploadRead(BaseModel):
     created_at: datetime
     episode: str | None = Field(None, description="The upload's own thread, as every memory has")
     url: str = Field(..., description="Path of the file's bytes on this hub, under /api")
+    thumb_url: str | None = Field(
+        None, description="Path of a small WebP of an image, for a gallery; none for other kinds"
+    )
+    posted_in: UploadOrigin | None = Field(
+        None,
+        description="The first message that linked this upload; none when no message does",
+    )
 
 
 class UploadListResponse(BaseModel):
@@ -625,6 +846,78 @@ class UploadListResponse(BaseModel):
         default_factory=list, description="The file extensions this hub takes, lowercase, no dot"
     )
     max_bytes: int = Field(0, description="The largest file this hub takes, in bytes")
+
+
+class VoiceStatus(BaseModel):
+    """Whether this hub can transcribe a mic, and what it hears."""
+
+    state: Literal["ready", "not_downloaded", "unavailable"] = Field(
+        ...,
+        description=(
+            "`ready`: the model is loaded or on disk. `not_downloaded`: it will be "
+            "fetched the first time a mic is turned on. `unavailable`: it can't run here."
+        ),
+    )
+    detail: str = Field("", description="Why, when it isn't ready")
+    language: str = Field("en", description="The language it transcribes")
+    sample_rate: int = Field(16000, description="The rate audio is sent at, in Hz")
+    model: str = Field("", description="The speech model's name")
+    choice: str = Field(
+        "fast",
+        description="`voice.model` on this hub: `fast` (Moonshine) or `accurate` (Parakeet)",
+    )
+    speech: bool = Field(
+        False,
+        description=(
+            "A speech server is set on this hub (`voice.speech_url`), so the app can "
+            "read notifications aloud. Independent of the mic."
+        ),
+    )
+
+
+#: A speech voice's name, as a person may choose one: what servers name voices
+#: with, and nothing that could carry anything else.
+VOICE_NAME_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_.:+ -]{0,63}$"
+
+
+class SpeechRequest(BaseModel):
+    """Text to say. The hub sends it to its own speech server; there is no
+    address to give, by design."""
+
+    text: str = Field(..., min_length=1, max_length=1000, description="What to say")
+    voice: str | None = Field(
+        None,
+        pattern=VOICE_NAME_PATTERN,
+        description="A voice the person chose, in place of the hub's `voice.speech_voice`",
+    )
+    speed: float | None = Field(None, ge=0.5, le=2.0, description="How fast to say it; 1 is normal")
+
+
+class SpeechVoices(BaseModel):
+    """The voices the hub's speech server lists, for a person to pick from."""
+
+    voices: list[str] = Field(
+        default_factory=list, description="Empty when the server doesn't list them"
+    )
+    default: str = Field(
+        "", description="The hub's own `voice.speech_voice`, used when none is chosen"
+    )
+
+
+class VoiceHeard(BaseModel):
+    """What one chunk of a mic's audio finished: text for the draft, if any."""
+
+    texts: list[str] = Field(
+        default_factory=list, description="Each piece of speech the chunk ended, in order"
+    )
+    speaking: bool = Field(False, description="Whether speech is still under way")
+    ready: bool = Field(
+        True,
+        description=(
+            "False while the hub loads (or downloads) its speech model: the chunk "
+            "wasn't read, so send the same audio again"
+        ),
+    )
 
 
 class ProtocolSummary(BaseModel):
@@ -645,6 +938,15 @@ class ProtocolSummary(BaseModel):
 # The human made first-class, symmetric with agents/<handle>. An agent's owner
 # points at a users/<handle>; a team groups these handles. Trust is self-asserted
 # — the handle is consistent, not cryptographic.
+
+
+class WhoamiRead(BaseModel):
+    """Who the hub resolves the caller to, from the bearer token it verified."""
+
+    gated: bool = Field(..., description="Whether this hub runs an auth gate")
+    handle: str | None = Field(None, description="The verified handle; none on an ungated hub")
+    subject: str | None = Field(None, description="The token's subject claim")
+    role: str | None = Field(None, description="The principal's role")
 
 
 class UserCreate(BaseModel):
@@ -737,6 +1039,70 @@ class AgentRead(BaseModel):
     framework: str | None = None
 
 
+class AgentRename(BaseModel):
+    """Give an agent a new handle in a room."""
+
+    to: str = Field(..., min_length=1, max_length=64, description="The new handle")
+    by: str | None = Field(None, description="Who is renaming it; the verified caller wins")
+
+
+class AgentRenameRead(BaseModel):
+    """What a rename moved, or that it waits for a yes on the machine running the agent."""
+
+    handle: str
+    was: str
+    #: True when nothing has changed yet: the machine running it asks first, and
+    #: the rename happens with the restart (follow ``restart_job``).
+    pending: bool = False
+    memories: list[str] = Field(default_factory=list, description="Keys moved to the new handle")
+    rows: list[str] = Field(
+        default_factory=list, description="Board rows now naming the new handle"
+    )
+    #: The machine restarting it under the new handle and that job, to follow
+    #: like a launch. Both ``None`` when no connected machine has it.
+    restart_runner: str | None = None
+    restart_job: str | None = None
+
+
+class AgentControl(BaseModel):
+    """Pause, resume or stop one agent. Only its owner may."""
+
+    by: str | None = Field(None, description="Who is asking; the verified caller wins")
+
+
+class AgentsControl(BaseModel):
+    """Pause or resume every agent someone owns, in one room or all of them."""
+
+    by: str | None = Field(None, description="Whose agents; the verified caller wins")
+    room: str | None = Field(None, description="Only the agents in this room")
+
+
+class PauseRead(BaseModel):
+    """An agent's pause: who paused it, and when."""
+
+    room: str
+    handle: str
+    by: str
+    at: datetime
+
+
+class AgentControlRead(BaseModel):
+    """What happened to one agent."""
+
+    room: str
+    handle: str
+    #: The pause it has now: ``None`` once resumed or stopped.
+    paused: PauseRead | None = None
+    #: The machine asked to interrupt or stop it, and that job. ``None`` when no
+    #: connected machine runs it (a pause still holds its wakes).
+    runner: str | None = None
+    job: str | None = None
+
+
+class AgentsControlRead(BaseModel):
+    agents: list[AgentControlRead] = Field(default_factory=list)
+
+
 # ── Runners (a user's machine, dialed in) ────────────────────────────────────
 #
 # A runner is `mycelium runner` on someone's computer. It dials out to the hub,
@@ -748,7 +1114,9 @@ class AgentRead(BaseModel):
 RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
-RunnerJobKind = Literal["launch", "stop", "scan", "swarm", "restart", "pair"]
+RunnerJobKind = Literal[
+    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "rename", "pause"
+]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
@@ -802,6 +1170,26 @@ class MachineAgentRead(BaseModel):
     restartable: bool = Field(
         False, description="Stopped or gone, with a folder and CLI to restart"
     )
+    resumes: bool = Field(
+        False,
+        description="A restart brings it back in its own session, keeping its conversation",
+    )
+
+
+class MachineUnenrolledRead(BaseModel):
+    """An agent CLI running in a herdr pane on a machine that no room has yet,
+    which Members → Add can bring into a room (an ``adopt`` job)."""
+
+    pane: str
+    kind: str | None = Field(None, description="The agent CLI, as herdr names its kind")
+    state: Literal["working", "idle", "blocked", "unknown"] = "unknown"
+    folder: str | None = None
+    workspace: str | None = None
+    workspace_label: str | None = None
+    tab_label: str | None = Field(
+        None, description="The pane's tab name, where a handle comes from"
+    )
+    suggested_handle: str | None = Field(None, description="A handle made from the tab name")
 
 
 class MachineWorkspaceRead(BaseModel):
@@ -832,7 +1220,14 @@ class MachineProblemRead(BaseModel):
 
 
 class MachineReportRead(BaseModel):
-    """Every agent on a machine and what's wrong (``mycelium machine``'s report)."""
+    """Every agent on a machine and what's wrong (``mycelium machine``'s report).
+
+    A runner sends it (``RunnerHello``) and the hub hands it back (``RunnerRead``)
+    in the same shape, so it is one schema: split into ``-Input`` and ``-Output``
+    copies with the same title, the generated client drops ``RunnerRead``.
+    """
+
+    model_config = ConfigDict(json_schema_mode_override="validation")
 
     machine: str
     herdr: bool = False
@@ -845,6 +1240,9 @@ class MachineReportRead(BaseModel):
     )
     workspaces: list[MachineWorkspaceRead] = Field(default_factory=list)
     problems: list[MachineProblemRead] = Field(default_factory=list)
+    #: Agents running here that aren't in any room yet. Empty from a runner
+    #: from before it sent them.
+    unenrolled: list[MachineUnenrolledRead] = Field(default_factory=list)
 
 
 class DeviceSignature(BaseModel):
@@ -928,6 +1326,17 @@ class RunnerSyncRead(BaseModel):
     error: str | None = None
 
 
+class RunnerCredentialRead(BaseModel):
+    """Whether an agent running on this machine can reply on the hub, as the
+    runner that keeps its token knows it. Only agents it has a verdict on."""
+
+    room: str = Field(..., max_length=200)
+    handle: str = Field(..., max_length=120)
+    can_reply: bool
+    #: One plain line for a person when it can't, naming the machine.
+    why: str | None = Field(default=None, max_length=300)
+
+
 class RunnerHello(BaseModel):
     """What a runner says about itself when it dials in, and on every heartbeat."""
 
@@ -952,6 +1361,9 @@ class RunnerHello(BaseModel):
     pairings: list[RunnerPairingRead] = Field(default_factory=list)
     #: The public ids of its live pairing codes, for routing a pair request.
     pairing_offers: list[str] = Field(default_factory=list, max_length=8)
+    #: Whether each agent it keeps a token for can reply. Empty from a runner
+    #: from before it sent this, or with sign-in off on the hub.
+    credentials: list[RunnerCredentialRead] = Field(default_factory=list, max_length=500)
 
 
 class RunnerRead(RunnerHello):
@@ -969,9 +1381,14 @@ class RunnerJobRead(BaseModel):
 
     id: str
     runner: str
-    kind: RunnerJobKind
+    # Strings, not the Literals: a newer hub may send a kind or status an older
+    # runner doesn't know, and the runner refuses the job in words ("update
+    # mycelium here") only if the answer still parses.
+    kind: str = Field(..., description=f"One of {', '.join(get_args(RunnerJobKind))}, or newer")
     spec: dict[str, Any] = Field(default_factory=dict)
-    status: RunnerJobStatus = "queued"
+    status: str = Field(
+        "queued", description=f"One of {', '.join(get_args(RunnerJobStatus))}, or newer"
+    )
     result: dict[str, Any] | None = None
     error: str | None = None
     created_by: str | None = None
@@ -1008,6 +1425,19 @@ class RunnerAgentLaunch(BaseModel):
     )
 
 
+class RunnerAgentAdopt(BaseModel):
+    """Bring an agent already running in a herdr pane on a runner's machine into
+    a room, as ``handle``. The runner asks the person there first, since it
+    types the agent's introduction into their terminal."""
+
+    room: str = Field(..., min_length=1)
+    pane: str = Field(
+        ..., min_length=1, description="The pane, from the machine's unenrolled agents"
+    )
+    handle: str = Field(..., min_length=1, max_length=64)
+    created_by: str | None = None
+
+
 # ── Join codes ───────────────────────────────────────────────────────────────
 
 
@@ -1015,6 +1445,26 @@ class JoinCreate(BaseModel):
     """Ask for a code an agent can redeem to become ``handle`` in the room."""
 
     handle: str = Field(..., min_length=1, max_length=64)
+    ttl_minutes: int | None = Field(
+        None,
+        ge=1,
+        le=24 * 60,
+        description="How long the code lasts unused, in minutes (default 10, at most a day)",
+    )
+
+
+class InviteCreate(BaseModel):
+    """Ask for a code for ``handle``, adding it to the room as an agent if it's new."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
+    description: str = Field("", max_length=2000, description="What it does here, if it's new")
+    created_by: str | None = Field(None, description="Who is inviting it; its owner if it's new")
+    ttl_minutes: int | None = Field(
+        None,
+        ge=1,
+        le=24 * 60,
+        description="How long the code lasts unused, in minutes (default 10, at most a day)",
+    )
 
 
 class JoinRead(BaseModel):
@@ -1039,6 +1489,88 @@ class MembershipRead(BaseModel):
         None, description="A token the hub signed for this member; null when the hub's auth is off"
     )
     token_expires_at: datetime | None = None
+
+
+# ── A room's members ─────────────────────────────────────────────────────────
+
+
+class RoomPerson(BaseModel):
+    """One of a room's people, as recorded when they joined."""
+
+    handle: str
+    joined_at: datetime
+    via: Literal["created", "added", "message", "seeded"] = Field(
+        ...,
+        description=(
+            "How they joined: made the room, were added, posted in it, or were there "
+            "before rooms kept a list"
+        ),
+    )
+
+
+class RoomAgentEntry(BaseModel):
+    """An agent or engine, from its manifest."""
+
+    handle: str
+    owner: str | None = None
+
+
+class RoomOther(BaseModel):
+    """A handle that holds a task or is present, but is neither a person nor an agent here."""
+
+    handle: str
+    holds_task: bool = False
+    present: bool = False
+
+
+class RoomMembers(BaseModel):
+    """Everyone in a room, from records rather than from who has posted."""
+
+    people: list[RoomPerson]
+    agents: list[RoomAgentEntry]
+    engines: list[RoomAgentEntry]
+    others: list[RoomOther]
+
+
+class MentionGroupMember(BaseModel):
+    """One member ``@here`` or ``@all`` reaches."""
+
+    handle: str
+    kind: Literal["agent", "person"]
+    status: str | None = Field(
+        None, description="Its live state when it runs in a herdr pane: working, idle, blocked"
+    )
+    posted_at: str | None = Field(None, description="When it last posted in the thread")
+    role: Literal["posted", "assignee", "holder"] | None = Field(
+        None,
+        description=(
+            "Why @here reaches it: it posted in the thread, or is the task's assignee or "
+            "holder. Null for @all"
+        ),
+    )
+
+
+class MentionGroup(BaseModel):
+    """Who one group reaches, and how many."""
+
+    count: int
+    members: list[MentionGroupMember]
+
+
+class MentionGroups(BaseModel):
+    """Who ``@here`` and ``@all`` reach for one sender writing in one place.
+
+    Never the sender, and never an engine. Outside a thread ``here`` is ``all``.
+    """
+
+    here: MentionGroup
+    all: MentionGroup
+
+
+class RoomPersonAdd(BaseModel):
+    """Add a person (someone with a user record) to a room."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
 
 
 # ── A2A bridge state (the Network views) ─────────────────────────────────────
@@ -1122,16 +1654,16 @@ class SubscriptionRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── episodes (protocol inspector) ─────────────────────────────────────────
+# ── episodes ──────────────────────────────────────────────────────────────
 #
-# The episode read API projects persisted episode records into JSON the UI
-# inspector renders. These models are the typed seam: the backend routes declare
+# The episode read API projects persisted episode records into JSON the UI's
+# episode views render. These models are the typed seam: the backend routes declare
 # them as `response_model`, so FastAPI validates + filters the raw parsed dicts
 # into exactly this shape. They mirror the frontend `MyceliumMessage` / `EpisodeDetail`
 # TypeScript interfaces 1:1, so neither side can silently read a field the other
 # doesn't send. Fields are permissive (most optional) because these records are
 # historical markdown files, not freshly minted objects — a single odd envelope
-# must not 500 the whole inspector. The one invariant: every envelope has a kind.
+# must not 500 the whole read. The one invariant: every envelope has a kind.
 
 
 class EnvelopeActorRead(BaseModel):
@@ -1183,11 +1715,17 @@ class EnvelopeRead(BaseModel):
 
 
 class EpisodeMetricsRead(BaseModel):
+    #: The SIEP scores a negotiation run by the retired aligner carried. Records
+    #: it wrote still have them; a conductor run doesn't.
     mpc: float = 0.0
     gar: float = 0.0
     scr: float = 0.0
     provenance_weight: float = 0.0
     participants: int | None = None
+    #: Where each member placed the conductor's pick between its own bad and
+    #: ideal outcomes (0 to 1), and the least of those.
+    satisfaction: dict[str, float] | None = None
+    min_satisfaction: float | None = None
 
 
 class EpisodeSummaryRead(BaseModel):
@@ -1268,4 +1806,685 @@ class SearchResponse(BaseModel):
     counts: dict[str, int] = Field(
         default_factory=dict,
         description="Matches per type before the result list was trimmed",
+    )
+
+
+# ── Schedules ─────────────────────────────────────────────────────────────────
+
+ScheduleResult = Literal["woke", "quiet", "held", "busy", "error"]
+
+
+class ScheduleCreate(BaseModel):
+    name: str = Field(
+        ..., min_length=1, max_length=64, pattern=SLUG_PATTERN, description="Schedule slug"
+    )
+    owner: str = Field(..., description="The agent the schedule wakes")
+    every: str | None = Field(None, description="An interval like 30m, 2h or 1d")
+    cron: str | None = Field(None, description="A five-field cron line, read in UTC")
+    prompt: str = Field("", max_length=4000, description="What the owner is told when it wakes")
+    check: str | None = Field(
+        None,
+        description=(
+            "The pre-check that decides whether the owner wakes: always, mentions, "
+            "assigned, stale, silent, task, or search:<query>"
+        ),
+    )
+    task: str | None = Field(None, description="A board row the schedule is bound to")
+    expires_in_days: float | None = Field(
+        None, description="How long until it has to be renewed (hub default when omitted)"
+    )
+    created_by: str | None = Field(None, description="Who is setting it up")
+
+
+class ScheduleUpdate(BaseModel):
+    every: str | None = None
+    cron: str | None = None
+    prompt: str | None = None
+    check: str | None = None
+    task: str | None = Field(None, description="A row key, or an empty string to unbind")
+    paused: bool | None = None
+    renew: bool = Field(False, description="Start its expiry again from now")
+    renew_days: float | None = Field(None, description="Renew for this many days")
+    updated_by: str | None = Field(None, description="Who is making the change")
+
+
+class ScheduleRunRequest(BaseModel):
+    wake: bool = Field(False, description="Skip the pre-check and wake the owner")
+
+
+class ScheduleRunRead(BaseModel):
+    at: datetime
+    result: ScheduleResult
+    trigger: Literal["schedule", "manual"]
+    missed: int = 0
+    found: list[str] = []
+    found_total: int = 0
+    detail: str | None = None
+
+
+class ScheduleRead(BaseModel):
+    name: str
+    owner: str
+    every: str | None = None
+    cron: str | None = None
+    prompt: str = ""
+    check: str
+    task: str | None = None
+    state: Literal["active", "paused", "expired"]
+    paused: bool
+    created_by: str
+    created_at: datetime
+    updated_by: str = Field("", description="Who made the last change")
+    updated_at: datetime
+    paused_by: str | None = Field(None, description="Who paused it, while it is paused")
+    paused_at: datetime | None = None
+    expires_at: datetime
+    next_run: datetime | None = None
+    last_run: datetime | None = None
+    last_result: ScheduleResult | None = None
+    runs: int = 0
+    wakes: int = Field(0, description="Runs that woke the owner: each one is a model turn")
+    quiet: int = Field(0, description="Runs whose pre-check found nothing, costing no turn")
+    history: list[ScheduleRunRead] = []
+
+
+class ScheduleListResponse(BaseModel):
+    schedules: list[ScheduleRead]
+    total: int
+    checks: dict[str, str] = Field(
+        default_factory=dict, description="The pre-checks the hub runs, and what each finds"
+    )
+
+
+# --- Wake subscriptions -----------------------------------------------------
+# What an agent asked to be woken for (``app/services/subscriptions.py``).
+# Named apart from ``SubscriptionCreate``/``SubscriptionRead`` above, which are
+# the memory routes' key-pattern subscriptions: a bus feed that wakes nobody.
+
+
+class WakeSubscriptionCreate(BaseModel):
+    handle: str = Field(..., description="The agent subscribing; it is woken for what matches")
+    kind: Literal["task", "notice", "member", "search"]
+    target: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description=(
+            "A task key, a notice kind (filed, resolved, upstream:merged...), "
+            "a member's handle, or a room search query"
+        ),
+    )
+    parts: bool = Field(False, description="For a task: its parts too, including later ones")
+    task: str | None = Field(None, description="For a notice kind: only notices about this task")
+    span: str | None = Field(
+        None,
+        description=(
+            "How long it lasts, like 2h or 3d, or never. A member or search "
+            "subscription lasts 24h unless told; a task one ends with its task"
+        ),
+    )
+
+
+class WakeSubscriptionRead(BaseModel):
+    id: str
+    handle: str
+    kind: Literal["task", "notice", "member", "search"]
+    target: str
+    parts: bool = False
+    task: str | None = None
+    created_at: datetime
+    until: datetime | None = Field(None, description="When it ends, if it was given an end")
+    describe: str = Field(..., description="The subscription as a person reads it")
+
+
+class WakeSubscriptionListResponse(BaseModel):
+    subscriptions: list[WakeSubscriptionRead]
+    total: int
+
+
+class WakeSubscriptionsRemoved(BaseModel):
+    removed: list[WakeSubscriptionRead]
+
+
+# --- Live presence and herdr wakes ------------------------------------------
+# ``GET sessions/members`` (the roster's liveness) and the wakes a runner drains
+# to type into its agents' herdr panes (``routes/sessions.py``).
+
+
+class PresentMemberRead(BaseModel):
+    """One handle present in a room right now, and how it is connected."""
+
+    handle: str
+    kind: str = Field(
+        ...,
+        description="slim (a live socket), lease (an await/reply poll) or herdr (a pane only)",
+    )
+    last_seen: str | None = Field(
+        None, description="When a lease member last polled (ISO); none for a SLIM member"
+    )
+    status: str | None = Field(
+        None, description="herdr's live state (idle, working, blocked, done), when it has a pane"
+    )
+    wake_pending: bool = Field(
+        False, description="A mention is queued for it, held until it goes idle"
+    )
+    title: str | None = Field(None, description="herdr's terminal title: its current task")
+    can_reply: bool | None = Field(
+        None,
+        description=(
+            "Whether it can post, as the runner that keeps its token says; none when no "
+            "runner has said (or from a hub before runners did)"
+        ),
+    )
+    cant_reply_why: str | None = Field(None, description="Why it can't, when it can't")
+
+
+class FloorEntryRead(BaseModel):
+    """A thread's floor that a run of hub code holds, named by its task."""
+
+    thread: str = Field(..., description="The thread's id: the episode URN's last part")
+    episode: str
+    key: str | None = Field(None, description="The task row whose thread it is, if a row has it")
+    title: str | None = None
+    holder: str = Field(..., description="The handle that holds the floor and may always write")
+    speakers: list[str] = Field(..., description="Who it has been given to for this step")
+
+
+class PausedEntryRead(BaseModel):
+    """An agent paused in the room: by whom and since when."""
+
+    handle: str
+    by: str
+    at: str
+
+
+class RoomPresenceRead(BaseModel):
+    """A room's live presence: who is here, held floors, subscriptions and pauses."""
+
+    members: list[PresentMemberRead]
+    floors: list[FloorEntryRead]
+    subscriptions: list[WakeSubscriptionRead] = Field(
+        ..., description="Each member's live subscriptions, for its card"
+    )
+    paused: list[PausedEntryRead]
+
+
+class HerdrWakeRead(BaseModel):
+    """One wake a runner types into an agent's herdr pane.
+
+    Open (``extra="allow"``): a wake is a dict queued by
+    ``room_channels.enqueue_herdr_wake`` from several producers (mentions,
+    assignments, schedules, subscriptions, resumes, workers) and finished by
+    the drain route, so a key added by a producer passes through rather than
+    being dropped. The keys below are every one found when this was written.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    handle: str = Field(..., description="The agent to wake")
+    id: str | None = Field(None, description="The wake's id, reported back with its outcome")
+    reason: str | None = Field(
+        None,
+        description=(
+            "mention, turn, interrupt, assigned, subscribed, schedule or resumed: "
+            "how the prompt is worded"
+        ),
+    )
+    ts: float | None = Field(None, description="Hub monotonic time it was last rung")
+    sender: str | None = Field(None, alias="from", description="Who rang last, without the @")
+    episode: str | None = Field(None, description="Where it was rung from")
+    key: str | None = Field(None, description="The row it was given, for an assigned wake")
+    title: str | None = Field(None, description="The row's title, or the schedule's name")
+    why: str | None = Field(None, description="Which subscription caught what, for subscribed")
+    prompt: str | None = Field(
+        None, description="The digest to type, built when drained; absent if building it failed"
+    )
+
+
+class HerdrWakesRead(BaseModel):
+    """The wakes released to the runner that drained them."""
+
+    wakes: list[HerdrWakeRead]
+
+
+class WakeOutcomesRecorded(BaseModel):
+    """How many reported outcomes settled a wake's line in the wake log."""
+
+    recorded: int
+
+
+# --- Participation (await / reply) ------------------------------------------
+# A turn-based agent's two calls (``routes/participate.py``).
+
+
+class AwaitEarlierRead(BaseModel):
+    """A message said where the turn was asked, before it, since the handle last took part."""
+
+    sender: str | None = None
+    text: str
+    message_id: str | None = None
+    at: str | None = None
+
+
+class AwaitAskRead(BaseModel):
+    """One unread message asking for the handle."""
+
+    sender: str | None = None
+    prompt: str
+    episode: str | None = None
+    task: str | None = Field(None, description="The row whose thread it was asked in")
+    message_id: str | None = None
+    id: str = Field(..., description="The id the room's history gives it (MessageRead.id)")
+    at: str | None = None
+    answer: "AskAnswer | None" = Field(
+        None, description="When the message answers the handle's ask: the decision"
+    )
+
+
+class AwaitWatchedRead(AwaitAskRead):
+    """A message one of the handle's subscriptions caught, with the one that did."""
+
+    why: str | None = None
+    subscription: str | None = None
+
+
+class AwaitDeliveredRead(BaseModel):
+    """Where to confirm a turn handed over with ``confirm``."""
+
+    position: int
+    episode: str | None = None
+
+
+class AwaitNothing(BaseModel):
+    """``await`` timed out, or the caller hung up, or the room has no live channel."""
+
+    room: str
+    handle: str
+    message: None = Field(..., description="Always null: nothing came")
+
+
+class AwaitTurn(BaseModel):
+    """The handle's turn: the message it leads with, and everything else unread for it.
+
+    Open (``extra="allow"``): the turn is built in two branches (a schedule's
+    wake, and messages that ask for the handle) with keys added after, so a key
+    added there passes through rather than being dropped. A schedule's turn
+    carries ``schedule`` and no ``asks``/``watching``/``reason``/``why``;
+    ``delivered`` is present only with ``confirm``. A key absent from a turn is
+    left out of the answer, not sent as null.
+
+    ``task``, ``earlier`` and ``digest`` are optional because hubs from before
+    they were added don't send them, and the CLI falls back without them; this
+    hub always sends them.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    room: str
+    handle: str
+    prompt: str = Field(..., description="The text of the message the turn leads with")
+    sender: str | None = Field(..., description="Who sent it; `scheduler` for a schedule")
+    episode: str | None = Field(..., description="Where it was said (an episode URN)")
+    task: str | None = Field(None, description="The row whose thread it was asked in")
+    topic: str | None
+    message_id: str | None
+    earlier: list[AwaitEarlierRead] | None = Field(
+        None, description="What was said there before it, oldest first"
+    )
+    digest: str | None = Field(
+        None, description="What a herdr wake would type for this turn; null if it couldn't be built"
+    )
+    schedule: str | None = Field(None, description="The schedule that fired, for its turn")
+    asks: list[AwaitAskRead] | None = Field(
+        None, description="Every unread message asking for the handle, oldest first, the turn last"
+    )
+    watching: list[AwaitWatchedRead] | None = Field(
+        None, description="What the handle's subscriptions caught"
+    )
+    reason: str | None = Field(
+        None, description="How the turn asks (mention, turn, interrupt) or subscribed"
+    )
+    why: str | None = Field(None, description="For subscribed: the subscription and what it caught")
+    delivered: AwaitDeliveredRead | None = Field(
+        None, description="With confirm: what to POST to await/confirm"
+    )
+    answer: "AskAnswer | None" = Field(
+        None, description="When the turn answers the handle's ask: the decision"
+    )
+
+
+class AwaitConfirmRead(BaseModel):
+    """Whether a turn's read position moved."""
+
+    room: str
+    handle: str
+    confirmed: bool = Field(..., description="False when the room has no live channel")
+
+
+class ReplyRead(BaseModel):
+    """A reply posted into the room or a thread."""
+
+    room: str
+    handle: str
+    message_id: str | None = None
+
+
+# --- Approvals (an agent asks a person to decide) ---------------------------
+# ``app/services/approvals.py``; kinds and fields frozen in contracts/approvals.json.
+
+
+AskKind = Literal["approve", "choose", "question"]
+
+
+class AskDecided(BaseModel):
+    """How an ask was answered, folded onto it once it is."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    kind: AskKind | None = Field(None, description="Absent on an answer from before kinds")
+    question: str | None = None
+    for_: str | None = Field(None, alias="for", description="The person the ask was put to")
+    by: str = Field(..., description="Who answered: the person asked, or another person")
+    at: str
+    decision: Literal["approved", "declined"] | None = Field(None, description="On an approve")
+    choices: list[str] | None = Field(None, description="On a choose: the option ids picked")
+    chosen: list[str] | None = Field(None, description="On a choose: those options' labels")
+    text: str | None = Field(None, description="The answer to a question, or a note on any kind")
+
+
+class AskOption(BaseModel):
+    id: str = Field(..., description="Its number, from 1, in the order given")
+    label: str
+    detail: str | None = None
+
+
+class Ask(BaseModel):
+    """What an agent asks a person, as the app draws it."""
+
+    id: str
+    kind: AskKind
+    to: str = Field(..., description="The person it waits on; any person in the room may answer")
+    question: str
+    happens: str | None = Field(None, description="What will happen if approved")
+    why: str | None = Field(None, description="Why now")
+    undo: str | None = Field(None, description="How to undo it")
+    link: str | None = Field(None, description="A PR, a memory or a URL it is about")
+    options: list[AskOption] | None = Field(None, description="On a choose")
+    multiple: bool | None = Field(None, description="On a choose: several may be picked")
+    recommend: list[str] | Literal["approve"] | None = Field(
+        None, description="What the agent would do: option ids on a choose, 'approve' on an approve"
+    )
+    suggest: str | None = Field(None, description="On a question: the agent's draft answer")
+    answer: AskDecided | None = Field(None, description="Set once the ask is answered")
+
+
+class AskOptionCreate(BaseModel):
+    label: str = Field(..., min_length=1)
+    detail: str | None = None
+
+
+class AskCreate(BaseModel):
+    """``mycelium ask``: only the question is required."""
+
+    handle: str = Field(..., description="The agent asking")
+    question: str = Field(..., min_length=1)
+    kind: str = "approve"
+    to: str | None = Field(None, description="Who to ask; default the person who filed the task")
+    task: str | None = Field(
+        None,
+        description="The row to ask in; default the one the agent was last asked in, "
+        "else the one task it holds",
+    )
+    happens: str | None = None
+    why: str | None = None
+    undo: str | None = None
+    link: str | None = None
+    options: list[AskOptionCreate] | None = Field(None, description="A choose's options, in order")
+    multiple: bool = False
+    recommend: list[str] | str | None = Field(
+        None, description="Option ids on a choose, or 'approve' on an approve"
+    )
+    suggest: str | None = Field(None, description="A question's draft answer")
+
+
+class AskPosted(BaseModel):
+    """An ask, and the message that carries it."""
+
+    room: str
+    task: str | None = None
+    episode: str | None = None
+    message_id: str = Field(..., description="The id the room's history gives it")
+    ask: Ask
+
+
+class AskAnswerCreate(BaseModel):
+    by: str = Field(..., description="Who answers: any person in the room, never an agent")
+    decision: str | None = Field(None, description="An approve's: approved or declined")
+    choices: list[str] | None = Field(None, description="A choose's: the option ids picked")
+    text: str | None = Field(None, description="A question's answer, or a note on any kind")
+    reason: str | None = Field(None, description="Another name for text, from before it")
+
+
+class AskAnswer(AskDecided):
+    """The answer an agent reads, in ``await`` and on the answer message."""
+
+    ask: str
+    reason: str | None = Field(None, description="The note, on an answer from before text")
+
+
+class AskAnswered(BaseModel):
+    """The ask as decided, and the message that carries the answer."""
+
+    room: str
+    message_id: str
+    ask: Ask
+    answer: AskAnswer
+
+
+# ``await`` reads above name the answer before it is defined.
+AwaitAskRead.model_rebuild()
+AwaitWatchedRead.model_rebuild()
+AwaitTurn.model_rebuild()
+
+
+# --- Verifier ---------------------------------------------------------------
+
+
+class VerifierCheckedRead(BaseModel):
+    """One record the verifier looked at, for *Show why*."""
+
+    what: str = Field(..., description="What was looked at: 'approvals of #1278 in this room'")
+    found: str = Field(..., description="What it found: 'none', 'approved', 'merged at 20:08'")
+    id: str | None = Field(None, description="The message or notice it found, when there is one")
+    at: str | None = None
+
+
+class VerifierFlagRead(BaseModel):
+    """A multi-agent failure the verifier found, drawn as a line under its message."""
+
+    flag_id: str
+    failure: str = Field(
+        "",
+        description=(
+            "Which failure it is: ungranted_approval, unsupported_completion, "
+            "decision_taken, dropped_directive, misread_intent, stale_state, "
+            "handoff_loss, scope_violation or unasked_side_effect. The checks so far "
+            "find ungranted_approval and stale_state."
+        ),
+    )
+    message_id: str = Field(
+        ..., description="The message the line goes under: its id in the room's history read"
+    )
+    envelope_id: str = Field(
+        "",
+        description=(
+            "The same message's envelope id: the id it carries when it arrives live "
+            "over the room's stream, before a reload reads it from history"
+        ),
+    )
+    key: str = Field(..., description="The thread's short id, or 'live'")
+    about: str = Field(..., description="The agent that made the claim")
+    by: str = Field(..., description="The verifier engine's handle")
+    claim: Literal["approval", "open"]
+    ref: str = Field(..., description="The pull request it is about: '#1278'")
+    line: str = Field(..., description="The line to show, written by the verifier")
+    sure: bool = Field(
+        ..., description="True when the records say the opposite, false when nothing was found"
+    )
+    quotes: list[str] = Field(default_factory=list, description="The exact words to underline")
+    sentence: str
+    why: str = ""
+    checked: list[VerifierCheckedRead] = []
+    state: Literal["shown", "fine"]
+    fine_by: str | None = None
+    at: str
+
+
+class VerifierFineRequest(BaseModel):
+    by: str | None = Field(
+        None, description="Who says it's fine (bound to the caller when sign-in is on)"
+    )
+
+
+class VerifierEstimateRead(BaseModel):
+    messages: int
+    approx_tokens: int
+    approx_usd: float
+
+
+class VerifierLearningRead(BaseModel):
+    state: Literal["idle", "running", "done", "failed"]
+    done: int = 0
+    total: int = 0
+    error: str | None = None
+
+
+class VerifierSettingsRead(BaseModel):
+    enabled: bool
+    rooms: list[str] = Field(default_factory=list, description="The rooms that added the verifier")
+    model: str = Field(..., description="The search model its claim spotter runs on")
+    using: Literal["starting", "learned", "none"]
+    learned: int | None = Field(
+        None, description="Messages it learned from, or null on the starting model"
+    )
+    answers_since_learned: int = 0
+    estimate: VerifierEstimateRead
+    learning: VerifierLearningRead
+
+
+# ── Health (``GET /health``, ``app.main.root``) ───────────────────────────────
+# A key that a block only sometimes carries has a default here, and the route
+# drops unset keys, so it stays absent rather than coming back null.
+
+
+class HealthStorage(BaseModel):
+    status: str = Field(..., description="ok or unreachable")
+    message: str
+    path: str | None = Field(
+        None, description="Where the hub sees its store; absent when unreachable"
+    )
+    id: str | None = Field(None, description="Names the store wherever it is mounted")
+    host_path: str | None = Field(
+        None, description="Where the store is on the host, when the hub runs in a container"
+    )
+
+
+class HealthAuth(BaseModel):
+    """The HTTP gate as configured (``app/services/auth.py``)."""
+
+    enabled: bool
+    issuers: list[str] = Field(..., description="The trusted token issuers")
+    localhost_bypass: bool
+    audience: str | None
+    warnings: list[str] | None = Field(
+        None, description="Ways the gate is weaker than intended; absent when there are none"
+    )
+
+
+class HealthIdentity(BaseModel):
+    status: str
+    mode: str = Field(..., description="The SLIM identity tier: psk or signerjwt")
+    message: str
+
+
+class HealthEmbedding(BaseModel):
+    status: str = Field(..., description="ok, not_cached or stub")
+    model: str
+    message: str
+
+
+class HealthLLM(BaseModel):
+    """The model the hub calls, checked as ``check_llm`` and ``llm_probe`` ask."""
+
+    status: str = Field(
+        ...,
+        description=(
+            "ok, auth_error, unreachable, not_configured, unchecked, missing_extras, "
+            "bad_model or error"
+        ),
+    )
+    model: str
+    configured: bool
+    key_hint: str | None = Field(..., description="The key, masked")
+    key_required: bool
+    message: str
+    remediation: str | None
+    checked_at: str = Field(..., description="When this was checked, ISO 8601")
+
+
+class HealthCoordinationRoom(BaseModel):
+    room: str
+    provisioned: bool
+    persister_alive: bool
+    members: list[str] = Field(..., description="SLIM members and live `await` leases")
+    deferred_invites: int
+    episode_active: bool
+    reserves: int
+    reserve_failures: int
+    reserve_skipped: int
+    receive_errors: int
+    transient_errors: int
+    knowledge_applied: int
+    knowledge_conflicts: int
+
+
+class HealthCoordination(BaseModel):
+    """The room channels this hub moderates, and its process counters."""
+
+    endpoint: str = Field(..., description="The SLIM node the hub dials")
+    slim_enabled: bool
+    channels_live: int
+    provisions_ok: int
+    provisions_failed: int
+    invite_failures: int
+    rooms: list[HealthCoordinationRoom]
+
+
+class HealthLatency(BaseModel):
+    status: str = Field(..., description="ok or degraded")
+    signals: list[str] | None = Field(
+        None, description="Each p95 over its limit, when degraded; absent when ok"
+    )
+
+
+class HealthRead(BaseModel):
+    """What ``GET /health`` reports about the hub.
+
+    Only what every hub has ever said is required: a client reads an older hub's
+    version here before anything else, so a section added since (and every one
+    may be) is optional. This hub always sends them all.
+    """
+
+    status: str = Field(..., description="ok or degraded")
+    service: str
+    version: str
+    storage: HealthStorage | None = None
+    auth: HealthAuth | None = None
+    identity: HealthIdentity | None = None
+    embedding: HealthEmbedding | None = None
+    llm: HealthLLM | None = None
+    coordination: HealthCoordination | None = None
+    latency: HealthLatency | None = None
+    issues: list[str] | None = Field(
+        None, description="What makes it degraded (storage, llm, coordination, latency)"
     )

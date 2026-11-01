@@ -8,8 +8,6 @@ import {
   applyActivity,
   expireActivity,
   isActivityFrame,
-  respondingLabel,
-  respondingNames,
   settleActivity,
   splitActivity,
   type Responding,
@@ -26,7 +24,7 @@ const frame = (handle: string, state: "responding" | "done", extra: Record<strin
 
 describe("recognising an activity frame", () => {
   it("accepts the backend's shape by either type field", () => {
-    expect(isActivityFrame(frame("aligner", "responding"))).toBe(true);
+    expect(isActivityFrame(frame("conductor", "responding"))).toBe(true);
     expect(isActivityFrame({ message_type: ACTIVITY_TYPE, handle: "x", state: "done" })).toBe(true);
   });
 
@@ -39,22 +37,22 @@ describe("recognising an activity frame", () => {
 
 describe("folding frames", () => {
   it("a responding adds one entry per handle, with the frame's TTL", () => {
-    const next = applyActivity([], frame("aligner", "responding", { ttl_s: 30, episode: "urn:e1" }), T0);
-    expect(next).toEqual<Responding[]>([{ handle: "aligner", episode: "urn:e1", since: T0, until: T0 + 30_000 }]);
+    const next = applyActivity([], frame("conductor", "responding", { ttl_s: 30, episode: "urn:e1" }), T0);
+    expect(next).toEqual<Responding[]>([{ handle: "conductor", episode: "urn:e1", since: T0, until: T0 + 30_000 }]);
   });
 
   it("a second responding for the same handle refreshes rather than duplicates", () => {
-    let s = applyActivity([], frame("aligner", "responding"), T0);
-    s = applyActivity(s, frame("@Aligner", "responding"), T0 + 5_000);
+    let s = applyActivity([], frame("conductor", "responding"), T0);
+    s = applyActivity(s, frame("@Conductor", "responding"), T0 + 5_000);
     expect(s).toHaveLength(1);
     expect(s[0].since).toBe(T0 + 5_000);
     expect(s[0].until).toBe(T0 + 5_000 + DEFAULT_TTL_MS);
   });
 
   it("done removes the handle and leaves the others", () => {
-    let s = applyActivity([], frame("aligner", "responding"), T0);
+    let s = applyActivity([], frame("conductor", "responding"), T0);
     s = applyActivity(s, frame("growth", "responding"), T0);
-    s = applyActivity(s, frame("aligner", "done"), T0 + 1);
+    s = applyActivity(s, frame("conductor", "done"), T0 + 1);
     expect(s.map((r) => r.handle)).toEqual(["growth"]);
   });
 
@@ -83,45 +81,26 @@ describe("settling and expiring", () => {
   });
 });
 
-describe("the line", () => {
-  const at = (...handles: string[]): Responding[] =>
-    handles.map((h) => ({ handle: h, episode: null, since: T0, until: T0 + 1 }));
-
-  it("reads naturally for one, two and many", () => {
-    expect(respondingLabel([])).toBe("");
-    expect(respondingLabel(at("aligner"))).toBe("@aligner is responding…");
-    expect(respondingLabel(at("growth", "finance"))).toBe("@growth and @finance are responding…");
-    expect(respondingLabel(at("a", "b", "c"))).toBe("@a, @b and 1 other are responding…");
-    expect(respondingLabel(at("a", "b", "c", "d"))).toBe("@a, @b and 2 others are responding…");
-    expect(respondingNames(at("a", "b"))).toBe("@a and @b");
-  });
-
-  it("stops short of the thread's name when the turn is going elsewhere", () => {
-    expect(respondingLabel(at("aligner"), "elsewhere")).toBe("@aligner is responding in");
-    expect(respondingLabel(at("a", "b"), "elsewhere")).toBe("@a and @b are responding in");
-  });
-});
-
 describe("splitting by where the turn lands", () => {
   const entry = (handle: string, episode: string | null): Responding => ({ handle, episode, since: T0, until: T0 + 1 });
   const live = "urn:ioc:mycelium:episode:atlas:live";
 
   it("keeps room-level turns here and groups thread turns by their thread", () => {
     const { here, elsewhere } = splitActivity(
-      [entry("growth", null), entry("aligner", "urn:e1"), entry("finance", live), entry("risk", "urn:e1"), entry("ops", "urn:e2")],
+      [entry("growth", null), entry("conductor", "urn:e1"), entry("finance", live), entry("risk", "urn:e1"), entry("ops", "urn:e2")],
       (episode) => !episode || episode === live,
     );
     expect(here.map((r) => r.handle)).toEqual(["growth", "finance"]);
     expect([...elsewhere.keys()]).toEqual(["urn:e1", "urn:e2"]);
-    expect(elsewhere.get("urn:e1")?.map((r) => r.handle)).toEqual(["aligner", "risk"]);
+    expect(elsewhere.get("urn:e1")?.map((r) => r.handle)).toEqual(["conductor", "risk"]);
   });
 
   it("inside a thread, only that thread's turns are here", () => {
     const { here, elsewhere } = splitActivity(
-      [entry("growth", null), entry("aligner", "urn:e1")],
+      [entry("growth", null), entry("conductor", "urn:e1")],
       (episode) => episode === "urn:e1",
     );
-    expect(here.map((r) => r.handle)).toEqual(["aligner"]);
+    expect(here.map((r) => r.handle)).toEqual(["conductor"]);
     expect(elsewhere.get("")?.map((r) => r.handle)).toEqual(["growth"]);
   });
 });

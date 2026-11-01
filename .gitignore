@@ -32,6 +32,10 @@ node_modules/
 .next/
 tsconfig.tsbuildinfo
 next-env.d.ts
+# Next's own files for coding agents: `next dev` writes or removes them by
+# its version and `agentRules`, so they're never ours to commit.
+mycelium-frontend/AGENTS.md
+mycelium-frontend/CLAUDE.md
 pnpm-lock.yaml
 .pnpm-store/
 .docker-dev/

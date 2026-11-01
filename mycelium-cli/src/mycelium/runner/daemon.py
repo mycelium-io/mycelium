@@ -9,7 +9,8 @@ Three loops, each on its own thread:
   folders agents may be started in), the agents it is running, and every agent
   on the machine (``mycelium.machine``'s report), re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``, ``restart``), done one at a time and reported back.
+  ``scan``, ``swarm``, ``restart``, ``rename``), done one at a time and
+  reported back.
 - **sync**: presence up and doorbells down for every agent in a workspace
   bound to a room on this machine, so they hear their turns.
 
@@ -30,8 +31,8 @@ is exactly "start one of the agent CLIs you found, here".
 Even that is asked of the person here first. Anyone who can reach a hub can
 queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
 this machine (``approvals``) unless a device paired here signed it, within
-what the pairing allows (``pairing``), or the runner trusts its hub: the Mac
-app's own hub, which only this machine can reach, or one the person said to
+what the pairing allows (``pairing``), or the runner trusts its hub: the
+desktop app's own hub, which only this machine can reach, or one the person said to
 trust with ``--trust-hub``. Scans and stops don't ask: a scan changes nothing,
 and a stop only ends an agent this machine already agreed to start. A ``pair``
 job doesn't ask either: it carries proof of a code only this machine printed.
@@ -50,8 +51,8 @@ import sys
 import threading
 import time
 import traceback
-from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable, Iterator
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -60,21 +61,71 @@ from urllib.parse import urlparse
 import httpx
 from rich.console import Console
 
-from mycelium import __version__
+from mycelium import __version__, agent_credentials
 from mycelium import machine as this_machine
-from mycelium.client import hub_client
+from mycelium.agent_credentials import MemberTokenRefused, agent_token_env, member_token_path
+from mycelium.client import sent_unparsed, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.integrations import agents
-from mycelium.integrations.herdr import HerdrBridge, HerdrError
+from mycelium.integrations.agents import of_kind
+from mycelium.integrations.herdr import (
+    HerdrBridge,
+    HerdrError,
+    HerdrPaneMapping,
+    herdr_name,
+    session_of,
+)
 from mycelium.runner import approvals, frameworks, pairing
-from mycelium.runner.hosts import AgentHost, HerdrHost, HostError, OmnigentHost
+from mycelium.runner.hosts import (
+    STEP_AGENT,
+    STEP_SHELL,
+    AgentHost,
+    HerdrHost,
+    HostError,
+    OmnigentHost,
+    StartHooks,
+)
 from mycelium.runner.log import failing, log, ms, open_log, recovered
+from mycelium.utils.process import pid_alive
+from mycelium_backend_client import Client
+from mycelium_backend_client.api.auth import whoami_api_whoami_get as whoami_api
+from mycelium_backend_client.api.joins import (
+    create_join_api_rooms_room_name_joins_post as joins_api,
+)
+from mycelium_backend_client.api.memory import (
+    get_memory_api_rooms_room_name_memory_key_get as memory_api,
+)
+from mycelium_backend_client.api.runners import (
+    next_job_api_runners_runner_id_jobs_next_get as next_job_api,
+)
+from mycelium_backend_client.api.runners import (
+    report_job_api_runners_runner_id_jobs_job_id_patch as report_api,
+)
+from mycelium_backend_client.api.runners import (
+    runner_goodbye_api_runners_runner_id_delete as goodbye_api,
+)
+from mycelium_backend_client.api.runners import runner_hello_api_runners_post as hello_api
+from mycelium_backend_client.errors import UnexpectedStatus
+from mycelium_backend_client.models import (
+    JoinCreate,
+    JoinRead,
+    RunnerHello,
+    RunnerJobReport,
+    RunnerJobReportStatus,
+    WhoamiRead,
+)
 
-#: Jobs that start something on this machine, and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart"})
+#: Jobs that start something on this machine, or type into a terminal on it
+#: (``adopt`` introduces an agent someone already has running; ``rename`` ends
+#: one and starts it again under a new handle), and so wait for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "rename"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
+#: How long a paused agent has to stop working before it's told why, and how
+#: often it's checked meanwhile.
+PAUSE_SETTLE_S = 20.0
+PAUSE_POLL_S = 0.5
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
@@ -88,11 +139,20 @@ RETRY_S = 3.0
 SYNC_STALL_S = 30.0
 #: How often the watchdog looks at the sync pass and writes ``sync.json``.
 WATCH_S = 5.0
+#: How often each running agent's token is looked at (``keep_credentials``).
+CREDENTIALS_S = 60.0
+#: A token with less than this left is renewed; the hub's last 30 days.
+RENEW_BEFORE_S = 7 * 24 * 3600.0
+#: How long an agent the hub gave no token is left before it's asked again.
+NO_TOKEN_RETRY_S = 3600.0
 #: A stopped agent is still listed for this long, so the app can start it again.
 KEEP_STOPPED = timedelta(hours=24)
 #: An agent waiting for input this long says how long, so the person knows it
 #: is still waiting; nothing closes it, that is theirs to decide.
 WAITING_LONG = timedelta(minutes=10)
+
+#: herdr's state for an agent being adopted, as a tracked agent's status.
+_ADOPTED_STATUS = {"idle": "idle", "done": "idle", "working": "working", "blocked": "blocked"}
 
 _SLUG = re.compile(r"[^a-z0-9]+")
 #: A UUID-shaped identity: an id, not a handle anyone reads.
@@ -100,7 +160,50 @@ _OPAQUE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 
 
 class JobError(Exception):
-    """A job this runner could not do, said as a sentence for the app to show."""
+    """A job this runner could not do, said as a sentence for the app to show.
+
+    ``result`` goes with the failure to the app: for a start, the step it
+    stopped at and the terminal it left open.
+    """
+
+    def __init__(self, message: str, *, result: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.result = result
+
+
+class _JobStart(StartHooks):
+    """A start the hub asked for: each step is reported on its job, and the wait
+    on the agent runs with the runner's pane lock let go.
+
+    Only for a start running under that lock (``_do_and_report``), which
+    ``unlocked`` gives back and takes again.
+    """
+
+    def __init__(self, runner: Runner, job_id: str) -> None:
+        self._runner = runner
+        self._job_id = job_id
+
+    def step(self, step: str, ref: str | None = None) -> None:
+        # The terminal to look at, never what it shows: that stays on the machine.
+        result = {"step": step, "pane": ref} if ref else {"step": step}
+        self._runner._report(self._job_id, "running", result, None)  # noqa: SLF001 - the job's own report
+
+    def slow_shell(self, ref: str) -> None:
+        # The terminal to look at, never what it shows: that stays on the machine.
+        self._runner._report(  # noqa: SLF001 - the job's own report
+            self._job_id, "running", {"step": STEP_SHELL, "slow": True, "pane": ref}, None
+        )
+
+    @contextlib.contextmanager
+    def unlocked(self) -> Iterator[None]:
+        # The pane is mapped by now, so a sync pass that runs meanwhile can't
+        # take the agent for a new one; it only has to not wait out this start.
+        panes = self._runner._panes  # noqa: SLF001
+        panes.release()
+        try:
+            yield
+        finally:
+            panes.acquire()
 
 
 def runner_dir() -> Path:
@@ -112,12 +215,12 @@ def runner_dir() -> Path:
 # ── registration ──────────────────────────────────────────────────────────────
 #
 # Every runner says it is running the same way, however it was started:
-# `mycelium runner` in a terminal, or the one inside the Mac app's supervisor.
+# `mycelium runner` in a terminal, or the one inside the desktop app's supervisor.
 # `runner.pid` holds the pid of the process it runs in (just the number, which
 # older CLIs read too), and `runner.started-by` beside it says who started it,
 # so a command that would signal that pid knows when it is the app's.
 
-#: Who started a runner: a terminal (`mycelium runner`), or the Mac app.
+#: Who started a runner: a terminal (`mycelium runner`), or the desktop app.
 TERMINAL, APP = "terminal", "app"
 
 _PID, _STARTED_BY = "runner.pid", "runner.started-by"
@@ -130,12 +233,8 @@ def registered(base: Path | None = None) -> tuple[int, str] | None:
         pid = int((folder / _PID).read_text().strip())
     except (OSError, ValueError):
         return None
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not pid_alive(pid):
         return None
-    except PermissionError:
-        pass
     try:
         started_by = (folder / _STARTED_BY).read_text().strip() or TERMINAL
     except OSError:
@@ -175,12 +274,8 @@ def read_sync(path: Path | None = None) -> dict[str, Any] | None:
         return None
     if datetime.now(UTC) - at > timedelta(seconds=WATCH_S * 6):
         return None
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not pid_alive(pid):
         return None
-    except PermissionError:
-        pass
     return body
 
 
@@ -196,6 +291,27 @@ def _stacks() -> str:
 
 def machine_label() -> str:
     return socket.gethostname().removesuffix(".local") or "this machine"
+
+
+def signed_out_message(hub: str) -> str:
+    """What this machine needs when a hub with sign-in on refuses it: the one
+    command that fixes it. The app and ``mycelium doctor`` say this."""
+    return (
+        f"This computer isn't signed in to {hub.rstrip('/')}. "
+        "Run `mycelium login` in a terminal here."
+    )
+
+
+def _token_left(path: Path, now: float) -> float:
+    """Seconds left on the token kept at ``path``; 0 when there's none or it says no expiry."""
+    from mycelium.tokens import decode_claims
+
+    try:
+        token = path.read_text().strip()
+    except OSError:
+        return 0.0
+    expires = decode_claims(token).get("exp") if token else None
+    return float(expires) - now if isinstance(expires, int | float) else 0.0
 
 
 def runner_id(path: Path | None = None) -> str:
@@ -234,13 +350,25 @@ def intro_prompt(
     if has_notes:
         return (
             who + f"Your notes say who you are and how to work: run `mycelium memory get "
-            f"agents/{handle}/notes` and follow them. Then run `mycelium board --room {room}` "
-            f"to see the work. {later}"
+            f"agents/{handle}/notes` and follow them. Then check the board "
+            f"(`mycelium board --room {room}`) for what's going on. {later}"
         )
     return (
-        who + f"Run `mycelium board --room {room}` to see the work. Take something that fits "
-        f"(`mycelium board claim <id> --room {room} --to @{handle}`) and post what you do in "
-        f'its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). {later}'
+        who + f"Check the board (`mycelium board --room {room}`) for what's going on and "
+        "anything assigned to you. Don't take a task nobody gave you; when one is yours, "
+        f"claim it (`mycelium board claim <id> --room {room} --to @{handle}`) and post what "
+        f'you do in its thread (`mycelium board send <id> --room {room} --as {handle} --body "..."`). '
+        f"{later}"
+    )
+
+
+def pause_prompt(by: str, room: str) -> str:
+    """What an agent whose turn a pause stopped is told, so it waits for the resume."""
+    return (
+        f"[mycelium] ⏸ Paused by @{by} from Mycelium (room '{room}'). This isn't a "
+        "correction of your work. Stop where you are and don't start anything new. "
+        "Leave files as they are. Post one line in your task's thread saying where you "
+        "stopped, then wait. You'll get a \"resumed\" message when it's time to continue."
     )
 
 
@@ -264,6 +392,12 @@ class Tracked:
     #: said would help the person answer it.
     waiting_since: str | None = None
     waiting_note: str | None = None
+    #: Already running in its pane before it joined (an ``adopt``), so stopping
+    #: it from the app takes it out of the room but never closes its pane.
+    adopted: bool = False
+    #: Stopped because it exited where it ran, which is still open, so an agent
+    #: started there again (a person restarting it by hand) is it, running again.
+    exited: bool = False
 
     @property
     def live(self) -> bool:
@@ -369,7 +503,7 @@ class Runner:
         self.started_by = started_by
         #: Start what the hub asks without asking here: only for a hub nobody else can reach.
         self.trust_hub = trust_hub
-        #: Told of each question as it is asked (the Mac app shows it as a dialog).
+        #: Told of each question as it is asked (the desktop app shows it as a dialog).
         self.on_request = on_request
         self._requests_base = requests_base
         #: Where the devices paired with this machine are kept (``pairing.folder``).
@@ -402,6 +536,12 @@ class Runner:
         self._panes = threading.Lock()
         self._stop = threading.Event()
         self.connected = False
+        #: The hub has sign-in on and refused this machine's (401): nothing
+        #: here can work until someone signs in on this computer, so the app
+        #: and doctor say that rather than "stopped checking in".
+        self.signed_out = False
+        #: When the last heartbeat got through to the hub, as the runner saw it.
+        self.last_hello_at: str | None = None
         #: ``(number, monotonic start)`` of the sync pass running now, if one is.
         self._pass: tuple[int, float] | None = None
         self._passes = 0
@@ -412,6 +552,13 @@ class Runner:
         self.sync_error: str | None = None
         #: ``{workspace: (room, error)}`` for each binding the last pass couldn't sync.
         self.failing_bindings: dict[str, tuple[str, str]] = {}
+        #: ``{(room, handle): when to ask again}`` for agents the hub gave no token.
+        self._no_token: dict[tuple[str, str], float] = {}
+        #: ``{(room, handle): (can_reply, why)}`` for each agent here the
+        #: runner has a verdict on, sent with every heartbeat.
+        self.can_reply: dict[tuple[str, str], tuple[bool, str | None]] = {}
+        #: ``{(room, handle): when its token was last checked with the hub}``.
+        self._checked: dict[tuple[str, str], float] = {}
 
     # ── what this machine has ────────────────────────────────────────────────
 
@@ -438,6 +585,7 @@ class Runner:
             "sync": self.sync_health(),
             "pairings": [p.wire() for p in pairing.live(base=self._pairings_base)],
             "pairing_offers": pairing.live_offers(base=self._pairings_base),
+            "credentials": self.credentials_report(),
         }
 
     def machine_report(self) -> dict[str, Any] | None:
@@ -474,22 +622,132 @@ class Runner:
             raise JobError(f"{names} can't be restarted: it's running, or nothing says how.")
         return agents
 
+    @contextlib.contextmanager
+    def _panes_let_go(self) -> Iterator[None]:
+        """Let go of the panes while a job waits on an agent coming up, so the
+        sync pass, and the wakes it delivers, don't wait on it. For a job run
+        under the lock (``_do_and_report``), on a pane already mapped."""
+        self._panes.release()
+        try:
+            yield
+        finally:
+            self._panes.acquire()
+
     def restart_agents(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Start stopped agents again, as themselves (``mycelium machine restart``)."""
+        """Start stopped agents again, as themselves (``mycelium machine restart``).
+
+        Says for each which session it came back in: its own, which keeps its
+        conversation, or a new one, and why.
+        """
         restarted: dict[str, str] = {}
+        sessions: dict[str, str | None] = {}
         failed: dict[str, str] = {}
         for agent in self._restartable(spec):
+            resume = agent.session if this_machine.resumes(agent) else None
             try:
                 restarted[agent.handle] = this_machine.restart(
-                    self.config, agent, bridge=self.bridge
+                    self.config, agent, bridge=self.bridge, while_starting=self._panes_let_go()
                 )
             except this_machine.MachineError as e:
                 failed[agent.handle] = str(e)
                 log.warning("restart @%s failed: %s", agent.handle, e)
+                continue
+            sessions[agent.handle] = resume
+            if resume:
+                log.info("restart @%s: in its own session %s", agent.handle, resume)
+            else:
+                why = (
+                    "no session on record"
+                    if not agent.session
+                    else f"{agent.kind} can't resume one"
+                )
+                log.info("restart @%s: in a new session (%s)", agent.handle, why)
         if failed and not restarted:
             raise JobError("; ".join(failed.values()))
-        self.log.print(f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}")
-        return {"restarted": restarted, "failed": failed}
+        kept = sum(1 for s in sessions.values() if s)
+        self.log.print(
+            f"[green]restarted[/green] {', '.join('@' + h for h in restarted)}"
+            f" [dim]({kept} of {len(restarted)} in their own session)[/dim]"
+        )
+        return {"restarted": restarted, "sessions": sessions, "failed": failed}
+
+    def _renamable(self, spec: dict[str, Any]) -> this_machine.Agent:
+        """The agent a ``rename`` job names, read now, with what it takes to start it again."""
+        r = this_machine.report(bridge=self.bridge, machine=self.label, runner=True)
+        try:
+            agent = r.find(str(spec.get("handle")), spec.get("room"))
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        if not agent.folder or not agent.kind:
+            raise JobError(
+                f"@{agent.handle} can't be restarted here: no folder or agent CLI on record."
+            )
+        return agent
+
+    def _go_ahead(self, job_id: str) -> None:
+        """Report a ``rename`` running, which is when the hub renames the agent.
+
+        Raises ``JobError`` when the hub didn't (the name was taken meanwhile, or
+        it can't be reached), so nothing here changes.
+        """
+        report = RunnerJobReport(status=RunnerJobReportStatus.RUNNING, result=None, error=None)
+        try:
+            with self._hub(timeout=15) as client:
+                resp = sent_unparsed(report_api, client, self.id, job_id, body=report)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
+            raise JobError(f"Not renamed: the hub couldn't be reached ({e}).") from e
+        # Only whether the hub failed the job matters here, so only that is read:
+        # a job record shaped differently by a hub a version apart can't stop it.
+        try:
+            job = resp.json()
+        except ValueError:
+            job = {}
+        if isinstance(job, dict) and job.get("status") == "failed":
+            raise JobError(str(job.get("error") or "Not renamed."))
+
+    def rename_agent(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+        """Rename an agent this machine runs: the hub first, then a restart here.
+
+        Called once the person here said yes. The hub renames the agent in the
+        room when this job is reported running (:meth:`_go_ahead`), and only
+        then is the agent touched, so a name taken while it waited leaves it
+        running as it was. A running agent's environment says its old handle
+        and can't be changed, so it is ended (its pane closed) and started
+        again, in its folder, in a pane beside its room's, with the new handle
+        in that pane's environment, and in its own session when its CLI can
+        resume one, so it keeps its conversation. Its mapping (with that
+        session) and its record here move too.
+        """
+        agent = self._renamable(spec)
+        room, old, new = agent.room, agent.handle, str(spec.get("to"))
+        if job_id is not None:
+            self._go_ahead(job_id)
+        # Its tab is named after its agents: say the new name there first, so the
+        # pane it starts in beside them doesn't leave the old one behind.
+        if agent.state != "gone":
+            self.bridge.rename_in_tab(agent.pane, old, new)
+        if agent.state not in ("stopped", "gone"):
+            try:
+                self.bridge.close_pane(agent.pane)
+            except HerdrError as e:
+                raise JobError(f"herdr couldn't end @{old} to restart it: {e}") from e
+            agent = replace(agent, state="gone")
+        self.bridge.registry.remove(room, old)
+        renamed = replace(agent, handle=new)
+        try:
+            pane = this_machine.restart(self.config, renamed, bridge=self.bridge, renamed_from=old)
+        except this_machine.MachineError as e:
+            raise JobError(str(e)) from e
+        with self._lock:
+            tracked = self.state.agents.pop(f"{room}/{old}", None)
+            if tracked is not None:
+                tracked.handle, tracked.pane, tracked.status = new, pane, "starting"
+                self.state.agents[tracked.key] = tracked
+                self.state.save(self._state_path)
+        self.log.print(f"[green]restarted[/green] @{old} as @{new} in {room}")
+        return {"handle": new, "pane": pane}
 
     def owner(self) -> str | None:
         """Whose agents these are: this machine's identity when it reads as a handle.
@@ -514,25 +772,37 @@ class Runner:
     def hello(self) -> bool:
         """Say hello (or heartbeat). ``False`` when the hub could not be reached."""
         self.refresh()
+        body = RunnerHello.from_dict(self.hello_body())
         try:
-            with hub_client(self.config, timeout=10) as client:
-                client.post("/api/runners", json=self.hello_body()).raise_for_status()
-        except httpx.HTTPError as e:
-            if self.connected:
+            with self._hub(timeout=10) as client:
+                # Only its status says anything: an answer a hub a version apart
+                # shapes differently must never stop the heartbeat.
+                resp = sent_unparsed(hello_api, client, body=body)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
+            refused = isinstance(e, UnexpectedStatus) and e.status_code == 401  # noqa: PLR2004
+            if refused and not self.signed_out:
+                log.warning("%s", signed_out_message(self.config.server.api_url))
+                self.log.print(f"[yellow]{signed_out_message(self.config.server.api_url)}[/yellow]")
+            elif self.connected:
                 log.warning("lost the hub at %s: %s", self.config.server.api_url, e)
                 self.log.print(f"[yellow]lost the hub:[/yellow] {e}")
+            self.signed_out = refused
             self.connected = False
             return False
         if not self.connected:
             log.info("connected to %s as %s", self.config.server.api_url, self.id)
             self.log.print(f"[green]connected[/green] to {self.config.server.api_url} as {self.id}")
+        self.signed_out = False
         self.connected = True
+        self.last_hello_at = _now()
         return True
 
     def goodbye(self) -> None:
         try:
-            with hub_client(self.config, timeout=5) as client:
-                client.delete(f"/api/runners/{self.id}")
+            with self._hub(timeout=5) as client:
+                goodbye_api.sync_detailed(self.id, client=client)
         except httpx.HTTPError:
             pass
 
@@ -547,10 +817,14 @@ class Runner:
         body: dict[str, Any] = {"status": status, "result": result, "error": error}
         if paired is not None:
             body["pairing"] = paired
+        report = RunnerJobReport.from_dict(body)
         try:
-            with hub_client(self.config, timeout=10) as client:
-                client.patch(f"/api/runners/{self.id}/jobs/{job_id}", json=body)
-        except httpx.HTTPError as e:
+            with self._hub(timeout=10) as client:
+                # Reported once the hub takes it; what it answers with isn't read.
+                resp = sent_unparsed(report_api, client, self.id, job_id, body=report)
+            if resp.status_code >= 400:  # noqa: PLR2004
+                raise UnexpectedStatus(resp.status_code, resp.content)
+        except (httpx.HTTPError, UnexpectedStatus) as e:
             log.warning("job %s: couldn't report it %s to the hub: %s", job_id, status, e)
             self.log.print(f"[yellow]could not report job {job_id}:[/yellow] {e}")
 
@@ -567,27 +841,47 @@ class Runner:
         changed = False
         with self._lock:
             for key, agent in list(self.state.agents.items()):
-                if agent.status in ("stopped", "failed"):
+                found = live.get(agent.pane)
+                if agent.exited and found is not None:
+                    # Started again where it exited: it's running, as itself.
+                    agent.exited = False
+                    agent.stopped_at = None
+                    changed = True
+                elif agent.status in ("stopped", "failed"):
+                    if agent.exited and not self.host.still_open(agent.pane):
+                        agent.exited = False
+                        agent.detail = self.host.gone_detail
+                        self.host.gone(agent)
+                        changed = True
                     if agent.stopped_at and datetime.fromisoformat(agent.stopped_at) < cutoff:
                         del self.state.agents[key]
                         changed = True
                     continue
-                found = live.get(agent.pane)
-                if found is None:
+                elif found is None:
                     agent.status = "stopped"
-                    agent.detail = self.host.gone_detail
                     agent.stopped_at = _now()
-                    self.host.gone(agent)
+                    # Only a closed pane loses its mapping. A person who quits the
+                    # agent and starts it again in its pane keeps the same member;
+                    # forgetting the pane made the sync pass enroll it as a new one.
+                    if self.host.still_open(agent.pane):
+                        agent.exited = True
+                        agent.detail = self.host.exited_detail
+                    else:
+                        agent.detail = self.host.gone_detail
+                        self.host.gone(agent)
                     changed = True
                     continue
                 before = (agent.status, agent.detail, agent.intro)
+                # Not mid-turn: what herdr reads as idle, or can't read at all.
+                ready = found[0] in ("idle", "running")
                 if found[0] == "blocked":
-                    self._mark_waiting(agent)
+                    self._mark_waiting(agent, self._at_first_run(agent))
+                elif ready and (held := self._at_first_run(agent)):
+                    self._mark_waiting(agent, held)
                 else:
                     agent.status, agent.detail = found
                     agent.waiting_since = agent.waiting_note = None
-                    # Not mid-turn: what herdr reads as idle, or can't read at all.
-                    if found[0] in ("idle", "running"):
+                    if ready:
                         self._hand_intro(agent)
                 if (agent.status, agent.detail, agent.intro) != before:
                     changed = True
@@ -598,8 +892,10 @@ class Runner:
     def framework(self, framework_id: str) -> agents.AgentKind:
         known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
-        if known is None or found is None or not found.installed:
-            raise JobError(f"{framework_id} is not installed on {self.label}.")
+        # One the scan didn't find is still started: herdr types its command at
+        # the person's own prompt, whose PATH may have it.
+        if known is None or found is None:
+            raise JobError(f"{framework_id} is not an agent CLI {self.label} knows.")
         if not found.launchable or known.herdr_kind is None:
             host = self.host.name
             raise JobError(
@@ -621,46 +917,72 @@ class Runner:
         return path
 
     def pane_env(self, room: str, handle: str) -> dict[str, str]:
+        # A host that tells an agent who it is by a join code takes no
+        # environment; the code gives it its token.
+        try:
+            token = {} if self.host.joins else agent_token_env(self.config, room, handle)
+        except MemberTokenRefused as e:
+            # Started anyway, the agent could do nothing on this hub: the
+            # start stops here, before anything opens, and the app says why.
+            raise JobError(e.reason(), result={"why": "signin", "detail": e.reason()}) from e
         return {
             "MYCELIUM_API_URL": self.config.server.api_url,
             "MYCELIUM_AGENT_HANDLE": handle,
             "MYCELIUM_ROOM_ID": room,
+            # Marks the pane as an agent's: the CLI never uses the person's
+            # sign-in here (``caller.in_agent_pane``).
+            "MYCELIUM_AGENT_PANE": handle,
+            # So the agent acts as itself on a hub with auth on: its own token,
+            # in a file (``agent_credentials.issue_member_token``).
+            **token,
         }
 
     def join_code(self, room: str, handle: str) -> str:
         """A join code for ``@handle``, asked of the hub as this machine's owner."""
         try:
-            with hub_client(self.config, timeout=15) as client:
-                resp = client.post(f"/api/rooms/{room}/joins", json={"handle": handle})
+            with self._hub(timeout=15) as client:
+                resp = joins_api.sync_detailed(room, client=client, body=JoinCreate(handle=handle))
         except httpx.HTTPError as e:
             raise JobError(f"couldn't ask the hub for a join code for @{handle}: {e}") from e
-        if resp.status_code != 201:
-            raise JobError(f"the hub wouldn't give a join code for @{handle}: {resp.text[:200]}")
-        return str(resp.json()["code"])
+        if not isinstance(resp.parsed, JoinRead):
+            said = resp.content.decode(errors="replace")[:200]
+            raise JobError(f"the hub wouldn't give a join code for @{handle}: {said}")
+        return resp.parsed.code
 
     def notes(self, room: str, handle: str) -> str | None:
         """An agent's notes as the hub has them, or ``None`` when it has none."""
         try:
-            with hub_client(self.config, timeout=10) as client:
-                resp = client.get(f"/api/rooms/{room}/memory/agents/{handle}/notes")
+            with self._hub(timeout=10) as client:
+                # Only its value is read: notes a hub a version apart shapes
+                # differently are still the agent's notes.
+                resp = sent_unparsed(memory_api, client, room, f"agents/{handle}/notes")
         except httpx.HTTPError:
             return None
-        if resp.status_code != 200 or resp.content in (b"", b"null"):
+        if resp.status_code >= 400 or resp.content in (b"", b"null"):  # noqa: PLR2004
             return None
         try:
             body = resp.json()
         except ValueError:
+            log.warning("@%s's notes in %s couldn't be read: %.200s", handle, room, resp.text)
             return None
         value = body.get("value") if isinstance(body, dict) else None
-        return str(value) if value else None
+        if not value:
+            return None
+        return value if isinstance(value, str) else json.dumps(value)
 
     def has_notes(self, room: str, handle: str) -> bool:
         return self.notes(room, handle) is not None
 
-    def launch(self, spec: dict[str, Any]) -> dict[str, Any]:
-        """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is."""
+    def launch(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+        """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is.
+
+        ``job_id`` is the hub's job when the start runs as one, under the pane
+        lock: its steps are reported on it as they're reached.
+        """
         if not self.herdr:
-            raise JobError(f"{self.host.name} isn't running on {self.label}.")
+            raise JobError(
+                f"{self.host.name} isn't running on {self.label}. Start it, then try again."
+            )
         room, handle = str(spec["room"]), str(spec["handle"])
         known = self.framework(str(spec["framework"]))
         cwd = self.folder(spec.get("cwd"))
@@ -669,6 +991,14 @@ class Runner:
             running = self.state.agents.get(key)
             if running is not None and running.live and self.host.alive(running.pane):
                 return {"pane": running.pane, "already": True}
+        # A CLI that would open on a first-run screen (a sign-in) is told to the
+        # person before anything starts, rather than started into a screen its
+        # introduction and wakes can't get past.
+        if reason := known.not_ready():
+            raise JobError(
+                f"{known.name} can't start on {self.label} yet. {reason}",
+                result={"why": "setup", "detail": reason},
+            )
         if spec.get("worktree") and not self.host.worktrees:
             from mycelium.commands.swarm import SwarmError, member_worktree
 
@@ -690,9 +1020,12 @@ class Runner:
                 cwd=cwd,
                 env=self.pane_env(room, handle),
                 intro=intro,
+                hooks=_JobStart(self, job_id) if job_id else None,
             )
         except HostError as e:
-            raise JobError(f"{self.host.name} could not start {known.name}: {e}") from e
+            seen = next((f for f in self.found if f.id == known.id), None)
+            missing = seen is not None and not seen.installed
+            raise self._start_failed(e, known.name, handle, missing=missing) from e
         agent = Tracked(
             handle=handle,
             room=room,
@@ -704,14 +1037,18 @@ class Runner:
             workspace=started.workspace,
             intro=intro if started.intro_pending else None,
         )
+        self._said_passed(agent, started.passed)
         if agent.status == "blocked":
-            self._mark_waiting(agent)
+            self._mark_waiting(agent, self._at_first_run(agent))
         with self._lock:
             self.state.agents[key] = agent
             self.state.save(self._state_path)
-        result = {"pane": started.ref}
+        result: dict[str, Any] = {"pane": started.ref}
         if started.workspace:
             result["workspace"] = started.workspace
+        if started.passed:
+            # What was answered for the person, for the app to say beside the start.
+            result["passed"] = started.passed
         if agent.status == "blocked":
             result["waiting"] = agent.detail or f"waiting for input on {self.label}"
             self.log.print(
@@ -724,13 +1061,104 @@ class Runner:
             )
         return result
 
-    def _mark_waiting(self, agent: Tracked) -> None:
-        """Say ``agent`` is waiting for input, on which machine, and for how long once that's long."""
-        if agent.waiting_since is None:
-            agent.waiting_since = _now()
-            known = agents.by_id(agent.framework)
-            kind = (known.herdr_kind if known else None) or agent.framework
-            agent.waiting_note = self.host.blocker(agent.pane, kind)
+    def _start_failed(
+        self, e: HostError, name: str, handle: str, *, missing: bool = False
+    ) -> JobError:
+        """A start that didn't come up, said as what happened and what to do next.
+
+        ``missing``: the scan didn't find the CLI here. herdr starts it anyway,
+        since the pane's shell may find what the scan didn't; when no agent then
+        appears on the pane, its shell most likely said there's no such command.
+
+        What the host said stays in the result's ``detail`` and in the log, for
+        whoever is debugging; the sentence is for the person who asked.
+        """
+        from mycelium.commands.swarm import SHELL_WAIT_S
+        from mycelium.integrations.herdr import AgentExitedError, AgentNotReadyError
+
+        where = (
+            f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
+        )
+        # Why, in one word the app picks its guidance by: the shell never got to
+        # a prompt, the agent CLI ran but is showing something of its own, or
+        # the host refused for a reason of its own.
+        if e.step == STEP_SHELL:
+            why = "shell"
+            message = (
+                f"{name} couldn't start on {self.label}: the terminal opened for @{handle} "
+                f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
+                f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
+            )
+        elif e.step == STEP_AGENT and missing and isinstance(e.__cause__, AgentExitedError):
+            why = "missing"
+            message = (
+                f"{name} isn't installed on {self.label}. {where}, showing what its shell "
+                f"said. Install {name} there, then start @{handle} again."
+            )
+        elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
+            # What it printed on the way out is on its screen, which stays on
+            # this machine: the app shows it there, and anyone else is told
+            # where to look.
+            why = "exited"
+            message = (
+                f"{name} exited before it started on {self.label}. {where}, showing "
+                f"what {name} printed: fix that, then start @{handle} again."
+            )
+        elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentNotReadyError):
+            why = "cli"
+            message = (
+                f"{name} didn't finish starting on {self.label}. Often it's waiting for an "
+                f"update, a sign-in or a first-run question. {where}: answer what it shows "
+                f"there, then start @{handle} again."
+            )
+        else:
+            why = "host"
+            message = f"{self.host.name} couldn't start {name} on {self.label}: {e}."
+            if e.ref:
+                message += f" {where}, and starting @{handle} again tries in it once more."
+        result = {
+            "step": e.step,
+            "why": why,
+            "pane": e.ref,
+            "detail": str(e),
+        }
+        return JobError(message, result={k: v for k, v in result.items() if v})
+
+    def _kind_of(self, agent: Tracked) -> str:
+        known = agents.by_id(agent.framework)
+        return (known.herdr_kind if known else None) or agent.framework
+
+    def _at_first_run(self, agent: Tracked) -> str | None:
+        """What a not-yet-introduced ``agent`` waits on at its CLI's first-run screen.
+
+        A screen like Codex's welcome reads as idle to herdr, so an introduction
+        handed over there would be lost. Only looked for while the introduction
+        is still held: one handed over means the agent was past it.
+        """
+        if agent.intro is None:
+            return None
+        passed: list[str] = []
+        waiting = self.host.first_run(agent.pane, self._kind_of(agent), passed)
+        self._said_passed(agent, passed)
+        return waiting
+
+    def _said_passed(self, agent: Tracked, passed: list[str]) -> None:
+        """Say in the runner's log what was answered for the person on the way."""
+        for done in passed:
+            log.info("@%s: %s (%s)", agent.handle, done, agent.cwd)
+            self.log.print(f"[green]{done}[/green] for @{agent.handle}: {agent.cwd}")
+
+    def _mark_waiting(self, agent: Tracked, what: str | None = None) -> None:
+        """Say ``agent`` is waiting for input, on which machine, and for how long once that's long.
+
+        ``what`` is what it waits on, when that's known (a first-run screen).
+        """
+        if agent.waiting_since is None or (
+            what and not (agent.waiting_note or "").startswith(what)
+        ):
+            agent.waiting_since = agent.waiting_since or _now()
+            hint = self.host.blocker(agent.pane, self._kind_of(agent))
+            agent.waiting_note = "\n".join(p for p in (what, hint) if p) or None
         waited = datetime.now(UTC) - datetime.fromisoformat(agent.waiting_since)
         line = f"waiting for input on {self.label}"
         if waited >= WAITING_LONG:
@@ -751,20 +1179,203 @@ class Runner:
         self.log.print(f"[green]introduced[/green] @{agent.handle} → {agent.pane}")
         agent.intro = None
 
+    def _running_in(self, pane: str) -> dict[str, Any]:
+        """The agent herdr has running in ``pane``, or why there isn't one."""
+        if not self.herdr:
+            raise JobError(f"herdr isn't running on {self.label}. Start it, then try again.")
+        running = self.bridge.get_agent(pane)
+        if running is None:
+            raise JobError(f"No agent is running in pane {pane} on {self.label} any more.")
+        return running
+
+    def adopt(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Make an agent already running in a herdr pane ``@handle`` in ``room``, and introduce it.
+
+        Nothing is started: the pane is mapped to the handle (not ``managed``,
+        so closing it doesn't take the member out of the room), and its
+        introduction is typed in once it's idle. The mapping alone is what the
+        runner's sync pass reads for presence and wakes. Its workspace is not
+        bound to the room: binding one enrolls every agent running in it, and
+        the person chose this one.
+        """
+        room, handle, pane = str(spec["room"]), str(spec["handle"]), str(spec["pane"])
+        key = f"{room}/{handle}"
+        with self._lock:
+            tracked = self.state.agents.get(key)
+            if tracked is not None and tracked.live and tracked.pane == pane:
+                return {"pane": pane, "already": True}
+        running = self._running_in(pane)
+        taken = next((m for m in self.bridge.registry.all() if m.pane == pane), None)
+        if taken is not None and (taken.room, taken.handle) != (room, handle):
+            raise JobError(f"Pane {pane} is already @{taken.handle} in {taken.room}.")
+        kind = str(running.get("agent") or spec.get("framework") or "") or None
+        cwd = running.get("foreground_cwd") or running.get("cwd") or spec.get("cwd")
+        self.bridge.registry.set(
+            HerdrPaneMapping(
+                room=room,
+                handle=handle,
+                pane=pane,
+                kind=kind,
+                cwd=cwd,
+                session=session_of(running),
+            )
+        )
+        # herdr shows it by its handle in this room, as every agent the runner
+        # starts; only a label, so one herdr won't take is left as it was.
+        try:
+            self.bridge.rename_agent(pane, herdr_name(room, handle))
+        except HerdrError as e:
+            log.info("adopt %s: couldn't name it in herdr: %s", pane, e)
+        workspace = str(running.get("workspace_id") or "") or None
+        try:
+            agent = Tracked(
+                handle=handle,
+                room=room,
+                framework=kind or "claude",
+                pane=pane,
+                cwd=cwd,
+                started_at=_now(),
+                status=_ADOPTED_STATUS.get(str(running.get("agent_status") or ""), "running"),
+                workspace=workspace,
+                intro=intro_prompt(room, handle, has_notes=self.has_notes(room, handle)),
+                adopted=True,
+            )
+            if agent.status == "blocked":
+                self._mark_waiting(agent)
+            elif agent.status == "idle" and (held := self._at_first_run(agent)):
+                self._mark_waiting(agent, held)
+            elif agent.status == "idle":
+                self._hand_intro(agent)
+            with self._lock:
+                self.state.agents[key] = agent
+                self.state.save(self._state_path)
+        except Exception as e:
+            # A failed adopt makes the hub take the member back, so let go of the pane too.
+            self.bridge.registry.remove(room, handle)
+            with self._lock:
+                self.state.agents.pop(key, None)
+            raise JobError(f"Couldn't bring in the agent in pane {pane}: {e}") from e
+        self.log.print(f"[green]adopted[/green] {pane} as @{handle} in {room}")
+        result: dict[str, Any] = {"pane": pane, "introduced": agent.intro is None}
+        if workspace:
+            result["workspace"] = workspace
+        return result
+
     def stop_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
         key = f"{spec['room']}/{spec['handle']}"
         with self._lock:
             agent = self.state.agents.get(key)
             if agent is None:
-                raise JobError(f"{self.label} isn't running @{spec['handle']} in {spec['room']}.")
-            self.host.stop(agent)
+                return self._stop_mapped(str(spec["room"]), str(spec["handle"]))
+            if agent.adopted:
+                # It was running before it joined: let go of it, never close its pane.
+                self.host.gone(agent)
+            else:
+                self.host.stop(agent)
             agent.status = "stopped"
+            agent.exited = False
             agent.detail = "stopped from the app"
             agent.stopped_at = _now()
             self.host.release(self.state)
             self.state.save(self._state_path)
         self.log.print(f"[yellow]stopped[/yellow] @{agent.handle} in {agent.room}")
         return {"pane": agent.pane}
+
+    def _stop_mapped(self, room: str, handle: str) -> dict[str, Any]:
+        """Stop an agent bound to a room here that this runner didn't start.
+
+        Its turn is interrupted, then its pane closed. The mapping stays, no
+        longer ``managed``: a managed member whose pane closes is retired from
+        the room by the sync pass, and a stop is not a removal, so it stays a
+        member that can be restarted.
+        """
+        mapping = self.bridge.registry.get(room, handle)
+        if mapping is None:
+            raise JobError(f"Nothing on {self.label} is running @{handle} in {room}.")
+        host = self.host if isinstance(self.host, HerdrHost) else HerdrHost(self.bridge)
+        try:
+            host.interrupt(mapping.pane, mapping.kind)
+        except HostError as e:
+            log.info("stop @%s: couldn't interrupt %s first: %s", handle, mapping.pane, e)
+        if mapping.managed:
+            self.bridge.registry.set(replace(mapping, managed=False))
+        try:
+            self.bridge.close_pane(mapping.pane)
+        except HerdrError as e:
+            raise JobError(f"herdr couldn't close @{handle}'s pane {mapping.pane}: {e}") from e
+        self.log.print(f"[yellow]stopped[/yellow] @{handle} in {room} ({mapping.pane})")
+        return {"pane": mapping.pane}
+
+    def _running(self, room: str, handle: str) -> tuple[AgentHost, str, str | None]:
+        """The host, ref and kind of ``handle`` in ``room`` running on this machine.
+
+        One this runner started is on its own host; any other agent bound to a
+        room here is in a herdr pane (``mycelium machine`` lists them).
+        """
+        tracked = self.state.agents.get(f"{room}/{handle}")
+        if tracked is not None and tracked.live:
+            return self.host, tracked.pane, tracked.framework
+        mapping = self.bridge.registry.get(room, handle)
+        if mapping is None:
+            raise JobError(f"Nothing on {self.label} is running @{handle} in {room}.")
+        host = self.host if isinstance(self.host, HerdrHost) else HerdrHost(self.bridge)
+        return host, mapping.pane, mapping.kind
+
+    def interrupt_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent mid-turn with its CLI's own key, keeping its session.
+
+        For an ``@!`` mention. Only a working agent is sent the key; what it is
+        told is the wake the hub queued, which the sync pass delivers once it is
+        idle.
+        """
+        room, handle = str(spec["room"]), str(spec["handle"])
+        host, ref, kind = self._running(room, handle)
+        try:
+            sent = host.interrupt(ref, kind)
+        except HostError as e:
+            raise JobError(str(e)) from e
+        said = "interrupted" if sent else "left alone (not working)"
+        self.log.print(f"[yellow]{said}[/yellow] @{handle} in {room}")
+        return {"pane": ref, "interrupted": sent}
+
+    def pause_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop a working agent's turn and tell it this is a pause, not a correction.
+
+        The hub already holds its wakes. A working agent is sent its CLI's own
+        key, then, once it has settled, the pause message: without it a bare
+        interrupt reads as "the person stopped me", and the agent waits for a
+        person rather than for the resume. An idle agent has no turn to stop and
+        is told nothing, since typing into an idle pane could land in what a
+        person was writing there; its next wake is the resume.
+        """
+        room, handle = str(spec["room"]), str(spec["handle"])
+        by = str(spec.get("by") or "") or "its owner"
+        host, ref, kind = self._running(room, handle)
+        try:
+            sent = host.interrupt(ref, kind)
+        except HostError as e:
+            raise JobError(str(e)) from e
+        told = False
+        if sent and self._settled(host, ref):
+            try:
+                host.wake(ref, pause_prompt(by.lstrip("@"), room))
+                told = True
+            except HostError as e:
+                log.warning("pause @%s: couldn't tell it in %s: %s", handle, ref, e)
+        said = "paused" if sent else "paused (it was idle)"
+        self.log.print(f"[yellow]{said}[/yellow] @{handle} in {room}")
+        return {"pane": ref, "interrupted": sent, "told": told}
+
+    def _settled(self, host: AgentHost, ref: str) -> bool:
+        """Wait, up to :data:`PAUSE_SETTLE_S`, for an interrupted agent to stop working."""
+        deadline = time.monotonic() + PAUSE_SETTLE_S
+        while time.monotonic() < deadline:
+            statuses = host.statuses() or {}
+            status = statuses.get(ref, ("gone", None))[0]
+            if status != "working":
+                return status in {"idle", "running"}
+            time.sleep(PAUSE_POLL_S)
+        return False
 
     def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
         """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
@@ -785,6 +1396,11 @@ class Runner:
         known = self.framework(str(spec["framework"]))
         cwd = self.folder(spec.get("cwd"))
         me = created_by or self.owner() or "web-ui"
+        if reason := known.not_ready():
+            raise JobError(
+                f"{known.name} can't start on {self.label} yet. {reason}",
+                result={"why": "setup", "detail": reason},
+            )
         try:
             local = start_local(
                 self.config,
@@ -798,7 +1414,7 @@ class Runner:
                 write_manifests=False,
                 carry={"MYCELIUM_API_URL": self.config.server.api_url},
             )
-            with hub_client(self.config, timeout=30) as client:
+            with self._hub(timeout=30) as client:
                 brief_local(client, self.bridge, room, local, key, task, me)
                 if spec.get("kickoff", True):
                     kick_off(client, room, episode, team, task, me)
@@ -865,6 +1481,9 @@ class Runner:
     def _within(self, paired: pairing.Pairing, job: dict[str, Any], fields: dict[str, Any]) -> None:
         """Refuse unless ``fields`` are ``job``'s and the pairing covers them."""
         kind, spec = job.get("kind"), job.get("spec") or {}
+        if kind == "adopt":
+            # Nothing here checks its pane or handle: always ask.
+            raise pairing.Refused("bringing in a running agent is always asked")
         different = pairing.Refused("the signed request doesn't match the job")
         if kind == "restart":
             agents = [
@@ -912,9 +1531,15 @@ class Runner:
     def do(self, job: dict[str, Any]) -> dict[str, Any]:
         kind, spec = job.get("kind"), job.get("spec") or {}
         if kind == "launch":
-            return self.launch(spec)
+            return self.launch(spec, job_id=str(job["id"]) if job.get("id") else None)
+        if kind == "adopt":
+            return self.adopt(spec)
         if kind == "stop":
             return self.stop_agent(spec)
+        if kind == "interrupt":
+            return self.interrupt_agent(spec)
+        if kind == "pause":
+            return self.pause_agent(spec)
         if kind == "scan":
             found = self.scan()
             return {"installed": [f.id for f in found if f.installed]}
@@ -922,6 +1547,8 @@ class Runner:
             return self.swarm(spec, job.get("created_by"))
         if kind == "restart":
             return self.restart_agents(spec)
+        if kind == "rename":
+            return self.rename_agent(spec, job_id=str(job["id"]) if job.get("id") else None)
         if kind == "pair":
             return self.pair(spec)
         raise JobError(f"this runner doesn't know how to do '{kind}'; update mycelium here.")
@@ -936,16 +1563,90 @@ class Runner:
         kind, spec = job.get("kind"), job.get("spec") or {}
         hub = urlparse(self.config.server.api_url).netloc or self.config.server.api_url
         asked_by = job.get("created_by")
+        if kind == "rename":
+            agent = self._renamable(spec)
+            old, new = agent.handle, str(spec.get("to"))
+            running = agent.state not in ("stopped", "gone")
+            kept = (
+                "in its own session, keeping its conversation, and is told its new name"
+                if this_machine.resumes(agent)
+                else "in a new session, so it doesn't keep its conversation, and catches up "
+                "from the room"
+            )
+            return {
+                "kind": kind,
+                "title": f"Restart @{old} as @{new} on {self.label}?",
+                "message": (
+                    f"@{old} was renamed @{new} in {agent.room}. "
+                    + ("Its pane closes, ending what it's doing, and " if running else "")
+                    + f"{agent.kind} starts again in {_tilde(Path(str(agent.folder)))} as @{new}, "
+                    f"{kept}.\n\n"
+                    f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+                ),
+                "hub": hub,
+                "asked_by": asked_by,
+            }
         if kind == "restart":
             agents = self._restartable(spec)
             lines = "\n".join(this_machine.restart_command(a) for a in agents)
             n = len(agents)
+            # Said first and plainly when a conversation won't be kept.
+            lost = [a for a in agents if not this_machine.resumes(a)]
+            if not lost:
+                kept = (
+                    "It comes back in its own session and keeps its conversation:"
+                    if n == 1
+                    else "Each comes back in its own session and keeps its conversation:"
+                )
+            elif n == 1:
+                kept = (
+                    "It comes back in a new session, so its conversation won't be kept. "
+                    "It catches up from the room:"
+                )
+            elif len(lost) == n:
+                kept = (
+                    "Each comes back in a new session, so their conversations won't be kept. "
+                    "They catch up from the room:"
+                )
+            else:
+                names = [f"@{a.handle}" for a in lost]
+                who = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+                kept = (
+                    f"{who} comes back in a new session and won't keep its conversation; "
+                    "the rest keep theirs:"
+                    if len(lost) == 1
+                    else f"{who} come back in new sessions and won't keep their conversations; "
+                    "the rest keep theirs:"
+                )
             return {
                 "kind": kind,
                 "title": f"Restart {n} agent{'s' if n != 1 else ''} on {self.label}?",
                 "message": (
-                    f"Each starts again as itself and catches up from the room:\n{lines}\n\n"
+                    f"{kept}\n{lines}\n\n"
                     f"Asked for by {'@' + asked_by if asked_by else 'someone'} on {hub}."
+                ),
+                "hub": hub,
+                "asked_by": asked_by,
+            }
+        if kind == "adopt":
+            room, handle, pane = (
+                str(spec.get("room")),
+                str(spec.get("handle")),
+                str(spec.get("pane")),
+            )
+            running = self._running_in(pane)
+            name = of_kind(running.get("agent") or spec.get("framework")).name or "agent"
+            folder = running.get("foreground_cwd") or running.get("cwd")
+            return {
+                "kind": kind,
+                "title": f"Bring the {name} in pane {pane} into {room} as @{handle}?",
+                "message": (
+                    f"It's already running on {self.label}"
+                    + (f", in {_tilde(Path(folder))}" if folder else "")
+                    + f". Mycelium would make that pane @{handle} in {room}, and type a short "
+                    "introduction into it once it's idle.\n\n"
+                    f"Room {room} on {hub}. Asked for by "
+                    f"{'@' + asked_by if asked_by else 'someone on that hub'}."
                 ),
                 "hub": hub,
                 "asked_by": asked_by,
@@ -986,6 +1687,12 @@ class Runner:
                 args=(job,),
                 name=f"runner-job-{job_id}",
                 daemon=True,
+            ).start()
+            return
+        if job.get("kind") == "pause":
+            # It waits for the agent to settle, and "pause my agents" sends several.
+            threading.Thread(
+                target=self._do_and_report, args=(job,), name=f"runner-job-{job_id}", daemon=True
             ).start()
             return
         self._do_and_report(job)
@@ -1061,8 +1768,16 @@ class Runner:
             with self._panes:
                 result = self.do(job)
         except JobError as e:
-            log.warning("job %s %s failed %dms: %s", job_id, kind, ms(started), e)
-            self._report(job_id, "failed", None, str(e), paired)
+            detail = (e.result or {}).get("detail")
+            log.warning(
+                "job %s %s failed %dms: %s%s",
+                job_id,
+                kind,
+                ms(started),
+                e,
+                f" ({detail})" if detail else "",
+            )
+            self._report(job_id, "failed", e.result, str(e), paired)
             self.log.print(f"[red]job {job_id} failed:[/red] {e}")
         except Exception as e:  # noqa: BLE001 - a job must always be reported
             log.exception("job %s %s failed %dms", job_id, kind, ms(started))
@@ -1076,25 +1791,43 @@ class Runner:
     def poll_once(self) -> bool:
         """One long-poll; ``False`` when the hub could not be reached or forgot this runner."""
         try:
-            with hub_client(self.config, timeout=POLL_S + 15) as client:
-                resp = client.get(f"/api/runners/{self.id}/jobs/next", params={"timeout": POLL_S})
+            with self._hub(timeout=POLL_S + 15) as client:
+                # Unparsed: the hub hands a job out when it's polled, so a job
+                # this runner's model can't read must still reach ``take``, which
+                # refuses a kind it doesn't know in words, rather than be lost.
+                resp = sent_unparsed(next_job_api, client, self.id, timeout=POLL_S)
         except httpx.HTTPError:
             return False
-        if resp.status_code == 404:
+        if resp.status_code == 404:  # noqa: PLR2004
             # The hub restarted, or dropped this runner: say hello again.
             return self.hello()
-        if resp.status_code == 204 or not resp.content:
+        if resp.status_code == 204 or not resp.content:  # noqa: PLR2004
             return True
-        if resp.status_code >= 400:
+        if resp.status_code >= 400:  # noqa: PLR2004
             return False
-        self.take(resp.json())
+        try:
+            job = resp.json()
+        except ValueError:
+            log.warning(
+                "a job from the hub wasn't JSON, so it couldn't be taken: %.200s", resp.text
+            )
+            return True
+        self.take(job)
         return True
+
+    def _hub(self, *, timeout: float) -> Client:
+        """The typed client to the hub, as this machine's owner. A status the
+        route doesn't declare comes back as the response, not raised."""
+        return typed_client(self.config, timeout=timeout, raise_on_unexpected_status=False)
 
     # ── loops ────────────────────────────────────────────────────────────────
 
     def _heartbeat_loop(self) -> None:
         while not self._stop.wait(HEARTBEAT_S):
-            self.hello()
+            try:
+                self.hello()
+            except Exception as e:  # noqa: BLE001 - nothing may end the heartbeat
+                log.exception("heartbeat failed, trying again next beat: %s", e)
 
     def _sync_loop(self) -> None:
         while not self._stop.wait(SYNC_S):
@@ -1165,12 +1898,142 @@ class Runner:
             _stacks(),
         )
 
+    def keep_credentials(self, *, now: float | None = None) -> None:
+        """Give every agent running in herdr here a token of its own, and keep it fresh.
+
+        An agent reads the token from the file its pane's agent names
+        (``caller.pane_token``), so one started before agents were given
+        tokens, or one herdr restored without its environment, has one after
+        this runs, with no restart. A token is renewed a week before it
+        expires. The hub gives one only to whoever owns the agent, so another
+        person's agent here, or a hub with sign-in off, is asked again an
+        hour later rather than every minute. A computer that isn't signed in
+        is asked every round, so signing in is all it takes.
+
+        What it learns is each agent's verdict (:attr:`can_reply`), sent with
+        every heartbeat so the room shows an agent that can't reply and why. A
+        token is checked with the hub when it's issued or renewed, and hourly,
+        so one the hub stopped accepting is found too.
+        """
+        if self.host.name != "herdr" or not self.herdr:
+            return
+        now = time.time() if now is None else now
+        try:
+            live = {str(a["pane_id"]) for a in self.bridge.list_agents() if a.get("pane_id")}
+        except HerdrError:
+            return
+        here = {(m.room, m.handle) for m in self.bridge.registry.all() if m.pane in live}
+        # An agent whose pane closed has nothing to say about replying.
+        for gone in set(self.can_reply) - here:
+            del self.can_reply[gone]
+        for room, handle in sorted(here):
+            key = (room, handle)
+            path = member_token_path(room, handle)
+            left = _token_left(path, now)
+            if left > RENEW_BEFORE_S:
+                if now - self._checked.get(key, 0.0) >= NO_TOKEN_RETRY_S:
+                    self._check_token(key, path, now)
+                continue
+            if self._no_token.get(key, 0.0) > now:
+                continue
+            try:
+                got = agent_credentials.issue_member_token(self.config, room, handle)
+            except MemberTokenRefused as e:
+                log.info("no token for @%s in %s: %s", handle, room, e.reason())
+                if left <= 0:
+                    # A renewal refused while its token still has days left
+                    # changes nothing yet: that token still works.
+                    self.can_reply[key] = (False, self._cant_reply(e))
+                if e.signed_out:
+                    # This computer isn't signed in: asked again next round, so
+                    # its agents have tokens a minute after `mycelium login`.
+                    continue
+                got = None
+            if got is None:
+                self._no_token[key] = now + NO_TOKEN_RETRY_S
+                # With sign-in off there's no token to run out, and nothing to say.
+                if path.exists() and left <= 0 and key not in self.can_reply:
+                    self.can_reply[key] = (
+                        False,
+                        f"Its token ran out and couldn't be renewed ({self.label}).",
+                    )
+                continue
+            self._no_token.pop(key, None)
+            log.info("gave @%s in %s a token of its own", handle, room)
+            self._check_token(key, got, now)
+
+    def _cant_reply(self, refused: MemberTokenRefused) -> str:
+        if refused.signed_out:
+            return f"This computer isn't signed in to the hub ({self.label})."
+        return f"The hub won't give it a token for whoever {self.label} is signed in as."
+
+    def _check_token(self, key: tuple[str, str], path: Path, now: float) -> None:
+        """Ask the hub who the token at ``path`` is, as that token: it works for
+        this agent, it's someone else's, or the hub refused it. A hub that can't
+        be asked leaves the verdict alone."""
+        try:
+            token = path.read_text().strip()
+            # As the agent, not this machine: its token replaces the owner's.
+            as_agent = self._hub(timeout=10).with_headers({"Authorization": f"Bearer {token}"})
+            with as_agent as client:
+                resp = whoami_api.sync_detailed(client=client)
+        except (OSError, httpx.HTTPError, ValueError, KeyError, TypeError):
+            return
+        self._checked[key] = now
+        if resp.status_code == 401:  # noqa: PLR2004
+            self.can_reply[key] = (False, f"The hub refused its token ({self.label}).")
+            return
+        if not isinstance(resp.parsed, WhoamiRead):
+            return
+        said = resp.parsed.handle or ""
+        handle = key[1]
+        if said and said.lstrip("@").lower() != handle.lstrip("@").lower():
+            # Every write would be refused as the wrong handle.
+            self.can_reply[key] = (
+                False,
+                f"Its token is for @{said.lstrip('@')}, not @{handle} ({self.label}).",
+            )
+            return
+        self.can_reply[key] = (True, None)
+
+    def credentials_report(self) -> list[dict[str, Any]]:
+        """Each agent's verdict, for the heartbeat."""
+        return [
+            {"room": room, "handle": handle, "can_reply": ok, "why": why}
+            for (room, handle), (ok, why) in sorted(self.can_reply.items())
+        ]
+
+    def _credentials_loop(self) -> None:
+        while True:
+            try:
+                self.keep_credentials()
+            except Exception:  # noqa: BLE001 - the next round tries again
+                log.exception("keeping agents' tokens failed")
+            if self._stop.wait(CREDENTIALS_S):
+                return
+
+    def local_report(self) -> dict[str, Any]:
+        """What the watchdog writes to ``sync.json`` (:func:`read_sync`): how the
+        sync pass is doing, and whether the hub hears this runner, as the runner
+        knows it. True whoever reads it, where the hub shows a runner only to
+        its owner."""
+        return {
+            "pid": os.getpid(),
+            "at": _now(),
+            **self.sync_health(),
+            "hub": {
+                "url": self.config.server.api_url,
+                "connected": self.connected,
+                "signed_out": self.signed_out,
+                "last_heartbeat_at": self.last_hello_at,
+            },
+        }
+
     def _watch_loop(self) -> None:
         while not self._stop.wait(WATCH_S):
             self.watch()
             try:
-                body = {"pid": os.getpid(), "at": _now(), **self.sync_health()}
-                self._sync_path.write_text(json.dumps(body) + "\n")
+                self._sync_path.write_text(json.dumps(self.local_report()) + "\n")
             except OSError as e:
                 failing(log, "sync.json", f"couldn't write {self._sync_path}: {e}")
 
@@ -1179,7 +2042,7 @@ class Runner:
 
         The registration is what `mycelium machine`, `runner pair` and
         `herdr sync` read, so a runner counts as running however it was
-        started, the Mac app's included.
+        started, the desktop app's included.
         """
         register(self.started_by, self._state_path.parent)
         try:
@@ -1201,6 +2064,9 @@ class Runner:
             self.config.server.api_url,
             ", ".join(str(r) for r in self.roots),
         )
+        # Writing down how it's doing starts now, so a runner still trying to
+        # reach the hub says so to `runner status` and doctor.
+        threading.Thread(target=self._watch_loop, name="runner-watchdog", daemon=True).start()
         while not self.hello():
             self.log.print(
                 f"[dim]hub not reachable at {self.config.server.api_url}; retrying…[/dim]"
@@ -1210,11 +2076,16 @@ class Runner:
         for name, loop in (
             ("runner-heartbeat", self._heartbeat_loop),
             ("runner-sync", self._sync_loop),
-            ("runner-watchdog", self._watch_loop),
+            ("runner-credentials", self._credentials_loop),
         ):
             threading.Thread(target=loop, name=name, daemon=True).start()
         while not self._stop.is_set():
-            if not self.poll_once():
+            try:
+                polled = self.poll_once()
+            except Exception as e:  # noqa: BLE001 - one job it can't read must not end the runner
+                log.exception("a job poll failed, polling again: %s", e)
+                polled = False
+            if not polled:
                 self._stop.wait(RETRY_S)
         self.goodbye()
         log.info("runner %s stopped", self.id)

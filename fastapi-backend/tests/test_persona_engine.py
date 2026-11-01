@@ -19,6 +19,7 @@ import pytest
 import yaml
 
 from app.services import message_format, persona_engine
+from app.services.asks import MENTION_ETIQUETTE
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.message_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
@@ -123,7 +124,8 @@ async def test_it_answers_in_character_where_it_was_asked(monkeypatch: pytest.Mo
     )
 
     assert reply == "No rollback plan, so no."
-    assert seen[0]["system"] == "You are the security reviewer."
+    # Its character, then what a bare @ does, which every hub-run member is told.
+    assert seen[0]["system"] == f"You are the security reviewer.\n\n{MENTION_ETIQUETTE}"
     assert "rotate the key in place" in seen[0]["prompt"]
     assert "in a task's thread" in seen[0]["prompt"]
     env, text = _posted(managed)[0]
@@ -164,15 +166,16 @@ async def test_in_a_task_it_is_told_what_the_team_agreed(monkeypatch: pytest.Mon
 
 
 @pytest.mark.asyncio
-async def test_it_never_puts_a_sigil_in_front_of_a_name(monkeypatch: pytest.MonkeyPatch):
+async def test_what_it_says_is_posted_as_it_said_it(monkeypatch: pytest.MonkeyPatch):
+    # A mention in it asks whoever it names, by the same rule as anyone's.
     _register("sec", "persona")
-    _patch_pi(monkeypatch, "Ask @api to add a canary first, @julia.")
+    _patch_pi(monkeypatch, "Ask @api to add a canary first, @~julia.")
     engine, managed = _engine()
 
     reply = await engine.answer(_ROOM, engine_handle="sec", sender="julia", text="thoughts?")
 
-    assert reply == "Ask api to add a canary first, julia."
-    assert "@" not in _posted(managed)[0][1]
+    assert reply == "Ask @api to add a canary first, @~julia."
+    assert _posted(managed)[0][1] == reply
 
 
 @pytest.mark.asyncio
@@ -198,12 +201,32 @@ async def test_pi_error_and_empty_answer_are_said_plainly(monkeypatch: pytest.Mo
         raise RuntimeError("pi exploded")
 
     monkeypatch.setattr(persona_engine, "_pi_complete", boom)
+    # A hub with a model set, so the failure reads as a failure, not as no model.
+    monkeypatch.setattr(persona_engine.settings, "LLM_API_KEY", "sk-ant-test")
     assert await engine.answer(_ROOM, engine_handle="sec", text="hi") is None
     assert "timed out or errored" in _posted(managed)[0][1]
 
     monkeypatch.setattr(persona_engine, "_pi_complete", lambda *_a: "  \n")
     assert await engine.answer(_ROOM, engine_handle="sec", text="hi") is None
     assert "empty response" in _posted(managed)[1][1]
+
+
+@pytest.mark.asyncio
+async def test_a_hub_with_no_model_says_where_to_set_one(monkeypatch: pytest.MonkeyPatch):
+    from app.services.engines_model import NO_MODEL_TEXT
+
+    _register("sec", "persona")
+    engine, managed = _engine()
+
+    def boom(*_a: Any) -> str:
+        raise RuntimeError("pi: no API key")
+
+    monkeypatch.setattr(persona_engine, "_pi_complete", boom)
+    monkeypatch.setattr(persona_engine.settings, "LLM_API_KEY", None)
+    monkeypatch.setattr(persona_engine.settings, "LLM_BASE_URL", None)
+    assert await engine.answer(_ROOM, engine_handle="sec", text="hi") is None
+    assert _posted(managed)[0][1] == NO_MODEL_TEXT
+    assert "Engines' model" in NO_MODEL_TEXT
 
 
 # ── the two seams ──────────────────────────────────────────────────────────────

@@ -26,8 +26,8 @@ enough.
 
 ## Only what's new
 
-Each time you ask, it reads only the messages since the last summary and folds
-them into what it already has. If nothing new has been said, it doesn't write
+Each time you ask, it reads only the messages since the last summary and adds
+what's new to the existing summary. If nothing new has been said, it doesn't write
 anything.
 
 To start over from the whole conversation, put `--all` in the message itself.

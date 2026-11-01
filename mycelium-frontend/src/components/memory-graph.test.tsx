@@ -392,7 +392,7 @@ describe("<MemoryGraph />", () => {
       await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
       await userEvent.click(screen.getByRole("button", { name: /hide decisions/i }));
 
-      expect(screen.getByText(/nothing to show/i)).toBeInTheDocument();
+      expect(screen.getByText("Every namespace is hidden")).toBeInTheDocument();
     });
 
     it("reports each toggle's state to assistive tech", async () => {

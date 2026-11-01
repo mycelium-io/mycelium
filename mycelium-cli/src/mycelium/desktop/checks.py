@@ -15,15 +15,16 @@ from __future__ import annotations
 
 import json
 import shutil
-from pathlib import Path
+import sys
 from typing import Any
 
 import httpx
 
+from mycelium.caller import desktop_settings_path
 from mycelium.desktop.supervisor import HOST, HUB_PORT, SLIM_PORT, UI_PORT, Locator, port_open
 from mycelium.ui_status import CheckResult
 
-SETTINGS = Path.home() / ".mycelium" / "desktop.json"
+SETTINGS = desktop_settings_path()
 
 
 def settings() -> dict[str, Any] | None:
@@ -36,7 +37,7 @@ def settings() -> dict[str, Any] | None:
 
 
 def app_hub() -> bool:
-    """Whether the Mac app runs this machine's hub: set up, and not joining one elsewhere."""
+    """Whether the desktop app runs this machine's hub: set up, and not joining one elsewhere."""
     s = settings()
     return s is not None and s.get("mode") != "client"
 
@@ -53,11 +54,11 @@ def app_setting() -> CheckResult:
             name="Desktop app",
             status="warning",
             message="not set up yet",
-            details=["Open Mycelium and choose how this Mac takes part."],
+            details=["Open Mycelium and choose how this computer takes part."],
         )
     if s.get("mode") == "client":
         return CheckResult(name="Desktop app", status="ok", message=f"joins {s.get('hubUrl')}")
-    return CheckResult(name="Desktop app", status="ok", message="runs a hub on this Mac")
+    return CheckResult(name="Desktop app", status="ok", message="runs a hub on this computer")
 
 
 def slim_node() -> CheckResult:
@@ -81,13 +82,9 @@ def _get(url: str, timeout: float = 3.0) -> httpx.Response | None:
 
 
 def hub(api_url: str) -> CheckResult:
-    base = api_url.rstrip("/")
-    resp = _get(f"{base}/health")
-    # A hub reached at its UI's address answers only under /api, where the UI
-    # maps /api/health onto the hub's /health.
-    if resp is not None and resp.status_code == 404:
-        resp = _get(f"{base}/api/health")
-    if resp is not None and resp.status_code == 200:
+    from mycelium.hub_check import health
+
+    if health(api_url).status_code == 200:  # noqa: PLR2004
         return CheckResult(name="Hub", status="ok", message=f"answering at {api_url}")
     return CheckResult(
         name="Hub",
@@ -109,21 +106,21 @@ def hubs_here(*, client: bool = False) -> CheckResult:
     listed = [h.describe() for h in found]
     if not found:
         return CheckResult(
-            name="Hubs on this Mac",
+            name="Hubs on this computer",
             status="info" if client else "error",
             message="none running",
         )
     if client:
         # Joined elsewhere: a hub here gets nothing from the app.
         return CheckResult(
-            name="Hubs on this Mac",
+            name="Hubs on this computer",
             status="info",
             message=f"{len(found)} running, not used by the app",
             details=listed,
         )
     there = at_port(found, HUB_PORT)
     if not said:
-        return CheckResult(name="Hubs on this Mac", status="ok", message=listed[0])
+        return CheckResult(name="Hubs on this computer", status="ok", message=listed[0])
     fix = []
     if there is not None:
         stop = (
@@ -137,7 +134,7 @@ def hubs_here(*, client: bool = False) -> CheckResult:
         )
         fix.append(f"To use Mycelium's own hub: {stop}, then reopen Mycelium.")
     return CheckResult(
-        name="Hubs on this Mac",
+        name="Hubs on this computer",
         status="warning",
         message=said[0],
         details=[*said[1:], *listed, *fix],
@@ -152,19 +149,71 @@ def ui() -> CheckResult:
 
 
 def runner(api_url: str) -> CheckResult:
-    from mycelium.runner.daemon import runner_id
+    from mycelium.client import auth_headers, sent_unparsed, typed_client
+    from mycelium.config import MyceliumConfig
+    from mycelium.runner.daemon import read_sync, runner_dir, runner_id, signed_out_message
+    from mycelium_backend_client.api.runners import get_runner_api_runners_runner_id_get
 
     rid = runner_id()
-    resp = _get(f"{api_url.rstrip('/')}/api/runners/{rid}")
+    # The running runner's own word first: true whoever runs the check, where
+    # the hub shows a runner only to its owner (an agent's pane isn't).
+    hub = (read_sync() or {}).get("hub")
+    if isinstance(hub, dict):
+        if hub.get("connected"):
+            return CheckResult(name="Runner", status="ok", message=f"connected as {rid}")
+        if hub.get("signed_out"):
+            return CheckResult(
+                name="Runner",
+                status="error",
+                message="this computer isn't signed in to the hub",
+                details=[signed_out_message(api_url)],
+            )
+        return CheckResult(
+            name="Runner",
+            status="error",
+            message="running, but can't reach the hub",
+            details=[f"It keeps trying; its log says why: {runner_dir() / 'runner.log'}"],
+        )
+    cfg = MyceliumConfig.load()
+    resp: httpx.Response | None
+    try:
+        # Asked as this machine, the way the runner itself asks: a hub with
+        # sign-in on answers nobody else about it. The app's hub is this
+        # machine's, so its credential goes whichever address the app names.
+        client = typed_client(
+            cfg, base_url=api_url.rstrip("/"), timeout=3.0, raise_on_unexpected_status=False
+        )
+        with client.with_headers(auth_headers(cfg)) as client:
+            # Unparsed: only whether it's connected is read, so a runner record
+            # a hub a version apart shapes differently still answers that.
+            resp = sent_unparsed(get_runner_api_runners_runner_id_get, client, rid)
+    except httpx.HTTPError:
+        resp = None
+    if resp is not None and resp.status_code == 401:
+        return CheckResult(
+            name="Runner",
+            status="error",
+            message="this computer isn't signed in to the hub",
+            details=[signed_out_message(api_url)],
+        )
     if resp is None or resp.status_code == 404:
         return CheckResult(
             name="Runner",
             status="error",
-            message="the hub hasn't heard from this Mac",
+            message="the hub hasn't heard from this computer",
             details=["Without it the app can't start agents here."],
         )
-    seen = resp.json()
-    if not seen.get("connected"):
+    if resp.status_code >= 400:  # noqa: PLR2004
+        return CheckResult(
+            name="Runner", status="error", message=f"the hub answered {resp.status_code}"
+        )
+    try:
+        seen = resp.json()
+    except ValueError:
+        return CheckResult(
+            name="Runner", status="error", message="the hub's answer couldn't be read"
+        )
+    if not isinstance(seen, dict) or not seen.get("connected"):
         return CheckResult(name="Runner", status="error", message="stopped checking in")
     return CheckResult(name="Runner", status="ok", message=f"connected as {rid}")
 
@@ -237,6 +286,20 @@ def herdr() -> CheckResult:
             details=[fix, "`mycelium machine` says which agents that stops."],
         )
     version = server or client
+    from mycelium.desktop import herdr_server
+    from mycelium.desktop.supervisor import STALE_HERDR_WARNING
+
+    if herdr_server.stale(Locator().app_herdr()) is not None:
+        return CheckResult(
+            name="herdr",
+            status="warning",
+            message="running from before Mycelium was updated",
+            details=[
+                STALE_HERDR_WARNING,
+                herdr_server.agents_after_restart(),
+                "Restart it with `mycelium desktop restart-herdr`.",
+            ],
+        )
     return CheckResult(
         name="herdr", status="ok", message=f"running{f' ({version})' if version else ''}"
     )
@@ -278,7 +341,9 @@ def on_path() -> CheckResult:
         message=f"missing: {', '.join(missing)}",
         details=[
             "Agents run these commands, so they must be on PATH.",
-            'Add this to your shell profile: export PATH="$HOME/.local/bin:$PATH"',
+            "Open Mycelium again, which adds its folder to your PATH, then open a new terminal."
+            if sys.platform == "win32"
+            else 'Add this to your shell profile: export PATH="$HOME/.local/bin:$PATH"',
         ],
     )
 
@@ -290,7 +355,7 @@ def pi() -> CheckResult:
     return CheckResult(
         name="Pi",
         status="warning",
-        message="not found; engines like the aligner can't think without it",
+        message="not found; engines like personas and workers can't think without it",
         details=["Reinstall Mycelium, or: npm install -g @earendil-works/pi-coding-agent"],
     )
 
@@ -317,8 +382,8 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
         services.append(slim_node())
     services.append(hub(api_url) if api_url else app_setting())
     services.append(hubs_here(client=client))
-    if not client:
-        services.append(ui())
+    # The app's own UI runs in both modes; a joined hub is reached through it.
+    services.append(ui())
     if api_url:
         services.append(runner(api_url))
     agents = [herdr(), agent_clis(), on_path()]
@@ -326,4 +391,5 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
         agents.append(paired)
     if not client:
         agents.append(embedding_model())
-    return [("This Mac", services), ("Agents", agents)]
+    here = "This Mac" if sys.platform == "darwin" else "This computer"
+    return [(here, services), ("Agents", agents)]

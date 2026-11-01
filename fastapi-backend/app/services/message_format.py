@@ -38,7 +38,7 @@ SUBPROTOCOL_MYCELIUM = "mycelium"
 
 # The handle mycelium's *backend itself* speaks as inside envelopes — genuine
 # system messages (plan-updated events, joins, knowledge distillation, aborts),
-# not a coordination engine. A registered engine (e.g. the aligner) signs its own
+# not a coordination engine. A registered engine (e.g. the conductor) signs its own
 # envelopes with its engine handle; only messages with no engine author fall back
 # to this. Matches the sender_handle used for coordination system messages.
 SYSTEM_ACTOR_ID = "system"
@@ -47,9 +47,9 @@ SYSTEM_ACTOR_ROLE = "coordinator"
 # ``exchange`` move subkinds: the closed vocabulary a coordination reply carries
 # so a negotiation move is explicit on the wire (countable, replayable) instead
 # of inferred from prose. ``counter`` is any offer (the opening one included);
-# ``accept``/``reject`` respond to the standing offer. The mediator emits exactly
-# these (``mediator.interpret``). A reply with no subkind stays valid, so replies
-# predating this vocabulary round-trip unchanged.
+# ``accept``/``reject`` respond to the standing offer. No hub engine emits these
+# today. A reply with no subkind stays valid, so replies predating this
+# vocabulary round-trip unchanged.
 EXCHANGE_MOVE_SUBKINDS = frozenset({"counter", "accept", "reject"})
 
 # An ``exchange:amend`` revises an earlier message: its ``message.parents``
@@ -79,7 +79,7 @@ LIVE_SESSION = "live"
 #: a thread moved, carrying no echo of what was said. It sits beside
 #: ``presence``/``keepalive`` as a control payload — deliberately not chat, and
 #: deliberately not an addressed turn, so it surfaces activity without waking
-#: anyone (:func:`app.routes.participate._addressed_to`).
+#: anyone (:func:`app.services.asks.asks`).
 PING_PAYLOAD_TYPE = "ping"
 
 #: The payload type of a **notice**: the room's timeline of what happened to its
@@ -99,9 +99,40 @@ NOTICE_PAYLOAD_TYPE = "notice"
 #: ``by`` names the holder who stopped renewing it. ``floor`` says whose turn it
 #: is in a thread (:mod:`app.services.floor`): ``key`` is the thread's short id,
 #: ``by`` the holder, ``speakers`` the comma-joined handles it was given to, and
-#: ``released`` marks the floor opening back up.
+#: ``released`` marks the floor opening back up. ``upstream`` says the thing a
+#: row points at changed outside the room (a pull request's review or CI moved,
+#: or it merged): ``change`` is one of :data:`UPSTREAM_CHANGES`, and nobody but
+#: the status watcher (:mod:`app.services.status.watch`) raises it. ``check`` is
+#: about a message, not a task: the verifier (:mod:`app.services.verifier`)
+#: couldn't confirm a claim in it, and ``message_id`` names the message.
 NOTICE_SUBKINDS = frozenset(
-    {"filed", "claimed", "released", "resolved", "blocked", "unblocked", "expired", "floor"}
+    {
+        "filed",
+        "claimed",
+        "released",
+        "resolved",
+        "blocked",
+        "unblocked",
+        "expired",
+        "quiet",
+        "floor",
+        "upstream",
+        "check",
+    }
+)
+
+#: What an ``upstream`` notice can say happened, frozen beside the subkinds.
+UPSTREAM_CHANGES = frozenset(
+    {
+        "opened",
+        "review_requested",
+        "approved",
+        "changes_requested",
+        "ci_failed",
+        "ci_passed",
+        "merged",
+        "closed",
+    }
 )
 
 

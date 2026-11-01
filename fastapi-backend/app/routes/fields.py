@@ -24,6 +24,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.schemas import FieldsRead, refusals
 from app.services import actor, fields
 from app.services.filesystem import room_exists
 
@@ -53,20 +54,29 @@ class WriteBody(BaseModel):
             "Assignment keys are refused: those move through /assignments."
         ),
     )
+    reassign: bool = Field(
+        False,
+        description=(
+            "Give the row to a new assignee even though someone else holds it. "
+            "Without it, changing the assignee of a held row is refused (409)."
+        ),
+    )
 
 
-@router.post("")
+@router.post("", response_model=FieldsRead, responses=refusals(403, 404, 409, 422))
 async def write_fields(room_name: str, body: WriteBody, request: Request):
     """Put fields on a row, through the canonical memory upsert."""
     _require_room(room_name)
     handle = actor.bind_delegated_actor(request, room_name, body.handle, field="handle")
     try:
-        return await fields.write(room_name, body.key, dict(body.fields), handle)
+        return await fields.write(
+            room_name, body.key, dict(body.fields), handle, reassign=body.reassign
+        )
     except fields.FieldError as e:
         raise _fail(e) from e
 
 
-@router.get("/{key:path}")
+@router.get("/{key:path}", response_model=FieldsRead, responses=refusals(404))
 async def read_fields(room_name: str, key: str):
     """A row's writable fields, without changing anything."""
     _require_room(room_name)

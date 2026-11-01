@@ -7,8 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Where a registered engine runs its NEGMAS drive. Paired with the CLI's
-# ``engine.runtime`` — flip both together.
+# Where a registered engine runs: on this backend, or on a host that owns it.
 EngineRuntime = Literal["backend", "host"]
 
 # What the synthesizer distills. Messages → memory is the direction that moves
@@ -91,6 +90,28 @@ class Settings(BaseSettings):
     # The largest file a room takes as an upload (routes/uploads.py), in bytes.
     UPLOADS_MAX_BYTES: int = 25 * 1024 * 1024
 
+    # Voice (services/voice.py): speech from the app's mic, transcribed here
+    # with Silero VAD through sherpa-onnx. Off unless the operator turns it on
+    # (`voice.enabled` in config.toml; the Mac app's own switch). VOICE_MODEL
+    # picks the speech model: `fast` (Moonshine v2, ~150 MB on disk and a ~500 MB
+    # worker while anyone talks) or `accurate` (Parakeet TDT 0.6B v2, ~630 MB
+    # and ~1.4 GB), read when the hub starts. The models are files in
+    # VOICE_MODEL_DIR (empty means <data dir>/models/voice), fetched once when
+    # VOICE_DOWNLOAD allows. VOICE_THREADS is the CPU threads one decode may use.
+    VOICE_ENABLED: bool = False
+    VOICE_MODEL: str = "fast"
+    VOICE_MODEL_DIR: str = ""
+    VOICE_DOWNLOAD: bool = True
+    VOICE_THREADS: int = 2
+    # Reading notifications aloud (services/speech.py): the app asks the hub,
+    # and the hub asks this OpenAI-style speech server, which the operator
+    # runs. Empty, the app doesn't offer it. MODEL, VOICE and API_KEY are sent
+    # only when set.
+    VOICE_SPEECH_URL: str = ""
+    VOICE_SPEECH_MODEL: str = ""
+    VOICE_SPEECH_VOICE: str = ""
+    VOICE_SPEECH_API_KEY: str = ""
+
     # Metrics collector (for proxying /api/observability/collector and /traces)
     COLLECTOR_URL: str = "http://mycelium-collector:4318"
 
@@ -117,37 +138,17 @@ class Settings(BaseSettings):
     # so the CLI mirror agrees without config coupling.
     SLIM_IDENTITY: str = "psk"
 
-    # SIEP aligner — the first cognition engine. Dormant by default:
-    # nothing runs until the reserved handle is @-summoned on a room channel.
-    # A reserved handle is how a summon of the engine is told apart from an
-    # @-mention of a normal teammate.
+    # The retired aligner's usual handle. A mention of it in a room with no
+    # member by that name is answered with what to run instead
+    # (``retired_aligner.py``), as is a summon of a manifest of kind aligner.
     ALIGNER_HANDLE: str = "aligner"
-    # MPC at/above this converges; below rejects (mirrors the old CFN
-    # validation-intervention default of 0.6).
-    ALIGNER_THRESHOLD: float = 0.6
-    # Driver round cap — a hard bound so the loop always terminates.
-    ALIGNER_MAX_ROUNDS: int = 3
-    # Per-round wait for participant replies before scoring what arrived.
-    ALIGNER_ROUND_TIMEOUT_S: float = 30.0
-    # How often the driver polls the transcript for round replies.
-    ALIGNER_POLL_INTERVAL_S: float = 0.2
-    # Mediator — hard cap on NEGMAS SAO steps (one agent turn each) so
-    # the negotiation always terminates even if agreement is never reached. Set
-    # well above the participant count so several proposer rotations can happen
-    # (spike used 20).
-    ALIGNER_MEDIATOR_MAX_STEPS: int = 20
-    # Pre-negotiation term check — one cheap LLM session call over the opening positions
-    # looking for a word two agents use in different senses, and one clarifying
-    # round when it finds any. On by default: a room that shares its vocabulary
-    # pays a single call and negotiates exactly as before. Off skips the check.
-    ALIGNER_TERM_CHECK: bool = True
-    # Mediator LLM session runtime — the cognitive engine behind the SAO
-    # mediator, an *internal* agent — always a persistent, optionally
-    # OpenShell-sandboxed `pi -p --session <id> --mode json` session that gives the
-    # internal agent real memory across SAO rounds (the anti-theater property).
-    # This is ONLY the runtime for mycelium's own cognition engines; user/participant
-    # agent runtimes (claude_code, cursor, …) are untouched and keep their own runtime.
-    # Path/name of the `pi` binary the mediator LLM session runs.
+    # The engines' LLM session runtime: every model call an engine makes is a
+    # `pi -p --mode json` run, optionally OpenShell-sandboxed. This is ONLY the
+    # runtime for mycelium's own engines; user/participant agent runtimes
+    # (claude_code, cursor, …) are untouched and keep their own runtime. The
+    # names keep the ALIGNER_ prefix of the engine that introduced them, so an
+    # existing `.env` keeps working.
+    # Path/name of the `pi` binary the engines run.
     ALIGNER_PI_BINARY: str = "pi"
     # Wrap each pi session in an OpenShell sandbox when true. Off by default:
     # `openshell` may not be installed and the sandbox path is a live-validation
@@ -169,7 +170,7 @@ class Settings(BaseSettings):
     TELEMETRY_OTLP_ENDPOINT: str = ""
     # Whether the hub shares its usage events (app/services/analytics.py). The
     # hub records them either way; this sends them to the destination below.
-    # Asked at interactive install and on the Mac app's first-run screen.
+    # Asked at interactive install and on the desktop app's first-run screen.
     TELEMETRY_SEND_PRODUCT_ANALYTICS: bool = False
     # Where shared usage events are POSTed: HTTPS, or plain HTTP to this machine.
     TELEMETRY_ANALYTICS_DESTINATION: str = ""
@@ -190,7 +191,7 @@ class Settings(BaseSettings):
     HEALTH_AWAIT_P95_THRESHOLD_MS: float = 60000.0
     HEALTH_SEARCH_P95_THRESHOLD_MS: float = 500.0
     # Synthesizer engine (kind ``synthesizer``) — distills a room's transcript
-    # into a ``knowledge`` memory. Dormant by default like the aligner: nothing
+    # into a ``knowledge`` memory. Dormant by default like every engine: nothing
     # runs until a registered synthesizer engine is @-summoned. Reuses the shared
     # LLM_* + ALIGNER_PI_* Pi runtime settings; only its own handle default,
     # per-turn timeout and corpus source live here.
@@ -208,6 +209,19 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_synthesizer_source(cls, v: object) -> object:
         return v.strip().lower() if isinstance(v, str) else v
+
+    # Verifier engine (kind ``verifier``) — checks what agents say about
+    # approvals and merges against the room's records and adds a line under a
+    # message whose claim doesn't hold. Off for the whole hub until turned on, and
+    # then it reads only the rooms that added it. Reuses the shared LLM_* +
+    # ALIGNER_PI_* Pi runtime for its last step.
+    VERIFIER_ENABLED: bool = False
+    VERIFIER_HANDLE: str = "verifier"
+    # Whether the hub's model reads the thread before a flag is shown. Off, the
+    # records step alone decides: cheaper, and noisier.
+    VERIFIER_CONFIRM: bool = True
+    # Per-call wall-clock bound (seconds) on that one-shot pi call.
+    VERIFIER_PI_TIMEOUT_S: float = 60.0
 
     # Hello engine (kind ``hello``) — answers a summon with one Pi turn and
     # writes nothing anywhere: the cheap proof that the whole engine path works
@@ -248,6 +262,16 @@ class Settings(BaseSettings):
     WORKER_PI_TIMEOUT_S: float = 600.0
     WORKER_MAX_TURNS_PER_ROOM: int = 60
 
+    # Schedules (services/schedules.py) — an agent's recurring check-in, fired
+    # by the hub. How often the hub looks for due ones, the shortest interval a
+    # schedule may have, how many one agent may hold in a room, and how long one
+    # lasts before it has to be renewed (by default, and at most).
+    SCHEDULE_TICK_S: float = 30.0
+    SCHEDULE_MIN_INTERVAL_S: int = 300
+    SCHEDULE_MAX_PER_AGENT: int = 5
+    SCHEDULE_DEFAULT_TTL_DAYS: float = 7.0
+    SCHEDULE_MAX_TTL_DAYS: float = 30.0
+
     # Pattern packs (routes/patterns.py) — scenarios a visitor can load as a room.
     # Set in config.toml under [patterns] (dir, allow_inline, personas_only); `.env`
     # carries them here, and compose mounts the folder and points PATTERNS_DIR at it.
@@ -273,13 +297,10 @@ class Settings(BaseSettings):
     CONDUCTOR_POLL_INTERVAL_S: float = 0.2
     CONDUCTOR_MAX_STEPS: int = 24
 
-    # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
-    # the engine runtime. "backend" (default):
-    # this backend owns the run via its summon seam. "host": the host daemon owns
-    # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
-    # for a registered engine or the negotiation double-runs. The reserved
-    # ALIGNER_HANDLE fallback always runs backend-side (it has no host manifest).
-    # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
+    # Where a registered `engine` runs. "backend" (default): this backend owns
+    # the run via its summon seam. "host": a host owns it (the engine runs where
+    # `pi` lives), so `handle_summon` must NOT also fire for a registered engine
+    # or the run happens twice.
     ENGINE_RUNTIME: EngineRuntime = "backend"
 
     @field_validator("ENGINE_RUNTIME", mode="before")

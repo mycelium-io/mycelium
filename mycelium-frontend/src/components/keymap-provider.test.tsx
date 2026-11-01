@@ -7,12 +7,13 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { KeyBadge } from "@/components/key-badge";
 import { KeymapProvider, useKeyAction, useKeyScope } from "@/components/keymap-provider";
+import { setDesktopApp } from "@/lib/keymap";
 
 function Room({ onPane }: { onPane: (id: string) => void }) {
   useKeyScope("room");
   useKeyAction("pane.channel", () => onPane("channel"));
   useKeyAction("pane.board", () => onPane("board"));
-  return <KeyBadge action="pane.network" />;
+  return <KeyBadge action="pane.schedules" />;
 }
 
 function Composer() {
@@ -48,6 +49,38 @@ describe("<KeymapProvider />", () => {
 
     await user.keyboard("c");
     expect(onPane).not.toHaveBeenCalled();
+  });
+
+  it("leaves Enter and Space to a focused button, and takes Enter elsewhere", async () => {
+    const chat = vi.fn();
+    const pressed = vi.fn();
+    const user = userEvent.setup();
+
+    function RoomWithButton() {
+      useKeyScope("room");
+      useKeyAction("focus.chat", () => chat());
+      return (
+        <button type="button" onClick={pressed}>
+          Open
+        </button>
+      );
+    }
+
+    render(
+      <KeymapProvider>
+        <RoomWithButton />
+      </KeymapProvider>,
+    );
+
+    screen.getByRole("button", { name: "Open" }).focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    expect(pressed).toHaveBeenCalledTimes(2);
+    expect(chat).not.toHaveBeenCalled();
+
+    (document.activeElement as HTMLElement).blur();
+    await user.keyboard("{Enter}");
+    expect(chat).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a room binding inert outside a room", async () => {
@@ -105,6 +138,26 @@ describe("<KeymapProvider />", () => {
     expect(find).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves the key alone when the action says it had nothing to do", () => {
+    let tabs = 1;
+    function Dock() {
+      useKeyScope("room");
+      useKeyAction("tab.close", () => (tabs > 0 ? (tabs -= 1, true) : false));
+      return null;
+    }
+    render(
+      <KeymapProvider>
+        <Dock />
+      </KeymapProvider>,
+    );
+    const press = () => fireEvent.keyDown(document.body, { key: "w", altKey: true });
+
+    // A tab closed: the key was taken.
+    expect(press()).toBe(false);
+    // Nothing left to close: the key goes on (in the desktop app, to the window).
+    expect(press()).toBe(true);
+  });
+
   it("reveals each target's key while the modifier is held, and hides it on release", async () => {
     const user = userEvent.setup();
     render(
@@ -115,7 +168,7 @@ describe("<KeymapProvider />", () => {
 
     expect(document.querySelector("[data-key-badge]")).toBeNull();
     await user.keyboard("{Alt>}");
-    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("N");
+    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("K");
     await user.keyboard("{/Alt}");
     expect(document.querySelector("[data-key-badge]")).toBeNull();
   });
@@ -201,6 +254,72 @@ describe("<KeymapProvider />", () => {
     // Focus is on document.body — a backdrop click, not a dismissal.
     await user.keyboard("{Alt>}c{/Alt}");
     expect(onPane).not.toHaveBeenCalled();
+  });
+
+  it("keeps the app's ⌘W from the window under a dialog and mid-composition", () => {
+    const close = vi.fn();
+    function Dock() {
+      useKeyScope("room");
+      useKeyAction("tab.close", close);
+      return null;
+    }
+    setDesktopApp(true);
+    try {
+      const { rerender } = render(
+        <KeymapProvider>
+          <Dock />
+        </KeymapProvider>,
+      );
+      // jsdom is not a Mac, so `mod` is Ctrl. False: the default was prevented.
+      const press = (init: KeyboardEventInit = {}) =>
+        fireEvent.keyDown(document.body, { key: "w", ctrlKey: true, ...init });
+
+      expect(press({ isComposing: true })).toBe(false);
+      expect(close).not.toHaveBeenCalled();
+
+      rerender(
+        <KeymapProvider>
+          <Dock />
+          <div role="dialog" aria-label="Add a member" />
+        </KeymapProvider>,
+      );
+      // Half way through a dialog: neither the tab nor the window closes.
+      expect(press()).toBe(false);
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      setDesktopApp(false);
+    }
+  });
+
+  it("picks the room's views with ⌘1 to ⌘5 in the desktop app, from the composer too, and leaves them to a browser", () => {
+    const onPane = vi.fn();
+    const tree = (
+      <KeymapProvider>
+        <Room onPane={onPane} />
+        <Composer />
+      </KeymapProvider>
+    );
+    // jsdom is not a Mac, so `mod` is Ctrl.
+    const press = (key: string) => fireEvent.keyDown(document.activeElement ?? document.body, { key, ctrlKey: true });
+
+    // A browser keeps ⌘1 to ⌘9 for its own tabs.
+    const { unmount } = render(tree);
+    press("3");
+    expect(onPane).not.toHaveBeenCalled();
+    unmount();
+
+    setDesktopApp(true);
+    try {
+      render(tree);
+      press("3");
+      expect(onPane).toHaveBeenLastCalledWith("board");
+      // A ⌘ chord isn't a character, so it reaches the room from the composer.
+      screen.getByRole("textbox", { name: "Message" }).focus();
+      press("1");
+      expect(onPane).toHaveBeenLastCalledWith("channel");
+    } finally {
+      setDesktopApp(false);
+    }
   });
 
   it("refuses to register outside a provider, rather than silently doing nothing", () => {

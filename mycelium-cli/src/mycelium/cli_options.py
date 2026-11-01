@@ -240,21 +240,26 @@ def in_room(
 
 
 def acts_as(
-    param: str = "handle", *, fallback: str | None = "cli-user"
+    param: str = "handle", *, fallback: str | None = "cli-user", optional: bool = False
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """``--as``/``--handle``/``-H``, never required. Resolved to who is acting
     (``identity.resolve_actor``'s order); when nothing says, ``fallback``, or
-    with ``fallback=None`` an error asking for one (a reply must have a sender)."""
+    with ``fallback=None`` an error asking for one (a reply must have a sender).
+    ``optional`` leaves it None instead, for a command that decides itself."""
 
     def decorate(fn: Callable[..., Any]) -> Callable[..., Any]:
         option = _option(param, str | None, None, ACT_FLAGS, ACT_HELP)
 
         def before(kwargs: dict[str, Any], _extras: dict[str, Any], _ctx: Any) -> None:
             from mycelium.config import MyceliumConfig
+            from mycelium.identity import resolve_actor
 
-            kwargs[param] = resolve_handle(
-                MyceliumConfig.load(), kwargs.get(param), fallback=fallback
-            )
+            config = MyceliumConfig.load()
+            if optional:
+                acting = resolve_actor(config, kwargs.get(param), require=False, fallback="")
+                kwargs[param] = acting or None
+                return
+            kwargs[param] = resolve_handle(config, kwargs.get(param), fallback=fallback)
 
         return rewrite(fn, replace={param: option}, before=before)
 

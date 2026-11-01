@@ -12,14 +12,14 @@ summon binds in order. It is what the composer reads to help write
 
 from fastapi import APIRouter, HTTPException
 
-from app.schemas import ProtocolSummary
+from app.schemas import ProtocolSummary, refusals
 from app.services import protocols
 from app.services.filesystem import room_exists
 
 router = APIRouter(prefix="/rooms/{room_name}/protocols", tags=["protocols"])
 
 
-@router.get("", response_model=list[ProtocolSummary])
+@router.get("", response_model=list[ProtocolSummary], responses=refusals(404))
 async def list_protocols(room_name: str) -> list[ProtocolSummary]:
     """The flows a summon in this room can name."""
     if not room_exists(room_name):

@@ -37,4 +37,8 @@ magick "$NETWORK" \
   -resize 1200x300 \
   "$OUT"
 
+# Lossless: CI fails a PNG that oxipng could still shrink by more than 10%.
+OUT="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
+(cd "$DIR/../mycelium-frontend" && npm run -s optimize-png -- "$OUT")
+
 echo "Banner written to $OUT"

@@ -26,21 +26,23 @@ from typer.testing import CliRunner
 from mycelium.commands import agent as agent_cmd
 from mycelium.commands import engine as engine_cmd
 from mycelium.protocol import AgentManifest
+from mycelium_backend_client.types import Response
+from tests.hub_answers import ok, posted, refused
 
 runner = CliRunner()
 
 STAMP = datetime.datetime(2026, 6, 1, 12, 30, tzinfo=datetime.UTC)
 
 MEMORY_LIST_SYNC = (
-    "mycelium_backend_client.api.memory.list_memories_api_rooms_room_name_memory_get.sync"
+    "mycelium_backend_client.api.memory.list_memories_api_rooms_room_name_memory_get.sync_detailed"
 )
 MEMORY_GET_SYNC = (
-    "mycelium_backend_client.api.memory.get_memory_api_rooms_room_name_memory_key_get.sync"
+    "mycelium_backend_client.api.memory.get_memory_api_rooms_room_name_memory_key_get.sync_detailed"
 )
-ROOMS_LIST_SYNC = "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync"
-MESSAGE_SEND_SYNC = (
-    "mycelium_backend_client.api.messages.send_message_api_rooms_room_name_messages_post.sync"
-)
+ROOMS_LIST_SYNC = "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed"
+MESSAGE_SEND_SYNC = "mycelium_backend_client.api.messages.send_message_api_rooms_room_name_messages_post.sync_detailed"
+#: The hub's answer to a key it doesn't have.
+NOT_FOUND = refused(404, "Memory not found")
 
 
 @pytest.fixture(autouse=True)
@@ -60,17 +62,9 @@ def _manifest_yaml(handle: str, **fields: Any) -> str:
     return yaml.safe_dump(manifest.model_dump(exclude={"handle"}), sort_keys=False)
 
 
-def _record(key: str, body: str) -> dict[str, Any]:
-    """A memory as the hub's (untyped) list endpoint serializes it."""
-    return {
-        "key": key,
-        "value": body,
-        "content_text": body,
-        "created_by": "tester",
-        "version": 1,
-        "created_at": STAMP.isoformat(),
-        "updated_at": STAMP.isoformat(),
-    }
+def _record(key: str, body: str):  # noqa: ANN202
+    """A memory as the hub's list endpoint answers it."""
+    return _memory_read(key, body)
 
 
 def _memory_read(key: str, body: str):  # noqa: ANN202
@@ -90,14 +84,19 @@ def _memory_read(key: str, body: str):  # noqa: ANN202
 
 
 def _stub(monkeypatch: pytest.MonkeyPatch, target: str, outcome: Any) -> list[dict[str, Any]]:
-    """Script one generated ``.sync``; returns the list of calls it received."""
+    """Script one generated ``.sync_detailed``; returns the list of calls it received.
+
+    ``outcome`` is what the hub parses to (answered as a 200), a whole
+    ``Response``, an exception to raise, or a callable giving one of those.
+    """
     calls: list[dict[str, Any]] = []
 
     def _sync(**kwargs: Any):
         calls.append(kwargs)
         if isinstance(outcome, Exception):
             raise outcome
-        return outcome(**kwargs) if callable(outcome) else outcome
+        answer = outcome(**kwargs) if callable(outcome) else outcome
+        return answer if isinstance(answer, Response) else ok(answer)
 
     monkeypatch.setattr(target, _sync)
     return calls
@@ -222,7 +221,9 @@ def test_agent_show_resolves_manifest_and_notes_from_the_hub(
     _stub(
         monkeypatch,
         MEMORY_GET_SYNC,
-        lambda **kw: _memory_read(kw["key"], bodies[kw["key"]]) if kw["key"] in bodies else None,
+        lambda **kw: (
+            _memory_read(kw["key"], bodies[kw["key"]]) if kw["key"] in bodies else NOT_FOUND
+        ),
     )
 
     result = runner.invoke(agent_cmd.app, ["show", "echo", "--room", "demo"])
@@ -241,7 +242,9 @@ def test_agent_show_json_after_the_command_prints_the_manifest_and_notes(
     _stub(
         monkeypatch,
         MEMORY_GET_SYNC,
-        lambda **kw: _memory_read(kw["key"], bodies[kw["key"]]) if kw["key"] in bodies else None,
+        lambda **kw: (
+            _memory_read(kw["key"], bodies[kw["key"]]) if kw["key"] in bodies else NOT_FOUND
+        ),
     )
 
     result = runner.invoke(agent_cmd.app, ["show", "echo", "--room", "demo", "--json"])
@@ -257,24 +260,26 @@ def test_agent_and_engine_ls_take_json_after_the_command(monkeypatch: pytest.Mon
         monkeypatch,
         MEMORY_LIST_SYNC,
         [
-            _record("agents/aligner", _manifest_yaml("aligner", adapter="engine", kind="aligner")),
+            _record(
+                "agents/conductor", _manifest_yaml("conductor", adapter="engine", kind="conductor")
+            ),
             _record("agents/echo", _manifest_yaml("echo")),
         ],
     )
 
     agents = runner.invoke(agent_cmd.app, ["ls", "--room", "demo", "--json"])
     assert agents.exit_code == 0, agents.output
-    assert {a["handle"] for a in json.loads(agents.stdout)} == {"aligner", "echo"}
+    assert {a["handle"] for a in json.loads(agents.stdout)} == {"conductor", "echo"}
 
     engines = runner.invoke(engine_cmd.app, ["ls", "--room", "demo", "--json"])
     assert engines.exit_code == 0, engines.output
-    assert [e["handle"] for e in json.loads(engines.stdout)] == ["aligner"]
+    assert [e["handle"] for e in json.loads(engines.stdout)] == ["conductor"]
 
 
 def test_agent_show_reports_a_missing_agent_the_hub_doesnt_have(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub(monkeypatch, MEMORY_GET_SYNC, None)
+    _stub(monkeypatch, MEMORY_GET_SYNC, NOT_FOUND)
 
     result = runner.invoke(agent_cmd.app, ["show", "ghost", "--room", "demo"])
     assert result.exit_code == 1
@@ -283,7 +288,7 @@ def test_agent_show_reports_a_missing_agent_the_hub_doesnt_have(
 
 def test_agent_invoke_resolves_the_handle_from_the_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub(monkeypatch, MEMORY_GET_SYNC, _memory_read("agents/echo", _manifest_yaml("echo")))
-    sends = _stub(monkeypatch, MESSAGE_SEND_SYNC, None)
+    sends = _stub(monkeypatch, MESSAGE_SEND_SYNC, lambda **kw: posted(kw["body"]))
     monkeypatch.setattr(agent_cmd, "_is_resident", lambda *_a, **_k: False)
 
     result = runner.invoke(
@@ -301,6 +306,10 @@ def test_engine_ls_lists_engines_the_hub_serves(monkeypatch: pytest.MonkeyPatch)
         monkeypatch,
         MEMORY_LIST_SYNC,
         [
+            _record(
+                "agents/conductor", _manifest_yaml("conductor", adapter="engine", kind="conductor")
+            ),
+            # A room made before the aligner was retired still lists it.
             _record("agents/aligner", _manifest_yaml("aligner", adapter="engine", kind="aligner")),
             _record("agents/echo", _manifest_yaml("echo")),
         ],
@@ -308,6 +317,7 @@ def test_engine_ls_lists_engines_the_hub_serves(monkeypatch: pytest.MonkeyPatch)
 
     result = runner.invoke(engine_cmd.app, ["ls", "--room", "demo"])
     assert result.exit_code == 0, result.output
+    assert "@conductor" in result.output
     assert "@aligner" in result.output
     assert "@echo" not in result.output
 

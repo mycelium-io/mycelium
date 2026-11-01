@@ -33,16 +33,24 @@ from app.schemas import (
     MachineRestart,
     MemoryBatchCreate,
     MemoryCreate,
+    RunnerAgentAdopt,
     RunnerAgentLaunch,
     RunnerHello,
     RunnerJobRead,
     RunnerJobReport,
     RunnerPair,
     RunnerRead,
+    refusals,
 )
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
-from app.services.filesystem import get_room_dir, read_memory_file, room_exists
+from app.services.filesystem import (
+    canonical_room_name,
+    get_room_dir,
+    read_memory_file,
+    room_exists,
+    same_room,
+)
 from app.services.runners import (
     RunnerError,
     check_cwd,
@@ -146,7 +154,7 @@ async def runner_goodbye(runner_id: str) -> Response:
     return Response(status_code=204)
 
 
-@router.get("/{runner_id}/jobs/next", response_model=RunnerJobRead | None)
+@router.get("/{runner_id}/jobs/next", response_model=RunnerJobRead | None, responses=refusals(404))
 async def next_job(
     runner_id: str, timeout: float = Query(25.0, ge=0.0, le=MAX_POLL_S)
 ) -> RunnerJobRead | Response:
@@ -160,13 +168,74 @@ async def next_job(
     return job
 
 
-@router.patch("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead)
+@router.patch(
+    "/{runner_id}/jobs/{job_id}",
+    response_model=RunnerJobRead,
+    responses=refusals(403, 404, 409, 422),
+)
 async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> RunnerJobRead:
-    """The runner saying how a job went."""
+    """The runner saying how a job went.
+
+    A ``rename`` reported running is the machine's yes: the hub renames the
+    agent then, before the runner restarts it, so its first read under the new
+    handle finds everything there. A rename the room no longer allows (the name
+    was taken while it waited) answers ``failed``, and the runner restarts nothing.
+    """
+    queued = registry.job(runner_id, job_id)
+    if (
+        queued is not None
+        and queued.kind == "rename"
+        and payload.status == "running"
+        and not queued.spec.get("applied")
+    ):
+        payload = await _apply_rename(queued, payload)
     try:
-        return registry.report(runner_id, job_id, payload)
+        job = registry.report(runner_id, job_id, payload)
     except RunnerError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if job.kind == "adopt" and job.status == "failed":
+        await _forget_unadopted(runner_id, job.spec)
+    return job
+
+
+async def _apply_rename(job: RunnerJobRead, payload: RunnerJobReport) -> RunnerJobReport:
+    """Rename the agent a ``rename`` job is for, now its machine said yes."""
+    from app.services import agent_rename  # lazy: it reaches the room manager
+
+    spec = job.spec
+    try:
+        await agent_rename.apply(
+            str(spec.get("room")),
+            str(spec.get("handle")),
+            str(spec.get("to")),
+            by=str(spec.get("by") or job.created_by or "unknown"),
+        )
+    except agent_rename.RenameError as exc:
+        return RunnerJobReport(status="failed", error=f"Not renamed: {exc}")
+    spec["applied"] = True
+    return payload
+
+
+async def _forget_unadopted(runner_id: str, spec: dict) -> None:
+    """Take back the member an ``adopt`` wrote when the machine didn't map its pane.
+
+    The member is written before the machine is asked, as a launch's is, but a
+    declined launch can be started again and a declined adopt leaves a member
+    with no pane. Every way an adopt fails is before the mapping, so the member
+    goes, unless it has since become some other runner's.
+    """
+    from app.routes.memory import remove_memory  # lazy: routes import each other
+
+    room, handle = str(spec.get("room") or ""), str(spec.get("handle") or "")
+    if not room or not handle or not room_exists(room):
+        return
+    exists, owner = existing_runner_of(room, handle)
+    if not exists or owner != runner_id:
+        return
+    try:
+        await remove_memory(room, f"agents/{handle}")
+    except HTTPException:
+        logger.debug("adopt: @%s in %s was already gone", handle, room)
 
 
 # ── the app's side ───────────────────────────────────────────────────────────
@@ -178,7 +247,7 @@ async def list_runners(request: Request) -> list[RunnerRead]:
     return [r for r in registry.all() if _yours(r, request)]
 
 
-@router.post("/pair", response_model=RunnerJobRead, status_code=201)
+@router.post("/pair", response_model=RunnerJobRead, status_code=201, responses=refusals(403, 404))
 async def pair_device(payload: RunnerPair, request: Request) -> RunnerJobRead:
     """Ask the machine that printed a pairing code to pair this device.
 
@@ -204,12 +273,12 @@ async def pair_device(payload: RunnerPair, request: Request) -> RunnerJobRead:
     return registry.enqueue(runner.id, "pair", spec, created_by=me)
 
 
-@router.get("/{runner_id}", response_model=RunnerRead)
+@router.get("/{runner_id}", response_model=RunnerRead, responses=refusals(404))
 async def get_runner(runner_id: str, request: Request) -> RunnerRead:
     return _runner_or_404(runner_id, request)
 
 
-@router.get("/{runner_id}/jobs", response_model=list[RunnerJobRead])
+@router.get("/{runner_id}/jobs", response_model=list[RunnerJobRead], responses=refusals(404))
 async def list_jobs(runner_id: str, request: Request) -> list[RunnerJobRead]:
     """A runner's recent jobs, newest first."""
     _runner_or_404(runner_id, request)
@@ -219,7 +288,7 @@ async def list_jobs(runner_id: str, request: Request) -> list[RunnerJobRead]:
     return jobs
 
 
-@router.get("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead)
+@router.get("/{runner_id}/jobs/{job_id}", response_model=RunnerJobRead, responses=refusals(404))
 async def get_job(runner_id: str, job_id: str, request: Request) -> RunnerJobRead:
     _runner_or_404(runner_id, request)
     job = registry.job(runner_id, job_id)
@@ -228,7 +297,12 @@ async def get_job(runner_id: str, job_id: str, request: Request) -> RunnerJobRea
     return job
 
 
-@router.post("/{runner_id}/scan", response_model=RunnerJobRead, status_code=201)
+@router.post(
+    "/{runner_id}/scan",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 422),
+)
 async def rescan(runner_id: str, request: Request) -> RunnerJobRead:
     """Ask a runner to look for agent CLIs again; its next heartbeat carries what it found."""
     runner = _runner_or_404(runner_id, request)
@@ -240,7 +314,12 @@ async def rescan(runner_id: str, request: Request) -> RunnerJobRead:
     return registry.enqueue(runner_id, "scan", {}, created_by=me)
 
 
-@router.post("/{runner_id}/restart", response_model=RunnerJobRead, status_code=201)
+@router.post(
+    "/{runner_id}/restart",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 422),
+)
 async def restart_agents(
     runner_id: str, payload: MachineRestart, request: Request
 ) -> RunnerJobRead:
@@ -266,7 +345,12 @@ async def restart_agents(
     return registry.enqueue(runner_id, "restart", spec, created_by=me, signature=payload.signature)
 
 
-@router.post("/{runner_id}/agents", response_model=RunnerJobRead, status_code=201)
+@router.post(
+    "/{runner_id}/agents",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
 async def launch_agent(
     runner_id: str, payload: RunnerAgentLaunch, request: Request
 ) -> RunnerJobRead:
@@ -277,6 +361,8 @@ async def launch_agent(
     The runner asks the person at its machine before it starts it.
     """
     runner = _runner_or_404(runner_id, request)
+    # The body names the room, so the request's path isn't where it's spelled.
+    payload.room = canonical_room_name(payload.room)
     if not room_exists(payload.room):
         raise HTTPException(status_code=404, detail="Room not found")
     handle = norm_handle(payload.handle)
@@ -313,6 +399,7 @@ async def launch_agent(
             owner=owner,
         ),
         created_by=me or "web-ui",
+        principal=actor.principal_handle(request),
     )
     instructions = (payload.instructions or "").strip()
     if instructions:
@@ -333,7 +420,81 @@ async def launch_agent(
 
 
 @router.post(
-    "/{runner_id}/agents/{room_name}/{handle}/stop", response_model=RunnerJobRead, status_code=201
+    "/{runner_id}/adopt",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
+async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Request) -> RunnerJobRead:
+    """Bring an agent already running on this runner's machine into a room.
+
+    The agent is one the machine reports as running in herdr and in no room
+    (its report's ``unenrolled``). The member is written here first, owned by
+    whoever asked, so it shows in the room at once; the runner then asks the
+    person at the machine, maps the pane to the handle and introduces the
+    agent once it's idle.
+    """
+    runner = _runner_or_404(runner_id, request)
+    # The body names the room, so the request's path isn't where it's spelled.
+    payload.room = canonical_room_name(payload.room)
+    if not room_exists(payload.room):
+        raise HTTPException(status_code=404, detail="Room not found")
+    handle = norm_handle(payload.handle)
+    if not handle or not _HANDLE_RE.match(handle):
+        raise HTTPException(
+            status_code=422,
+            detail="Handle must be a lowercase slug (a-z, 0-9, '-', '_') starting alphanumeric.",
+        )
+    try:
+        check_ready(runner)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    unenrolled = runner.machine.unenrolled if runner.machine else []
+    agent = next((a for a in unenrolled if a.pane == payload.pane), None)
+    if agent is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{runner.label} doesn't report an agent in pane {payload.pane} that's "
+            "outside every room. It may have joined one, or closed.",
+        )
+    exists, _ = existing_runner_of(payload.room, handle)
+    if exists:
+        raise HTTPException(
+            status_code=409,
+            detail=f"@{handle} is already a member of {payload.room}. Pick another handle.",
+        )
+
+    framework = agent.kind or "claude"
+    me = actor.bind_optional_actor(request, payload.created_by, field="created_by")
+    await write_agent_manifest(
+        payload.room,
+        handle,
+        runner_manifest(
+            framework=framework,
+            runner=runner_id,
+            cwd=agent.folder,
+            description=f"Already running on {runner.label}, brought into the room",
+            owner=me or runner.owner,
+        ),
+        created_by=me or "web-ui",
+        principal=actor.principal_handle(request),
+    )
+    spec = {
+        "room": payload.room,
+        "handle": handle,
+        "pane": payload.pane,
+        "framework": framework,
+        "cwd": agent.folder,
+    }
+    logger.info("runner %s: adopt %s as @%s in %s", runner_id, payload.pane, handle, payload.room)
+    return registry.enqueue(runner_id, "adopt", spec, created_by=me)
+
+
+@router.post(
+    "/{runner_id}/agents/{room_name}/{handle}/stop",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 422),
 )
 async def stop_agent(
     runner_id: str, room_name: str, handle: str, request: Request
@@ -345,9 +506,11 @@ async def stop_agent(
     except RunnerError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     h = norm_handle(handle) or ""
-    if not any(a.room == room_name and a.handle == h for a in runner.agents):
+    found = next((a for a in runner.agents if same_room(a.room, room_name) and a.handle == h), None)
+    if found is None:
         raise HTTPException(
             status_code=404, detail=f"{runner.label} isn't running @{h} in {room_name}"
         )
     me = actor.bind_optional_actor(request, None, field="created_by")
-    return registry.enqueue(runner_id, "stop", {"room": room_name, "handle": h}, created_by=me)
+    # The room as the runner spelled it, which is what it looks its agents up by.
+    return registry.enqueue(runner_id, "stop", {"room": found.room, "handle": h}, created_by=me)

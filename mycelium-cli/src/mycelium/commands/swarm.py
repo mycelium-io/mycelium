@@ -42,7 +42,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import typer
@@ -51,12 +51,18 @@ from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
 
-from mycelium.cli_options import in_room
-from mycelium.client import hub_client
+from mycelium.cli_options import acts_as, in_room
+from mycelium.client import answered, hub_client, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.names import who
 from mycelium.slim.message_format import payload_data_of, payload_type_of
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.types import Response
 
 console = Console()
 
@@ -179,16 +185,23 @@ class SwarmError(Exception):
     """A step of setting up a swarm that failed, with what to do about it."""
 
 
-def _check(resp: httpx.Response, what: str, *, ok: tuple[int, ...] = ()) -> httpx.Response:
-    if resp.status_code >= 400 and resp.status_code not in ok:
-        raise SwarmError(f"could not {what}: {resp.text.strip() or resp.status_code}")
+def _check[R: Response[Any]](resp: R, what: str, *, ok: tuple[int, ...] = ()) -> R:
+    """``resp``, or a :class:`SwarmError` saying the hub refused ``what``.
+
+    The client given here doesn't raise on a refusal, so each step words its own.
+    """
+    if resp.status_code >= 400 and resp.status_code not in ok:  # noqa: PLR2004
+        said = resp.content.decode(errors="replace").strip()
+        raise SwarmError(f"could not {what}: {said or resp.status_code}")
     return resp
 
 
-def require_room(client: httpx.Client, room: str) -> None:
+def require_room(client: Client, room: str) -> None:
     """Refuse a room that is not there: a swarm joins a room, it never makes one."""
-    resp = client.get(f"/api/rooms/{room}")
-    if resp.status_code == 404:
+    from mycelium_backend_client.api.rooms import get_room_api_rooms_room_name_get as room_api
+
+    resp = room_api.sync_detailed(room, client=client)
+    if resp.status_code == 404:  # noqa: PLR2004
         raise SwarmError(
             f"there's no room named {room}. A swarm runs in a room you already work in; "
             "name one with --room."
@@ -196,29 +209,49 @@ def require_room(client: httpx.Client, room: str) -> None:
     _check(resp, f"read room {room}")
 
 
-def ensure_engine(client: httpx.Client, room: str, handle: str, kind: str, me: str) -> None:
+def ensure_engine(client: Client, room: str, handle: str, kind: str, me: str) -> None:
     """Register an engine in ``room``; one already there is fine."""
+    from mycelium_backend_client.api.engines import (
+        create_engine_api_rooms_room_name_engines_post as engine_api,
+    )
+    from mycelium_backend_client.models import EngineCreate
+
     body = {"handle": handle, "kind": kind, "created_by": me}
-    resp = client.post(f"/api/rooms/{room}/engines", json=body)
-    if resp.status_code == 422 and "engine kind" in resp.text:
+    resp = engine_api.sync_detailed(room, client=client, body=EngineCreate.from_dict(body))
+    if resp.status_code == 422 and "engine kind" in resp.content.decode(errors="replace"):  # noqa: PLR2004
         raise SwarmError(
             f"this hub doesn't run {kind} engines yet. Upgrade it (mycelium upgrade), then retry."
         )
     _check(resp, f"register @{handle}", ok=(409,))
 
 
-def file_task(client: httpx.Client, room: str, title: str, me: str) -> tuple[str, str]:
+def file_task(client: Client, room: str, title: str, me: str) -> tuple[str, str]:
     """Put the task on the board; ``(row key, thread URN)``."""
+    from mycelium_backend_client.api.tasks import create_task_api_rooms_room_name_tasks_post
+    from mycelium_backend_client.models import MemoryRead, TaskCreate
+
+    body = TaskCreate.from_dict({"title": title, "handle": me})
     resp = _check(
-        client.post(f"/api/rooms/{room}/tasks", json={"title": title, "handle": me}),
+        create_task_api_rooms_room_name_tasks_post.sync_detailed(room, client=client, body=body),
         "file the task",
     )
-    task = resp.json()
-    return str(task["key"]), str(task.get("episode") or "")
+    task = answered(resp, MemoryRead)
+    return task.key, str(task.episode or "")
+
+
+def _write_memories(client: Client, room: str, items: list[dict[str, Any]], what: str) -> None:
+    """Upsert ``items`` into the room's memory, or say it couldn't ``what``."""
+    from mycelium_backend_client.api.memory import (
+        create_memories_api_rooms_room_name_memory_post as create_api,
+    )
+    from mycelium_backend_client.models import MemoryBatchCreate
+
+    body = MemoryBatchCreate.from_dict({"items": items})
+    _check(create_api.sync_detailed(room, client=client, body=body), what)
 
 
 def start_on_hub(
-    client: httpx.Client,
+    client: Client,
     task: str,
     size: int,
     room: str,
@@ -230,45 +263,58 @@ def start_on_hub(
     The kickoff is left to the caller, so the live view is listening before
     the first turn is put.
     """
+    from mycelium_backend_client.api.swarms import start_swarm_api_rooms_room_name_swarms_post
+    from mycelium_backend_client.models import SwarmCreate, SwarmRead
+
     require_room(client, room)
     body: dict[str, Any] = {"task": task, "size": size, "created_by": me, "kickoff": False}
     if repo:
         body["repo"] = repo
-    resp = client.post(f"/api/rooms/{room}/swarms", json=body)
+    resp = start_swarm_api_rooms_room_name_swarms_post.sync_detailed(
+        room, client=client, body=SwarmCreate.from_dict(body)
+    )
     if resp.status_code in (404, 405):
         raise SwarmError(
             "this hub can't start a team on its own yet. Upgrade it (mycelium upgrade), "
             "or drop --server to use your own agents."
         )
-    if resp.status_code == 422:
+    if resp.status_code == 422:  # noqa: PLR2004
         try:
-            detail = resp.json().get("detail")
+            detail = json.loads(resp.content).get("detail")
         except ValueError:
             detail = None
         if isinstance(detail, str):
             raise SwarmError(detail)
-    swarm = _check(resp, "start the team").json()
-    return str(swarm["key"]), str(swarm.get("episode") or "")
+    swarm = answered(_check(resp, "start the team"), SwarmRead)
+    return swarm.key, swarm.episode or ""
 
 
-def record_result(
-    client: httpx.Client, room: str, key: str, title: str, result: str, by: str
-) -> None:
+def record_result(client: Client, room: str, key: str, title: str, result: str, by: str) -> None:
     """Write the team's result into the task's row, under its title, as the room's memory."""
     item = {"key": key, "value": f"{title}\n\n{result.strip()}", "created_by": by}
-    _check(client.post(f"/api/rooms/{room}/memory", json={"items": [item]}), "save the result")
+    _write_memories(client, room, [item], "save the result")
 
 
-def kick_off(client: httpx.Client, room: str, episode: str, team: list[str], task: str, me: str):
+def kick_off(client: Client, room: str, episode: str, team: list[str], task: str, me: str):
     """Summon the conductor in the task's thread to run the kickoff flow over the team."""
-    names = " ".join(f"@{h}" for h in team)
+    from mycelium_backend_client.api.messages import (
+        send_message_api_rooms_room_name_messages_post as send_api,
+    )
+    from mycelium_backend_client.models import MessageCreate
+
+    # Silent mentions bind the roles and wake nobody; the conductor asks each
+    # member in its turn.
+    names = " ".join(f"@~{h}" for h in team)
     body = {
         "sender_handle": me,
         "message_type": "broadcast",
         "content": f"@{CONDUCTOR} {FLOW} {names}: {task}",
         "episode": episode,
     }
-    _check(client.post(f"/api/rooms/{room}/messages", json=body), "start the kickoff")
+    _check(
+        send_api.sync_detailed(room, client=client, body=MessageCreate.from_dict(body)),
+        "start the kickoff",
+    )
 
 
 # ── local members, in herdr ──────────────────────────────────────────────────
@@ -299,51 +345,190 @@ def member_worktree(repo: Path, room: str, handle: str) -> Path:
     return path
 
 
-#: How many times, and how far apart, to try starting an agent in a new pane.
+#: How many times, and how far apart, to try a start that failed for any
+#: reason other than the pane's shell still starting.
 START_ATTEMPTS = 3
 START_RETRY_S = 1.5
+#: How long a new pane's shell gets to reach its prompt. A login shell with a
+#: heavy profile (nvm, conda, a prompt theme) can take many seconds.
+SHELL_WAIT_S = 30.0
+#: A start that took this long got as far as running the agent CLI, which
+#: herdr then waited on: trying again would only wait again.
+SLOW_START_S = 10.0
+#: How long a shell may take before the person is told it's slow. A shell
+#: usually reaches its prompt in a second or two; one still starting after
+#: this is often stopped at something of its own (a question from its startup
+#: files, a password) that only the person can see and answer in its terminal.
+SLOW_SHELL_S = 5.0
+#: How often a start herdr is still waiting on looks at the pane, to tell an
+#: agent CLI that exited from one that's slow to come up.
+EXIT_POLL_S = 1.0
+#: How long a start may be in flight with no agent on its pane before the CLI is
+#: taken to have exited. herdr names the agent on the pane the moment it takes
+#: the start, and keeps it named until the agent is ready or gone; before
+#: taking it, herdr's CLI waits at most 2s for the pane's shell, then answers.
+EXIT_GRACE_S = 3.0
 
 
-def _start_when_ready(bridge: Any, handle: str, kind: str, pane: str) -> dict | None:
+def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str] | None) -> None:
+    """``bridge.start_agent``, failing as soon as the agent CLI exits.
+
+    herdr waits out its whole timeout for an agent that exited before it came
+    up: the agent's name goes with its process, so herdr is left waiting for a
+    name that won't come back, and the start reads as hung for a minute. So the
+    pane is looked at while herdr waits. An agent seen there and then gone has
+    exited. So has one never seen once the start has been in flight past
+    :data:`EXIT_GRACE_S`: a CLI refusing its arguments exits in a fraction of a
+    second, before the first look. Either way :class:`AgentExitedError` says so
+    at once. herdr's own start goes on in the background until its timeout,
+    finding nothing.
+    """
+    from mycelium.integrations.herdr import AgentExitedError, HerdrError
+
+    done = threading.Event()
+    failed: list[BaseException] = []
+
+    def start() -> None:
+        try:
+            bridge.start_agent(name, kind, pane, agent_args=args)
+        except BaseException as e:  # noqa: BLE001 - handed to the caller's thread as it is
+            failed.append(e)
+        finally:
+            done.set()
+
+    threading.Thread(target=start, name=f"start {name}", daemon=True).start()
+    began = time.monotonic()
+    seen = False
+    while not done.wait(EXIT_POLL_S):
+        try:
+            agent = bridge.get_agent(pane)
+        except HerdrError:
+            continue
+        if agent is not None:
+            seen = True
+        elif seen or time.monotonic() - began >= EXIT_GRACE_S:
+            raise AgentExitedError(f"{kind} exited before it came up in pane {pane}")
+    if failed:
+        raise failed[0]
+
+
+def _start_when_ready(
+    bridge: Any,
+    handle: str,
+    kind: str,
+    pane: str,
+    *,
+    room: str,
+    resume: str | None = None,
+    on_slow_shell: Callable[[], None] | None = None,
+) -> dict | None:
     """Start ``kind`` in ``pane``, giving a just-opened pane's shell time to come up.
 
+    herdr names it for ``handle`` in ``room`` (:func:`herdr_name`), so a handle
+    taken by an agent of another room here never blocks it. ``resume`` is a
+    session to start it in, for a kind that can resume one.
+
     herdr starts an agent only in a pane sitting at its shell prompt, and a
-    pane split a moment ago may still be starting its shell. A start herdr
+    pane split a moment ago may still be starting its shell, so a start herdr
+    refuses for that is tried again for up to ``SHELL_WAIT_S``. A start herdr
     reports as failed with an agent on the pane all the same (one stopped at a
     prompt never reads as ready) is not tried again, since a second start would
     find the name taken: that agent is returned, for the caller to read its
-    state. ``None`` means it started and is ready.
+    state. ``None`` means it started and is ready. ``on_slow_shell`` is called
+    once if the shell is still starting after ``SLOW_SHELL_S``.
+
+    Raises :class:`ShellNotReadyError` when the shell never reached its prompt,
+    :class:`AgentExitedError` when the agent CLI exited before it came up (not
+    tried again: it would only exit again), :class:`AgentNotReadyError` when it
+    ran but never came up as an agent, and :class:`HerdrError` for anything else.
     """
     from mycelium.integrations.agents import of_kind
-    from mycelium.integrations.herdr import HerdrError
+    from mycelium.integrations.herdr import (
+        AgentExitedError,
+        AgentNotReadyError,
+        HerdrError,
+        ShellNotReadyError,
+        herdr_name,
+    )
+    from mycelium.integrations.herdr.bridge import EXITED_DURING_START, NOT_A_SHELL
 
-    for attempt in range(1, START_ATTEMPTS + 1):
+    known = of_kind(kind)
+    args = known.launch_args() + ((known.resume_args(resume) or []) if resume else [])
+    opened = time.monotonic()
+    deadline = opened + SHELL_WAIT_S
+    slow = False
+    failures = 0
+    while True:
+        began = time.monotonic()
         try:
-            bridge.start_agent(handle, kind, pane, agent_args=of_kind(kind).launch_args() or None)
-        except HerdrError:
+            _start_watched(bridge, herdr_name(room, handle), kind, pane, args or None)
+        except AgentExitedError:
+            raise
+        except HerdrError as e:
+            if EXITED_DURING_START in str(e):
+                raise AgentExitedError(str(e)) from e
             if (agent := bridge.get_agent(pane)) is not None:
                 return agent
-            if attempt == START_ATTEMPTS:
-                raise
+            if time.monotonic() - began >= SLOW_START_S:
+                raise AgentNotReadyError(str(e)) from e
+            if NOT_A_SHELL in str(e):
+                # Still waiting, but say so once it's slow: what holds a shell
+                # up is on its screen, which is the person's to read, never
+                # ours to parse.
+                if on_slow_shell and not slow and time.monotonic() - opened >= SLOW_SHELL_S:
+                    slow = True
+                    on_slow_shell()
+                if time.monotonic() >= deadline:
+                    raise ShellNotReadyError(str(e)) from e
+            else:
+                failures += 1
+                if failures >= START_ATTEMPTS:
+                    raise
             time.sleep(START_RETRY_S)
         else:
             return None
-    return None
 
 
-def _start_unblocked(bridge: Any, handle: str, kind: str, pane: str) -> None:
+def not_ready(kind: str, where: str) -> str | None:
+    """Why agents of ``kind`` can't start ``where`` yet, as a launch says it; ``None``
+    when nothing is known to be in the way.
+
+    A CLI that would open on a first-run screen only the person can get past
+    (Codex not signed in) is told before any pane opens, so a swarm or a
+    restart never starts members into a screen their brief can't reach.
+    """
+    from mycelium.integrations.agents import of_kind
+
+    known = of_kind(kind)
+    reason = known.not_ready()
+    return f"{known.name} can't start {where} yet. {reason}" if reason else None
+
+
+def _start_unblocked(
+    bridge: Any, handle: str, kind: str, pane: str, *, room: str, resume: str | None = None
+) -> None:
     """:func:`_start_when_ready`, refusing to go on past an agent waiting for input.
 
-    The pane is left open: what it waits on is the person's to answer.
+    That includes a first-run screen herdr reads as ready (Codex's welcome),
+    after getting past any a key passes, and a first-run question the person
+    answered by starting it in this folder (whether to trust it). The pane is
+    left open: what it waits on is the person's to answer.
     """
     from mycelium.integrations.herdr import HerdrError
 
-    agent = _start_when_ready(bridge, handle, kind, pane)
-    if agent is not None and agent.get("agent_status") == "blocked":
-        raise HerdrError(
-            f"@{handle} started in pane {pane} but is waiting for input there; "
-            f"answer it (herdr agent focus {pane}) and start again"
-        )
+    agent = _start_when_ready(bridge, handle, kind, pane, room=room, resume=resume)
+    passed: list[str] = []
+    seen = bridge.past_first_run(pane, kind, passed)
+    if seen:
+        waiting = f"waiting there: {seen}"
+    elif agent is not None and agent.get("agent_status") == "blocked" and not passed:
+        waiting = "waiting for input there"
+    else:
+        return
+    raise HerdrError(
+        f"@{handle} started in pane {pane} but is {waiting}; "
+        f"answer it (herdr agent focus {pane}) and start again"
+    )
 
 
 def start_local(
@@ -374,7 +559,20 @@ def start_local(
     carried = {k: os.environ[k] for k in CARRIED_ENV if os.environ.get(k)} | (carry or {})
 
     def env(handle: str) -> dict[str, str]:
-        return {**carried, "MYCELIUM_AGENT_HANDLE": handle, "MYCELIUM_ROOM_ID": room}
+        from mycelium.agent_credentials import MemberTokenRefused, agent_token_env
+
+        try:
+            # Its own token on a hub with auth on, so it acts as itself.
+            token = agent_token_env(config, room, handle)
+        except MemberTokenRefused as e:
+            raise SwarmError(e.reason()) from e
+        return {
+            **carried,
+            "MYCELIUM_AGENT_HANDLE": handle,
+            "MYCELIUM_ROOM_ID": room,
+            "MYCELIUM_AGENT_PANE": handle,  # an agent's pane (``caller.in_agent_pane``)
+            **token,
+        }
 
     dirs = {h: (member_worktree(cwd, room, h) if worktree else cwd) for h in team}
 
@@ -395,7 +593,7 @@ def start_local(
     local = LocalTeam(workspace=workspace, panes=panes)
 
     for handle, pane in local.panes.items():
-        _start_unblocked(bridge, handle, kind, pane)
+        _start_unblocked(bridge, handle, kind, pane, room=room)
         mapping = HerdrPaneMapping(
             room=room, handle=handle, pane=pane, kind=kind, managed=True, cwd=str(dirs[handle])
         )
@@ -422,7 +620,7 @@ def brief_key(handle: str) -> str:
 
 
 def brief_local(
-    client: httpx.Client, bridge: Any, room: str, local: LocalTeam, key: str, task: str, me: str
+    client: Client, bridge: Any, room: str, local: LocalTeam, key: str, task: str, me: str
 ) -> None:
     """Hand each local member its brief: its notes memory, and a prompt to read it.
 
@@ -441,7 +639,7 @@ def brief_local(
         }
         for handle in team
     ]
-    _check(client.post(f"/api/rooms/{room}/memory", json={"items": items}), "write the briefs")
+    _write_memories(client, room, items, "write the briefs")
     for handle, pane in local.panes.items():
         bridge.prompt(
             pane,
@@ -555,11 +753,15 @@ def _pick_summary(record: dict[str, Any]) -> str:
 
 @dataclass
 class LiveView:
-    """Render the room's stream as one conversation across a task and its children."""
+    """Render the room's stream as one conversation across a task and its children.
 
-    root_key: str
-    root_episode: str
-    root_title: str
+    With no root task (``room watch --all``), every thread in the room, each
+    line labeled with its task, and every board notice.
+    """
+
+    root_key: str = ""
+    root_episode: str = ""
+    root_title: str = ""
     titles: dict[str, str] = field(default_factory=dict)
     #: Thread → row key, so a cut-short message can say where the rest is.
     keys: dict[str, str] = field(default_factory=dict)
@@ -570,8 +772,9 @@ class LiveView:
     last_moved: float = field(default_factory=lambda: time.monotonic())
 
     def __post_init__(self) -> None:
-        self.titles[self.root_episode] = self.root_title
-        self.keys[self.root_episode] = self.root_key
+        if self.root_episode:
+            self.titles[self.root_episode] = self.root_title
+            self.keys[self.root_episode] = self.root_key
 
     @staticmethod
     def _short(text: str, limit: int = 60) -> str:
@@ -706,6 +909,7 @@ def _ui_room_url(room: str) -> str:
     group="board",
 )
 @in_room("room")
+@acts_as("starter", optional=True)
 def swarm(
     task: str | None = typer.Argument(None, help="What the team should work on"),
     server: bool = typer.Option(
@@ -724,6 +928,7 @@ def swarm(
         "--repo",
         help="With --server: a repository for the hub to clone and the team to work on",
     ),
+    starter: str | None = None,
 ) -> None:
     """Put a team of agents on one task and watch them work it together.
 
@@ -741,7 +946,7 @@ def swarm(
     from mycelium.integrations.herdr import HerdrBridge, HerdrError
 
     config = MyceliumConfig.load()
-    me = sender_of(config)
+    me = starter or sender_of(config)
     room_name = str(room)
     if not task:
         task = typer.prompt("What should the agents work on?").strip()
@@ -768,12 +973,17 @@ def swarm(
                 "or run the team on the hub with --server."
             )
             raise typer.Exit(1)
+        if reason := not_ready(agent_kind, "here"):
+            console.print(f"[yellow]{reason}[/yellow]")
+            raise typer.Exit(1)
 
     local: LocalTeam | None = None
     sync: HerdrSync | None = None
     try:
         # A clone can take a while, so the hub gets longer to answer than usual.
-        with hub_client(config, timeout=330 if repo else 30) as client:
+        with typed_client(
+            config, timeout=330 if repo else 30, raise_on_unexpected_status=False
+        ) as client:
             if server:
                 key, episode = start_on_hub(client, task, size, room_name, me, repo)
             else:
@@ -792,7 +1002,7 @@ def swarm(
                 worktree=worktree,
                 me=me,
             )
-            with hub_client(config, timeout=30) as client:
+            with typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
                 brief_local(client, bridge, room_name, local, key, task, me)
             sync = HerdrSync(config, bridge, local.workspace, room_name)
             sync.once()
@@ -824,7 +1034,7 @@ def swarm(
     streamer.start()
     connected.wait(timeout=10)
     try:
-        with hub_client(config, timeout=30) as client:
+        with typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
             kick_off(client, room_name, episode, team, task, me)
         warned = False
         while streamer.is_alive():
@@ -850,7 +1060,9 @@ def swarm(
                     # Workers write their result into the row themselves; a
                     # local lead resolves with `board resolve`, which does not.
                     try:
-                        with hub_client(config, timeout=30) as client:
+                        with typed_client(
+                            config, timeout=30, raise_on_unexpected_status=False
+                        ) as client:
                             record_result(client, room_name, key, task, result, who)
                     except (SwarmError, httpx.HTTPError) as e:
                         console.print(f"[dim]could not save the result to {key}: {e}[/dim]")

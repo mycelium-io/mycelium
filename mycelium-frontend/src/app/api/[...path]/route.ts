@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { getBackendUrl } from "@/lib/backend";
+import { getBackendUrl, upstreamHeaders, upstreamUrl } from "@/lib/backend";
+import { HEALTH_PATH, fetchHealth } from "@/lib/hub-health";
 import { bearer } from "@/lib/session";
+import { TOKEN_HEADER } from "@/lib/ui-guard";
 import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
 
 /**
@@ -11,8 +13,7 @@ import { MOCK_HEADER, handleMock, isMockMode } from "@/mocks";
  */
 export const dynamic = "force-dynamic";
 
-// Headers that must not be forwarded verbatim across the proxy hop.
-const STRIP_REQUEST = ["host", "connection", "keep-alive", "transfer-encoding", "upgrade", "content-length"];
+// Headers that must not be passed back verbatim across the proxy hop.
 const STRIP_RESPONSE = ["connection", "keep-alive", "transfer-encoding", "upgrade", "content-length", "content-encoding"];
 
 async function proxy(req: Request): Promise<Response> {
@@ -29,15 +30,12 @@ async function proxy(req: Request): Promise<Response> {
   }
 
   const backend = getBackendUrl();
-  const { pathname, search } = new URL(req.url);
-  // The backend serves health at the root (`/health`), while everything else it
-  // exposes is under `/api`. Map the proxied `/api/health` onto the root path so
-  // the health/fabric views can read it through the same proxy.
-  const backendPath = pathname === "/api/health" ? "/health" : pathname;
-  const target = `${backend}${backendPath}${search}`;
+  const target = upstreamUrl(backend, req.url);
 
-  const headers = new Headers(req.headers);
-  for (const h of STRIP_REQUEST) headers.delete(h);
+  const headers = upstreamHeaders(req);
+  // The app's own proof stays here: the hub never sees it, so it never lands
+  // in the hub's log, on this machine or another (`lib/ui-guard.ts`).
+  headers.delete(TOKEN_HEADER);
   // Ask upstream for plain bytes so we can stream the response straight through
   // without a content-encoding/content-length mismatch.
   headers.delete("accept-encoding");
@@ -59,7 +57,7 @@ async function proxy(req: Request): Promise<Response> {
 
   let res: Response;
   try {
-    res = await fetch(target, init);
+    res = new URL(req.url).pathname === HEALTH_PATH ? await fetchHealth(init, backend) : await fetch(target, init);
   } catch {
     return Response.json(
       { detail: `Backend unreachable at ${backend}` },

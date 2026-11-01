@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// The app's own screens: the first-run wizard, Settings, the wait while
-// Mycelium starts, and the health check. Once the supervisor says the room UI
-// is up, the app points this window at it and these pages are gone.
+// The app's own screens: the first-run wizard, the wait while Mycelium starts,
+// and, for when no UI is up yet (first run, or a start that failed), Settings
+// and the health check. Once the supervisor says the room UI is up, the app
+// points this window at it and these pages are gone: the same settings are
+// pages of the UI's own Settings from then on (`mycelium-frontend`,
+// `components/settings/app-*.tsx`), through the same commands.
 
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";
@@ -17,13 +20,26 @@ interface Settings {
   hubUrl: string | null;
   roots: string[];
   shareUsage?: boolean;
+  voice?: boolean;
+  voiceModel?: VoiceModel;
 }
+
+/** The speech model this Mac's hub transcribes with (`voice.model`). */
+type VoiceModel = "fast" | "accurate";
 
 interface Found {
   name: string;
   path: string | null;
   bundled: boolean;
 }
+
+/** What copy calls this machine, and the keys for Settings, on this platform. */
+const ON_MAC = navigator.userAgent.includes("Mac");
+const ON_WINDOWS = navigator.userAgent.includes("Windows");
+const MACHINE = ON_MAC ? "Mac" : "computer";
+const SETTINGS_KEYS = ON_MAC ? "⌘," : "Ctrl+,";
+/** Where the app's icon and menu live: the menu bar on a Mac, the tray elsewhere. */
+const TRAY = ON_MAC ? "the menu bar icon" : "the tray icon";
 
 /** A hub on this Mac, as `mycelium.hubs` found it. */
 interface HubSeen {
@@ -167,7 +183,11 @@ const PROVIDERS: Provider[] = [
   { id: "custom", name: "Other", models: [], key: "If it needs one", baseUrl: "" },
 ];
 
-/** What the model is for, in our own docs: which of Mycelium's agents use it. */
+/** What the health check says when no model is set (`doctor.py`), and what a
+ *  hub from before v3.0.73 says. */
+const MODEL_UNSET = ["Engines' model not set", "Skipped (LLM_MODEL not set)"];
+
+/** What the model is for, in our own docs: which engines use it. */
 const MODELS_DOC = "https://mycelium-io.github.io/mycelium/guides.html#models";
 
 function providerOf(model: string | null): Provider {
@@ -221,7 +241,7 @@ const PREVIEW: Snapshot = {
     : null,
   status: PREVIEW_OTHER_HUB,
   lastError: null,
-  mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/MacOS/mycelium", bundled: true },
+  mycelium: { name: "mycelium", path: "/Applications/Mycelium.app/Contents/Resources/cli/mycelium", bundled: true },
   herdr: { name: "herdr", path: "/Applications/Mycelium.app/Contents/MacOS/herdr", bundled: true },
   home: "/Users/you",
 };
@@ -259,14 +279,14 @@ const PREVIEW_HUB: HubSettings = {
   share_usage: false,
 };
 const PREVIEW_CHECKS: Check[] = [
-  { section: "This Mac", name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
+  { section: `This ${MACHINE}`, name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
   { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
   {
     section: "Models",
     name: "LLM connectivity",
     status: previewSetUp ? "ok" : "warning",
     message: previewSetUp ? "anthropic/claude-sonnet-4-6: completion probe succeeded" : "Not configured",
-    details: previewSetUp ? [] : ["Choose a model and add its key in Settings (⌘,)"],
+    details: previewSetUp ? [] : [`Choose a model and add its key in Settings (${SETTINGS_KEYS})`],
   },
 ];
 
@@ -290,7 +310,9 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
+/** A path under the home folder as `~/…`, where people read paths that way; Windows shows it whole. */
 function tilde(path: string, home: string): string {
+  if (ON_WINDOWS) return path;
   return home && path.startsWith(home) ? "~" + path.slice(home.length) : path;
 }
 
@@ -325,6 +347,10 @@ interface Choices {
   hubUrl: string;
   root: string;
   shareUsage: boolean;
+  /** Whether this Mac's hub transcribes the message box's mic. Off unless chosen. */
+  voice: boolean;
+  /** Which speech model it uses: fast unless chosen. */
+  voiceModel: VoiceModel;
   /** Whether to install herdr's integrations: asked on first run only, so
    *  absent from Settings, which leaves the answer given then alone. */
   restore?: boolean;
@@ -336,6 +362,8 @@ function choicesFrom(snap: Snapshot): Choices {
     hubUrl: snap.settings?.hubUrl ?? "",
     root: tilde(snap.settings?.roots[0] ?? snap.home, snap.home),
     shareUsage: snap.settings?.shareUsage ?? false,
+    voice: snap.settings?.voice ?? false,
+    voiceModel: snap.settings?.voiceModel ?? "fast",
   };
 }
 
@@ -345,6 +373,8 @@ function settingsOf(c: Choices): Settings {
     hubUrl: c.mode === "client" ? c.hubUrl.trim() : null,
     roots: [c.root.trim()],
     shareUsage: c.mode === "hub" && c.shareUsage,
+    voice: c.mode === "hub" && c.voice,
+    voiceModel: c.voiceModel,
   };
 }
 
@@ -397,7 +427,7 @@ function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; pr
     });
     return b;
   };
-  const here = choice("hub", "On this Mac", "Everything stays on this Mac. Good for trying it out or giving a demo.");
+  const here = choice("hub", `On this ${MACHINE}`, `Everything stays on this ${MACHINE}. Good for trying it out or giving a demo.`);
   const team = choice("client", "On my team's hub", "Join rooms someone else hosts. You'll need the hub's address.");
   const render = () => {
     here.setAttribute("aria-checked", String(c.mode === "hub"));
@@ -412,8 +442,8 @@ function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; pr
 }
 
 /**
- * The model Mycelium's own agents (the mediator, personas, the note-taker)
- * think with. The saved key is never shown, only its last four characters;
+ * The model the hub's engines (personas, workers, the synthesizer, the
+ * verifier) think with. A person's own agents never use it. The saved key is never shown, only its last four characters;
  * leaving the field empty keeps it. In the wizard the model name stays out of
  * the way behind a Change link; in Settings it's a field.
  */
@@ -524,8 +554,7 @@ async function modelPiece(variant: "wizard" | "settings"): Promise<{ el: HTMLEle
     keyField.placeholder = provider.key ?? "";
     keyHint.replaceChildren(
       provider.keyFrom ? `Get one at ${provider.keyFrom}. ` : "",
-      "It stays on this Mac. ",
-      variant === "wizard" ? outLink(MODELS_DOC, "What uses this?") : "",
+      `It stays on this ${MACHINE}.`,
     );
     baseRow.hidden = provider.baseUrl === undefined;
     modelName.textContent = modelField.value.replace(/^[^/]+\//, "") || "none";
@@ -571,6 +600,11 @@ async function modelStatus(): Promise<HTMLElement> {
       const check = result.checks.find((c) => c.name === "LLM connectivity");
       if (!check) {
         line.replaceChildren(el("span", { class: "dot" }), "Start Mycelium to check the model.");
+        return;
+      }
+      // No model is fine, so the doctor says ok, but it isn't connected either.
+      if (MODEL_UNSET.includes(check.message)) {
+        line.replaceChildren(el("span", { class: "dot" }), "Not set. Engines can't answer until you add one.");
         return;
       }
       const ok = check.status === "ok";
@@ -686,6 +720,74 @@ function privacyPiece(c: Choices): HTMLElement {
   );
 }
 
+/** Talking into the message box. Off unless chosen, and saying what each
+ *  speech model costs, since turning it on downloads one and the hub holds it
+ *  in memory while anyone is talking. */
+function voicePiece(c: Choices, where: "wizard" | "settings" = "settings"): HTMLElement {
+  const choice = (value: VoiceModel, title: string, sub: string) => {
+    const b = el(
+      "button",
+      { class: "choice stacked", type: "button", role: "radio" },
+      el("strong", {}, title),
+      el("span", {}, sub),
+      el("i", { class: "radio", "aria-hidden": "true" }),
+    );
+    b.addEventListener("click", () => {
+      c.voiceModel = value;
+      render();
+    });
+    return b;
+  };
+  const fast = choice("fast", "Fast", "A 150 MB download, and about 500 MB of memory while you talk.");
+  const accurate = choice(
+    "accurate",
+    "Accurate",
+    "About half the mistakes. A 480 MB download, made the first time you turn on the mic, and about 1.4 GB of memory while you talk.",
+  );
+  const models = el(
+    "div",
+    { class: "indent" },
+    el("div", { class: "label" }, "Speech model"),
+    el("div", { class: "choices column", role: "radiogroup", "aria-label": "Speech model" }, fast, accurate),
+  );
+  const render = () => {
+    fast.setAttribute("aria-checked", String(c.voiceModel === "fast"));
+    accurate.setAttribute("aria-checked", String(c.voiceModel === "accurate"));
+    models.hidden = !c.voice;
+  };
+  render();
+  return el(
+    "div",
+    { class: "share" },
+    el(
+      "label",
+      { class: "share-label", for: "voice" },
+      checkbox("voice", c.voice, (on) => {
+        c.voice = on;
+        render();
+      }),
+      // The wizard's title already says it.
+      where === "wizard" ? "Turn on voice" : "Talk instead of type",
+    ),
+    // The wizard says what voice is beside this, so here it's only the how.
+    where === "wizard"
+      ? el("p", { class: "hint" }, "⌘⌥V turns the mic on and off in a message box.")
+      : el(
+          "p",
+          { class: "hint" },
+          "A mic in every message box: what you say is typed into it, and nothing sends until you do. ⌘⌥V turns it on and off.",
+        ),
+    where === "wizard"
+      ? null
+      : el(
+          "p",
+          { class: "hint" },
+          `It runs on this ${MACHINE}, in English. Its memory is given back a few minutes after you stop talking. Your audio isn't saved or sent anywhere.`,
+        ),
+    models,
+  );
+}
+
 /**
  * Ready-made rooms to explore, each added from a file the person was given.
  * The wizard offers them as an optional step; Settings lists what's here and
@@ -795,7 +897,7 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
       if (at === "model") {
         const m = s.model;
         content = [
-          el("p", { class: "lede" }, "The model your team's hub runs its built-in agents with."),
+          el("p", { class: "lede" }, "Your team's hub runs its engines with this model. Your own agents, like Claude Code, don't use it."),
           el(
             "dl",
             { class: "summary" },
@@ -849,20 +951,22 @@ function hubReadOnly(at: "model" | "experiences" | "privacy", answer: Promise<Hu
 /** Everything Start changes on this Mac, said before anything happens. */
 function setsUpPiece(c: Choices): HTMLElement {
   const items: [string, string][] = [
-    ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
-    ["~/.mycelium", "Your settings, and these choices. Rooms on this Mac keep their notes here too."],
+    ON_WINDOWS
+      ? ["mycelium and herdr on your PATH", "The app's folder is added to your own PATH, so agents and your terminals can run them."]
+      : ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
+    [ON_WINDOWS ? "%USERPROFILE%\\.mycelium" : "~/.mycelium", `Your settings, and these choices. Rooms on this ${MACHINE} keep their notes here too.`],
     c.mode === "hub"
-      ? ["Rooms on this Mac, while Mycelium is open", "SLIM, the hub and its UI, reachable only from this Mac (127.0.0.1)."]
-      : ["The runner, while Mycelium is open", "It tells the hub which agents this Mac can start, and starts them in herdr."],
+      ? [`Rooms on this ${MACHINE}, while Mycelium is open`, `SLIM, the hub and its UI, reachable only from this ${MACHINE} (127.0.0.1).`]
+      : ["The runner, while Mycelium is open", `It tells the hub which agents this ${MACHINE} can start, and starts them in herdr.`],
     ...(c.restore
       ? ([["herdr's integrations", "A hook in each agent program's own settings, so herdr can reopen its agents after a restart."]] as [string, string][])
       : []),
-    ["Start at login", "Only if you turn it on, in Settings or from the menu bar icon."],
+    ["Start at login", `Only if you turn it on, in Settings or from ${TRAY}.`],
   ];
   return el(
     "details",
     { class: "sets-up-box" },
-    el("summary", {}, "What this sets up on your Mac"),
+    el("summary", {}, `What this sets up on your ${MACHINE}`),
     el("ul", { class: "sets-up" }, ...items.map(([what, why]) => el("li", {}, el("strong", {}, what), el("span", {}, why)))),
     el("p", { class: "hint" }, "No admin password, and nothing outside your home folder."),
   );
@@ -870,7 +974,26 @@ function setsUpPiece(c: Choices): HTMLElement {
 
 // ── first run: a short wizard ───────────────────────────────────────────────
 
-type Step = "place" | "model" | "agents" | "experiences" | "ready";
+/** The model step's picture: the engines think with this model, and your own
+ *  agents use their own accounts. Static markup, so it's set as HTML. */
+function engineMap(): HTMLElement {
+  const chip = (x: number, y: number, text: string) =>
+    `<rect class="chip" x="${x}" y="${y}" width="74" height="24" rx="6"/><text x="${x + 37}" y="${y + 16}">${text}</text>`;
+  const figure = el("div", { class: "engine-map", role: "img", "aria-label": "Engines think with this model. Your own agents use their own accounts." });
+  figure.innerHTML = `<svg viewBox="0 0 360 140" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect class="group" x="0.5" y="0.5" width="250" height="90" rx="10"/>
+    <text class="caption" x="10" y="19">Engines</text>
+    ${chip(10, 28, "Personas")}${chip(88, 28, "Workers")}${chip(166, 28, "Synthesizer")}${chip(10, 58, "Verifier")}${chip(88, 58, "Hello")}
+    <path class="flow" d="M251 46 H268"/><path class="flow head" d="M264 41 L270 46 L264 51"/>
+    <rect class="model" x="272" y="31" width="87" height="30" rx="15"/><text class="model-text" x="315.5" y="51">This model</text>
+    <rect class="group own" x="0.5" y="106" width="250" height="32" rx="10"/><text x="125.5" y="127">Your own agents</text>
+    <path class="flow own" d="M251 122 H268"/><path class="flow own head" d="M264 117 L270 122 L264 127"/>
+    <rect class="group own" x="272" y="107" width="87" height="30" rx="15"/><text x="315.5" y="127">Own accounts</text>
+  </svg>`;
+  return figure;
+}
+
+type Step = "place" | "model" | "agents" | "voice" | "experiences" | "ready";
 
 async function wizard() {
   const snap = await snapshot();
@@ -887,9 +1010,9 @@ async function wizard() {
   // Nothing to restart yet: the hub that starts at the end reads what's added.
   const experiences = experiencesPiece("wizard", () => {});
 
-  // An experience runs on rooms on this Mac, so a team's hub skips it.
+  // Voice and experiences run on this Mac's own hub, so a team's hub skips them.
   const steps = (): Step[] =>
-    c.mode === "hub" ? ["place", "model", "agents", "experiences", "ready"] : ["place", "agents", "ready"];
+    c.mode === "hub" ? ["place", "model", "agents", "voice", "experiences", "ready"] : ["place", "agents", "ready"];
 
   const show = () => {
     const order = steps();
@@ -900,33 +1023,66 @@ async function wizard() {
       error.hidden = false;
     };
 
+    // Each step is two panes: what the feature is on the left, its settings
+    // on the right.
     let title: string;
-    let lede: string | null = null;
+    let explain: (Node | string)[];
     let body: Node;
+    const p = (...text: (Node | string)[]) => el("p", {}, ...text);
     if (at === "place") {
       title = "Rooms where you and your agents work together";
-      lede = "First, where should your rooms live?";
+      explain = [
+        p("A room is where you and your agents share tasks, a board and what they remember."),
+        p(`Rooms live on a hub. Run one on this ${MACHINE}, or join the one your team runs.`),
+      ];
       body = place.el;
     } else if (at === "model") {
-      title = "Give Mycelium's own agents a model";
-      lede =
-        "Mycelium comes with agents of its own: one helps your agents agree, others play a role in a scenario, another keeps notes. They need a model to think with. Agents you bring, like Claude Code, sign in on their own.";
+      title = "A model for the engines";
+      explain = [
+        p("Mycelium provides engines: members of a room that the hub runs itself, like a persona that plays a character or a worker that takes tasks off the board."),
+        engineMap(),
+        p("Engines use this model to think. Your own agents, like Claude Code or Codex, don't use it."),
+        p("You can use Mycelium without engines just fine. This step is optional. ", outLink(MODELS_DOC, "Learn more")),
+      ];
       body = model.el;
     } else if (at === "agents") {
-      title = "Agents on this Mac";
-      lede = "Mycelium can start these for you and bring them into a room.";
+      title = `Agents on this ${MACHINE}`;
+      explain = [
+        p("Your agents are the coding assistants you already use, like Claude Code or Codex. Mycelium can start them and bring them into a room."),
+        p(
+          "It runs them in ",
+          el("strong", {}, "herdr"),
+          ", a terminal for agents that comes with the app. herdr gives each agent an address of its own, like an IP: the pane it runs in. With that address, Mycelium can make the agent a member of a room and wake it when someone asks it something.",
+        ),
+        p("You can watch and type into each pane from the Agents window."),
+      ];
       body = agents;
+    } else if (at === "voice") {
+      title = "Talk instead of type";
+      explain = [
+        p("A mic in every message box. What you say is typed into it, and nothing sends until you do."),
+        p(`It runs on this ${MACHINE}, in English. Your audio isn't saved or sent anywhere.`),
+      ];
+      body = voicePiece(c, "wizard");
     } else if (at === "experiences") {
       title = "Add an experience";
-      lede = "Ready-made rooms to explore. Optional, and you can add them later.";
+      explain = [p("Ready-made rooms to explore, each from a file you were given."), p("Optional. You can add them later in Settings.")];
       body = experiences.el;
     } else {
       title = "Ready to start";
+      explain = [p("Here's what you chose. You can change any of it later in Settings.")];
       const summary: [string, string][] = [
-        ["Rooms", c.mode === "hub" ? "On this Mac, reachable only from it" : `On ${c.hubUrl.trim()}`],
+        ["Rooms", c.mode === "hub" ? `On this ${MACHINE}, reachable only from it` : `On ${c.hubUrl.trim()}`],
       ];
-      if (c.mode === "hub") summary.push(["Model", skippedModel ? "Not set yet. Add one in Settings (⌘,)." : model.summary()]);
+      if (c.mode === "hub") summary.push(["Engines' model", skippedModel ? `Not set yet. Add one in Settings (${SETTINGS_KEYS}).` : model.summary()]);
       summary.push(["Agents work in", c.root]);
+      if (c.mode === "hub") {
+        const voice =
+          c.voiceModel === "accurate"
+            ? "On, accurate. The speech model downloads the first time you turn on the mic."
+            : "On. The speech model downloads when Mycelium starts.";
+        summary.push(["Voice", c.voice ? voice : "Off"]);
+      }
       const added = c.mode === "hub" ? experiences.added() : [];
       if (added.length > 0) summary.push(["Added", added.map((x) => x.title).join(", ")]);
       body = el(
@@ -976,15 +1132,19 @@ async function wizard() {
     app.replaceChildren(
       el(
         "section",
-        { class: "card" },
+        { class: "card wizard" },
         el("div", { class: "steps", "aria-label": `Step ${i + 1} of ${order.length}` }, ...order.map((_, n) => el("span", { class: n < i ? "done" : n === i ? "on" : "" }))),
         el(
           "div",
-          { class: "card-body" },
-          at === "place" ? el("div", { class: "brand" }, el("img", { class: "brand-mark", src: "/mark.png", alt: "" }), "Mycelium") : null,
-          el("div", {}, el("h1", { class: "title" }, title), lede ? el("p", { class: "lede" }, lede) : null),
-          body,
-          error,
+          { class: "card-body split" },
+          el(
+            "div",
+            { class: "explain" },
+            at === "place" ? el("div", { class: "brand" }, el("img", { class: "brand-mark", src: "/mark.png", alt: "" }), "Mycelium") : null,
+            el("h1", { class: "title" }, title),
+            ...explain,
+          ),
+          el("div", { class: "config" }, body, error),
         ),
         el(
           "div",
@@ -1000,9 +1160,168 @@ async function wizard() {
   show();
 }
 
+// ── Version: which release this app runs, and switching ─────────────────────
+
+/** A release the app can switch to (`versions.rs`). */
+interface AppRelease {
+  tag: string;
+  /** The app's version in it, as the updater compares them (`3.0.55-rc1`). */
+  version: string;
+  prerelease: boolean;
+  published: string;
+}
+
+interface VersionsView {
+  current: string;
+  releaseCandidates: boolean;
+  releases: AppRelease[];
+  /** Why the list is one kept from earlier, when GitHub couldn't be asked. */
+  note?: string | null;
+}
+
+/** Semver order, a prerelease (`3.0.55-rc1`) before its release: negative when `a` is older. */
+function compareVersions(a: string, b: string): number {
+  const split = (v: string) => {
+    const [main, pre = ""] = v.split("-", 2);
+    return { nums: main.split(".").map((n) => Number(n) || 0), pre };
+  };
+  const [x, y] = [split(a), split(b)];
+  for (let i = 0; i < 3; i++) if ((x.nums[i] ?? 0) !== (y.nums[i] ?? 0)) return (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
+  if (x.pre === y.pre) return 0;
+  if (!x.pre) return 1;
+  if (!y.pre) return -1;
+  return x.pre.localeCompare(y.pre, undefined, { numeric: true });
+}
+
+const PREVIEW_VERSIONS: VersionsView = {
+  current: "3.0.54",
+  releaseCandidates: false,
+  releases: [
+    { tag: "v3.0.55rc1", version: "3.0.55-rc1", prerelease: true, published: "2026-10-20T10:00:00Z" },
+    { tag: "v3.0.54", version: "3.0.54", prerelease: false, published: "2026-10-20T00:06:41Z" },
+    { tag: "v3.0.53", version: "3.0.53", prerelease: false, published: "2026-10-19T20:51:19Z" },
+  ],
+};
+
+/**
+ * The version running, a switch for release candidates (which is also the
+ * channel updates follow), and the releases to switch to. Switching downloads
+ * that release's signed update and restarts, like any update.
+ */
+function versionPiece(): HTMLElement {
+  const lede = el("p", { class: "lede" }, "Reading which version this is…");
+  const list = el("div", { class: "versions" });
+  const error = el("p", { class: "error", role: "alert", hidden: "" });
+  let rc = false;
+
+  const toggle = checkbox("release-candidates", false, (on) => {
+    rc = on;
+    if (inApp) void invoke("set_update_channel", { releaseCandidates: on }).catch((e) => fail(e));
+    void load();
+  });
+  const fail = (e: unknown) => {
+    error.textContent = e instanceof Error ? e.message : String(e);
+    error.hidden = false;
+  };
+
+  const row = (r: AppRelease, current: string) => {
+    const older = compareVersions(r.version, current) < 0;
+    const here = r.version === current;
+    const tags = [
+      here ? el("span", { class: "tag" }, "this version") : null,
+      r.prerelease ? el("span", { class: "tag warn" }, "release candidate") : null,
+      older && !here ? el("span", { class: "tag" }, "older") : null,
+    ];
+    const warning = el(
+      "p",
+      { class: "hint version-warn", hidden: "" },
+      "This is older than the version you have. Rooms and settings a newer version saved may not open in it, and a hub elsewhere on a newer version may not work with it.",
+    );
+    const go = el("button", { class: "button ghost small", type: "button" }, older ? "Switch back" : "Switch");
+    let warned = false;
+    go.addEventListener("click", async () => {
+      if (older && !warned) {
+        warned = true;
+        warning.hidden = false;
+        go.textContent = `Switch to ${r.tag} anyway`;
+        return;
+      }
+      go.disabled = true;
+      error.hidden = true;
+      try {
+        if (inApp) await invoke("switch_version", { tag: r.tag });
+        go.textContent = "Downloading…";
+      } catch (e) {
+        fail(e);
+        go.disabled = false;
+      }
+    });
+    const date = r.published ? new Date(r.published).toLocaleDateString() : "";
+    return el(
+      "div",
+      { class: "version-row" },
+      el("div", { class: "version-name" }, el("strong", {}, r.tag.replace(/^v/, "")), ...tags),
+      el("span", { class: "version-date" }, date),
+      here ? el("span", {}) : go,
+      warning,
+    );
+  };
+
+  const load = async () => {
+    error.hidden = true;
+    list.replaceChildren(el("p", { class: "hint" }, "Reading releases…"));
+    try {
+      const view = inApp
+        ? await invoke<VersionsView>("app_versions", { withRc: rc })
+        : { ...PREVIEW_VERSIONS, releases: PREVIEW_VERSIONS.releases.filter((r) => rc || !r.prerelease) };
+      lede.textContent = `Mycelium ${view.current}. The hub and the CLI inside the app change with it. A mycelium you installed separately for your terminal keeps its own version.`;
+      list.replaceChildren(
+        ...(view.note ? [el("p", { class: "hint" }, view.note)] : []),
+        ...view.releases.map((r) => row(r, view.current)),
+      );
+      if (!view.releases.length) list.replaceChildren(el("p", { class: "hint" }, "No releases to switch to."));
+    } catch (e) {
+      list.replaceChildren();
+      fail(e);
+    }
+  };
+
+  // The saved channel decides the switch's starting place, then the list.
+  void (async () => {
+    if (inApp) {
+      try {
+        rc = (await invoke<VersionsView>("app_versions", { withRc: false })).releaseCandidates;
+      } catch {
+        // Offline: load() says so.
+      }
+    }
+    toggle.checked = rc;
+    await load();
+  })();
+
+  return el(
+    "div",
+    { class: "piece" },
+    lede,
+    el(
+      "div",
+      { class: "share" },
+      el("label", { class: "share-label", for: "release-candidates" }, toggle, "Offer release candidates"),
+      el(
+        "p",
+        { class: "hint" },
+        "A release candidate is the next version, out early to try. With this on, they're listed here and updates offer the next one. Turn it off to go back to stable releases: you stay on what you have until the next stable one, or switch back below.",
+      ),
+    ),
+    el("div", { class: "label" }, "Switch to"),
+    list,
+    error,
+  );
+}
+
 // ── Settings: the same pieces, one section at a time ─────────────────────────
 
-type Section = "mac" | "model" | "agents" | "experiences" | "privacy";
+type Section = "mac" | "model" | "agents" | "voice" | "experiences" | "privacy" | "version";
 
 async function settingsWindow(open: Section = "mac") {
   const snap = await snapshot();
@@ -1010,11 +1329,13 @@ async function settingsWindow(open: Section = "mac") {
   // The same sections whatever is chosen: one that doesn't apply says why,
   // rather than leaving the sidebar.
   const sections = (): [Section, string][] => [
-    ["mac", "This Mac"],
-    ["model", "Model"],
+    ["mac", `This ${MACHINE}`],
+    ["model", "Engines' model"],
     ["agents", "Agents"],
+    ["voice", "Voice"],
     ["experiences", "Experiences"],
     ["privacy", "Privacy"],
+    ["version", "Version"],
   ];
   let at: Section = sections().some(([s]) => s === open) ? open : "mac";
   // On a team's hub these are set there; asked once per window, and shown as is.
@@ -1053,8 +1374,26 @@ async function settingsWindow(open: Section = "mac") {
       nothingToSave = true;
     } else if (at === "model") {
       const model = await modelPiece("settings");
-      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "The model Mycelium's built-in agents use. Agents like Claude Code use their own accounts."), model.el);
+      body = el("div", { class: "piece" }, el("p", { class: "lede" }, "Personas, workers, the synthesizer, the verifier and hello think with this model. Your own agents, like Claude Code, don't use it."), model.el);
       save = () => startWith(c, model.value());
+    } else if (at === "voice" && c.mode === "client") {
+      // The app gives the mic only to the hub it runs itself.
+      body = el(
+        "div",
+        { class: "piece" },
+        el(
+          "p",
+          { class: "lede" },
+          `Voice works with a hub on this ${MACHINE}. Connected to a team's hub, the app doesn't offer the mic; use that hub in a browser to talk to it.`,
+        ),
+      );
+      nothingToSave = true;
+    } else if (at === "voice") {
+      body = el("div", { class: "piece" }, voicePiece(c));
+    } else if (at === "version") {
+      // Switching downloads and restarts on its own; there's nothing to save.
+      body = versionPiece();
+      nothingToSave = true;
     } else if (at === "agents") {
       body = agentsPiece(c, snap);
     } else if (at === "experiences") {
@@ -1177,7 +1516,7 @@ function otherHubNotice(h: OtherHub, home: string): HTMLElement {
         ? `Docker, project ${h.project}`
         : `Docker, container ${h.container ?? "unknown"}`
       : h.source === "process"
-        ? `A process on this Mac (${h.pid})`
+        ? `A process on this ${MACHINE} (${h.pid})`
         : "Something Mycelium can't identify";
   const older = h.version && !h.dev_build && olderThan(h.version, h.app_version);
   const data = h.data_path ? tilde(h.data_path, home) : "unknown";
@@ -1255,16 +1594,27 @@ async function loading(setup: PathSetup | null = null) {
 
   const pathNote =
     setup && !setup.onPath && setup.linked.length > 0
-      ? el(
-          "div",
-          { class: "note" },
-          "Mycelium put ",
-          el("code", {}, "mycelium"),
-          " and ",
-          el("code", {}, "herdr"),
-          " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
-          el("code", {}, setup.line),
-        )
+      ? ON_WINDOWS
+        ? el(
+            "div",
+            { class: "note" },
+            "Your agents can run ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            ". So your own terminals find them too, add the app's folder to your PATH by running this once in PowerShell: ",
+            el("code", {}, setup.line),
+          )
+        : el(
+            "div",
+            { class: "note" },
+            "Mycelium put ",
+            el("code", {}, "mycelium"),
+            " and ",
+            el("code", {}, "herdr"),
+            " in ~/.local/bin, which your shell doesn't search yet. Add this line to your shell profile so your own terminals find them too: ",
+            el("code", {}, setup.line),
+          )
       : null;
   const skipped =
     setup && setup.skipped.length > 0
@@ -1300,7 +1650,7 @@ async function loading(setup: PathSetup | null = null) {
     error.hidden = false;
   }
 
-  const where = mode === "hub" ? "Starting on this Mac" : `Connecting to ${snap.settings?.hubUrl ?? "the hub"}`;
+  const where = mode === "hub" ? `Starting on this ${MACHINE}` : `Connecting to ${snap.settings?.hubUrl ?? "the hub"}`;
   app.replaceChildren(
     el(
       "section",
@@ -1404,7 +1754,7 @@ async function doctor() {
     el(
       "section",
       { class: "card" },
-      head("Health check. Each part Mycelium runs on this Mac, and whether it's working."),
+      head(`Health check. Each part Mycelium runs on this ${MACHINE}, and whether it's working.`),
       body,
       el("div", { class: "card-foot" }, verdict, el("div", { class: "actions" }, showLog, again, back)),
     ),
@@ -1424,4 +1774,14 @@ async function boot() {
   await loading();
 }
 
-void boot();
+// A failure before any page draws would otherwise leave an empty window.
+boot().catch((e) => {
+  app.replaceChildren(
+    el(
+      "section",
+      { class: "card" },
+      head("Mycelium couldn't start."),
+      el("p", { class: "error", role: "alert" }, String(e)),
+    ),
+  );
+});

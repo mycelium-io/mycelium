@@ -3,11 +3,18 @@
 
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
-import { Cpu, Globe, Laptop, SquareTerminal, type LucideIcon } from "lucide-react";
-import { createEngine, createMemories, registerA2aAgent, type EngineKind } from "@/lib/api";
+import { useState } from "react";
+import { Cpu, Globe, Laptop, Play, SquareTerminal, type LucideIcon } from "lucide-react";
+import {
+  createEngine,
+  createInvite,
+  createMemories,
+  registerA2aAgent,
+  type EngineKind,
+  type JoinCode,
+} from "@/lib/api";
 import { agentHandoffPrompt } from "@/lib/install";
-import { useNetworkStatus, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
 import { CopyAction } from "@/components/ui/copy-field";
@@ -20,19 +27,29 @@ import {
   handleValid,
   normHandle,
 } from "@/components/launch-agent-dialog";
+import { RunningAgentMember } from "@/components/running-agent-member";
+import { useHubAddress } from "@/lib/hub-address";
 import { cn } from "@/lib/utils";
 
 /** The ways a member can join a room, in the order the dialog offers them. */
-export type MemberKind = "machine" | "engine" | "a2a" | "session";
+export type MemberKind = "machine" | "running" | "engine" | "a2a" | "session";
 
 const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; about: string }[] = [
   {
     kind: "machine",
     icon: Laptop,
     label: "Your machine",
-    hint: "On your computer",
+    hint: "Start a new one",
     about:
       "A coding agent on your machine that joins this room as a member, working the way you describe here.",
+  },
+  {
+    kind: "running",
+    icon: Play,
+    label: "Running agent",
+    hint: "Already running",
+    about:
+      "An agent already running on your machine that isn't in a room yet. It keeps its session and joins this room as a member.",
   },
   {
     kind: "engine",
@@ -53,18 +70,22 @@ const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; 
     kind: "session",
     icon: SquareTerminal,
     label: "Open session",
-    hint: "Already open",
-    about: "A coding agent you already have open. Paste this into it and it sets itself up in this room.",
+    hint: "Paste a prompt",
+    about:
+      "An agent session you already have open, on this machine or another. It joins as the member you name here, with a code in the prompt you paste into it.",
   },
 ];
 
 /** The engines the hub runs, and what each does, in a sentence. */
 export const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
-  { kind: "aligner", blurb: "Mediates a negotiation until the members agree." },
+  { kind: "conductor", blurb: "Runs a protocol inside a task, giving the floor one step at a time." },
   { kind: "synthesizer", blurb: "Distills the room's conversation into memory." },
   { kind: "persona", blurb: "Plays a member in character, from its notes, and remembers." },
   { kind: "worker", blurb: "Takes work off the board in its own checkout, asks for review, resolves it." },
-  { kind: "conductor", blurb: "Runs a protocol inside a task, giving the floor one step at a time." },
+  {
+    kind: "verifier",
+    blurb: "Checks what agents say about approvals and merges against this room's records, and notes what it can't find.",
+  },
   { kind: "hello", blurb: "Answers once and writes nothing. Proves the path works." },
 ];
 
@@ -120,6 +141,9 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
         {open && kind === "machine" && (
           <LaunchAgentForm roomName={roomName} onLaunched={added} onClose={close} />
         )}
+        {open && kind === "running" && (
+          <RunningAgentMember roomName={roomName} onAdded={added} onClose={close} />
+        )}
         {open && kind === "engine" && (
           <EngineMember roomName={roomName} onAdded={(h) => (added(h), close())} />
         )}
@@ -134,7 +158,7 @@ export function AddMemberDialog({ open, onOpenChange, roomName, initialKind = "m
 
 function KindPicker({ value, onChange }: { value: MemberKind; onChange: (k: MemberKind) => void }) {
   return (
-    <div role="tablist" aria-label="Kind of member" className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+    <div role="tablist" aria-label="Kind of member" className="mt-4 grid grid-cols-2 gap-1.5 sm:grid-cols-5">
       {KINDS.map(({ kind, icon: Icon, label, hint }) => {
         const active = kind === value;
         return (
@@ -145,18 +169,23 @@ function KindPicker({ value, onChange }: { value: MemberKind; onChange: (k: Memb
             aria-selected={active}
             onClick={() => onChange(kind)}
             className={cn(
-              "flex items-start gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
+              "flex min-w-0 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition-colors",
               active
                 ? "border-accent bg-accent/10"
                 : "border-border hover:border-border2 hover:bg-hairline",
             )}
           >
-            <Icon className={cn("mt-0.5 size-4 flex-shrink-0", active ? "text-accent" : "text-muted-foreground")} />
-            <span className="min-w-0">
-              <span className={cn("block text-label font-medium", active ? "text-text" : "text-muted-foreground")}>
+            <Icon className={cn("size-4 flex-shrink-0", active ? "text-accent" : "text-muted-foreground")} />
+            <span className="w-full min-w-0">
+              <span
+                className={cn("block truncate text-label font-medium", active ? "text-text" : "text-muted-foreground")}
+              >
                 {label}
               </span>
-              <span className="block truncate text-micro text-faint">{hint}</span>
+              {/* The chosen card's tint lifts its ground, so its hint steps up a level to stay legible. */}
+              <span className={cn("block truncate text-micro", active ? "text-muted-foreground" : "text-faint")}>
+                {hint}
+              </span>
             </span>
           </button>
         );
@@ -177,8 +206,8 @@ function ErrorLine({ error }: { error: string | null }) {
 function EngineMember({ roomName, onAdded }: { roomName: string; onAdded: (handle: string) => void }) {
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
-  const [engine, setEngine] = useState<EngineKind>("aligner");
-  const [handle, setHandle] = useState("aligner");
+  const [engine, setEngine] = useState<EngineKind>("conductor");
+  const [handle, setHandle] = useState("conductor");
   const [touched, setTouched] = useState(false);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -373,39 +402,151 @@ function A2aMember({ roomName, onAdded }: { roomName: string; onAdded: (handle: 
   );
 }
 
+/** How long a session's join code can wait to be used, shortest first. The
+ *  first is the default: a code's lifetime is part of what keeps it safe. */
+export const CODE_LIFETIMES: { minutes: number; label: string }[] = [
+  { minutes: 10, label: "10 minutes" },
+  { minutes: 60, label: "1 hour" },
+  { minutes: 24 * 60, label: "1 day" },
+];
+
+/** Whether `url` names this machine only (localhost, 127.x, ::1), so a
+ *  session on another machine couldn't reach it. */
+export function isLocalAddress(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+    return host === "localhost" || host === "::1" || host.startsWith("127.");
+  } catch {
+    return false;
+  }
+}
+
 function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => void }) {
   const { principal } = useCurrentUser();
-  const { network } = useNetworkStatus();
-  const hubUrl = useSyncExternalStore(
-    () => () => {},
-    () => window.location.origin,
-    () => "<this-hub-url>",
-  );
-  const prompt = agentHandoffPrompt({
-    hubUrl,
-    roomName,
-    principal,
-    authRequired: network?.auth?.enabled ?? null,
-  });
+  const revalidate = useRoomRevalidate(roomName);
+  const hubUrl = useHubAddress("<this-hub-url>");
+  const [handle, setHandle] = useState("");
+  const [minutes, setMinutes] = useState(CODE_LIFETIMES[0].minutes);
+  const [invite, setInvite] = useState<JoinCode | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmed = normHandle(handle);
+
+  // Enabled with nothing typed, and saying what's missing when pressed: a
+  // dimmed button over a dimmed page reads as pressable anyway.
+  const submit = async () => {
+    if (submitting) return;
+    if (!handleValid(handle)) {
+      setError(
+        trimmed
+          ? "A handle is lowercase letters, digits, - and _, starting with a letter or digit."
+          : "Give the agent a handle first.",
+      );
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      setInvite(
+        await createInvite(roomName, {
+          handle: trimmed,
+          ttl_minutes: minutes,
+          created_by: principal.trim() || undefined,
+        }),
+      );
+      revalidate();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not make a join code");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (invite) {
+    // With its zone: the session reading it is often on a machine in another.
+    const until = new Date(invite.expires_at).toLocaleString(undefined, {
+      weekday: minutes > 60 ? "short" : undefined,
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+    const prompt = agentHandoffPrompt({ hubUrl, roomName, handle: invite.handle, code: invite.code, until });
+    return (
+      <>
+        <div className="space-y-3 px-5 py-4">
+          {/* Whole, never scrolled: its last line, keeping `await` running, is
+              the point of it. */}
+          <div className="rounded-lg border border-border bg-bg">
+            <pre className="whitespace-pre-wrap px-4 py-3 font-mono text-micro leading-relaxed text-muted-foreground">
+              {prompt}
+            </pre>
+          </div>
+          <p className="text-micro text-faint">
+            Paste it into the session. @{invite.handle} shows up in Members once it has joined.
+            {isLocalAddress(hubUrl) && " This hub's address only works for a session on this machine."}
+          </p>
+        </div>
+        <MemberFooter
+          action={
+            <div className="flex gap-2">
+              <CopyAction value={prompt} label="Copy prompt" />
+              <Button onClick={onDone}>Done</Button>
+            </div>
+          }
+        >
+          <SquareTerminal className="size-4 flex-shrink-0" aria-hidden />
+          <span className="truncate">Runs wherever that session is.</span>
+        </MemberFooter>
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="space-y-3 px-5 py-4">
-        <div className="rounded-lg border border-border bg-bg">
-          <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap px-4 py-3 font-mono text-micro leading-relaxed text-muted-foreground">
-            {prompt}
-          </pre>
+      <div className="space-y-4 px-5 py-4">
+        <IdentityRow
+          value={handle}
+          onChange={(v) => {
+            setHandle(v);
+            setError(null);
+          }}
+          hint="The member the session joins as. It gets a join code for it."
+        />
+        <div>
+          <p id="code-lifetime-label" className="mb-2 text-micro font-medium text-muted-foreground">
+            The code works for
+          </p>
+          <div role="radiogroup" aria-labelledby="code-lifetime-label" className="flex flex-wrap gap-1.5">
+            {CODE_LIFETIMES.map((option) => (
+              <button
+                key={option.minutes}
+                type="button"
+                role="radio"
+                aria-checked={minutes === option.minutes}
+                onClick={() => setMinutes(option.minutes)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-label transition-colors",
+                  minutes === option.minutes
+                    ? "border-accent bg-accent/10 text-text"
+                    : "border-border text-muted-foreground hover:border-border2 hover:text-text",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-label text-muted-foreground">
+            The code works once. Keep it short unless the session will start later.
+          </p>
         </div>
-        <p className="text-micro text-faint">
-          It installs the CLI if it needs to, connects to this hub, picks a handle, and starts by
-          reading the board. It shows up in Members once it has joined.
-        </p>
+        <ErrorLine error={error} />
       </div>
       <MemberFooter
         action={
-          <div className="flex gap-2">
-            <CopyAction value={prompt} label="Copy setup" />
-            <Button onClick={onDone}>Done</Button>
-          </div>
+          <Button onClick={submit} disabled={submitting}>
+            {submitting ? "Making the prompt…" : "Make the prompt"}
+          </Button>
         }
       >
         <SquareTerminal className="size-4 flex-shrink-0" aria-hidden />

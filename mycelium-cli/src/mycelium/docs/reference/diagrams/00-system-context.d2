@@ -36,7 +36,7 @@ hub: Mycelium backend  (the hub / moderator) {
   router: FastAPI router\nparticipate.py · a2a_server.py {class: comp}
   moderator: Moderator\nRoomChannelManager + SlimClient\nHOLDS the MLS group key {class: comp}
   persister: Persister\ndurable transcript · presence leases\ndurable inbox {class: comp}
-  engines: Engines\naligner · synthesizer\nA2A responder {class: comp}
+  engines: Engines\nconductor · synthesizer\nA2A responder {class: comp}
   custody: Custodial MLS sessions\n(opt-in, per actor) {class: comp}
   files: Room files\nmarkdown memory + JSONL index {class: store}
 }
@@ -67,4 +67,4 @@ hub.moderator <-> slim: SLIM group publish / receive\nMLS-encrypted (RFC 9420) {
 hub.engines -> remote: A2A outbound\nHTTPS JSON-RPC · Bearer\n(out-of-band, hub sees plaintext) {class: a2a}
 ext_client -> hub.router: A2A inbound\nHTTPS JSON-RPC to room card {class: a2a}
 
-boundary_note: "Where the encryption actually is\n\n• MLS covers one hop only, hub to SLIM node. The node forwards ciphertext and never reads it.\n• Every other line on this page is plain HTTP or HTTPS, terminated at the hub. The hub holds the group key and reads plaintext; that is how cognition (aligner, synthesizer, persister) works at all.\n• So this is not end-to-end encryption from the hub, for a spoke or for a bridged A2A agent." {class: note; near: bottom-center}
+boundary_note: "Where the encryption actually is\n\n• MLS covers one hop only, hub to SLIM node. The node forwards ciphertext and never reads it.\n• Every other line on this page is plain HTTP or HTTPS, terminated at the hub. The hub holds the group key and reads plaintext; that is how cognition (conductor, synthesizer, persister) works at all.\n• So this is not end-to-end encryption from the hub, for a spoke or for a bridged A2A agent." {class: note; near: bottom-center}

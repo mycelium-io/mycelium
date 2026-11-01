@@ -25,6 +25,7 @@ from app.schemas import (
     SkillCreate,
     SkillListResponse,
     SkillRead,
+    refusals,
 )
 from app.services import actor, links, search_index, skills
 from app.services.filesystem import (
@@ -69,7 +70,7 @@ def _skill_read(room_name: str, name: str, meta: dict, body: str) -> SkillRead:
     )
 
 
-@router.post("", response_model=SkillRead, status_code=201)
+@router.post("", response_model=SkillRead, status_code=201, responses=refusals(403, 404, 409, 422))
 async def create_skill(room_name: str, payload: SkillCreate, request: Request) -> SkillRead:
     """Create or upsert a skill. Writes a ``skills/{name}`` memory (version bumps)."""
     # Break routes.memory ↔ routes.skills cycle.
@@ -104,7 +105,7 @@ async def create_skill(room_name: str, payload: SkillCreate, request: Request) -
     )
 
 
-@router.get("", response_model=SkillListResponse)
+@router.get("", response_model=SkillListResponse, responses=refusals(404))
 async def list_skills(room_name: str) -> SkillListResponse:
     """List a room's skills, newest-updated first."""
     _require_room(room_name)
@@ -115,7 +116,7 @@ async def list_skills(room_name: str) -> SkillListResponse:
     return SkillListResponse(skills=items, total=len(items))
 
 
-@router.get("/{name}", response_model=SkillRead)
+@router.get("/{name}", response_model=SkillRead, responses=refusals(404))
 async def get_skill(room_name: str, name: str) -> SkillRead:
     """Get a specific skill by name."""
     _require_room(room_name)
@@ -126,7 +127,7 @@ async def get_skill(room_name: str, name: str) -> SkillRead:
     return _skill_read(room_name, name, meta, body)
 
 
-@router.delete("/{name}", status_code=204)
+@router.delete("/{name}", status_code=204, responses=refusals(400, 404))
 async def delete_skill(room_name: str, name: str) -> None:
     """Delete a skill by name. Removes the memory file and its index/link entries."""
     key = skills.skill_key(name)

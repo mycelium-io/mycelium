@@ -8,7 +8,9 @@
 // React-aware consumer, so this stays unit-testable without rendering.
 
 import { parseMentions } from "@/lib/mentions";
-import { unwrapContent } from "@/lib/room-events";
+import type { OnScreen, SkipRule } from "@/lib/on-screen";
+import { CHAT_TYPES, unwrapContent } from "@/lib/room-events";
+import { isLiveEpisode, threadShortId } from "@/lib/threads";
 
 export type NotificationKind = "mention" | "direct" | "consensus" | "knowledge" | "join" | "message";
 
@@ -19,13 +21,20 @@ export interface ClassifiedNotification {
   summary: string;
   sender: string;
   time: string;
-  /** True for the kinds that ring the bell (mention/direct/consensus/knowledge);
-   *  false for ambient activity that only badges (a plain broadcast or a join). */
+  /** True when the message mentions you with `@you` or was sent to you: the
+   *  only things that ring the bell. Everything else only badges its room. */
   needsMe: boolean;
+  /** The task thread it was said in, or null for the room's channel. */
+  episode?: string | null;
+  /** The whole message, for reading it aloud. Only on a message as it
+   *  arrives: it's never stored with the bell's list. */
+  text?: string;
 }
 
 export interface StoredNotification extends ClassifiedNotification {
   read: boolean;
+  /** The title of the task whose thread it was said in, once looked up. */
+  title?: string | null;
   /** True when this reached the bell inbox + sound/desktop ("loud"); false when
    *  it only bumps the room's unread badge ("quiet"). Missing on legacy entries,
    *  which were all loud — treat `!== false` as loud. */
@@ -39,11 +48,31 @@ export type NotificationScope = "needs-me" | "everything";
  *  just badges; muted = nothing (no badge, no bell). */
 export type RoomLevel = "all" | "mentions" | "muted";
 
+/** What reading aloud reads: what rings the bell, or everything said in rooms you pick. */
+export type ReadAloudReads = "mentions" | "rooms";
+
+/** How much of a message is read: its start (Read all for the rest), or all of it. */
+export type ReadAloudLength = "start" | "all";
+
 export interface NotificationSettings {
   scope: NotificationScope;
   soundEnabled: boolean;
   soundVolume: number;
+  /** What counts as already in front of you, so the ping stays quiet. */
+  pingSkip: SkipRule;
   desktopEnabled: boolean;
+  /** Reading aloud through the hub's speech server, when it has one. It has
+   *  its own settings page; the bell's settings don't decide it. */
+  readAloud: boolean;
+  readAloudReads: ReadAloudReads;
+  /** The rooms everything is read from, when `readAloudReads` is "rooms". */
+  readAloudRooms: string[];
+  readAloudSkip: SkipRule;
+  readAloudLength: ReadAloudLength;
+  /** A voice the speech server lists, or null for the hub's own. */
+  readAloudVoice: string | null;
+  /** 1 is normal speed. */
+  readAloudSpeed: number;
   dnd: boolean;
   mutedRooms: string[];
   /** Per-room overrides of the scope-derived default. */
@@ -54,28 +83,36 @@ export const DEFAULT_SETTINGS: NotificationSettings = {
   scope: "needs-me",
   soundEnabled: true,
   soundVolume: 0.5,
+  pingSkip: "room",
   desktopEnabled: false,
+  readAloud: false,
+  readAloudReads: "mentions",
+  readAloudRooms: [],
+  readAloudSkip: "thread",
+  readAloudLength: "start",
+  readAloudVoice: null,
+  readAloudSpeed: 1,
   dnd: false,
   mutedRooms: [],
   roomLevels: {},
 };
 
 /** The effective level for a room: an explicit per-room override wins, else a
- *  legacy mute reads as "muted", else the global scope's default ("everything" →
- *  all, "needs-me" → mentions). */
+ *  legacy mute reads as "muted", else "mentions". The old global `scope` is no
+ *  longer read: the bell is for mentions of you. */
 export function roomLevel(settings: NotificationSettings, room: string): RoomLevel {
   const override = settings.roomLevels?.[room];
-  if (override) return override;
+  // "all" (every message rings) is gone: a saved one reads as the default.
+  if (override === "muted") return override;
   if (settings.mutedRooms.includes(room)) return "muted";
-  return settings.scope === "everything" ? "all" : "mentions";
+  return "mentions";
 }
 
-/** Is this notification "loud" — bell inbox + sound/desktop — vs badge-only?
- *  Loud when the room is on "all", or the item needs you and the room isn't muted. */
+/** Is this notification "loud" — in the bell, with a sound — vs badge-only?
+ *  Loud when it mentions you or was sent to you, and its room isn't muted. */
 export function isAlert(n: ClassifiedNotification, settings: NotificationSettings): boolean {
-  const level = roomLevel(settings, n.room);
-  if (level === "muted") return false;
-  return level === "all" || n.needsMe;
+  if (roomLevel(settings, n.room) === "muted") return false;
+  return n.needsMe;
 }
 
 /** A silent `@~handle` names you without asking you anything, so it never rings. */
@@ -84,13 +121,17 @@ function mentionsHandle(text: string, handle: string): boolean {
   return parseMentions(text).some((h) => h.toLowerCase() === handle);
 }
 
-/** Whether a message actor id names this handle: bare, `@`-prefixed, or as the
- *  last segment of a URN. */
-function isHandle(id: string | undefined, handle: string): boolean {
-  if (!id || !handle) return false;
-  const bare = id.trim().replace(/^@/, "").toLowerCase();
-  return bare === handle || bare.endsWith(`:${handle}`);
+/** Where a mention opens: its task's thread, or the channel at the message. */
+export function mentionHref(n: Pick<StoredNotification, "room" | "id" | "episode">): string {
+  const room = `/room/${encodeURIComponent(n.room)}`;
+  const short = threadShortId(n.episode);
+  const focus = short ? `episode:${short}` : `message:${n.id}`;
+  return `${room}?focus=${encodeURIComponent(focus)}`;
 }
+
+/** Raised on `window` when a system notification for a mention is clicked,
+ *  with the href to open as its detail. The bell routes it. */
+export const OPEN_MENTION_EVENT = "mycelium:open-mention";
 
 /** The room a path shows, if it's a room page. */
 export function roomOfPath(pathname: string): string | null {
@@ -118,9 +159,11 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
 
   const content = unwrapContent(raw);
 
-  switch (mtype) {
+  // The persister's frames are `l9_exchange`; a message the hub couldn't hand
+  // to SLIM is published as its plain chat type, and reads the same.
+  switch (CHAT_TYPES.has(mtype) ? "l9_exchange" : mtype) {
     case "l9_exchange": {
-      const text = (content.content as string) || "";
+      const text = (content.content as string) || (content.text as string) || "";
       // Your own post is never a notification to yourself.
       if (sender.toLowerCase() === handle) return null;
       const directed = recipient !== null && recipient.toLowerCase() === handle;
@@ -128,6 +171,7 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
       // A message that neither addresses nor mentions you is ambient room
       // activity: it badges the room (quiet) but doesn't ring the bell.
       const kind = directed ? "direct" : mentioned ? "mention" : "message";
+      const episode = (raw.episode as string | null | undefined) ?? null;
       return {
         id,
         room,
@@ -136,6 +180,8 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
         kind,
         summary: text.slice(0, 160),
         needsMe: directed || mentioned,
+        episode: isLiveEpisode(room, episode) ? null : episode,
+        text,
       };
     }
     case "l9_commit": {
@@ -144,11 +190,18 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
       const converged = header.subkind === "converged";
       const fallback = converged ? "Consensus reached" : "Negotiation ended without agreement";
       const text = (content.content as string) || fallback;
-      // A negotiation ending is news to the people who were in it; to everyone
-      // else in the room it's activity, so it badges the room and stays quiet.
-      const participants = (header.participants as { actors?: { id?: string }[] } | undefined)?.actors ?? [];
-      const inIt = participants.some(a => isHandle(a.id, handle)) || mentionsHandle(text, handle);
-      return { id, room, sender, time, kind: "consensus", summary: text.slice(0, 160), needsMe: inIt };
+      // A negotiation ending badges its room. It rings only when its text
+      // mentions you, like any other message.
+      return {
+        id,
+        room,
+        sender,
+        time,
+        kind: "consensus",
+        summary: text.slice(0, 160),
+        needsMe: mentionsHandle(text, handle),
+        text,
+      };
     }
     case "l9_knowledge": {
       // Memory changes all the time; it badges its room and never rings.
@@ -191,7 +244,12 @@ export function loadNotifications(): StoredNotification[] {
 export function saveNotifications(list: StoredNotification[]): void {
   if (typeof window === "undefined") return;
   try {
-    const trimmed = list.slice(-MAX_STORED);
+    // The whole message is read aloud from memory and never kept.
+    const trimmed = list.slice(-MAX_STORED).map((n) => {
+      const kept = { ...n };
+      delete kept.text;
+      return kept;
+    });
     window.localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(trimmed));
   } catch {
     // Storage quota/private-mode failures are non-fatal — in-memory state carries on.
@@ -231,7 +289,11 @@ export type CrossTabMessage =
   | { type: "room-read"; room: string }
   | { type: "dismiss"; id: string }
   | { type: "clear" }
-  | { type: "settings"; settings: NotificationSettings };
+  | { type: "settings"; settings: NotificationSettings }
+  /** What the focused window shows, or null when it lost focus: a message
+   *  there may already be in front of you, so no other window rings or reads
+   *  it aloud. */
+  | { type: "viewing"; screen: OnScreen | null };
 
 const CHANNEL_NAME = "mycelium-notifications";
 

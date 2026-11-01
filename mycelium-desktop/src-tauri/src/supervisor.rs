@@ -11,7 +11,8 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{ChildStdin, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -31,7 +32,9 @@ const STOP_GRACE: Duration = Duration::from_secs(8);
 #[derive(Default)]
 struct Inner {
     generation: u64,
-    pid: Option<i32>,
+    /// The running supervisor's pid, and whether it has exited since: a pid
+    /// is only signalled while its process is still the one we started.
+    pid: Option<(i32, Arc<AtomicBool>)>,
     stdin: Option<ChildStdin>,
     status: Option<Value>,
     last_error: Option<String>,
@@ -41,12 +44,32 @@ struct Inner {
     pending_path: Option<String>,
 }
 
-#[derive(Default)]
 pub struct Supervisor {
     inner: Mutex<Inner>,
+    /// This launch's token for the UI server to require of every request:
+    /// held in memory, handed to the supervisor on its stdin and to the window
+    /// in its URL fragment, never written down.
+    launch_token: String,
+}
+
+impl Default for Supervisor {
+    fn default() -> Self {
+        Self { inner: Mutex::default(), launch_token: launch_token() }
+    }
+}
+
+/// A fresh token for this launch: 32 random bytes, as hex.
+fn launch_token() -> String {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("the system's random source");
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 impl Supervisor {
+    pub fn launch_token(&self) -> &str {
+        &self.launch_token
+    }
+
     pub fn status(&self) -> Option<Value> {
         self.inner.lock().unwrap().status.clone()
     }
@@ -100,18 +123,39 @@ fn stop_child(inner: &mut Inner) {
     // Closing stdin asks it to stop; SIGTERM says so again; a supervisor
     // still there after the grace period is killed.
     inner.stdin.take();
-    if let Some(pid) = inner.pid.take() {
-        unsafe {
-            libc::kill(pid, libc::SIGTERM);
-        }
+    if let Some((pid, exited)) = inner.pid.take() {
+        signal(pid, false);
         thread::spawn(move || {
             thread::sleep(STOP_GRACE);
-            unsafe {
-                if libc::kill(pid, 0) == 0 {
-                    libc::kill(pid, libc::SIGKILL);
-                }
+            // Once it has exited its pid may belong to another program.
+            if !exited.load(Ordering::SeqCst) {
+                signal(pid, true);
             }
         });
+    }
+}
+
+#[cfg(unix)]
+fn signal(pid: i32, kill: bool) {
+    unsafe {
+        if !kill {
+            libc::kill(pid, libc::SIGTERM);
+        } else if libc::kill(pid, 0) == 0 {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+}
+
+/// Windows has no SIGTERM to ask with: closing stdin is the ask, and the
+/// supervisor stops what it runs. After the grace period only the supervisor
+/// itself is ended, never its tree: herdr runs under it, and the agents in
+/// herdr outlive the supervisor here as they do on macOS and Linux.
+#[cfg(windows)]
+fn signal(pid: i32, kill: bool) {
+    if kill {
+        let _ = paths::command("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .output();
     }
 }
 
@@ -135,11 +179,13 @@ fn command(settings: &Settings) -> Result<Command, String> {
     let program = match std::env::var_os("MYCELIUM_DESKTOP_SUPERVISOR") {
         Some(p) => p.into(),
         None => paths::resolve("mycelium").ok_or_else(|| {
-            "The mycelium program isn't in this app or on this Mac. Reinstall Mycelium.".to_string()
+            "The mycelium program isn't in this app or on this computer. Reinstall Mycelium.".to_string()
         })?,
     };
-    let mut cmd = Command::new(program);
-    cmd.args(["desktop", "serve", "--mode", settings.mode.as_str(), "--json"]);
+    let mut cmd = paths::command(program);
+    // `--ui-token-stdin`: the launch's token is the first line written to its
+    // stdin (`run`), never its environment, which `ps` shows any program.
+    cmd.args(["desktop", "serve", "--mode", settings.mode.as_str(), "--json", "--ui-token-stdin"]);
     if let Some(hub) = &settings.hub_url {
         cmd.args(["--hub-url", hub]);
     }
@@ -149,11 +195,14 @@ fn command(settings: &Settings) -> Result<Command, String> {
     // The app's answer wins over config.toml for the hub it runs.
     if settings.mode == Mode::Hub {
         cmd.arg(if settings.share_usage { "--share-usage" } else { "--no-share-usage" });
+        cmd.arg(if settings.voice { "--voice" } else { "--no-voice" });
+        cmd.args(["--voice-model", settings.voice_model.as_str()]);
     }
     // The SLIM node's slimctl, pinned to the 2.1.x the hub's bindings speak.
     if let Some(slimctl) = paths::bundled("slimctl") {
         cmd.env("MYCELIUM_SLIMCTL", slimctl);
     }
+    without_appimage_env(&mut cmd);
     // stdin stays piped and open for the supervisor's whole life: it stops
     // when it closes, which is how it goes away even if this app is killed.
     cmd.env("PATH", paths::shell_path())
@@ -164,6 +213,39 @@ fn command(settings: &Settings) -> Result<Command, String> {
     Ok(cmd)
 }
 
+/// What an AppImage's launcher sets for the app's own GTK (its theme, its
+/// modules, its data folder first), kept from the supervisor, which passes
+/// its environment on to herdr and the agents it starts.
+#[cfg(target_os = "linux")]
+fn without_appimage_env(cmd: &mut Command) {
+    let Some(appdir) = std::env::var_os("APPDIR") else { return };
+    for var in [
+        "GTK_DATA_PREFIX",
+        "GTK_THEME",
+        "GTK_EXE_PREFIX",
+        "GTK_PATH",
+        "GTK_IM_MODULE_FILE",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GSETTINGS_SCHEMA_DIR",
+        "GI_TYPELIB_PATH",
+        "GIO_MODULE_DIR",
+        "WEBKIT_DISABLE_DMABUF_RENDERER",
+    ] {
+        cmd.env_remove(var);
+    }
+    if let Some(dirs) = std::env::var_os("XDG_DATA_DIRS") {
+        let inside = std::path::Path::new(&appdir);
+        let kept: Vec<_> = std::env::split_paths(&dirs).filter(|d| !d.starts_with(inside)).collect();
+        match std::env::join_paths(kept) {
+            Ok(joined) if !joined.is_empty() => cmd.env("XDG_DATA_DIRS", joined),
+            _ => cmd.env_remove("XDG_DATA_DIRS"),
+        };
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn without_appimage_env(_cmd: &mut Command) {}
+
 fn run(app: AppHandle, settings: Settings, generation: u64) {
     let mut backoff = Duration::from_secs(1);
     loop {
@@ -172,8 +254,10 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
             return;
         }
         let started = Instant::now();
-        match command(&settings).and_then(|mut c| c.spawn().map_err(|e| e.to_string())) {
+        let spawned = command(&settings).and_then(|mut c| c.spawn().map_err(|e| e.to_string()));
+        match spawned {
             Ok(mut child) => {
+                let exited = Arc::new(AtomicBool::new(false));
                 {
                     let mut inner = sup.inner.lock().unwrap();
                     if inner.generation != generation {
@@ -181,8 +265,13 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
                         let _ = child.kill();
                         return;
                     }
-                    inner.pid = Some(child.id() as i32);
+                    inner.pid = Some((child.id() as i32, Arc::clone(&exited)));
                     inner.stdin = child.stdin.take();
+                    // The launch's token, first thing, for the UI server alone.
+                    if let Some(stdin) = inner.stdin.as_mut() {
+                        use std::io::Write;
+                        let _ = writeln!(stdin, "{}", sup.launch_token()).and_then(|()| stdin.flush());
+                    }
                 }
                 if let Some(stderr) = child.stderr.take() {
                     thread::spawn(move || {
@@ -200,6 +289,7 @@ fn run(app: AppHandle, settings: Settings, generation: u64) {
                     }
                 }
                 let _ = child.wait();
+                exited.store(true, Ordering::SeqCst);
             }
             Err(message) => report_error(&app, generation, "app", &message),
         }
@@ -271,20 +361,10 @@ fn report_error(app: &AppHandle, generation: u64, component: &str, message: &str
     crate::on_error(app, &json!({ "component": component, "message": message }));
 }
 
-/// Whether a status says the window has something to show: the UI in hub
-/// mode, the runner in client mode (the UI is the remote hub's).
+/// Whether a status says the window has something to show: the app's own UI,
+/// which runs in both modes (in client mode it talks to the joined hub).
 pub fn ready(status: &Value) -> bool {
-    let state = |name: &str| {
-        status
-            .pointer(&format!("/components/{name}/state"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            == "running"
-    };
-    match status.get("mode").and_then(Value::as_str) {
-        Some("hub") => state("ui"),
-        _ => state("runner"),
-    }
+    status.pointer("/components/ui/state").and_then(Value::as_str) == Some("running")
 }
 
 #[cfg(test)]
@@ -292,12 +372,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_hub_is_ready_when_its_ui_is_and_a_client_when_its_runner_is() {
+    fn the_window_is_ready_when_the_apps_own_ui_is_in_either_mode() {
         let hub = json!({"mode":"hub","components":{"ui":{"state":"running"},"runner":{"state":"starting"}}});
         assert!(ready(&hub));
-        let client = json!({"mode":"client","components":{"ui":{"state":"disabled"},"runner":{"state":"starting"}}});
+        let client = json!({"mode":"client","components":{"ui":{"state":"starting"},"runner":{"state":"running"}}});
         assert!(!ready(&client));
-        let client = json!({"mode":"client","components":{"runner":{"state":"running"}}});
+        let client = json!({"mode":"client","components":{"ui":{"state":"running"},"runner":{"state":"starting"}}});
         assert!(ready(&client));
     }
 }

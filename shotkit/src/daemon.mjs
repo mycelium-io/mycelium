@@ -119,7 +119,9 @@ const server = createServer((sock) => {
         if (!handler) throw new Error(`unknown op: ${msg.op}`);
         reply = { ok: true, ...(await handler.call(OPS, msg)) };
       } catch (err) {
-        reply = { ok: false, error: err?.stack ?? String(err) };
+        // The message and the stack apart: the client prints the one line, and
+        // the stack only when asked (--verbose).
+        reply = { ok: false, error: String(err?.message ?? err), stack: err?.stack };
       }
       touchIdle();
       sock.write(`${JSON.stringify(reply)}\n`);

@@ -72,7 +72,7 @@ describe("parseEvent", () => {
   it("reads a tick's fields out of the nested payload", () => {
     const ev = parseEvent({
       message_type: "coordination_tick",
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       content: JSON.stringify({
         payload: { round: 4, participant_id: "risk", action: "accept", current_offer: { window: "night" } },
       }),
@@ -95,7 +95,7 @@ describe("parseEvent", () => {
   it("summarizes a consensus with assignments, compiled rows and GAR", () => {
     const ev = parseEvent({
       message_type: "coordination_consensus",
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       content: JSON.stringify({
         assignments: { cutover: "phased", owner: "growth" },
         tasks: ["t1", "t2"],
@@ -111,10 +111,10 @@ describe("parseEvent", () => {
       message_type: "memory_changed",
       key: "decisions/scope",
       version: 3,
-      updated_by: "aligner",
+      updated_by: "conductor",
       created_at: CREATED,
     });
-    expect(ev.content).toBe("decisions/scope v3 by aligner");
+    expect(ev.content).toBe("decisions/scope v3 by conductor");
   });
 
   it("unwraps a live l9_exchange back into the chat shape a refresh would show", () => {
@@ -172,7 +172,7 @@ describe("parseEvent", () => {
   it("normalizes an l9_commit into the coordination_consensus shape", () => {
     const ev = parseEvent({
       message_type: "l9_commit",
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       content: JSON.stringify({
         l9: {
           header: { subkind: "converged", message: { episode: "urn:e:s1" } },
@@ -191,7 +191,7 @@ describe("parseEvent", () => {
   it("marks a rejected commit as broken", () => {
     const ev = parseEvent({
       message_type: "l9_commit",
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       content: JSON.stringify({ l9: { header: { subkind: "rejected" } } }),
       created_at: CREATED,
     });

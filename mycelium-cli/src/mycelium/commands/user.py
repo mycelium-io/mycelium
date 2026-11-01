@@ -28,7 +28,7 @@ from rich.table import Table
 
 from mycelium import identity
 from mycelium.cli_options import acts_as, emits_json
-from mycelium.client import current_token
+from mycelium.client import answered, current_token
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -95,12 +95,11 @@ def _fetch_user(handle: str, *, client: Any = None) -> UserRead | None:
     from mycelium_backend_client.models import UserRead
 
     try:
-        result = get_api.sync(handle=_norm_handle(handle), client=client)
+        return answered(get_api.sync_detailed(handle=_norm_handle(handle), client=client), UserRead)
     except UnexpectedStatus as exc:
         if exc.status_code == 404:
             return None
         raise
-    return result if isinstance(result, UserRead) else None
 
 
 def load_user(handle: str) -> UserManifest | None:
@@ -116,11 +115,11 @@ def load_user(handle: str) -> UserManifest | None:
 def list_users() -> list[UserManifest]:
     """Every user registered on the hub."""
     from mycelium_backend_client.api.users import list_users_api_users_get as list_api
+    from mycelium_backend_client.models import UserListResponse
 
     with _typed_client(MyceliumConfig.load()) as client:
-        result = list_api.sync(client=client)
-    reads = _unset_to_none(getattr(result, "users", None)) or []
-    return [u for u in (_manifest_from_read(r) for r in reads) if u is not None]
+        result = answered(list_api.sync_detailed(client=client), UserListResponse)
+    return [u for u in (_manifest_from_read(r) for r in result.users) if u is not None]
 
 
 def _write_user(user: UserManifest, created_by: str) -> None:
@@ -130,7 +129,7 @@ def _write_user(user: UserManifest, created_by: str) -> None:
     unchanged record, and the frontmatter it lands in are all its business.
     """
     from mycelium_backend_client.api.users import create_user_api_users_post as create_api
-    from mycelium_backend_client.models import UserCreate
+    from mycelium_backend_client.models import UserCreate, UserRead
 
     body = UserCreate(
         handle=user.handle,
@@ -140,7 +139,7 @@ def _write_user(user: UserManifest, created_by: str) -> None:
         created_by=created_by,
     )
     with _typed_client(MyceliumConfig.load()) as client:
-        create_api.sync(client=client, body=body)
+        answered(create_api.sync_detailed(client=client, body=body), UserRead)
 
 
 def align_identity(
@@ -397,9 +396,32 @@ def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, s
         return None
 
 
+def _subscriptions_of(
+    config: MyceliumConfig, handle: str
+) -> tuple[str, list[dict[str, Any]]] | None:
+    """The room this resolves to and what ``handle`` is subscribed to there
+    (``mycelium subscribe``), or ``None`` with no room or no hub."""
+    from mycelium import caller
+    from mycelium_backend_client.api.subscriptions import (
+        list_subscriptions_api_rooms_room_name_subscriptions_get as list_api,
+    )
+
+    room = caller.room(config).value
+    if not room:
+        return None
+    try:
+        with _typed_client() as client:
+            resp = list_api.sync_detailed(room_name=room, client=client, handle=handle)
+    except httpx.HTTPError:
+        return None
+    if resp.status_code != 200:
+        return None
+    return room, json_module.loads(resp.content).get("subscriptions", [])
+
+
 @doc_ref(
     usage="mycelium whoami [--sources]",
-    desc="Print the user you're acting as, plus the agents you own.",
+    desc="Print the user you're acting as, the agents you own, and what you're subscribed to in this room.",
     group="user",
 )
 @emits_json()
@@ -447,6 +469,7 @@ def _whoami(ctx: typer.Context, *, sources: bool) -> None:
         view = _principal_view(principal)
         hub_down = view is None
         user, owned = (None, []) if view is None else view
+        watching = None if hub_down else _subscriptions_of(config, principal)
 
         if json_output:
             typer.echo(
@@ -471,6 +494,11 @@ def _whoami(ctx: typer.Context, *, sources: bool) -> None:
                             None
                             if hub_down
                             else [{"room": room, "handle": h} for h, _adapter, room in owned]
+                        ),
+                        "subscriptions": (
+                            None
+                            if watching is None
+                            else {"room": watching[0], "items": watching[1]}
                         ),
                     },
                     indent=2,
@@ -519,6 +547,12 @@ def _whoami(ctx: typer.Context, *, sources: bool) -> None:
             console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
             for agent_handle, _adapter, room_name in owned:
                 console.print(f"  @{agent_handle} [dim]({room_name})[/dim]")
+        if watching is not None and watching[1]:
+            room_name, items = watching
+            console.print(f"\n[bold]subscribed to {len(items)} in {room_name}[/bold]")
+            for s in items:
+                console.print(f"  {s['describe']} [dim](id {s['id']})[/dim]")
+            console.print("  [dim]drop one: mycelium subscribe rm <id>[/dim]")
     except typer.Exit:
         raise
     except Exception as e:

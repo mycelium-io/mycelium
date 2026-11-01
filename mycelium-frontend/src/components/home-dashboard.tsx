@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import Image from "next/image";
+import { EmptyNote } from "@/components/empty-state";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -14,6 +15,7 @@ import {
   Search,
   Lock,
   Sparkles,
+  SquareTerminal,
   Terminal,
   type LucideIcon,
 } from "lucide-react";
@@ -25,7 +27,7 @@ import { useOpenInstallModal } from "@/components/install-modal";
 import { useOpenSearch } from "@/components/global-search";
 import { useOpenPalette } from "@/components/keymap-provider";
 import { type EpisodeSummary, type Room } from "@/lib/api";
-import { useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, terminalLink, useIsDesktop } from "@/lib/desktop";
 import { useRoomEpisodes, useRoomLatest, useRooms, type RoomQueryOptions } from "@/lib/room-data";
 import { useBackendHealth } from "@/lib/use-status";
 
@@ -33,8 +35,11 @@ import { useBackendHealth } from "@/lib/use-status";
  *  glance, not a watch. Opening a room is what starts watching it. */
 const NO_POLL: RoomQueryOptions = { refreshInterval: 0 };
 
-// The seeded sample room the "Run a sample coordination" onboarding routes into.
-const SAMPLE_TOUR_HREF = "/room/subscription-pricing?tour=1";
+/** The tour runs in a room, since a room is where nearly everything is: the one
+ *  you were in last, so it points at your own work rather than a made-up one. */
+function tourHref(room: string): string {
+  return `/room/${encodeURIComponent(room)}?tour=1`;
+}
 
 function relativeTime(iso: string): string {
   if (!iso) return "";
@@ -85,6 +90,14 @@ function ActionRow({
       {action && <KbdChord size="xs" tone="muted" action={action} />}
     </>
   );
+  // A link the app answers (`mycelium://`) is a plain anchor, not a route.
+  if (href && !href.startsWith("/")) {
+    return (
+      <a href={href} className={cls}>
+        {inner}
+      </a>
+    );
+  }
   return href ? (
     <Link href={href} className={cls}>
       {inner}
@@ -135,7 +148,7 @@ export function HomeDashboard() {
         {/* The mark, the name, one line: stacked and centered, the way an
             editor greets you, above lists that read left to right. */}
         <header className="mb-10 flex flex-col items-center text-center">
-          <Image src="/logo.png" alt="" width={40} height={40} className="opacity-90" />
+          <Image src="/logo-128.png" alt="" width={40} height={40} className="opacity-90" />
           <h1
             className="mt-3 text-[40px] leading-none text-text"
             style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic", fontWeight: 600 }}
@@ -153,8 +166,14 @@ export function HomeDashboard() {
             <ActionRow icon={Plus} label="New room" onClick={() => setShowCreate(true)} />
             <ActionRow icon={Search} label="Search everything" action="search.open" onClick={() => openSearch?.()} />
             <ActionRow icon={Command} label="All commands" action="palette.open" onClick={openPalette} />
-            <ActionRow icon={Laptop} label={desktop ? "This Mac's agents" : "Machines"} href="/machines" />
-            <ActionRow icon={Sparkles} label="Run a sample" href={SAMPLE_TOUR_HREF} />
+            <ActionRow icon={Laptop} label={desktop ? `This ${desktopMachine()}'s agents` : "Machines"} href="/machines" />
+            {desktop && <ActionRow icon={SquareTerminal} label="Agents terminal" href={terminalLink()} />}
+            {/* With no room yet there is nothing to show around, so it starts one. */}
+            {ordered.length > 0 ? (
+              <ActionRow icon={Sparkles} label="Take a tour" href={tourHref(ordered[0].name)} />
+            ) : (
+              <ActionRow icon={Sparkles} label="Take a tour" onClick={() => setShowCreate(true)} />
+            )}
             {!desktop && <ActionRow icon={Terminal} label="Install the CLI" onClick={openInstallModal} />}
           </section>
         )}
@@ -173,9 +192,7 @@ export function HomeDashboard() {
             ))}
           </section>
         ) : rooms.length === 0 ? (
-          <p className="px-2 text-label text-muted-foreground">
-            No rooms yet. Make one, or run the sample to see a room at work.
-          </p>
+          <EmptyNote className="px-2">No rooms yet. Make one, and take the tour from inside it.</EmptyNote>
         ) : (
           <section>
             <ListLabel>Recent</ListLabel>
@@ -223,16 +240,20 @@ function RoomRow({ room }: { room: Room }) {
       className="flex h-9 items-center gap-2.5 rounded px-2 text-label transition-colors hover:bg-hairline"
     >
       <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]" />
-      <span className="flex-shrink-0 font-medium text-text">{room.name}</span>
-      {room.is_public === false && <Lock aria-label="private" className="size-3 flex-shrink-0 text-faint" />}
-      {state?.live && (
-        <span
-          aria-label={state.label}
-          title={state.label}
-          className="inline-block size-1.5 flex-shrink-0 animate-pulse rounded-full"
-          style={{ background: state.color }}
-        />
-      )}
+      {/* The name in a column of one width, so what was last said starts at
+          the same place on every row; a long name is cut, the title shows it. */}
+      <span className="flex w-48 flex-shrink-0 items-center gap-1.5" title={room.name}>
+        <span className="min-w-0 truncate font-medium text-text">{room.name}</span>
+        {room.is_public === false && <Lock aria-label="private" className="size-3 flex-shrink-0 text-faint" />}
+        {state?.live && (
+          <span
+            aria-label={state.label}
+            title={state.label}
+            className="inline-block size-1.5 flex-shrink-0 animate-pulse rounded-full"
+            style={{ background: state.color }}
+          />
+        )}
+      </span>
       <span className="min-w-0 flex-1 truncate text-muted-foreground">
         {latestLoading ? (
           <Skeleton className="inline-block h-2.5 w-40 align-middle" />

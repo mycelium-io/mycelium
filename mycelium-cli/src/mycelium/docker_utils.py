@@ -306,19 +306,32 @@ def generate_env_file(
         else "# LLM_BASE_URL not set, using provider default",
         "",
         "# ── Engine ───────────────────────────────────────────────────────────────",
-        # Where a registered `engine` runs its NEGMAS/Pi drive; backend-only.
-        # Always `backend`.
+        # Where a registered `engine` runs; backend-only. Always `backend`.
         f"ENGINE_RUNTIME={config.engine.runtime}",
+        # Named for the retired aligner so an existing .env keeps working:
+        # the handle a retired-aligner summon is answered on, and every
+        # engine's per-call Pi timeout.
         f"ALIGNER_HANDLE={config.aligner.handle}",
-        f"ALIGNER_TERM_CHECK={str(config.aligner.term_check).lower()}",
-        f"ALIGNER_ROUND_TIMEOUT_S={config.aligner.round_timeout_s}",
-        f"ALIGNER_MEDIATOR_MAX_STEPS={config.aligner.max_steps}",
         f"ALIGNER_PI_TIMEOUT_S={config.aligner.pi_timeout_s}",
         f"SYNTHESIZER_SOURCE={config.synthesizer.source}",
         f"WORKER_TOOLS={str(config.worker.tools).lower()}",
         f"WORKER_PI_TIMEOUT_S={config.worker.pi_timeout_s}",
         f"WORKER_MAX_TURNS_PER_ROOM={config.worker.max_turns_per_room}",
         f"BOARD_DEPENDENCY_GATE={str(config.board.dependency_gate).lower()}",
+        # The web app's public name; it refuses any name it wasn't told (lib/ui-guard.ts).
+        f"MYCELIUM_UI_HOST={config.ui.public_host}",
+        # The message box's mic; off unless turned on (services/voice.py).
+        f"VOICE_ENABLED={str(config.voice.enabled).lower()}",
+        f"VOICE_MODEL={config.voice.model}",
+        f"VOICE_DOWNLOAD={str(config.voice.download).lower()}",
+        # The speech server notifications are read aloud with; empty, none is offered.
+        f"VOICE_SPEECH_URL={config.voice.speech_url}",
+        f"VOICE_SPEECH_MODEL={config.voice.speech_model}",
+        f"VOICE_SPEECH_VOICE={config.voice.speech_voice}",
+        f"VOICE_SPEECH_API_KEY={config.voice.speech_api_key}",
+        # The verifier; off unless turned on, then only in rooms that add it.
+        f"VERIFIER_ENABLED={str(config.verifier.enabled).lower()}",
+        f"VERIFIER_CONFIRM={str(config.verifier.confirm).lower()}",
         "",
         "# ── Auth (HTTP-API JWT gate; off unless auth.enabled is set) ─────────────",
         f"AUTH_ENABLED={str(config.auth.enabled).lower()}",
@@ -371,7 +384,7 @@ def generate_env_file(
         "# ── Design patterns ───────────────────────────────────────────────────────",
         # The pack the hub offers at /api/patterns. PATTERNS_DIR is a path on this
         # machine: compose mounts it read-only into the backend and points the
-        # backend at the mount (compose.yml), and the Mac app's hub reads it as it
+        # backend at the mount (compose.yml), and the desktop app's hub reads it as it
         # is. Empty means the hub offers no pack.
         f"PATTERNS_DIR={_patterns_dir(config)}",
         f"PATTERNS_ALLOW_INLINE={'true' if config.patterns.allow_inline else 'false'}",

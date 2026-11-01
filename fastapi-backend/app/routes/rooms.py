@@ -10,10 +10,11 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.bus import app_channel, bus
-from app.schemas import RoomCreate, RoomRead
-from app.services import actor, room_access, room_channels
+from app.schemas import RoomCreate, RoomRead, RoomReindexRead, refusals
+from app.services import actor, pauses, room_access, room_channels, room_people
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
+    canonical_room_name,
     ensure_room_structure,
     get_room_dir,
     list_room_names,
@@ -54,7 +55,7 @@ def _last_activity(room: RoomRead) -> datetime:
         return room.created_at
 
 
-@router.post("", response_model=RoomRead, status_code=201)
+@router.post("", response_model=RoomRead, status_code=201, responses=refusals(400, 403, 404, 422))
 async def create_room(room: RoomCreate, request: Request):
     """Create a new room (directory + metadata sidecar).
 
@@ -68,6 +69,8 @@ async def create_room(room: RoomCreate, request: Request):
             detail="A private room needs an owner: who it's listed for. Say who you are first.",
         )
     members = sorted({h for h in (norm_handle(m) for m in room.members) if h and h != owner})
+    # Another spelling of a room's name is that room, never a second one.
+    room = room.model_copy(update={"name": canonical_room_name(room.name)})
     if room.name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room.name}' is a reserved system name")
     if room_exists(room.name):
@@ -108,6 +111,7 @@ async def make_room(room: RoomCreate, owner: str | None, members: list[str]) -> 
         },
     )
     logger.info("Created room directory: %s", room_dir)
+    room_people.start(room.name, owner, members)
 
     # Room = SLIM channel: provision the group channel with the backend
     # as moderator. Best-effort — a missing/unreachable node leaves the room a
@@ -163,7 +167,7 @@ async def list_rooms(
     return visible[skip : skip + limit]
 
 
-@router.get("/{room_name}", response_model=RoomRead)
+@router.get("/{room_name}", response_model=RoomRead, responses=refusals(404))
 async def get_room(room_name: str):
     """Get a room by name."""
     result = _room_read(room_name)
@@ -185,7 +189,7 @@ class RoomUpdate(BaseModel):
     )
 
 
-@router.patch("/{room_name}", response_model=RoomRead)
+@router.patch("/{room_name}", response_model=RoomRead, responses=refusals(400, 403, 404, 422))
 async def update_room(room_name: str, payload: RoomUpdate, request: Request):
     """Change a room's own attributes: its title, and whether it's private.
 
@@ -211,12 +215,21 @@ async def update_room(room_name: str, payload: RoomUpdate, request: Request):
                 )
             stored["owner"] = by
         stored["is_public"] = payload.is_public
+    dropped: set[str] = set()
     if payload.members is not None:
         owner = stored.get("owner")
+        before = set(stored.get("members") or [])
         stored["members"] = sorted(
             {h for h in (norm_handle(m) for m in payload.members) if h and h != owner}
         )
+        dropped = before - set(stored["members"])
     write_room_meta(room_name, stored)
+    # A private room's members are among its people: named here joins them,
+    # and taken off this list takes them out.
+    for handle in stored["members"] if payload.members is not None else []:
+        room_people.add(room_name, handle, "added")
+    for handle in dropped:
+        room_people.remove(room_name, handle)
     result = _room_read(room_name)
     if result is None:
         raise HTTPException(status_code=404, detail="Room not found")
@@ -232,7 +245,12 @@ async def update_room(room_name: str, payload: RoomUpdate, request: Request):
     return result
 
 
-@router.post("/{room_name}/reindex", status_code=200)
+@router.post(
+    "/{room_name}/reindex",
+    status_code=200,
+    response_model=RoomReindexRead,
+    responses=refusals(404),
+)
 async def reindex_room(room_name: str):
     """Re-index a room's filesystem into the JSONL search index."""
     if not room_exists(room_name):
@@ -244,7 +262,7 @@ async def reindex_room(room_name: str):
     return {"status": "complete", **stats}
 
 
-@router.delete("/{room_name}", status_code=204)
+@router.delete("/{room_name}", status_code=204, responses=refusals(400, 404))
 async def delete_room(room_name: str):
     """Delete a room and its filesystem directory."""
     if room_name in RESERVED_ROOMS:
@@ -254,6 +272,7 @@ async def delete_room(room_name: str):
 
     await room_channels.manager.close(room_name)
     remove_room_dir(room_name)
+    pauses.forget_room(room_name)
     logger.info("Removed room %s", room_name)
 
     bus.publish(app_channel(), {"type": "room_deleted", "room_name": room_name})

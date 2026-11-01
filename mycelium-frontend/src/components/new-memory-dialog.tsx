@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MarkdownEditorHandle } from "@fedoup/markdown-editor";
+import type { MarkdownEditorHandle } from "@/components/markdown-editor";
 import { FileText, Folder, FolderPlus, Loader2, type LucideIcon } from "lucide-react";
 import { ApiError, createMemories } from "@/lib/api";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
@@ -228,7 +228,8 @@ function NewMemoryForm({
           value: body,
           content_text: body,
           created_by: principal.trim() || "user",
-          ...(tags.length > 0 && { tags }),
+          // Sent even empty: replacing a memory with none should leave it with none.
+          tags,
           ...(expandable && { meta: { expandable: true } }),
           // Replacing one on purpose: only the version this dialog saw.
           ...(existing && { base_version: existing.version }),

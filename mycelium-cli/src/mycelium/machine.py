@@ -16,7 +16,8 @@ heartbeat for the Machines page, and both act through the functions below.
 An agent's own session is herdr's to keep: with herdr's integration for its
 CLI installed, herdr restarts it in that session after herdr's server
 restarts. What Mycelium does for an agent that stopped is :func:`restart` it,
-as itself, to catch up from the room. The runner keeps every bound workspace
+as itself, in that same session when its CLI can resume one, and to catch up
+from the room either way. The runner keeps every bound workspace
 synced, so the one thing to say about syncing is whether the runner is up.
 """
 
@@ -26,12 +27,13 @@ import json
 import shlex
 import shutil
 import time
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from mycelium.filesystem import get_mycelium_dir
-from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping
+from mycelium.integrations.herdr import HerdrBridge, HerdrError, HerdrPaneMapping, session_of
 from mycelium.integrations.herdr.bridge import (
     MIN_VERSION,
     integration_for,
@@ -80,11 +82,42 @@ class Agent:
     #: Whether herdr brings it back in its own session after herdr restarts
     #: (its CLI's herdr integration is current); ``None`` when unknown.
     restores: bool | None = None
+    #: The agent CLI's own session, as herdr reports it now or last did; what a
+    #: restart or a rename resumes.
+    session: str | None = None
 
     @property
     def restartable(self) -> bool:
         """Stopped or gone, with the folder and kind to start it again."""
         return self.state in ("stopped", "gone") and bool(self.folder) and bool(self.kind)
+
+
+@dataclass
+class Unenrolled:
+    """An agent CLI running in a herdr pane here that no room has yet: one the
+    app can bring into a room (Members → Add, the runner's ``adopt`` job)."""
+
+    pane: str
+    kind: str | None = None
+    state: State = "unknown"
+    folder: str | None = None
+    workspace: str | None = None
+    workspace_label: str | None = None
+    #: The pane's tab name, and a handle made from it.
+    tab_label: str | None = None
+    suggested_handle: str | None = None
+
+
+def _suggest_handle(tab_label: str, kind: str | None) -> str | None:
+    """A handle from a tab's name, or from the agent CLI when the tab has none."""
+    from mycelium.commands.herdr import _sanitize_handle
+
+    numbered = tab_label.strip().isdigit()
+    return (
+        _sanitize_handle("" if numbered else tab_label, "")
+        or _sanitize_handle(kind or "", "")
+        or None
+    )
 
 
 @dataclass
@@ -133,6 +166,8 @@ class Report:
     #: herdr's integrations not current for agent CLIs with agents running here.
     missing_integrations: list[str] = field(default_factory=list)
     herdr_minimum: str = MIN_VERSION
+    #: Agents running here that aren't in any room yet.
+    unenrolled: list[Unenrolled] = field(default_factory=list)
 
     @property
     def agents(self) -> list[Agent]:
@@ -169,6 +204,7 @@ class Report:
         for w, workspace in zip(body["workspaces"], self.workspaces, strict=True):
             for a, agent in zip(w["agents"], workspace.agents, strict=True):
                 a["restartable"] = agent.restartable
+                a["resumes"] = resumes(agent)
         return body
 
 
@@ -237,6 +273,16 @@ def report(
         w.agents.sort(key=lambda a: a.handle)
     agents = [a for w in ordered for a in w.agents]
     missing = _restores(bridge, agents)
+    mapped = {a.pane for a in agents}
+    tabs = bridge.tab_labels() if live else {}
+    unenrolled = sorted(
+        (
+            _unenrolled(pane, running, tabs, labels)
+            for pane, running in live.items()
+            if pane not in mapped
+        ),
+        key=lambda u: (u.workspace_label or "", u.pane),
+    )
     return Report(
         machine=machine,
         herdr=herdr_up,
@@ -248,6 +294,25 @@ def report(
             agents, ordered, herdr_up, server, client, machine, missing, runner, sync
         ),
         missing_integrations=missing,
+        unenrolled=unenrolled,
+    )
+
+
+def _unenrolled(
+    pane: str, running: dict, tabs: dict[str, str], labels: dict[str, str]
+) -> Unenrolled:
+    kind = str(running.get("agent") or "") or None
+    workspace = str(running.get("workspace_id") or "") or None
+    tab_label = tabs.get(str(running.get("tab_id") or ""), "")
+    return Unenrolled(
+        pane=pane,
+        kind=kind,
+        state=_STATES.get(str(running.get("agent_status") or ""), "unknown"),
+        folder=running.get("foreground_cwd") or running.get("cwd"),
+        workspace=workspace,
+        workspace_label=labels.get(workspace or "") or workspace,
+        tab_label=tab_label or None,
+        suggested_handle=_suggest_handle(tab_label, kind),
     )
 
 
@@ -272,6 +337,7 @@ def _agent(
         kind=mapping.kind or (running or {}).get("agent"),
         folder=mapping.cwd or seen.get("foreground_cwd") or seen.get("cwd"),
         workspace=str(seen.get("workspace_id") or "") or None,
+        session=session_of(running) or mapping.session,
     )
 
 
@@ -371,7 +437,7 @@ def _problems(
                 f"Wakes have stalled on {machine}: the runner has been stuck on one sync pass "
                 f"for {stalled}, so {_names(live) if live else 'no agent here'} won't hear "
                 "mentions until it ends. Its log (~/.mycelium/runner/runner.log) says where it is stuck; restarting "
-                "the runner, or the Mac app, gets wakes going again.",
+                "the runner, or the desktop app, gets wakes going again.",
                 "mycelium runner stop && mycelium runner --detach",
                 [a.handle for a in live],
             )
@@ -470,33 +536,117 @@ def _herdr_update(server: str | None, client: str | None) -> Problem | None:
 # ── actions ──────────────────────────────────────────────────────────────────
 
 
-def restart_prompt(agent: Agent) -> str:
-    """What a restarted agent is told: who it is, and to catch up from the room."""
+def restart_prompt(agent: Agent, *, resumed: bool = False) -> str:
+    """What a restarted agent is told: who it is, and to catch up from the room.
+
+    ``resumed``: it came back in its own session, so it remembers its work and
+    only needs what happened while it was stopped.
+    """
     h, room = agent.handle, agent.room
+    catch_up = (
+        f"Run `mycelium await --room {room} --handle {h} --json --timeout 5` to catch up on "
+        "what happened since your last turn"
+    )
+    later = "When a line starting with [mycelium] appears here later, do what it says."
+    if resumed:
+        return (
+            f"[mycelium] You were restarted in your own session, so your conversation is "
+            f"intact. You are still @{h} in the Mycelium room '{room}'. {catch_up}. {later}"
+        )
     return (
         f"[mycelium] You are @{h}, a member of the Mycelium room '{room}'. You were restarted, "
         "so you don't remember what you were doing. If you have notes, `mycelium memory get "
-        f"agents/{h}/notes` says how to work. Then run `mycelium await --room {room} --handle "
-        f"{h} --json --timeout 5` to catch up on what happened since your last turn, and "
-        f"`mycelium board --room {room}` for your tasks. When a line starting with [mycelium] "
-        "appears here later, do what it says."
+        f"agents/{h}/notes` says how to work. Then {catch_up[0].lower()}{catch_up[1:]}, and "
+        f"`mycelium board --room {room}` for your tasks. {later}"
     )
+
+
+def rename_prompt(agent: Agent, old: str, *, resumed: bool = False) -> str:
+    """What an agent restarted under a new handle is told: its new name, then catch up.
+
+    ``resumed``: it came back in its own session, so it is told only its new name.
+    """
+    h, room = agent.handle, agent.room
+    catch_up = f"mycelium await --room {room} --handle {h} --json --timeout 5"
+    later = "When a line starting with [mycelium] appears here later, do what it says."
+    if resumed:
+        return (
+            f"[mycelium] Your conversation was restored. You were @{old}; you've been renamed "
+            f"to @{h} in the Mycelium room '{room}'. Use --handle {h} from now on (and --as "
+            f"{h}). Run `{catch_up}` to catch up on what happened since. {later}"
+        )
+    return (
+        f"[mycelium] You are @{h}, a member of the Mycelium room '{room}'. You were @{old}; "
+        f"you were renamed and restarted, so you don't remember what you were doing. Your "
+        f"notes and tasks moved with you: `mycelium memory get agents/{h}/notes` says how to "
+        f"work. Then run `{catch_up}` to catch up, and `mycelium board --room {room}` for your "
+        f"tasks. {later}"
+    )
+
+
+def resumes(agent: Agent) -> bool:
+    """Whether a restart brings ``agent`` back in its own session: one is on
+    record, and its agent CLI can be started in it."""
+    from mycelium.integrations.agents import of_kind
+
+    return bool(agent.session and agent.kind and of_kind(agent.kind).resume_args(agent.session))
 
 
 def restart_command(agent: Agent) -> str:
     """What restarting ``agent`` does, said for a person to read before saying yes."""
     where = f"pane {agent.pane}" if agent.state == "stopped" else "a new pane beside its room's"
-    return f"{agent.kind} in {_tilde(agent.folder or '.')}, {where}, as @{agent.handle} in {agent.room}"
+    how = "in its own session" if resumes(agent) else "in a new session"
+    return (
+        f"{agent.kind} in {_tilde(agent.folder or '.')}, {where}, as @{agent.handle} "
+        f"in {agent.room}, {how}"
+    )
 
 
-def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None = None) -> str:
+def _live_elsewhere(bridge: HerdrBridge, session: str, pane: str) -> str | None:
+    """The pane where ``session`` is already running, other than ``pane``, if any.
+
+    One handle has one live session: two panes in one session would read and
+    post as one member, each marking messages read for the other.
+    """
+    try:
+        agents = bridge.list_agents()
+    except HerdrError:
+        return None
+    return next(
+        (
+            str(a["pane_id"])
+            for a in agents
+            if session_of(a) == session and a.get("pane_id") and str(a["pane_id"]) != pane
+        ),
+        None,
+    )
+
+
+def restart(
+    config: MyceliumConfig,
+    agent: Agent,
+    *,
+    bridge: HerdrBridge | None = None,
+    renamed_from: str | None = None,
+    while_starting: AbstractContextManager[None] | None = None,
+) -> str:
     """Start ``agent`` again in its pane (or a new one beside it), in its folder, as itself.
+
+    ``while_starting`` is held while its agent CLI comes up, which can take a
+    while: the runner lets go of its panes then, so its sync pass and the wakes
+    it delivers don't wait on the start. The pane is mapped to the agent before
+    that, so a pass that runs meanwhile knows whose it is.
 
     Returns the pane it runs in. The pane gets the agent's handle, room and hub
     in its environment first, as a pane the runner opens would, and its
-    workspace is bound to the room again, so the runner syncs it.
+    workspace is bound to the room again, so the runner syncs it. It comes
+    back in its own session when one is on record and its CLI can resume it
+    (:func:`resumes`), else in a new one, and is told which: a renamed agent
+    (``renamed_from``) its new name, any other what happened while it was
+    stopped. A session already running in another pane is never started a
+    second time.
     """
-    from mycelium.commands.swarm import _start_unblocked
+    from mycelium.commands.swarm import _start_unblocked, not_ready
 
     if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
@@ -504,10 +654,32 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
         raise MachineError(f"@{agent.handle} can't be restarted: no folder or agent CLI on record.")
     bridge = bridge or HerdrBridge()
     kind, folder = str(agent.kind), str(Path(str(agent.folder)).expanduser())
+    if reason := not_ready(kind, "here"):
+        raise MachineError(reason)
+    resume = agent.session if resumes(agent) else None
+    if resume and (elsewhere := _live_elsewhere(bridge, resume, agent.pane)):
+        raise MachineError(
+            f"@{agent.handle}'s session is already running in pane {elsewhere}. One handle "
+            "has one live session: stop that one first."
+        )
+    prompt = (
+        rename_prompt(agent, renamed_from, resumed=bool(resume))
+        if renamed_from
+        else restart_prompt(agent, resumed=bool(resume))
+    )
+    from mycelium.agent_credentials import MemberTokenRefused, agent_token_env
+
+    try:
+        # Its own token on a hub with auth on. Only the file's path, since a
+        # stopped pane is given these as a typed `export`, which its screen shows.
+        token = agent_token_env(config, agent.room, agent.handle)
+    except MemberTokenRefused as e:
+        raise MachineError(e.reason()) from e
     env = {
         "MYCELIUM_API_URL": config.server.api_url,
         "MYCELIUM_AGENT_HANDLE": agent.handle,
         "MYCELIUM_ROOM_ID": agent.room,
+        **token,
     }
     try:
         if agent.state == "stopped":
@@ -517,23 +689,25 @@ def restart(config: MyceliumConfig, agent: Agent, *, bridge: HerdrBridge | None 
             workspace = agent.workspace
         else:
             workspace, pane = _new_pane(bridge, agent, folder, env, config.herdr.panes_per_tab)
-        _start_unblocked(bridge, agent.handle, kind, pane)
-        bridge.prompt(pane, restart_prompt(agent), wait=False)
+        before = bridge.registry.get(agent.room, agent.handle)
+        bridge.registry.set(
+            HerdrPaneMapping(
+                room=agent.room,
+                handle=agent.handle,
+                pane=pane,
+                kind=kind,
+                managed=bool(before and before.managed),
+                cwd=folder,
+                session=resume,
+            )
+        )
+        if workspace and workspace not in bridge.registry.bindings():
+            bridge.registry.bind(workspace, agent.room)
+        with while_starting or nullcontext():
+            _start_unblocked(bridge, agent.handle, kind, pane, room=agent.room, resume=resume)
+        bridge.prompt(pane, prompt, wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e
-    before = bridge.registry.get(agent.room, agent.handle)
-    bridge.registry.set(
-        HerdrPaneMapping(
-            room=agent.room,
-            handle=agent.handle,
-            pane=pane,
-            kind=kind,
-            managed=bool(before and before.managed),
-            cwd=folder,
-        )
-    )
-    if workspace and workspace not in bridge.registry.bindings():
-        bridge.registry.bind(workspace, agent.room)
     return pane
 
 

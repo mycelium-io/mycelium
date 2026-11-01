@@ -33,3 +33,33 @@ export function saveDraft(key: string, text: string): void {
     // Keeping a draft is a convenience; typing still works without it.
   }
 }
+
+const SENT_PREFIX = "mycelium.sent:";
+/** How many sent messages a room's composer remembers. */
+export const SENT_KEPT = 50;
+
+/**
+ * What you've sent in a room from this browser, oldest first: the list Up
+ * steps back through in its composer, the way a shell steps through history.
+ */
+export function loadSent(room: string): string[] {
+  try {
+    const kept: unknown = JSON.parse(window.localStorage.getItem(`${SENT_PREFIX}${room}`) ?? "[]");
+    return Array.isArray(kept) ? kept.filter((t): t is string => typeof t === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Remember a sent message, once even when sent twice in a row. */
+export function rememberSent(room: string, text: string): void {
+  const body = text.trim();
+  if (!body) return;
+  const sent = loadSent(room);
+  if (sent[sent.length - 1] === body) return;
+  try {
+    window.localStorage.setItem(`${SENT_PREFIX}${room}`, JSON.stringify([...sent, body].slice(-SENT_KEPT)));
+  } catch {
+    // Like a draft, history is a convenience.
+  }
+}

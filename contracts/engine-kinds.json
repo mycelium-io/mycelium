@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Frozen contract for the engine kinds a room can register, and the line a",
+    "retired kind answers with. The hub refuses a retired kind on",
+    "POST /rooms/{room}/engines and answers a summon of one in the thread",
+    "(fastapi-backend/app/routes/engines.py ENGINE_KINDS,",
+    "app/services/retired_aligner.py RETIRED_TEXT). The CLI writes manifests",
+    "through the memory API, so it refuses the same kinds itself",
+    "(mycelium-cli/src/mycelium/protocol.py ENGINE_KINDS, RETIRED_ENGINE_KINDS).",
+    "Asserted by fastapi-backend/tests/test_engines_route.py and",
+    "mycelium-cli/tests/test_engine.py."
+  ],
+  "kinds": ["conductor", "hello", "persona", "synthesizer", "verifier", "worker"],
+  "retired": {
+    "aligner": "The aligner was retired, so nothing started. To negotiate, run `mycelium board coordinate <row> conductor \"concord …\"` to help members agree, or `\"accord …\"` to get them on the same page."
+  }
+}

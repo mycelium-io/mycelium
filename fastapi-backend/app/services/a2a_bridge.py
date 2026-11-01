@@ -11,7 +11,7 @@ Two pieces:
   wired to the persister's ``on_summon`` seam (the same one the engines use). It
   does *not* poll and is not coupled to negotiation. When someone ``@``-mentions
   a registered ``a2a`` agent in normal chat, it calls the remote and posts the
-  reply back as that handle. The aligner addressing the agent mid-negotiation is
+  reply back as that handle. The conductor putting a flow's step to the agent is
   just one caller that happens to ``@``-mention it.
 
 The send path resolves the card via a dual well-known probe, then builds a
@@ -100,7 +100,7 @@ class A2aAgentRef:
 def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
     """Call config if ``handle`` is a registered ``a2a`` agent in ``room``, else None.
 
-    Mirrors the aligner's engine gate: reads the ``agents/<handle>`` manifest and
+    Mirrors the engines' kind gate: reads the ``agents/<handle>`` manifest and
     acts only for an ``adapter: a2a`` manifest, so summoning a teammate, engine,
     or unknown handle never fires the bridge.
     """
@@ -256,8 +256,8 @@ class A2aResponder:
     ``on_summon`` for every ``@``-mention, and this responder acts only when the
     mentioned handle is a registered ``a2a`` agent. It calls the remote agent
     with the message text and posts the reply back as that handle — normal chat
-    flow, no polling and no negotiation coupling. The aligner addressing the
-    agent mid-negotiation is just one caller that happens to ``@``-mention it.
+    flow, no polling and no negotiation coupling. The conductor putting a flow's
+    step to the agent is just one caller that happens to ``@``-mention it.
     """
 
     def __init__(self, manager: RoomChannelManager, *, timeout_s: float = _SEND_TIMEOUT_S) -> None:
@@ -293,7 +293,7 @@ class A2aResponder:
             return  # never answer our own message (loop guard)
         # Runaway guard: an a2a agent's auto-reply must not summon another a2a
         # agent. Two agents that mention each other would otherwise ping-pong
-        # forever, each hop a real remote call. Humans, the aligner, and resident
+        # forever, each hop a real remote call. Humans, the conductor, and resident
         # agents still trigger a reply; only registered-a2a -> registered-a2a is cut.
         if sender_bare and resolve_a2a_agent(room, sender_bare) is not None:
             logger.debug("a2a responder: skip @%s summoned by a2a agent @%s", handle, sender)
@@ -397,7 +397,7 @@ class A2aResponder:
             await self._respond(room, handle, reply.text, envelope)
         except A2aSendError as exc:
             # Fail-faithful: a dead/unreadable remote posts nothing rather than a
-            # fabricated reply. The caller (human or aligner) sees silence — the
+            # fabricated reply. The caller (human or conductor) sees silence — the
             # Network pane is where that silence is legible as a failed call.
             recorded(status="error", detail=str(exc), duration_ms=_elapsed_ms(started))
             logger.warning("a2a responder: @%s in %s did not answer", handle, room)

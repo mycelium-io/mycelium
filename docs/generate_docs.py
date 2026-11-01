@@ -39,16 +39,16 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "A shared space for humans and agents. What Mycelium is, how to install it, and how the pieces fit together."),
     ("walkthrough", "walkthrough.html", "Your First Room · mycelium", "Walkthrough",
      "WLK-001", "YOUR FIRST ROOM · STEP BY STEP",
-     "Set up Mycelium from nothing, one step at a time with screenshots: the Mac app, a room, two coding agents, the room's engines, and a task they work on together."),
+     "Set up Mycelium from nothing, one step at a time with screenshots: the desktop app, a room, two coding agents, the room's engines, and a task they work on together."),
     ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
      "CON-001", "CONCEPTS · ROOMS · BOARD · MEMORY · EPISODES",
      "How Mycelium works: rooms, the board, memory, episodes, swarms, users and identity, and SLIM."),
     ("engines", "engines.html", "Engines · mycelium", "Engines",
-     "ENG-001", "ENGINES · CONDUCTOR · ALIGNER · SYNTHESIZER · PERSONA · WORKER",
-     "The engines a room runs on the hub: the conductor, the aligner, the synthesizer, personas, workers and hello."),
+     "ENG-001", "ENGINES · CONDUCTOR · SYNTHESIZER · PERSONA · WORKER · VERIFIER",
+     "The engines a room runs on the hub: the conductor, the synthesizer, personas, workers, the verifier and hello."),
     ("guides", "guides.html", "Guides · mycelium", "Guides",
      "GDE-001", "GUIDES · SETUP · AGENTS · WORK · SECURITY · HELP",
-     "Step-by-step guides: running Mycelium on a server, the Mac app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting."),
+     "Step-by-step guides: running Mycelium on a server, the desktop app, sharing a hub, starting and managing agents, the board, sign-in, and troubleshooting."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · FLOWS · MESSAGES",
      "Architecture, CLI and configuration reference, board commands, writing flows, messages, metrics, and notes for contributors."),
@@ -71,7 +71,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("walkthrough/add-engines.md",    "walk-engines",       "walkthrough", "Walkthrough",  "4. Add the room's engines"),
     ("walkthrough/task.md",           "walk-task",          "walkthrough", "Walkthrough",  "5. Hand it a task"),
     ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "6. Watch it work"),
-    ("walkthrough/aligner.md",        "walk-aligner",       "walkthrough", "Walkthrough",  "7. When agents disagree"),
+    ("walkthrough/disagree.md",       "walk-disagree",      "walkthrough", "Walkthrough",  "7. When agents disagree"),
     ("walkthrough/next.md",           "walk-next",          "walkthrough", "Walkthrough",  "Where to go next"),
     # ── concepts (concepts.html): what everything else is built on ──
     ("concepts/rooms.md",             "rooms",              "concepts",    "Concepts",     "Rooms"),
@@ -84,25 +84,28 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── engines (engines.html), the overview, then one section per kind ──
     ("engines/engines.md",            "engines",            "engines",     "Engines",      "Overview"),
     ("engines/conductor.md",          "conductor",          "engines",     "Engines",      "Conductor"),
-    ("engines/aligner.md",            "aligner",            "engines",     "Engines",      "Aligner"),
     ("engines/synthesizer.md",        "synthesizer",        "engines",     "Engines",      "Synthesizer"),
     ("engines/persona.md",            "persona",            "engines",     "Engines",      "Persona"),
     ("engines/worker.md",             "worker",             "engines",     "Engines",      "Worker"),
+    ("engines/verifier.md",           "verifier",           "engines",     "Engines",      "Verifier"),
     ("engines/hello.md",              "hello",              "engines",     "Engines",      "Hello"),
     # ── guides (guides.html) ──
     ("guides/server.md",              "on-a-server",        "guides",      "Setup",        "Run It on a Server"),
-    ("guides/desktop.md",             "desktop",            "guides",      "Setup",        "The Mac App"),
+    ("guides/desktop.md",             "desktop",            "guides",      "Setup",        "The Desktop App"),
     ("guides/hub-and-spoke.md",       "hub-and-spoke",      "guides",      "Setup",        "Hub & Spoke"),
     ("guides/models.md",              "models",             "guides",      "Setup",        "Models"),
     ("guides/machines.md",            "machines",           "guides",      "Agents",       "Start Agents From the App"),
     ("guides/agents-on-a-machine.md", "agents-on-a-machine", "guides",     "Agents",       "Your Agents on a Machine"),
     ("guides/herdr.md",               "herdr",              "guides",      "Agents",       "Persistent Agents (herdr)"),
     ("guides/ephemeral-agents.md",    "ephemeral-agents",   "guides",      "Agents",       "Ephemeral Agents"),
+    ("guides/bring-your-own-harness.md", "bring-your-own-harness", "guides", "Agents",     "Bring Your Own Harness"),
     ("guides/omnigent.md",            "omnigent",           "guides",      "Agents",       "Run Agents in Omnigent"),
     ("guides/a2a-bridge.md",          "a2a-bridge",         "guides",      "Agents",       "A2A Bridge"),
     ("guides/working-the-board.md",   "working-the-board",  "guides",      "Work",         "Working the Board"),
     ("guides/structured-memory.md",   "structured-memory",  "guides",      "Work",         "Structured Memory"),
     ("guides/files.md",               "files",              "guides",      "Work",         "Files"),
+    ("guides/voice.md",               "voice",              "guides",      "Work",         "Voice"),
+    ("guides/schedules.md",           "schedules",          "guides",      "Work",         "Schedules"),
     ("guides/security-planes.md",     "security-planes",    "guides",      "Security",     "Running a Shared Hub"),
     ("guides/auth.md",                "auth",               "guides",      "Security",     "Authentication"),
     ("guides/troubleshooting.md",     "troubleshooting",    "guides",      "Help",         "Troubleshooting"),
@@ -113,8 +116,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("reference/flows.md",            "flows",              "reference",   "Reference",    "Writing Flows"),
     ("reference/messages.md",         "messages",           "reference",   "Reference",    "Messages"),
     ("reference/metrics.md",          "metrics",            "reference",   "Observability", "Metrics"),
-    ("reference/status-providers.md", "status-providers",   "reference",   "Contributing", "Adding a Status Provider"),
-    ("reference/keycloak-oidc.md",    "keycloak-oidc",      "reference",   "Contributing", "Keycloak / OIDC Setup"),
 ]
 
 # The CLI/config/dependency blocks are generated rather than listed in
@@ -130,6 +131,26 @@ GENERATED_SECTION_LABELS: dict[str, tuple[str, str]] = {
 # (page_id, file_name, top_nav_label, [(group_label, [(anchor, label), ...]), ...])
 NavPage = tuple[str, str, str, list[tuple[str, list[tuple[str, str]]]]]
 
+# Hand-written pages the nav lists inside a generated group, right after the
+# section they go deeper on. The generator never writes these files; it only
+# links them. (page_id, group_label, after_anchor, file_name, label)
+HANDWRITTEN_NAV: list[tuple[str, str, str, str, str]] = []
+
+
+def _with_handwritten(
+    page_id: str, groups: list[tuple[str, list[tuple[str, str]]]]
+) -> list[tuple[str, list[tuple[str, str]]]]:
+    """``groups`` with this page's hand-written links slotted in (nav only)."""
+    out = []
+    for group_label, items in groups:
+        items = list(items)
+        for pid, glabel, after, file_name, label in HANDWRITTEN_NAV:
+            if pid == page_id and glabel == group_label:
+                at = next((i + 1 for i, (a, _) in enumerate(items) if a == after), len(items))
+                items.insert(at, (file_name, label))
+        out.append((group_label, items))
+    return out
+
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {"overview"}
 
@@ -142,6 +163,9 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("agent", "agent", "agent"),
     ("memory", "memory", "memory"),
     ("skill", "skill", "skill"),
+    ("schedule", "schedule", "schedule"),
+    ("subscribe", "subscribe", "subscribe"),
+    ("theme", "theme", "theme"),
     ("file", "file", "file"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
@@ -841,18 +865,6 @@ DEPENDENCY_GROUPS: list[dict] = [
         "sidebar": "Cognition",
         "components": [
             {
-                "name": "negmas",
-                "version": (
-                    "multi",
-                    [
-                        ("backend", ("dep", "backend", "negmas")),
-                        ("CLI engine extra", ("extra", "cli", "engine", "negmas")),
-                    ],
-                ),
-                "role": "The Stacked Alternating Offers mechanism the aligner runs",
-                "upstream": ("yasserfarouk/negmas", "https://github.com/yasserfarouk/negmas/releases"),
-            },
-            {
                 "name": "anthropic",
                 "version": ("dep", "backend", "anthropic"),
                 "role": "LLM client for backend cognition stages",
@@ -865,7 +877,7 @@ DEPENDENCY_GROUPS: list[dict] = [
                 "name": "Pi",
                 "display": "Pi (`pi` binary)",
                 "version": ("literal", "shipped in the backend image"),
-                "role": "The aligner's brain and every one-shot cognition turn",
+                "role": "Every model call the hub makes: personas, workers, the synthesizer and the verifier",
                 "upstream": "external binary, not a Python dependency",
             },
         ],
@@ -1196,6 +1208,13 @@ def _topnav() -> str:
 """
 
 
+def _nav_href(anchor: str, file_name: str, *, current: bool) -> str:
+    """A nav item's link: a section anchor, or a hand-written page as is."""
+    if anchor.endswith(".html"):
+        return anchor
+    return f"#{anchor}" if current else f"{file_name}#{anchor}"
+
+
 def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
     """Render the persistent nav: every page's groups, on every page.
 
@@ -1217,7 +1236,7 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
         if len(groups) == 1 and groups[0][0] == label:
             out.append('      <div class="nav-page-items">')
             for anchor, item_label in groups[0][1]:
-                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                href = _nav_href(anchor, file_name, current=current)
                 out.append(
                     f'        <a href="{href}" class="nav-link sub">'
                     f"{html.escape(item_label)}</a>"
@@ -1238,7 +1257,7 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
             )
             out.append('        <div class="nav-group-items">')
             for anchor, item_label in items:
-                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                href = _nav_href(anchor, file_name, current=current)
                 out.append(
                     f'          <a href="{href}" class="nav-link sub">'
                     f"{html.escape(item_label)}</a>"
@@ -1558,7 +1577,7 @@ def _build_search_index(
             continue
         rec["p"] = page_label
         # The rendered breadcrumb is page + crumb, so a group named after its own
-        # page would read "Engines › Engines › Aligner".
+        # page would read "Engines › Engines › Conductor".
         crumb = rec["s"]
         if crumb == page_label:
             crumb = ""
@@ -1607,7 +1626,7 @@ def _resolve_cross_page_anchors(
 ) -> list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]]:
     """Point body links at the page that actually holds the anchor.
 
-    A source doc writes `[the aligner](#aligner)` without knowing which page its
+    A source doc writes `[the conductor](#conductor)` without knowing which page its
     section lands on, so once split across files that link scrolls nowhere: the
     id lives on index.html, not reference.html. The sidebar already qualifies its
     hrefs with a file name; prose does it here, where every page is assembled and
@@ -1779,7 +1798,7 @@ def main() -> None:
             page_id, kept, cli_block, config_block, deps_block
         )
         built.append((page, content, sidebar_groups))
-        nav.append((page_id, file_name, label, sidebar_groups))
+        nav.append((page_id, file_name, label, _with_handwritten(page_id, sidebar_groups)))
         n = sum(len(items) for _, items in sidebar_groups)
         print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
 

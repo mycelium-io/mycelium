@@ -22,9 +22,10 @@ from __future__ import annotations
 import json
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import typer
@@ -47,9 +48,11 @@ from mycelium.board.activity import (
     zone,
 )
 from mycelium.board.assignment import attention_of_item
+from mycelium.board.epics import epic_lines, epic_parts, where_it_stands
 from mycelium.board.model import (
     EPISODE_FIELD,
     KINDS,
+    LIVE_NAMESPACES,
     PRIORITIES,
     STATUSES,
     THREAD_REFUSALS,
@@ -58,11 +61,15 @@ from mycelium.board.model import (
 )
 from mycelium.board.schema import groupable_fields
 from mycelium.cli_options import ROOM_HELP, acts_as, emits_json, in_room, paged
-from mycelium.client import hub_client
+from mycelium.client import typed_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.protocol import RETIRED_ENGINE_KINDS
 from mycelium.text_input import takes_text
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.types import Response
 
 app = typer.Typer(
     help="The room's coordination board: what needs you, what's in flight, what resolved.",
@@ -164,43 +171,85 @@ class HubHealth:
         return f"Hub unreachable: {next(iter(self.failed.values()))}"
 
 
-def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
-    """Every source the log and the board share, read once."""
+#: The most tasks one board namespace is read for.
+ROWS_PER_NAMESPACE = 1000
+
+
+def _fetch_raw(room: str | None, *, rows: bool = False) -> tuple[str, dict[str, Any], HubHealth]:
+    """Every source the log and the board share, read once.
+
+    The log's memories are the room's most recently changed, of any kind. The
+    board's (``rows``) are every memory in its namespaces, however long since
+    it changed: an open task nobody has touched lately is still open."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
     health = HubHealth()
 
-    def get(path: str, default, label: str):
+    def get(read: Callable[..., Response[Any]], default, label: str, **params: Any):
         try:
-            resp = client.get(path)
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            # The hub answered, and said no. That is a different problem from a
-            # hub that is not there, and the reader fixes it differently.
-            health.answered.append(label)
-            health.failed[label] = f"HTTP {exc.response.status_code}"
-            return default
-        except Exception as exc:
+            resp = read(name, client=client, **params)
+        except httpx.HTTPError as exc:
             health.failed[label] = type(exc).__name__
             return default
-        health.answered.append(label)
-        health.ok.append(label)
-        try:
-            return resp.json()
-        except ValueError:
-            health.ok.remove(label)
+        except (ValueError, KeyError, TypeError):
+            # The answer didn't parse as what the spec says this route returns.
+            health.answered.append(label)
             health.failed[label] = "malformed response"
             return default
+        # The hub answered, whatever it said. A refusal is a different problem
+        # from a hub that is not there, and the reader fixes it differently.
+        health.answered.append(label)
+        if resp.status_code >= 400:  # noqa: PLR2004
+            health.failed[label] = f"HTTP {resp.status_code}"
+            return default
+        health.ok.append(label)
+        # The projection, the log and ``--json`` read the hub's records as data,
+        # so each answer is handed on as its record: checked against the spec on
+        # the way in, then the wire's own shape.
+        parsed = resp.parsed
+        if isinstance(parsed, list):
+            return [item.to_dict() for item in parsed]
+        return parsed.to_dict() if hasattr(parsed, "to_dict") else parsed
 
-    with hub_client(cfg, timeout=30) as client:
-        episodes = get(f"/api/rooms/{name}/episodes", {}, "episodes")
-        memories = get(f"/api/rooms/{name}/memory?limit=50", [], "memory")
+    from mycelium_backend_client.api.agents import list_agents_api_rooms_room_name_agents_get
+    from mycelium_backend_client.api.board import read_board_api_rooms_room_name_board_get
+    from mycelium_backend_client.api.episodes import (
+        list_episodes_api_rooms_room_name_episodes_get,
+    )
+    from mycelium_backend_client.api.memory import list_memories_api_rooms_room_name_memory_get
+    from mycelium_backend_client.api.messages import (
+        list_messages_api_rooms_room_name_messages_get,
+    )
+    from mycelium_backend_client.api.sessions import (
+        list_members_api_rooms_room_name_sessions_members_get,
+    )
+    from mycelium_backend_client.api.status import get_room_status_api_rooms_room_name_status_get
+
+    list_memories = list_memories_api_rooms_room_name_memory_get.sync_detailed
+    with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+        episodes = get(list_episodes_api_rooms_room_name_episodes_get.sync_detailed, {}, "episodes")
+        if rows:
+            memories = []
+            for namespace in LIVE_NAMESPACES:
+                listed = get(
+                    list_memories, [], f"{namespace}/", prefix=f"{namespace}/",
+                    limit=ROWS_PER_NAMESPACE,
+                )  # fmt: skip
+                memories += listed if isinstance(listed, list) else []
+        else:
+            memories = get(list_memories, [], "memory", limit=50)
         # What the tools the room points at say. A read never fetches hub-side,
         # so this costs a cache lookup, not a round trip to GitHub.
-        upstream = get(f"/api/rooms/{name}/status", None, "status")
-        agents = get(f"/api/rooms/{name}/agents", [], "agents")
-        members = get(f"/api/rooms/{name}/sessions/members", {}, "members")
-        messages = get(f"/api/rooms/{name}/messages?limit=300", {}, "messages")
+        upstream = get(get_room_status_api_rooms_room_name_status_get.sync_detailed, None, "status")
+        agents = get(list_agents_api_rooms_room_name_agents_get.sync_detailed, [], "agents")
+        members = get(
+            list_members_api_rooms_room_name_sessions_members_get.sync_detailed, {}, "members"
+        )
+        messages = get(
+            list_messages_api_rooms_room_name_messages_get.sync_detailed, {}, "messages", limit=300
+        )
+        # The epics, worked out by the hub, so this draws what the app draws.
+        epics = get(read_board_api_rooms_room_name_board_get.sync_detailed, None, "board")
 
     return (
         name,
@@ -211,15 +260,16 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
             "members": (members or {}).get("members", []) if isinstance(members, dict) else [],
             "messages": (messages or {}).get("messages", []) if isinstance(messages, dict) else [],
             "upstream": upstream if isinstance(upstream, dict) else None,
+            "board": epics if isinstance(epics, dict) else None,
         },
         health,
     )
 
 
-def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth]:
+def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth, dict[str, Any] | None]:
     """Read every source the board projects.  A source that isn't reachable
     contributes nothing rather than failing the whole board."""
-    name, sources, health = _fetch_raw(room)
+    name, sources, health = _fetch_raw(room, rows=True)
     items = project_items(
         episodes=sources["episodes"],
         memories=sources["memories"],
@@ -227,7 +277,7 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth]:
         members=sources["members"],
         now=datetime.now(UTC),
     )
-    return name, attach_upstream(items, sources["upstream"]), health
+    return name, attach_upstream(items, sources["upstream"]), health, sources["board"]
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -257,7 +307,7 @@ def _assignment_chip(item: LiveItem, now: datetime) -> Text:
         return chip
 
     if state == "held":
-        chip.append(f"held @{item.owner}", style="cyan")
+        chip.append(f"held @{assignment.holder_of(item, now)}", style="cyan")
         fraction = assignment.elapsed_fraction(
             assignment.claimed_at(item), item.get("ttl_minutes"), now
         )
@@ -357,6 +407,7 @@ def _render(
     attention_filter: str | None,
     group_by: str,
     view: str,
+    epics: dict[str, Any] | None = None,
 ) -> Group:
     now = datetime.now(UTC)
     attention_filters = {i.id: attention_of_item(i, now) for i in items}
@@ -379,6 +430,21 @@ def _render(
     )
 
     blocks: list[RenderableType] = [header, Text()]
+
+    # Each open epic as a tree of its parts in path order, ahead of the rows,
+    # which then leave out what the tree already drew. A list of what resolved
+    # has no open epics to draw.
+    drawn_epics = (epics or {}).get("epics") or []
+    if view != "table" and drawn_epics and attention_filter != "resolved":
+        title = Text()
+        title.append("Epics ", style="bold")
+        title.append(str(len(drawn_epics)), style="dim")
+        blocks.append(title)
+        for epic in drawn_epics:
+            blocks.extend(epic_lines(epic))
+            blocks.append(Text())
+        in_tree = epic_parts(epics)
+        shown = [i for i in shown if i.id.split(":", 1)[-1] not in in_tree]
 
     if view == "table":
         blocks.append(_table(shown, items))
@@ -478,7 +544,7 @@ def board(
         raise typer.Exit(1)
 
     def read() -> Group:
-        name, items, health = _fetch(room)
+        name, items, health, epics = _fetch(room)
         if not health.reachable:
             return Group(Text(f"  {health.note}. No board to draw for {name}.", style="red"))
         rendered = _render(
@@ -487,6 +553,7 @@ def board(
             attention_filter=ATTENTION_CHOICES[attention_filter],
             group_by=group_by,
             view=view,
+            epics=epics,
         )
         if health.note:
             # A board missing a source is not a quiet board, and the difference
@@ -510,15 +577,83 @@ def board(
 
 
 @doc_ref(
+    usage="mycelium board show <id>",
+    desc="One task and its parts in path order: who is on each, where it stands, and its latest line.",
+    group="board",
+)
+@app.command(name="show")
+@in_room()
+@emits_json()
+def board_show(
+    ctx: typer.Context,
+    row_id: str = typer.Argument(..., help="Row id or memory key (e.g. t3, work/apple-pay)"),
+    room: str | None = None,
+) -> None:
+    """Show a task with its parts.
+
+    The parts come in path order: a part's number is its step, and parts with
+    the same number run side by side. Under each is the newest line said in its
+    thread. A task with no parts shows on its own.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    key = row_id.strip()
+    if not _looks_like_key(key):
+        item = _row(name, key)
+        found = board_fields.memory_key_of(item) if item is not None else None
+        key = found or key
+    from mycelium_backend_client.api.board import read_board_row_api_rooms_room_name_board_key_get
+    from mycelium_backend_client.models import BoardEpic
+
+    try:
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = read_board_row_api_rooms_room_name_board_key_get.sync_detailed(
+                name, key, client=client
+            )
+    except httpx.HTTPError as e:
+        console.print(f"[red]✗[/red] hub unreachable: {e}")
+        raise typer.Exit(1) from e
+    if resp.status_code == 404:  # noqa: PLR2004
+        console.print(f"[dim]No board row '{row_id}' in {name}.[/dim]")
+        raise typer.Exit(1)
+    if not isinstance(resp.parsed, BoardEpic):
+        text = resp.content.decode(errors="replace")
+        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {text[:200]}")
+        raise typer.Exit(1)
+    # The same record the board's own read hands ``epic_lines``.
+    epic = resp.parsed.to_dict()
+    if _json_wanted(ctx):
+        sys.stdout.write(json.dumps(epic, indent=2) + "\n")
+        return
+    lines = epic_lines(epic, latest=True)
+    if not epic.get("path"):
+        lines = [*lines[:1], Text(f"   {where_it_stands(epic)}", style="dim")]
+        if said := epic.get("latest"):
+            lines.append(Text(f"   @{said['sender']}: {said['text']}", style="dim italic"))
+    console.print(Group(*lines))
+    console.print(
+        Text(f"\n  Read a part's thread: mycelium board messages <key> --room {name}", style="dim")
+    )
+
+
+def _looks_like_key(value: str) -> bool:
+    """Whether ``value`` reads as a memory key (``work/apple-pay``) rather than
+    a row id the board shortened or a thread id."""
+    return "/" in value and not value.startswith(("memory:", "episode:"))
+
+
+@doc_ref(
     usage="mycelium board resolve <id>",
     desc="Resolve a board row: a work/ lease resolves, any other memory row takes status=resolved.",
     group="board",
 )
 @app.command(name="resolve")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_resolve(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Resolve a row."""
     cfg = MyceliumConfig.load()
@@ -526,27 +661,32 @@ def board_resolve(
 
     item = _row(name, row_id)
     if item is not None and assignment.assignment_refusal(item) is None:
-        _write_assignment(
-            cfg, name, "resolve", key=_assignment_key(item), handle=cfg.get_current_identity()
-        )
+        _write_assignment(cfg, name, "resolve", key=_assignment_key(item), handle=actor)
         return
     # Not leasable, but still a row with frontmatter: `status` is a stage, and a
     # stage is a field write. Assignment stays out of it — that is the lease's.
-    _write_fields(cfg, name, row_id, {"status": "resolved"})
+    _write_fields(cfg, name, row_id, {"status": "resolved"}, actor=actor)
 
 
 @doc_ref(
-    usage="mycelium board claim <id> [--to @handle] [--ttl 30]",
-    desc="Take assignment of a work/ row: a lease with your handle on it, which drains unless renewed.",
+    usage="mycelium board claim <id> [--to @handle] [--ttl N]",
+    desc=(
+        "Take a work/ row nobody was given. You hold it until you resolve it or hand it back; "
+        "a row assigned to you is already yours, with nothing to claim. <code>--ttl</code> "
+        "makes the hold a lease that drains unless renewed."
+    ),
     group="board",
 )
 @app.command(name="claim")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_claim(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. work/auth-spike)"),
     to: str | None = typer.Option(None, "--to", help="Handle to claim it for (default: you)"),
-    ttl: int = typer.Option(
-        assignment.DEFAULT_TTL_MINUTES, "--ttl", help="Minutes the claim holds without a renewal"
+    ttl: int | None = typer.Option(
+        assignment.DEFAULT_TTL_MINUTES,
+        "--ttl",
+        help="Make the hold a lease: minutes it lasts without a renewal. Default: no timer",
     ),
     force: bool = typer.Option(
         False,
@@ -554,10 +694,14 @@ def board_claim(
         help="Take the row even while it waits on an unresolved dependency",
     ),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
-    """Claim a row, as a lease rather than a fact.
+    """Claim a row nobody was given.
 
-    A row that depends on rows not yet resolved is shown waiting on them, and a
+    The hold lasts until you resolve the row or hand it back, or the hub sees
+    you go (your pane closes, you leave the room). A row assigned to someone is
+    already theirs: claiming it is refused, and moving it is ``board assign
+    --reassign``. A row that depends on rows not yet resolved is shown waiting on them, and a
     room whose dependency gate is on refuses the claim until they are; ``--force``
     takes it anyway.
     """
@@ -573,7 +717,7 @@ def board_claim(
         # with holders nobody can renew.
         console.print(f"[yellow]·[/yellow] {row_id} can't be claimed — {refusal}")
         raise typer.Exit(1)
-    handle = (to or cfg.get_current_identity()).lstrip("@")
+    handle = (to or actor).lstrip("@")
     _write_assignment(
         cfg,
         name,
@@ -586,16 +730,48 @@ def board_claim(
 
 
 @doc_ref(
+    usage="mycelium board assign <id> @handle [--reassign]",
+    desc=(
+        "Give a work/ row to someone, who then holds it until they resolve it or hand it back. "
+        "Taking a row someone else holds needs <code>--reassign</code>, and the room is told who "
+        "it moved from."
+    ),
+    group="board",
+)
+@app.command(name="assign")
+@in_room()
+@acts_as("actor", fallback="unknown")
+def board_assign(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board"),
+    handle: str = typer.Argument(..., help="Who to give it to (@handle)"),
+    reassign: bool = typer.Option(
+        False, "--reassign", help="Take it from whoever holds it now, and say so"
+    ),
+    room: str | None = None,
+    actor: str = "",
+) -> None:
+    """Give a row to someone. A row given to someone is theirs: they hold it
+    with no claim to make, until they resolve it or hand it back."""
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    _write_fields(
+        cfg, name, row_id, {"assignee": handle.lstrip("@")}, actor=actor, reassign=reassign
+    )
+
+
+@doc_ref(
     usage='mycelium board release <id> [--note "why"]',
     desc="Hand a claimed row back to the pool, leaving a note saying you did it deliberately.",
     group="board",
 )
 @app.command(name="release")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_release(
     row_id: str = typer.Argument(..., help="Row id as shown on the board"),
     note: str | None = typer.Option(None, "--note", help="Why you're handing it back"),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Release a row you hold."""
     cfg = MyceliumConfig.load()
@@ -612,7 +788,7 @@ def board_release(
         name,
         "release",
         key=_assignment_key(item),
-        handle=cfg.get_current_identity().lstrip("@"),
+        handle=actor.lstrip("@"),
         note=note,
     )
 
@@ -624,10 +800,12 @@ def board_release(
 )
 @app.command(name="block")
 @in_room()
+@acts_as("actor", fallback="unknown")
 def board_block(
     row_id: str = typer.Argument(..., help="Row id as shown on the board"),
     on: str | None = typer.Option(None, "--on", help="What it's waiting on (e.g. #502)"),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Say what a row is waiting on."""
     if not on:
@@ -637,7 +815,7 @@ def board_block(
         raise typer.Exit(1)
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    _write_fields(cfg, name, row_id, {assignment.BLOCKED_FIELD: on})
+    _write_fields(cfg, name, row_id, {assignment.BLOCKED_FIELD: on}, actor=actor)
 
 
 def _assignment_key(item: LiveItem) -> str:
@@ -657,7 +835,7 @@ def _row(room: str, row_id: str) -> LiveItem | None:
     the thread, not the memory key, and the reader who followed one types back
     what they read.
     """
-    _, items, _ = _fetch(room)
+    _, items, _, _ = _fetch(room)
     wanted = row_id.strip()
     for item in items:
         tail = item.id.split(":", 1)[1] if ":" in item.id else item.id
@@ -672,16 +850,24 @@ def _memory_thread(room: str, key: str) -> tuple[bool, str | None]:
     Two answers, because the caller says something different about each: whether
     the room has this memory at all, and the thread on it if it does.
     """
+    from mycelium.client import sent_unparsed
+    from mycelium_backend_client.api.memory import get_memory_api_rooms_room_name_memory_key_get
+
     cfg = MyceliumConfig.load()
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.get(f"/api/rooms/{room}/memory/{key}")
-        if resp.status_code >= 400:
-            return False, None
-        episode = resp.json().get(EPISODE_FIELD)
-    except (httpx.HTTPError, ValueError):
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            # Only its thread is read, so a memory a hub a version apart shapes
+            # differently is still this memory, never "not there".
+            resp = sent_unparsed(get_memory_api_rooms_room_name_memory_key_get, client, room, key)
+    except httpx.HTTPError:
         return False, None
-    return True, episode or None
+    if resp.status_code >= 400:  # noqa: PLR2004
+        return False, None
+    try:
+        found = resp.json()
+    except ValueError:
+        return True, None
+    return True, (found.get(EPISODE_FIELD) if isinstance(found, dict) else None) or None
 
 
 def _thread(room: str, row_id: str) -> tuple[str, str]:
@@ -739,15 +925,37 @@ def _thread_label(room: str, thread: str) -> str:
 
 def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
     """Write an assignment change through the hub, and say what it did."""
+    from mycelium_backend_client.api.assignments import (
+        claim_assignment_api_rooms_room_name_assignments_claim_post as claim_api,
+    )
+    from mycelium_backend_client.api.assignments import (
+        release_assignment_api_rooms_room_name_assignments_release_post as release_api,
+    )
+    from mycelium_backend_client.api.assignments import (
+        resolve_assignment_api_rooms_room_name_assignments_resolve_post as resolve_api,
+    )
+    from mycelium_backend_client.models import AssignmentRead, ClaimBody, ReleaseBody, ResolveBody
+
     payload = {k: v for k, v in body.items() if v is not None}
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{room}/assignments/{action}", json=payload)
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            if action == "claim":
+                resp = claim_api.sync_detailed(
+                    room, client=client, body=ClaimBody.from_dict(payload)
+                )
+            elif action == "release":
+                resp = release_api.sync_detailed(
+                    room, client=client, body=ReleaseBody.from_dict(payload)
+                )
+            else:
+                resp = resolve_api.sync_detailed(
+                    room, client=client, body=ResolveBody.from_dict(payload)
+                )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code == 409:
-        detail = resp.json().get("detail", {})
+    if resp.status_code == 409:  # noqa: PLR2004
+        detail = json.loads(resp.content).get("detail", {})
         waiting = detail.get(WAITING_FIELD) if isinstance(detail, dict) else None
         if waiting:
             console.print(
@@ -758,29 +966,45 @@ def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) 
         held_by = detail.get("owner") if isinstance(detail, dict) else None
         console.print(
             f"[yellow]·[/yellow] {payload.get('key')} is already held by @{held_by}. "
-            "[dim]Its lease has to drain (or its holder release it) before anyone else takes it.[/dim]"
+            f"[dim]They hand it back, or someone moves it with "
+            f"`mycelium board assign {payload.get('key')} @<handle> --reassign`.[/dim]"
         )
         raise typer.Exit(1)
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] {action} failed: {resp.text}")
+    if resp.status_code >= 400:  # noqa: PLR2004
+        console.print(f"[red]✗[/red] {action} failed: {resp.content.decode(errors='replace')}")
         raise typer.Exit(1)
-    data = resp.json()
+    held = resp.parsed
+    if not isinstance(held, AssignmentRead):
+        console.print(f"[red]✗[/red] {action} failed: {resp.content.decode(errors='replace')}")
+        raise typer.Exit(1)
     if action == "claim":
+        until = (
+            f"for {held.ttl_minutes}m, renewed by your loop, or it drains back to the pool."
+            if held.ttl_minutes
+            else "until you resolve it or hand it back."
+        )
         console.print(
-            f"[green]✓[/green] held [bold]{data.get('key')}[/bold] by @{data.get('owner')} "
-            f"[dim]for {data.get('ttl_minutes')}m — renewed by your loop, or it drains back to "
-            "the pool.[/dim]"
+            f"[green]✓[/green] held [bold]{held.key}[/bold] by @{held.owner or None} "
+            f"[dim]{until}[/dim]"
         )
     elif action == "release":
         console.print(
-            f"[green]✓[/green] released [bold]{data.get('key')}[/bold] "
-            f"[dim]— {data.get('assignment_note')}[/dim]"
+            f"[green]✓[/green] released [bold]{held.key}[/bold] "
+            f"[dim]— {held.assignment_note or None}[/dim]"
         )
     else:
-        console.print(f"[green]✓[/green] {action}d [bold]{data.get('key')}[/bold]")
+        console.print(f"[green]✓[/green] {action}d [bold]{held.key}[/bold]")
 
 
-def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> None:
+def _write_fields(
+    cfg: MyceliumConfig,
+    room: str,
+    row_id: str,
+    patch: dict,
+    *,
+    actor: str,
+    reassign: bool = False,
+) -> None:
     """Put an action's frontmatter on the row, and say what landed.
 
     The same upsert a ``memory set --meta`` goes through, so an action typed here
@@ -804,15 +1028,30 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
         )
         raise typer.Exit(1)
     key = board_fields.memory_key_of(item)
-    body = {"key": key, "handle": cfg.get_current_identity(), "fields": patch}
+    body: dict[str, Any] = {"key": key, "handle": actor, "fields": patch}
+    if reassign:
+        body["reassign"] = True
+    from mycelium_backend_client.api.fields import write_fields_api_rooms_room_name_fields_post
+    from mycelium_backend_client.models import WriteBody
+
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{room}/fields", json=body)
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = write_fields_api_rooms_room_name_fields_post.sync_detailed(
+                room, client=client, body=WriteBody.from_dict(body)
+            )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] write failed: {resp.text}")
+    if resp.status_code == 409:  # noqa: PLR2004
+        detail = json.loads(resp.content).get("detail", {})
+        held_by = detail.get("owner") if isinstance(detail, dict) else None
+        console.print(
+            f"[yellow]·[/yellow] {key} is held by @{held_by}. "
+            "[dim]Pass --reassign to take it from them; the room is told who it moved from.[/dim]"
+        )
+        raise typer.Exit(1)
+    if resp.status_code >= 400:  # noqa: PLR2004
+        console.print(f"[red]✗[/red] write failed: {resp.content.decode(errors='replace')}")
         raise typer.Exit(1)
     rendered = " ".join(f"{k}={v}" for k, v in patch.items())
     console.print(f"[green]✓[/green] wrote [bold]{key}[/bold] → {rendered}")
@@ -828,16 +1067,24 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
 
 
 @doc_ref(
-    usage='mycelium board new "<title>" [--assign @handle] [--parent <id>]',
-    desc="Put a task on the board, with the thread its coordination happens in already minted.",
+    usage='mycelium board new "<title>" ["<body>" | --body "<markdown>" | --file <path>] [--assign @handle] [--parent <id>]',
+    desc="Put a task on the board, with what it is in its body and its thread already minted.",
     group="board",
 )
 @app.command(name="new")
+@takes_text(
+    "content",
+    "What the task is, in markdown: written into the row under its title.",
+    noun="body",
+    optional=True,
+)
 @in_room()
+@acts_as("actor", fallback="unknown")
 @emits_json()
 def board_new(
     ctx: typer.Context,
-    title: str = typer.Argument(..., help="What the task is"),
+    title: str = typer.Argument(..., help="What the task is called: the row's title"),
+    content: str | None = typer.Argument(None, help="What the task is, in markdown."),
     assign: str | None = typer.Option(
         None, "--assign", help="Who it's for (an assignment, not a claim — holding it is a lease)"
     ),
@@ -845,6 +1092,7 @@ def board_new(
         None, "--parent", help="Row this one decomposes, as a part-of relation"
     ),
     room: str | None = None,
+    actor: str = "",
 ) -> None:
     """Create a task.
 
@@ -852,10 +1100,20 @@ def board_new(
     negotiation converged into it. It comes with a thread and no argument in it
     yet, which is the point — coordination inside a task is optional, and most
     tasks never need any.
+
+    What the task is goes in its body, written when it's filed, so the row and
+    its memory page show it, search finds it and its links to other memories
+    count. The thread is for talking about it.
+
+    Examples:
+        mycelium board new "Ship passkey login" "Passkeys on the login page; passwords stay as a fallback."
+        mycelium board new "Ship passkey login" --file brief.md --assign @builder
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    body: dict[str, Any] = {"title": title, "handle": cfg.get_current_identity()}
+    body: dict[str, Any] = {"title": title, "handle": actor}
+    if content and content.strip():
+        body["content"] = content
     if assign:
         body["assignee"] = assign.lstrip("@")
     if parent:
@@ -865,26 +1123,32 @@ def board_new(
         # points at a memory, so a row projected from anything else has nothing
         # to be the parent *of*.
         body["parent"] = _parent_key(name, parent)
+    from mycelium_backend_client.api.tasks import create_task_api_rooms_room_name_tasks_post
+    from mycelium_backend_client.models import MemoryRead, TaskCreate
+
     try:
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{name}/tasks", json=body)
+        with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = create_task_api_rooms_room_name_tasks_post.sync_detailed(
+                name, client=client, body=TaskCreate.from_dict(body)
+            )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] could not create the task: {resp.text}")
+    task = resp.parsed
+    if not isinstance(task, MemoryRead):
+        text = resp.content.decode(errors="replace")
+        console.print(f"[red]✗[/red] could not create the task: {text}")
         raise typer.Exit(1)
-    task = resp.json()
     if _json_wanted(ctx):
-        typer.echo(json.dumps(task, indent=2, default=str))
+        typer.echo(json.dumps(task.to_dict(), indent=2, default=str))
         return
-    thread = str(task.get(EPISODE_FIELD) or "").rsplit(":", 1)[-1]
+    thread = str(task.episode or "").rsplit(":", 1)[-1]
     console.print(
-        f"[green]✓[/green] [bold]{task.get('key')}[/bold] — {title}"
+        f"[green]✓[/green] [bold]{task.key}[/bold] — {title}"
         + (f" [dim]· thread {thread}[/dim]" if thread else "")
     )
     console.print(
-        f'  [dim]talk about it in there: mycelium board send {thread or task.get("key")} "…"[/dim]'
+        f'  [dim]talk about it in there: mycelium board send {thread or task.key} "…"[/dim]'
     )
 
 
@@ -1004,9 +1268,13 @@ def board_coordinate(
     row_id: str = typer.Argument(
         ..., help="Row id, thread id, or any memory key (e.g. t3, work/auth, context/api)"
     ),
-    engine: str = typer.Argument(..., help="Engine handle to run it (e.g. aligner)"),
+    engine: str = typer.Argument(..., help="Engine handle to run it (e.g. conductor)"),
     ask: str = typer.Argument(
-        "please mediate us to an agreement.", help="What you're asking it to do"
+        ...,
+        help=(
+            "What you're asking it to do; for the conductor, the flow first "
+            "(e.g. 'concord @~api @~sec: the budget split')"
+        ),
     ),
     room: str | None = None,
     handle: str | None = None,
@@ -1023,12 +1291,12 @@ def board_coordinate(
     the row or takes it off its holder. A task can be coordinated more than
     once, or never.
 
-    The engine opens a **separate** negotiation episode to run in — a task's
-    thread is a container that outlives what happens inside it, so an exchange
-    with a frozen roster is not the same conversation as the row's. What comes
-    back to the row is the outcome: the work an aligner agreement compiles
-    into, or the memory where a conductor flow saved what was agreed, and the
-    thread state the board folds onto it.
+    Negotiation is the conductor's: ``concord`` helps members agree and
+    ``accord`` gets them on the same page. The run walks in the row's thread,
+    holding its floor for whoever a step addresses, and keeps a record of its
+    own nested in the task. What comes back to the row is the outcome: the
+    memory where the flow saved what was agreed, and the thread state the
+    board folds onto it.
     """
     from mycelium.client import typed_client
     from mycelium.commands.agent import _load_manifest_remote
@@ -1043,7 +1311,7 @@ def board_coordinate(
     if manifest is None:
         console.print(
             f"[red]Not found:[/red] no engine named '{target}' in room '{name}'.\n"
-            f"  Create one with: mycelium engine create {target} --kind aligner --room {name}"
+            f"  Create one with: mycelium engine create {target} --kind conductor --room {name}"
         )
         raise typer.Exit(1)
     if manifest.adapter != "engine":
@@ -1051,6 +1319,9 @@ def board_coordinate(
             f"[red]'{target}' is a {manifest.adapter} agent, not an engine.[/red]\n"
             f'  Use: mycelium board send {row_id} "@{target} …"'
         )
+        raise typer.Exit(1)
+    if manifest.kind in RETIRED_ENGINE_KINDS:
+        console.print(f"[red]{RETIRED_ENGINE_KINDS[manifest.kind]}[/red]")
         raise typer.Exit(1)
 
     chat.post(
@@ -1063,8 +1334,7 @@ def board_coordinate(
     )
     console.print(
         f"  [dim]the ask is in {where.split('/', 1)[-1]}'s thread; the "
-        f"{manifest.kind} engine opens its negotiation from there and addresses "
-        "agents one at a time[/dim]"
+        f"{manifest.kind} engine takes it from there[/dim]"
     )
 
 
@@ -1225,6 +1495,23 @@ def board_log(
 # Providers run hub-side, so these are hub-operator commands: run them where the
 # backend runs. Nothing here can print a value.
 
+
+def _credential_hub() -> tuple[str, bool]:
+    """The hub the CLI points at, and whether it reads this machine's credentials."""
+    from mycelium import status_credentials
+
+    hub = MyceliumConfig.load().server.api_url
+    return hub, status_credentials.hub_reads_here(hub)
+
+
+def _elsewhere(hub: str, command: str) -> str:
+    """The warning for a store the hub won't read."""
+    return (
+        f"[yellow]The hub at {hub} runs on another machine and won't read this file.[/yellow] "
+        f"Run `{command}` on the hub's machine instead."
+    )
+
+
 credential_app = typer.Typer(
     help=(
         "Give the hub the credentials its status providers need to keep board "
@@ -1281,14 +1568,28 @@ def credential_set(
             )
             raise typer.Exit(1)
 
+        # Stored either way: someone may be setting it up here before moving it.
         path = status_credentials.set_credential(name, value)
+        hub, reads = _credential_hub()
 
         if json_output:
-            typer.echo(json.dumps({"name": name, "stored": str(path), "empty": not value}))
+            typer.echo(
+                json.dumps(
+                    {
+                        "name": name,
+                        "stored": str(path),
+                        "empty": not value,
+                        "hub": hub,
+                        "hub_reads_it": reads,
+                    }
+                )
+            )
             return
 
         console.print(f"[green]Stored[/green] [cyan]{name}[/cyan] [dim](value not shown)[/dim].")
         console.print(f"[dim]Saved to {path} (mode 0600).[/dim]")
+        if not reads:
+            console.print(_elsewhere(hub, f"mycelium board credential set {name}"))
         if not value:
             console.print(
                 "[yellow]The value is empty[/yellow]; the hub will report it as set-but-empty "
@@ -1303,7 +1604,10 @@ def credential_set(
 
 @doc_ref(
     usage="mycelium board credential ls",
-    desc="List the status-provider credential names the hub has, and whether each is set. Never the values.",
+    desc=(
+        "List the status-provider credential names stored on this machine, and whether "
+        "each is set. Never the values. Says so when the hub runs on another machine."
+    ),
     group="board",
 )
 @credential_app.command("ls")
@@ -1315,13 +1619,18 @@ def credential_ls(ctx: typer.Context) -> None:
     try:
         names = status_credentials.list_names()
         json_output = ctx.obj.get("json", False) if ctx.obj else False
+        hub, reads = _credential_hub()
 
         if json_output:
-            typer.echo(json.dumps(names, indent=2, sort_keys=True))
+            payload = {"credentials": names, "hub": hub, "hub_reads_it": reads}
+            typer.echo(json.dumps(payload, indent=2, sort_keys=True))
             return
 
+        if not reads:
+            console.print(_elsewhere(hub, "mycelium board credential ls"))
         if not names:
-            console.print("[dim]No status-provider credentials on this hub.[/dim]")
+            where = "on this hub" if reads else "on this machine"
+            console.print(f"[dim]No status-provider credentials {where}.[/dim]")
             return
 
         table = Table(title="Status-provider credentials")

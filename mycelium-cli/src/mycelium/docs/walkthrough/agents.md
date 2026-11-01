@@ -13,7 +13,7 @@ choose **Your machine** and fill in the dialog:
 
 ![Adding a coding agent from a role](walk-add-agent.png)
 
-The agent starts in its own terminal on your Mac. It's already in the room and
+The agent starts in its own terminal on your computer. It's already in the room and
 shows up under **Members**. It works the way it does anywhere else. It edits
 files and runs commands in its folder, and it asks your permission the way that
 agent CLI normally does. For that session only, Claude Code is allowed to run

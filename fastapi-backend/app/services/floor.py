@@ -23,7 +23,8 @@ one: the room stays open, and a floor narrows exactly one thread.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 
 from app.services.agent_registry import norm_handle
 
@@ -47,6 +48,10 @@ class Floor:
     episode: str
     holder: str
     speakers: frozenset[str] = frozenset()
+    #: When the floor was given to these speakers: how long a turn has been
+    #: waiting on them. Not part of what the floor is, so re-holding the same
+    #: floor compares equal and raises no notice.
+    since: datetime | None = field(default=None, compare=False)
 
     def admits(self, handle: str) -> bool:
         """Whether ``handle`` may write into the thread right now."""

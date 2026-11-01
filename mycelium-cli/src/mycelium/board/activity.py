@@ -27,7 +27,9 @@ DAILY_GOAL = 6
 HEAT_THRESHOLDS = [0, 2, 5, 9]
 WEEK_STARTS_ON = "monday"
 
-ENGINES = {"aligner", "synthesizer"}
+#: Engine handles read as engines, not people. ``aligner`` stays so a room's
+#: history from before that engine was retired still reads right.
+ENGINES = {"aligner", "conductor", "synthesizer"}
 CHAT_TYPES = {"broadcast", "direct", "announce", "delegate"}
 
 #: Facts the log reads from a truer source than the wire.  A memory write is
@@ -222,7 +224,7 @@ def project_activity(
             ActivityEvent(
                 id=f"ep:{episode.get('short_id')}",
                 at=at,
-                actor=str(episode.get("updated_by") or "aligner"),
+                actor=str(episode.get("updated_by") or "conductor"),
                 actor_kind="engine",
                 action="converged" if subkind in ("converged", "resolved") else "mediated",
                 title=f"{topic} · {participants}".strip(),

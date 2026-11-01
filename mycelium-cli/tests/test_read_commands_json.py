@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -17,9 +16,9 @@ import pytest
 from typer.testing import CliRunner
 
 from mycelium.cli import app
+from mycelium_backend_client.models import RunnerRead
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
 runner = CliRunner()
@@ -210,20 +209,125 @@ def test_herdr_status_prints_json(herdr: None) -> None:
 
 
 def test_runner_status_prints_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    import mycelium.client
     import mycelium.runner.daemon
+    from tests.conftest import install_stand_in_hub
 
-    seen = {"connected": True, "herdr": True, "agents": []}
+    seen = {
+        "id": "abc123",
+        "label": "abc123",
+        "connected": True,
+        "last_seen": "2026-10-28T10:00:00Z",
+        "started_at": "2026-10-28T09:00:00Z",
+        "herdr": True,
+        "agents": [],
+    }
 
-    @contextmanager
-    def fake_hub_client(*_a: object, **_k: object) -> Iterator[SimpleNamespace]:
-        yield SimpleNamespace(get=lambda _path: SimpleNamespace(status_code=200, json=lambda: seen))
-
-    monkeypatch.setattr(mycelium.client, "hub_client", fake_hub_client)
+    install_stand_in_hub(monkeypatch).answer = lambda _request: seen
     monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
     state = _json(["runner", "status", "--json"])
     assert state["runner"] == "abc123"
-    assert state["hub"] == seen
+    # The hub's record as the client reads it (its stamps written ``+00:00``).
+    assert state["hub"] == RunnerRead.from_dict(seen).to_dict()
+
+
+@pytest.mark.parametrize("code", [401, 502])
+def test_runner_status_says_what_the_hub_answered_rather_than_not_connected(
+    monkeypatch: pytest.MonkeyPatch, code: int
+) -> None:
+    # A refusal or a proxy's error page is not the hub saying the runner is
+    # gone: it says nothing about it either way.
+    import httpx
+
+    import mycelium.runner.daemon
+    from tests.conftest import install_stand_in_hub
+
+    def refused_or_not_json(request: httpx.Request) -> httpx.Response:
+        if code == 401:  # the hub's own refusal, in the shape it sends one
+            return httpx.Response(code, json={"detail": "missing bearer token"}, request=request)
+        return httpx.Response(code, text="<html>Bad Gateway</html>", request=request)
+
+    install_stand_in_hub(monkeypatch).answer = refused_or_not_json
+    monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
+    result = runner.invoke(app, ["runner", "status"])
+    assert result.exit_code == 1
+    assert f"The hub answered {code}" in result.output
+    assert "not connected" not in result.output
+    assert ("whoami --sources" in result.output) == (code == 401)
+    as_json = runner.invoke(app, ["runner", "status", "--json"])
+    assert f"answered {code}" in json.loads(as_json.stdout)["hub_error"]
+
+
+def _hub_404(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The hub's answer for a runner the caller doesn't own, or never heard from."""
+    import httpx
+
+    import mycelium.runner.daemon
+    from tests.conftest import install_stand_in_hub
+
+    asked: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        return httpx.Response(404, json={"detail": "x"})
+
+    install_stand_in_hub(monkeypatch).answer = answer
+    monkeypatch.setattr(mycelium.runner.daemon, "runner_id", lambda: "abc123")
+    return asked
+
+
+def test_runner_status_says_what_the_runner_itself_knows_and_asks_the_hub_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """From an agent's pane the hub would answer 404 (it shows a runner only to its
+    owner); the runner sends the heartbeats, so its word is the answer."""
+    from datetime import UTC, datetime
+
+    import mycelium.runner.daemon
+    from mycelium.commands import runner as runner_cmd
+
+    asked = _hub_404(monkeypatch)
+    now = datetime.now(UTC).isoformat()
+    monkeypatch.setattr(runner_cmd, "running_pid", lambda: 4242)
+    monkeypatch.setattr(
+        mycelium.runner.daemon,
+        "read_sync",
+        lambda: {
+            "last_pass_at": now,
+            "last_pass_ms": 840,
+            "error": None,
+            "hub": {"connected": True, "signed_out": False, "last_heartbeat_at": now},
+        },
+    )
+    monkeypatch.setenv("MYCELIUM_AGENT_PANE", "1")
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder")
+
+    out = " ".join(runner.invoke(app, ["runner", "status"]).output.split())
+    assert "running (pid 4242)" in out
+    assert "connected to the hub, last heartbeat" in out
+    assert "last sync pass" in out
+    assert "took 840ms" in out
+    assert "hasn't heard" not in out
+    assert asked == []
+
+    state = _json(["runner", "status", "--json"])
+    assert state["local"]["connected"] is True
+    # Asked for, the hub's view comes too.
+    runner.invoke(app, ["runner", "status", "--hub"])
+    assert asked == ["/api/runners/abc123"]
+
+
+def test_runner_status_with_no_runner_and_a_404_still_says_the_hub_hasnt_heard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mycelium.commands import runner as runner_cmd
+
+    _hub_404(monkeypatch)
+    monkeypatch.setattr(runner_cmd, "running_pid", lambda: None)
+    for name in ("MYCELIUM_AGENT_PANE", "MYCELIUM_AGENT_HANDLE", "HERDR_PANE_ID"):
+        monkeypatch.delenv(name, raising=False)
+    out = runner.invoke(app, ["runner", "status"]).output
+    assert "not running" in out
+    assert "The hub hasn't heard from it." in out
 
 
 def test_ui_status_prints_json(monkeypatch: pytest.MonkeyPatch) -> None:

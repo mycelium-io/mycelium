@@ -39,8 +39,19 @@ from app.schemas import (
     MemorySearchResult,
     SubscriptionCreate,
     SubscriptionRead,
+    refusals,
 )
-from app.services import actor, in_memory_store, links, memory_sync, search_index, uploads
+from app.services import (
+    actor,
+    hold_sweep,
+    in_memory_store,
+    links,
+    memory_sync,
+    principals,
+    room_settings,
+    search_index,
+    uploads,
+)
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     EPISODE_META,
@@ -70,6 +81,11 @@ router = APIRouter(prefix="/rooms/{room_name}/memory", tags=["memory"])
 def _require_room(room_name: str) -> None:
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+
+
+def _not_found(room_name: str, key: str) -> str:
+    """A 404 that says what was missing, so a caller printing it can act on it."""
+    return f"No memory '{key}' in room '{room_name}'"
 
 
 def _flatten_value(value: dict | str) -> str:
@@ -224,7 +240,12 @@ async def _send_memory_write_knowledge(
         managed.persister.ingest_local(envelope, content)
 
 
-@router.post("", response_model=list[MemoryRead], status_code=201)
+@router.post(
+    "",
+    response_model=list[MemoryRead],
+    status_code=201,
+    responses=refusals(400, 403, 404, 409, 422),
+)
 async def create_memories(room_name: str, payload: MemoryBatchCreate, request: Request):
     """Create or upsert one or more memories (batch: 1-100 items).
 
@@ -239,7 +260,29 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
         item.created_by = actor.bind_delegated_actor(
             request, room_name, item.created_by, field="created_by"
         )
+        _guard_manifest(request, room_name, item.key, item.value)
     return await upsert_memories(room_name, payload)
+
+
+def _guard_manifest(
+    request: Request, room_name: str, key: str, value: Any, *, deleting: bool = False
+) -> None:
+    """Refuse a write that changes who may act as an agent, unless the caller may.
+
+    Only with a verified caller: with sign-in off, anyone can claim any handle
+    anyway, so there is nothing for this to protect.
+    """
+    if not _is_agent_manifest(key):
+        return
+    principal = actor.current_principal(request)
+    if principal is None:
+        return
+    content = "" if deleting else value_to_content(value)
+    refusal = principals.grant_change_refusal(
+        room_name, key.removeprefix("agents/"), content, principal.handle, deleting=deleting
+    )
+    if refusal:
+        raise HTTPException(status_code=403, detail=refusal)
 
 
 async def upsert_memories(
@@ -288,6 +331,18 @@ async def upsert_memories(
         existing_meta = existing[0] if existing else {}
         current_version = existing_meta.get("version", 0) if existing else 0
 
+        # A room setting is checked against the room settings table here, at the
+        # one write path, so every writer gets the same refusal.
+        setting_value: Any = None
+        if room_settings.is_setting_key(item.key):
+            try:
+                setting_value = room_settings.check_write(item.key, item.meta, existing_meta)
+            except room_settings.RoomSettingError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"error": "room_setting", "message": str(exc), "key": item.key},
+                ) from exc
+
         # Conflict check: a supplied base_version must match what's on disk.
         if item.base_version is not None and item.base_version != current_version:
             raise HTTPException(
@@ -308,6 +363,9 @@ async def upsert_memories(
             )
 
         now = datetime.now(UTC)
+        # A write that names no tags keeps the ones the memory has, like the rest
+        # of its frontmatter; an empty list clears them.
+        tags = item.tags if item.tags is not None else existing_meta.get("tags")
         if existing:
             new_version = current_version + 1
             created_by = existing_meta.get("created_by", item.created_by)
@@ -323,6 +381,8 @@ async def upsert_memories(
         extra_meta: dict[str, Any] = unmanaged_meta(existing_meta)
         if item.meta:
             extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
+        if room_settings.is_setting_key(item.key):
+            extra_meta[room_settings.VALUE_FIELD] = setting_value
 
         # The store's own minted keys, which nothing here recomputes. ``system``
         # supplies one; what the row already carries wins, so the binding is
@@ -357,7 +417,7 @@ async def upsert_memories(
             created_by=created_by,
             updated_by=item.created_by,
             version=new_version,
-            tags=item.tags,
+            tags=tags,
             created_at=created_at,
             updated_at=now,
             extra_meta=extra_meta or None,
@@ -385,7 +445,7 @@ async def upsert_memories(
                 "created_by": created_by,
                 "updated_by": item.created_by,
                 "version": new_version,
-                "tags": item.tags,
+                "tags": tags,
                 "meta": unmanaged_meta(extra_meta) or None,
                 "episode": extra_meta.get(EPISODE_META),
                 "expandable": links.is_expandable(extra_meta),
@@ -406,7 +466,7 @@ async def upsert_memories(
                 created_by=created_by,
                 updated_by=item.created_by,
                 version=new_version,
-                tags=item.tags,
+                tags=tags,
                 meta=unmanaged_meta(extra_meta) or None,
                 episode=extra_meta.get(EPISODE_META),
                 expandable=links.is_expandable(extra_meta),
@@ -462,7 +522,9 @@ async def upsert_memories(
     return results
 
 
-@router.get("")
+# The model is for the docs and the generated client: the handler answers with
+# its own Response (for the ETag and the 304), which FastAPI passes through.
+@router.get("", response_model=list[MemoryRead], responses=refusals(404))
 async def list_memories(
     room_name: str,
     request: Request,
@@ -501,7 +563,7 @@ async def list_memories(
 # ── Search & Subscriptions (must be BEFORE {key:path} catch-all) ──────────
 
 
-@router.post("/search", response_model=MemorySearchResponse)
+@router.post("/search", response_model=MemorySearchResponse, responses=refusals(404))
 async def search_memories(room_name: str, payload: MemorySearchRequest):
     """Semantic vector search over memories in a room.
 
@@ -555,7 +617,9 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
     return MemorySearchResponse(results=results, total=len(results))
 
 
-@router.post("/subscribe", response_model=SubscriptionRead, status_code=201)
+@router.post(
+    "/subscribe", response_model=SubscriptionRead, status_code=201, responses=refusals(404)
+)
 async def subscribe(room_name: str, payload: SubscriptionCreate):
     """Subscribe to memory change notifications for a key pattern."""
     _require_room(room_name)
@@ -568,7 +632,7 @@ async def subscribe(room_name: str, payload: SubscriptionCreate):
     return SubscriptionRead.model_validate(sub)
 
 
-@router.delete("/subscribe/{subscription_id}", status_code=204)
+@router.delete("/subscribe/{subscription_id}", status_code=204, responses=refusals(404))
 async def unsubscribe(room_name: str, subscription_id: UUID):
     """Remove a memory subscription."""
     if not in_memory_store.remove_subscription(room_name, subscription_id):
@@ -586,32 +650,43 @@ async def list_subscriptions(room_name: str):
 # ── Key-path routes (catch-all, must be LAST) ─────────────────────────────
 
 
-@router.get("/{key:path}", response_model=MemoryRead)
+@router.get("/{key:path}", response_model=MemoryRead, responses=refusals(404))
 async def get_memory(room_name: str, key: str):
     """Get a specific memory by key (from the filesystem)."""
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
     file_data = read_memory_file(room_dir, key)
     if not file_data:
-        raise HTTPException(status_code=404, detail="Memory not found")
+        raise HTTPException(status_code=404, detail=_not_found(room_name, key))
     meta, content = file_data
     return _memory_read_from_file(room_name, key, meta, content)
 
 
-@router.delete("/{key:path}", status_code=204)
-async def delete_memory(room_name: str, key: str):
+@router.delete("/{key:path}", status_code=204, responses=refusals(400, 403, 404, 409, 422))
+async def delete_memory(room_name: str, key: str, request: Request):
     """Delete a memory by key. Removes the file and its search-index entry.
 
     An ``uploads/`` record takes its file's bytes with it once no other upload
-    in the room names them.
+    in the room names them. An agent's manifest is its owner's to remove.
     """
+    _guard_manifest(request, room_name, key, None, deleting=True)
+    await remove_memory(room_name, key)
+
+
+async def remove_memory(room_name: str, key: str) -> None:
+    """The delete itself, for the route and for the hub's own removals (an
+    agent leaving, a rename), which are authorized where they start."""
     room_dir = get_room_dir(room_name)
     found = read_memory_file(room_dir, key)
     file_deleted = delete_memory_file(room_dir, key)
     index_deleted = search_index.remove(room_name, key)
     links.remove(room_name, key)
     if not file_deleted and not index_deleted:
-        raise HTTPException(status_code=404, detail="Memory not found")
+        raise HTTPException(status_code=404, detail=_not_found(room_name, key))
     upload = found[0].get(UPLOAD_META) if found else None
     if isinstance(upload, dict):
         uploads.forget_blob(room_name, upload.get("sha256"))
+    # Deleting an agent's manifest removes it from the room, so the rows it
+    # held go back to the pool.
+    if file_deleted and _is_agent_manifest(key):
+        await hold_sweep.holder_removed(room_name, key.removeprefix("agents/"))

@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { ansiToHtml, parseAnsi, stripAnsi } from "../src/ansi.mjs";
 import { splitHighlightedLines, guessLanguage } from "../src/code.mjs";
-import { parse } from "../src/args.mjs";
+import { parse, UsageError } from "../src/args.mjs";
 import { policyArgs, policyKey } from "../src/network.mjs";
 import { resolveViewport, viewportList } from "../src/viewports.mjs";
 import { locate, parseAction } from "../src/actions.mjs";
@@ -33,7 +33,8 @@ import { readCues, writeCues } from "../src/audio/cues.mjs";
 import { renderFoley } from "../src/audio/foley.mjs";
 import { encodeWav, soundFfmpeg } from "../src/audio/io.mjs";
 import { mixSoundtrack, soundOptions } from "../src/audio/soundtrack.mjs";
-import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { flowOfStep, loadFlows, resolveFlows } from "../src/flows.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Engine, frameOf, requireStorageState, storageStateKey } from "../src/engine.mjs";
@@ -155,6 +156,13 @@ test("term stops parsing its own flags at the command", () => {
   assert.equal(flags.cols, 84);
   assert.equal(flags.room, undefined, "--room belongs to the child command");
   assert.deepEqual(rest, ["mycelium", "memory", "ls", "--room", "atlas"]);
+});
+
+test("a mistyped flag is a usage error that names the one meant", () => {
+  const spec = { do: { type: "list" }, "full-page": { type: "boolean" }, theme: { type: "string" } };
+  assert.throws(() => parse(["--doo", "x"], spec), (e) => e instanceof UsageError && /did you mean --do\?/.test(e.message));
+  assert.throws(() => parse(["--full"], spec), /did you mean --full-page\?/);
+  assert.throws(() => parse(["--zebra"], spec), (e) => e instanceof UsageError && !/did you mean/.test(e.message));
 });
 
 test("--no-<flag> negates a boolean", () => {
@@ -736,6 +744,35 @@ test("the mix options come out of a spec, and nothing else does", () => {
 
 await atest("a gif is refused sound up front, before a take is spent on it", async () => {
   await assert.rejects(() => soundFfmpeg("gif"), /no sound track/);
+});
+
+test("flows compose: uses first and once, storage merged, steps in order, the last route wins", () => {
+  const dir = mkdtempSync(join(tmpdir(), "shotkit-flows-"));
+  const write = (name, flow) => writeFileSync(join(dir, `${name}.json`), JSON.stringify(flow));
+  write("signed-in", { storage: { who: "op", seen: "1" }, do: ["click:Skip"] });
+  write("panel", { uses: ["signed-in"], route: "/room", do: ["click:Memory"] });
+  write("drawer", { uses: ["signed-in", "panel"], storage: { who: "admin" }, route: "/room/x", do: ["click:Task", "wait:200"] });
+  const flows = loadFlows(dir);
+  const f = resolveFlows(["drawer"], flows);
+  assert.deepEqual(f.do, ["click:Skip", "click:Memory", "click:Task", "wait:200"]);
+  assert.deepEqual(f.storage, { who: "admin", seen: "1" });
+  assert.equal(f.route, "/room/x");
+  assert.deepEqual(flowOfStep(2, f.segments), { flow: "panel", step: 1 });
+  assert.deepEqual(flowOfStep(4, f.segments), { flow: "drawer", step: 2 });
+  assert.deepEqual(flowOfStep(6, f.segments), { flow: null, step: 2 });
+  assert.throws(() => resolveFlows(["nope"], flows), /no flow "nope".*there is drawer, panel, signed-in/);
+});
+
+test("a flow that loops, misnames itself, or has a typo'd field is refused by name", () => {
+  const dir = mkdtempSync(join(tmpdir(), "shotkit-flows-"));
+  writeFileSync(join(dir, "a.json"), JSON.stringify({ uses: ["b"] }));
+  writeFileSync(join(dir, "b.json"), JSON.stringify({ uses: ["a"] }));
+  assert.throws(() => resolveFlows(["a"], loadFlows(dir)), /loop: a → b → a/);
+  writeFileSync(join(dir, "c.json"), JSON.stringify({ steps: ["click:X"] }));
+  assert.throws(() => loadFlows(dir), /c\.json: unknown field steps/);
+  rmSync(join(dir, "c.json"));
+  writeFileSync(join(dir, "d.json"), JSON.stringify({ name: "e" }));
+  assert.throws(() => loadFlows(dir), /named by its file/);
 });
 
 

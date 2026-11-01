@@ -5,7 +5,7 @@
  * Who is responding right now.
  *
  * The backend raises an `agent_activity` frame on the room stream when a
- * participant starts generating (the aligner handing a round to Pi, a resident
+ * participant starts generating (the conductor handing a step to Pi, a resident
  * agent taking an `await` wake) and again when it finishes. It is a
  * presence-style signal, not a message: it never lands in the transcript, so a
  * reload shows none of it, and the channel must never render it as a line.
@@ -74,26 +74,6 @@ export function expireActivity(current: Responding[], now: number): Responding[]
   return current.some((r) => r.until <= now) ? current.filter((r) => r.until > now) : current;
 }
 
-/** "@x" / "@x and @y" / "@x, @y and 2 others" */
-export function respondingNames(entries: Responding[]): string {
-  const names = entries.map((r) => `@${r.handle}`);
-  if (names.length === 0) return "";
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  const more = names.length - 2;
-  return `${names[0]}, ${names[1]} and ${more} ${more === 1 ? "other" : "others"}`;
-}
-
-/** "@x is responding…" / "@x and @y are responding…". With `where`, the turn
- *  is going somewhere other than the surface reading it — a task's thread — and
- *  the line stops before naming it, so the caller can draw the name as a link:
- *  "@x is responding in". */
-export function respondingLabel(entries: Responding[], where: "here" | "elsewhere" = "here"): string {
-  if (entries.length === 0) return "";
-  const verb = entries.length === 1 ? "is" : "are";
-  const names = respondingNames(entries);
-  return where === "here" ? `${names} ${verb} responding…` : `${names} ${verb} responding in`;
-}
 
 /** The entries whose turn lands on this surface, and those landing in a thread
  *  it does not show. `isHere` says whether an episode is this surface's own. */

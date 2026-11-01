@@ -42,7 +42,7 @@ export interface Day {
 }
 
 /** Engines are first-party cognition; naming them apart keeps the lanes honest. */
-const ENGINES = new Set(["aligner", "synthesizer"]);
+const ENGINES = new Set(["conductor", "synthesizer"]);
 
 export function actorKind(handle: string, agents: Set<string>): ActorKind {
   const clean = handle.replace(/^@/, "").toLowerCase();
@@ -210,7 +210,7 @@ export function projectActivity(input: ActivityInput): ActivityEvent[] {
     push({
       id: `ep:${episode.short_id}`,
       at: episode.updated_at,
-      actor: episode.updated_by || "aligner",
+      actor: episode.updated_by || "conductor",
       actorKind: "engine",
       action: subkind === "converged" || subkind === "resolved" ? "converged" : "mediated",
       title: `${episode.topic.split(":").pop()} · ${episode.participants.map(p => `@${p}`).join(" ")}`,

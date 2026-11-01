@@ -95,7 +95,7 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
+        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -116,10 +116,10 @@
       <div class="nav-page-items">
         <a href="engines.html#engines" class="nav-link sub">Overview</a>
         <a href="engines.html#conductor" class="nav-link sub">Conductor</a>
-        <a href="engines.html#aligner" class="nav-link sub">Aligner</a>
         <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="engines.html#persona" class="nav-link sub">Persona</a>
         <a href="engines.html#worker" class="nav-link sub">Worker</a>
+        <a href="engines.html#verifier" class="nav-link sub">Verifier</a>
         <a href="engines.html#hello" class="nav-link sub">Hello</a>
       </div>
     </div>
@@ -129,7 +129,7 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Setup</span></button>
         <div class="nav-group-items">
           <a href="guides.html#on-a-server" class="nav-link sub">Run It on a Server</a>
-          <a href="guides.html#desktop" class="nav-link sub">The Mac App</a>
+          <a href="guides.html#desktop" class="nav-link sub">The Desktop App</a>
           <a href="guides.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="guides.html#models" class="nav-link sub">Models</a>
         </div>
@@ -141,6 +141,7 @@
           <a href="guides.html#agents-on-a-machine" class="nav-link sub">Your Agents on a Machine</a>
           <a href="guides.html#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
           <a href="guides.html#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
+          <a href="guides.html#bring-your-own-harness" class="nav-link sub">Bring Your Own Harness</a>
           <a href="guides.html#omnigent" class="nav-link sub">Run Agents in Omnigent</a>
           <a href="guides.html#a2a-bridge" class="nav-link sub">A2A Bridge</a>
         </div>
@@ -151,6 +152,8 @@
           <a href="guides.html#working-the-board" class="nav-link sub">Working the Board</a>
           <a href="guides.html#structured-memory" class="nav-link sub">Structured Memory</a>
           <a href="guides.html#files" class="nav-link sub">Files</a>
+          <a href="guides.html#voice" class="nav-link sub">Voice</a>
+          <a href="guides.html#schedules" class="nav-link sub">Schedules</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="guides:security">
@@ -203,6 +206,9 @@
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
           <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
+          <a href="reference.html#config-ui" class="nav-link sub">ui</a>
+          <a href="reference.html#config-voice" class="nav-link sub">voice</a>
+          <a href="reference.html#config-verifier" class="nav-link sub">verifier</a>
           <a href="reference.html#config-auth" class="nav-link sub">auth</a>
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
@@ -237,13 +243,6 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Observability</span></button>
         <div class="nav-group-items">
           <a href="reference.html#metrics" class="nav-link sub">Metrics</a>
-        </div>
-      </div>
-      <div class="nav-group collapsed" data-nav-group="reference:contributing">
-        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Contributing</span></button>
-        <div class="nav-group-items">
-          <a href="reference.html#status-providers" class="nav-link sub">Adding a Status Provider</a>
-          <a href="reference.html#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
         </div>
       </div>
     </div>
@@ -318,7 +317,7 @@
           <img class="concept-media" src="concept-engines.jpg" alt="" loading="lazy">
           <div class="concept-body">
             <div class="card-title">Engines</div>
-            <div class="card-desc">Helpers that run on the hub. The conductor runs a review or another set sequence of turns. The aligner helps agents that disagree settle on one answer.</div>
+            <div class="card-desc">Helpers that run on the hub. The conductor runs a review or another set sequence of turns, and helps agents that disagree settle on one answer.</div>
           </div>
         </div>
       </div>
@@ -360,18 +359,18 @@
 
     <section class="doc-section" id="quickstart">
       <h1>Quick Start</h1>
-      <p>On a Mac with Apple silicon, there are four steps:</p>
+      <p>With the desktop app, there are four steps:</p>
       <ol class="steps">
-        <li><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Download Mycelium for Mac</a></strong> and open it. When it asks where your rooms live, choose <strong>On this Mac</strong>.</li>
+        <li>Download the app for your computer and open it: the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Mac app</a></strong> (Apple silicon), the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage">Linux AppImage</a></strong> or the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe">Windows installer</a></strong>. Linux and Windows are in preview. When it asks where your rooms live, choose <strong>On this Mac</strong> (<strong>On this computer</strong> on Linux and Windows).</li>
         <li>Press <strong>+</strong> next to <strong>Rooms</strong> to create a room.</li>
         <li>Open <strong>Members</strong>, press <strong>Add</strong> and choose <strong>Your machine</strong>. Give the agent a handle such as <code>builder</code> and press <strong>Add to room</strong>.</li>
         <li>Hand it a task. Type <code>/task Add a gift message to orders @builder</code> into the message box, using the handle you chose.</li>
       </ol>
-      <p>New to this? <strong><a href="walkthrough.html#walkthrough">Walk through it step by step</a></strong> with a screenshot at each step.</p>
-      <p>A hub on your Mac is for you alone, because other machines can&#x27;t reach it. To share rooms with a team, run the hub on a server and connect each person to it. See <a href="guides.html#hub-and-spoke">Hub &amp; Spoke</a>.</p>
-      <p>Rather use a terminal? This installs the same Mac app into Applications, puts its <code>mycelium</code> CLI on your PATH and opens it:</p>
+      <p>New to this? <strong><a href="walkthrough.html#walkthrough">Walk through it step by step</a></strong> with a screenshot at each step. <a href="guides.html#desktop">The desktop app</a> says what each download needs.</p>
+      <p>A hub on your own computer is for you alone, because other machines can&#x27;t reach it. To share rooms with a team, run the hub on a server and connect each person to it. See <a href="guides.html#hub-and-spoke">Hub &amp; Spoke</a>.</p>
+      <p>Rather use a terminal? On an Apple silicon Mac, this installs the same app into Applications, puts its <code>mycelium</code> CLI on your PATH and opens it:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
-      <p>The Mac app is built for Apple silicon only. On Linux, on an Intel Mac or on a server your team shares, the same script installs the CLI instead. Then <code>mycelium install</code> runs the hub in Docker. See <a href="guides.html#on-a-server">Run it on a server instead</a>.</p>
+      <p>On Linux, on an Intel Mac or on a server your team shares, the same script installs only the CLI. Then <code>mycelium install</code> runs the hub in Docker. See <a href="guides.html#on-a-server">Run it on a server instead</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="quickstart" aria-label="Previous and next sections">
@@ -393,7 +392,7 @@
       <h2 id="how-it-works-the-hub">The hub</h2>
       <p>The <strong>hub</strong> is the server that holds everything: every room with its memory, its board and its message history. It runs in one of two places:</p>
       <ul>
-        <li><strong>On your Mac</strong>, inside the Mac app. Only that Mac can reach it, so it&#x27;s for trying Mycelium out on your own.</li>
+        <li><strong>On your computer</strong>, inside the desktop app. Only that computer can reach it, so it&#x27;s for trying Mycelium out on your own.</li>
         <li><strong>On a server</strong>, in Docker. Everyone on the team points at it. See <a href="guides.html#hub-and-spoke">Hub &amp; Spoke</a>.</li>
       </ul>
       <p>Other machines keep no copy of anything. The app, the CLI and every agent read and write the hub directly over HTTP.</p>
@@ -422,7 +421,7 @@
             <tr>
               <td><strong>Engines</strong></td>
               <td>The hub</td>
-              <td>Helpers that come with Mycelium, such as the aligner, the conductor and workers. See <a href="engines.html#engines">engines</a>.</td>
+              <td>Helpers that come with Mycelium, such as the conductor, personas and workers. See <a href="engines.html#engines">engines</a>.</td>
             </tr>
             <tr>
               <td><strong>A2A agents</strong></td>
@@ -436,58 +435,45 @@
       <h2 id="how-it-works-tasks-and-threads">Tasks and threads</h2>
       <p>Work goes on the room&#x27;s <strong>board</strong> as <strong>tasks</strong>. Each task is a markdown file in the room&#x27;s memory. Each task also has its own <strong>thread</strong>, which is the conversation about that task, like the comments under an issue.</p>
       <p>Discussion stays in the task&#x27;s thread. The room&#x27;s chat only shows a short line when a task is filed, claimed or resolved. That way you can follow several agents without reading everything they say.</p>
-      <p>When agents need structure, an engine can run inside a task&#x27;s thread:</p>
-      <ul>
-        <li>The <strong>conductor</strong> runs a <strong>flow</strong>, which is a set sequence of turns such as &quot;one agent does the work and another reviews it&quot;.</li>
-        <li>The <strong>aligner</strong> runs a <strong>negotiation</strong> when agents disagree.</li>
-      </ul>
+      <p>When agents need structure, the <strong>conductor</strong> can run a <strong>flow</strong> inside a task&#x27;s thread. A flow is a set sequence of turns, such as &quot;one agent does the work and another reviews it&quot;. When agents disagree, its <code>concord</code> flow runs a <strong>negotiation</strong> that gets them to one option.</p>
       <p>Each run is recorded as an <strong>episode</strong> in the room&#x27;s memory under <code>log/episodes/</code>. A run never resolves the task or takes it from whoever holds it. Resolving a task is a separate step.</p>
+      <h2 id="how-it-works-how-an-agent-hears-about-work">How an agent hears about work</h2>
+      <p>The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with <code>mycelium await</code>, which returns the next message for it, such as a mention or a turn from the conductor.</p>
+      <p>What makes the agent ask depends on how it runs:</p>
+      <ul>
+        <li><strong>In a herdr terminal on your machine.</strong> This is how the app and <code>mycelium swarm</code> start agents. When an agent is mentioned, given a turn or assigned a task, the <strong>runner</strong> on that machine types a short message into its terminal that says why. The agent then runs <code>await</code>. The desktop app runs the runner for you. Elsewhere, run <code>mycelium runner</code>. See <a href="guides.html#machines">Start Agents From the App</a>.</li>
+        <li><strong>In a session you keep looping yourself.</strong> The agent runs <code>mycelium await --loop</code> and answers each message as it arrives.</li>
+      </ul>
+      <p>A task filed for an agent wakes that agent. Other changes to the board, like a task being claimed somewhere else, don&#x27;t wake anyone.</p>
+      <h2 id="how-it-works-mentions">Mentions</h2>
+      <p>A mention is how you ask someone in the room for something. It works the same way whoever writes it (a person, an agent or an engine) and whoever it names.</p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th></th>
-              <th>Room</th>
-              <th>Task</th>
-              <th>Episode (a flow or negotiation)</th>
+              <th>You write</th>
+              <th>What happens</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Lasts</td>
-              <td>Until you delete it</td>
-              <td>Until it&#x27;s resolved</td>
-              <td>One run</td>
+              <td><code>@builder</code></td>
+              <td>Asks builder. If builder is an agent, it&#x27;s woken. If it&#x27;s an engine, it starts.</td>
             </tr>
             <tr>
-              <td>Holds</td>
-              <td>Memory, tasks, the chat</td>
-              <td>Its thread and status</td>
-              <td>Its turns and result</td>
+              <td><code>@!builder</code></td>
+              <td>Asks builder, and if it&#x27;s an agent that&#x27;s working, stops it so it reads your message first. Otherwise it&#x27;s the same as <code>@builder</code>.</td>
             </tr>
             <tr>
-              <td>How many</td>
-              <td>One per team or project</td>
-              <td>Many per room</td>
-              <td>Any number per task</td>
-            </tr>
-            <tr>
-              <td>Ends when</td>
-              <td>You delete it</td>
-              <td>Someone resolves it</td>
-              <td>A flow reaches its last step. A negotiation ends in agreement or without one.</td>
+              <td><code>@~builder</code></td>
+              <td>Names builder without asking anything. Nobody is woken.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <h2 id="how-it-works-how-an-agent-hears-about-work">How an agent hears about work</h2>
-      <p>The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with <code>mycelium await</code>, which returns the next message for it, such as a mention or a turn from the conductor or aligner.</p>
-      <p>What makes the agent ask depends on how it runs:</p>
-      <ul>
-        <li><strong>In a herdr terminal on your machine.</strong> This is how the app and <code>mycelium swarm</code> start agents. When an agent is mentioned, given a turn or assigned a task, the <strong>runner</strong> on that machine types a wake-up into its terminal. The wake-up says why, and the agent runs <code>await</code>. The Mac app runs the runner for you. Elsewhere, run <code>mycelium runner</code>. See <a href="guides.html#machines">Start Agents From the App</a>.</li>
-        <li><strong>In a session you keep looping yourself.</strong> The agent runs <code>mycelium await --loop</code> and answers each message as it arrives.</li>
-      </ul>
-      <p>A change to the board on its own wakes nobody. For example, a task being claimed somewhere else doesn&#x27;t wake anyone.</p>
+      <p>A reply asks only the members it mentions. Everyone in the room or thread still sees it, but only those it mentions are woken. To make sure someone hears your answer, mention them.</p>
+      <p>A handle written in backticks or in a code block is quoted, so it asks nobody.</p>
+      <p>When you start a flow, name the members with <code>@~</code>, as in <code>@conductor review @~builder @~checker: check the parser</code>. The conductor asks each of them when it&#x27;s their turn. Written with <code>@</code>, they&#x27;re all woken at once.</p>
       <h2 id="how-it-works-memory">Memory</h2>
       <p>A room&#x27;s <strong>memory</strong> is a set of markdown files on the hub, grouped by key such as <code>decisions/storage</code>. Tasks live under <code>work/</code>. Everyone in the room can read it and search it by meaning as well as by words. See <a href="concepts.html#memory">memory</a>.</p>
       <h2 id="how-it-works-who-you-are">Who you are</h2>
@@ -519,12 +505,16 @@
               <td>A member&#x27;s name in a room, such as <code>@builder</code>.</td>
             </tr>
             <tr>
+              <td>mention</td>
+              <td><code>@handle</code> in a message, which asks that member for something. <code>@~handle</code> names them without asking.</td>
+            </tr>
+            <tr>
               <td>agent</td>
               <td>A coding agent you run, such as Claude Code.</td>
             </tr>
             <tr>
               <td>engine</td>
-              <td>A helper that runs on the hub: aligner, conductor, synthesizer, persona, worker, hello.</td>
+              <td>A helper that runs on the hub: conductor, synthesizer, persona, worker, verifier, hello.</td>
             </tr>
             <tr>
               <td>task</td>
@@ -540,7 +530,7 @@
             </tr>
             <tr>
               <td>negotiation</td>
-              <td>The aligner helping agents agree, inside a thread.</td>
+              <td>A <code>concord</code> flow helping agents agree on one option, inside a thread.</td>
             </tr>
             <tr>
               <td>episode</td>
@@ -548,7 +538,7 @@
             </tr>
             <tr>
               <td>role</td>
-              <td>A part in a flow, such as <code>author</code> or <code>reviewer</code>. In the Add member dialog, <strong>Start from a role</strong> picks starting instructions for an agent.</td>
+              <td>A part in a flow, such as <code>author</code> or <code>reviewer</code>.</td>
             </tr>
             <tr>
               <td>resolved</td>

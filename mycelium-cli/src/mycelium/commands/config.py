@@ -5,6 +5,7 @@
 
 import json as json_module
 import subprocess
+import sys
 from pathlib import Path
 
 import typer
@@ -84,7 +85,9 @@ def show(ctx: typer.Context) -> None:
 def set_config(
     ctx: typer.Context,
     key: str = typer.Argument(None, help="Config key (e.g., server.api_url)"),
-    value: str = typer.Argument(None, help="Config value"),
+    value: str = typer.Argument(
+        None, help="Config value, or - to read it from stdin (empty clears it)"
+    ),
     env: str = typer.Option(None, "--env", "-e", help="Apply environment preset (local)"),
 ) -> None:
     """
@@ -113,11 +116,17 @@ def set_config(
             typer.secho("Error: Provide key and value, or use --env", fg=typer.colors.RED)
             raise typer.Exit(1)
 
+        # `-` reads the value from stdin, so a key never shows in the process
+        # list; an empty one there clears the setting (the hub's Hub page).
+        from_stdin = value == "-"
+        if from_stdin:
+            value = sys.stdin.read().strip()
+
         config = MyceliumConfig.load()
         parts = key.split(".")
 
         # Try to coerce JSON arrays/bools/numbers so list fields round-trip correctly
-        parsed_value: object = value
+        parsed_value: object = value if value or not from_stdin else None
         try:
             parsed_value = json_module.loads(value)
         except (json_module.JSONDecodeError, ValueError):
@@ -133,7 +142,10 @@ def set_config(
 
         config.save()
         typer.secho(
-            f"Set {key} = {value[:20]}{'...' if len(value) > 20 else ''}",
+            # A value from stdin may be a key, so it isn't echoed.
+            f"Set {key}"
+            if from_stdin
+            else f"Set {key} = {value[:20]}{'...' if len(value) > 20 else ''}",
             fg=typer.colors.GREEN,
         )
         if key == "slim.identity" and str(parsed_value).lower() == "signerjwt":

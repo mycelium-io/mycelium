@@ -131,3 +131,14 @@ async def test_an_unreadable_stamp_survives_the_cursor(client):
     cursor = quote(START.isoformat())
     frames = (await client.get(f"/api/rooms/{ROOM}/messages/wire?before={cursor}")).json()
     assert [f["id"] for f in frames] == ["m-002"]
+
+
+@pytest.mark.asyncio
+async def test_one_message_is_read_by_the_id_a_wake_names_it_by(client, transcript):
+    """A wake names a message by the first eight characters of its id, and
+    ``room messages --id`` reads it whole by them."""
+    record = _record(7)
+    short = str(persister.read_id(record))[:8]
+    page = (await client.get(f"/api/rooms/{ROOM}/messages?id={short}")).json()
+    assert _texts(page) == ["msg 7"]
+    assert page["messages"][0]["id"].startswith(short)

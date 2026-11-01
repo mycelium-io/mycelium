@@ -175,9 +175,12 @@ class EpisodeLifecycle:
 
     **Freezing membership is a negotiation's policy, not an episode's.** The
     stable-membership rule exists because an offer/counter exchange scored across
-    a changing set of participants means nothing — so a membership change while a
-    *negotiation* is running **aborts** it (the channel itself is untouched, and a
-    new episode can open afterward with the changed membership).
+    a changing set of parties means nothing — so a negotiation freezes its own
+    parties (:attr:`members`: the handles it was asked to broker between, not
+    everyone present) and **aborts** only when one of them is removed from the
+    room. Presence coming and going is not that: in a busy room someone's lease
+    starts or lapses every minute, and an agent between turns isn't connected at
+    all, so aborting on presence ended runs for nothing.
 
     A task is an episode too, and nothing about it wants that rule: it is
     a container that outlives what happens inside it, so someone joining the room
@@ -203,7 +206,7 @@ class EpisodeLifecycle:
     def open(
         self, episode: str, members: set[str] | frozenset[str], *, negotiation: bool = True
     ) -> None:
-        """Begin an episode over the given membership.
+        """Begin an episode; a negotiation's ``members`` are its parties.
 
         ``negotiation=False`` opens a container (a task's thread) that a
         later join or leave leaves running.
@@ -213,17 +216,12 @@ class EpisodeLifecycle:
         self.active = True
         self.negotiation = negotiation
 
-    def on_membership_change(self, members: set[str] | frozenset[str]) -> bool:
-        """Record a membership change; return True if it aborts a negotiation.
-
-        When nothing is frozen the new membership is simply adopted as the
-        baseline (so the *next* negotiation opens clean).
-        """
-        new_members = frozenset(members)
-        if self.frozen and new_members != self.members:
+    def on_member_removed(self, handle: str) -> bool:
+        """Record ``handle`` leaving the room; True if that aborts a negotiation,
+        which it does only when ``handle`` is one of the negotiation's parties."""
+        if self.frozen and handle in self.members:
             self.active = False
             return True
-        self.members = new_members
         return False
 
     def close(self) -> None:

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,8 +10,9 @@ const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
 const createTask = vi.fn().mockResolvedValue({ key: "work/fix-the-flaky-tests", episode: "urn:e:t1" });
 const writeFields = vi.fn().mockResolvedValue({});
 const createMemories = vi.fn().mockResolvedValue(undefined);
+const createSchedule = vi.fn().mockResolvedValue(undefined);
 const launchRunnerAgent = vi.fn().mockResolvedValue({ id: "job1" });
-const createEngine = vi.fn().mockResolvedValue({ handle: "aligner" });
+const createEngine = vi.fn().mockResolvedValue({ handle: "synthesizer" });
 
 const framework = (id: string, name: string) => ({
   id,
@@ -56,8 +57,10 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   launchRunnerAgent: (...args: unknown[]) => launchRunnerAgent(...args),
   createEngine: (...args: unknown[]) => createEngine(...args),
   createMemories: (...args: unknown[]) => createMemories(...args),
+  createSchedule: (...args: unknown[]) => createSchedule(...args),
+  fetchSchedules: async () => ({ schedules: [], checks: { always: "Every time" } }),
   fetchRoomAgents: vi.fn().mockResolvedValue([
-    { handle: "aligner", adapter: "engine", kind: "aligner", description: "mediator", cwd: null, owner: null, team: null, allow_from: [] },
+    { handle: "synthesizer", adapter: "engine", kind: "synthesizer", description: "distiller", cwd: null, owner: null, team: null, allow_from: [] },
     { handle: "conductor", adapter: "engine", kind: "conductor", description: "", cwd: null, owner: null, team: null, allow_from: [] },
   ]),
   fetchProtocols: async () => [
@@ -67,14 +70,20 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchRoomMembers: vi.fn().mockResolvedValue({
     members: [
       { handle: "watcher", kind: "lease", last_seen: null },
-      { handle: "aligner", kind: "slim", last_seen: null },
+      { handle: "synthesizer", kind: "slim", last_seen: null },
     ],
     floors: [],
+  }),
+  fetchRoomPeople: vi.fn().mockResolvedValue({
+    people: [{ handle: "sam", joined_at: "2026-10-01T00:00:00Z", via: "message" }],
+    agents: [],
+    engines: [],
+    others: [{ handle: "watcher", holds_task: false, present: true }],
   }),
   fetchMessages: vi.fn().mockResolvedValue({
     messages: [
       { message_type: "broadcast", sender_handle: "sam" },
-      { message_type: "broadcast", sender_handle: "aligner" },
+      { message_type: "broadcast", sender_handle: "synthesizer" },
     ],
   }),
   fetchMemories: vi.fn().mockResolvedValue([
@@ -84,8 +93,28 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchSkills: vi.fn().mockResolvedValue([
     { name: "summarize-room", description: "condense decisions", body: "", version: 1, created_by: "julia", created_at: "", updated_at: "" },
   ]),
-  fetchUploads: async () => ({ uploads: [], total: 0, accepted: ["png", "pdf", "md"], max_bytes: 1024 }),
+  fetchUploads: async () => ({ uploads: [], total: 0, accepted: ["png", "pdf", "md", "txt"], max_bytes: 1024 * 1024 }),
   uploadFile: (room: string, file: File) => uploadFile(room, file),
+  fetchMentionGroups: (room: string, episode: string | null) => fetchMentionGroups(room, episode),
+}));
+
+// A busy room: sam and five agents. In the task's thread, two agents are
+// talking, so `@here` there is just those two. In the channel it's everyone.
+const member = (handle: string, kind: "agent" | "person", status: "working" | "idle" | null = null, role: "posted" | null = null) => ({
+  handle,
+  kind,
+  status,
+  posted_at: role ? "2026-10-29T10:00:00Z" : null,
+  role,
+});
+const EVERYONE = [
+  member("sam", "person"),
+  ...["builder", "reviewer", "pricing", "support", "refunds"].map((h) => member(h, "agent", "idle")),
+];
+const TALKING = [member("builder", "agent", "working", "posted"), member("reviewer", "agent", "idle", "posted")];
+const fetchMentionGroups = vi.fn(async (_room: string, episode: string | null) => ({
+  here: episode ? { count: 2, members: TALKING } : { count: 6, members: EVERYONE },
+  all: { count: 6, members: EVERYONE },
 }));
 
 const uploadFile = vi.fn(async (_room: string, file: File) => ({
@@ -111,7 +140,25 @@ vi.mock("@/components/keymap-provider", () => ({
   useKeyAction: () => undefined,
 }));
 
+// The real emoji list, unless a case turns `fail` on: then the list's chunk
+// won't load, as when offline or after a deploy replaced it.
+const emojiLoad = vi.hoisted(() => ({ fail: false }));
+vi.mock("@/lib/emoji", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/emoji")>();
+  const failing = () => Promise.reject(new Error("Loading chunk failed"));
+  return {
+    ...actual,
+    emojiNow: () => (emojiLoad.fail ? null : actual.emojiNow()),
+    loadEmoji: () => (emojiLoad.fail ? failing() : actual.loadEmoji()),
+    withEmoji: (text: string, t: import("@/lib/emoji").EmojiTable | null) =>
+      emojiLoad.fail ? actual.withEmoji(text, null, failing) : actual.withEmoji(text, t),
+  };
+});
+
 import { RoomChatBox } from "@/components/room-chat-box";
+import { recordMentions } from "@/lib/recent-mentions";
+import { insertIntoComposer, quoteText, replyText } from "@/lib/message-actions";
+import { __resetClientSettingsCache } from "@/lib/client-settings";
 
 // A draft outlives its composer, which is the point, so each case starts
 // with none rather than inheriting the last one's typing.
@@ -153,6 +200,7 @@ describe("<RoomChatBox /> attachments", () => {
     const clicked = vi.spyOn(picker(container), "click");
     await user.click(await screen.findByRole("button", { name: "Add to this thread" }));
     expect(screen.queryByRole("button", { name: /Task or flow…/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Schedule…/ })).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /Files…/ }));
     expect(clicked).toHaveBeenCalled();
   });
@@ -170,11 +218,65 @@ describe("<RoomChatBox /> attachments", () => {
   it("says why a file won't go before sending it, and sends the rest", async () => {
     const user = userEvent.setup({ applyAccept: false });
     const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
-    await waitFor(() => expect(picker(container).accept).toBe(".png,.pdf,.md"));
+    await waitFor(() => expect(picker(container).accept).toBe(".png,.pdf,.md,.txt"));
     await user.upload(picker(container), [new File(["MZ"], "tool.exe"), png("ok.png")]);
     expect(await screen.findByText(/\.exe files can't be previewed/)).toBeInTheDocument();
     await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
     expect(uploadFile.mock.calls[0][1]).toMatchObject({ name: "ok.png" });
+  });
+
+  it("attaches a very long paste as a text file, and Undo puts the text back", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await user.type(box, "see: ");
+    const log = "error at line 1\n".repeat(700);
+    expect(log.length).toBeGreaterThan(10_000);
+
+    await user.paste(log);
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+    expect(uploadFile.mock.calls[0][1].name).toMatch(/^pasted-text-\d{4}\.txt$/);
+    expect(await uploadFile.mock.calls[0][1].text()).toBe(log);
+    expect(box).toHaveValue("see: ");
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(box).toHaveValue(`see: ${log}`);
+    expect(screen.queryByRole("list", { name: "Attached files" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a paste under the limit as text", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await user.click(box);
+    await user.paste("a short note");
+    expect(box).toHaveValue("a short note");
+    expect(uploadFile).not.toHaveBeenCalled();
+  });
+
+  it("follows this browser's paste setting, and Never keeps any paste as text", async () => {
+    window.localStorage.setItem("mycelium.settings", JSON.stringify({ "general.long-paste": 0 }));
+    __resetClientSettingsCache();
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await user.click(box);
+    await user.paste("z".repeat(20_000));
+    expect(box).toHaveValue("z".repeat(20_000));
+    expect(uploadFile).not.toHaveBeenCalled();
+    __resetClientSettingsCache();
+  });
+
+  it("drops the Undo once the pasted file is removed", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    await user.click(await textarea());
+    await user.paste("y".repeat(10_001));
+    const remove = await screen.findByLabelText(/^Remove pasted-text-/);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    await user.click(remove);
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
   });
 
   it("waits for a file still uploading", async () => {
@@ -232,9 +334,111 @@ describe("<RoomChatBox /> drafts", () => {
   });
 });
 
+describe("<RoomChatBox /> sent history", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+    window.localStorage.clear();
+  });
+
+  it("steps back through what you sent with Up, and forward to your draft with Down", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    for (const text of ["first", "second", "third"]) {
+      await userEvent.type(box, `${text}{Enter}`);
+      await waitFor(() => expect(box).toHaveValue(""));
+      await waitFor(() => expect(box).toBeEnabled());
+    }
+    expect(JSON.parse(window.localStorage.getItem("mycelium.sent:demo") ?? "[]")).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
+    await userEvent.type(box, "half typed");
+    // The first step back is from the start of the draft; after that the
+    // recalled messages are unchanged, so each press steps again at once.
+    (box as HTMLTextAreaElement).setSelectionRange(0, 0);
+
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("third");
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("second");
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("first");
+    // Nothing older: it stays put.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("first");
+
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue("second");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue("third");
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue("half typed");
+  });
+
+  it("steps through history from anywhere in an unchanged recalled message", async () => {
+    window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["older", "a recalled message"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.click(box);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("a recalled message");
+    box.setSelectionRange(4, 4);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("older");
+  });
+
+  it("moves the cursor as usual anywhere but the first character", async () => {
+    window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["earlier"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "line one{Shift>}{Enter}{/Shift}line two");
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("line one\nline two");
+  });
+
+  it("doesn't recall from a long line that wraps, until the cursor is at its start", async () => {
+    const long = "a long message that wraps onto several rows of the box";
+    window.localStorage.setItem("mycelium.sent:demo", JSON.stringify(["earlier"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.type(box, long);
+
+    // No newline before the cursor, but it isn't at the start: Up moves it.
+    box.setSelectionRange(5, 5);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue(long);
+    box.setSelectionRange(0, 0);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("earlier");
+
+    // The recalled message is unchanged, so Down steps forward to the draft
+    // from anywhere in it.
+    box.setSelectionRange(2, 2);
+    await userEvent.keyboard("{ArrowDown}");
+    expect(box).toHaveValue(long);
+  });
+
+  it("keeps each room's history apart", async () => {
+    window.localStorage.setItem("mycelium.sent:other", JSON.stringify(["over there"]));
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.keyboard("{ArrowUp}");
+    expect(box).toHaveValue("");
+  });
+});
+
 describe("<RoomChatBox /> composer triggers", () => {
   beforeEach(() => {
     sendRoomMessage.mockClear();
+  });
+
+  it("draws each sigil in the hint row as a keycap", async () => {
+    const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
+    await textarea();
+    const caps = [...container.querySelectorAll("kbd")].map((k) => k.textContent);
+    expect(caps).toEqual(expect.arrayContaining(["@", "@~", "@!", "[[", "/", ":"]));
   });
 
   it("autocompletes a memory on [[ and inserts [[key]]", async () => {
@@ -266,27 +470,108 @@ describe("<RoomChatBox /> composer triggers", () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "@ali");
+    await userEvent.type(box, "@syn");
 
-    const option = await screen.findByRole("button", { name: /@aligner/ });
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
     await userEvent.click(option);
 
-    expect((box as HTMLTextAreaElement).value).toContain("@aligner ");
+    expect((box as HTMLTextAreaElement).value).toContain("@synthesizer ");
   });
 
   it("autocompletes a silent @~mention as one", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "cc @~ali");
+    await userEvent.type(box, "cc @~syn");
 
-    const option = await screen.findByRole("button", { name: /@aligner/ });
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
     await userEvent.click(option);
 
-    expect((box as HTMLTextAreaElement).value).toBe("cc @~aligner ");
+    expect((box as HTMLTextAreaElement).value).toBe("cc @~synthesizer ");
   });
 
-  it("also autocompletes a person (present member), not just agents", async () => {
+  it("autocompletes an interrupting @!mention as one", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "@!syn");
+
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
+    await userEvent.click(option);
+
+    expect((box as HTMLTextAreaElement).value).toBe("@!synthesizer ");
+  });
+
+  it("turns a finished mention into an interrupt without doubling the handle", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.click(box);
+    await userEvent.type(box, "@syn");
+    await userEvent.click(await screen.findByRole("button", { name: /@synthesizer/ }));
+    await userEvent.type(box, "hi");
+    expect(box.value).toBe("@synthesizer hi");
+
+    // Back to just after the @, add ! and pick with Enter.
+    await userEvent.type(box, "!", { initialSelectionStart: 1, initialSelectionEnd: 1 });
+    await screen.findByRole("button", { name: /@synthesizer/ });
+    await userEvent.keyboard("{Enter}");
+
+    expect(box.value).toBe("@!synthesizer hi");
+    // The cursor is put back on the next frame, past the space already there.
+    await waitFor(() => expect(box.selectionStart).toBe("@!synthesizer ".length));
+  });
+
+  it("filters by the whole handle and replaces it when the cursor is inside one", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.click(box);
+    await userEvent.type(box, "ask @synthesizer now");
+    // Delete the "t" in the handle, then put it back: the cursor is mid-handle.
+    await userEvent.type(box, "{backspace}t",{ initialSelectionStart: 9, initialSelectionEnd: 9 });
+    await userEvent.click(await screen.findByRole("button", { name: /@synthesizer/ }));
+
+    expect(box.value).toBe("ask @synthesizer now");
+  });
+
+  it("leaves a full stop after a handle alone when the cursor is inside it", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    await userEvent.click(box);
+    await userEvent.type(box, "ask @synthesizer. Thanks");
+    await userEvent.type(box, "{backspace}t",{ initialSelectionStart: 9, initialSelectionEnd: 9 });
+    await userEvent.click(await screen.findByRole("button", { name: /@synthesizer/ }));
+
+    expect(box.value).toBe("ask @synthesizer. Thanks");
+  });
+
+  it("says in the popover, and aloud, when a mention is silent or interrupts", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    const announced = () => screen.getByTestId("mention-mode-announce").textContent;
+    await userEvent.click(box);
+
+    // A plain @ says nothing new.
+    await userEvent.type(box, "@syn");
+    await screen.findByRole("button", { name: /@synthesizer/ });
+    expect(screen.queryByTestId("mention-mode")).toBeNull();
+    expect(announced()).toBe("");
+
+    await userEvent.clear(box);
+    await userEvent.type(box, "@~syn");
+    await screen.findByRole("button", { name: /@synthesizer/ });
+    expect(screen.getByTestId("mention-mode")).toHaveTextContent("Silentnames them without notifying");
+    expect(announced()).toBe("Silent mention: names them without notifying");
+
+    await userEvent.clear(box);
+    await userEvent.type(box, "@!syn");
+    const option = await screen.findByRole("button", { name: /@synthesizer/ });
+    expect(screen.getByTestId("mention-mode")).toHaveTextContent("Interruptstops a working agent");
+    expect(announced()).toBe("Interrupt mention: stops a working agent");
+    // An engine only acts when mentioned, so an interrupt reaches it as a mention.
+    expect(option).toHaveTextContent("mentioned as usual, not interrupted");
+  });
+
+  it("also autocompletes someone present who is neither a person nor an agent here", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
@@ -298,7 +583,31 @@ describe("<RoomChatBox /> composer triggers", () => {
     expect((box as HTMLTextAreaElement).value).toContain("@watcher ");
   });
 
-  it("autocompletes a poster who isn't currently present (Members-panel parity)", async () => {
+  it("lists whoever you mentioned last first", async () => {
+    recordMentions("demo", ["sam"]);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "@");
+
+    await screen.findByRole("button", { name: /@sam/ });
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    expect(options[0]?.textContent).toMatch(/@sam/);
+  });
+
+  it("puts a handle you just mentioned at the top of the next @ list", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "@conductor hello{Enter}");
+    await userEvent.type(box, "@");
+
+    await screen.findByRole("button", { name: /@conductor/ });
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    expect(options[0]?.textContent).toMatch(/@conductor/);
+  });
+
+  it("autocompletes one of the room's people who isn't present (Members-panel parity)", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
@@ -425,6 +734,67 @@ describe("<RoomChatBox /> commands", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Updated decisions/db.");
   });
 
+  it("starts a /thread as a context page and opens it on its discussion", async () => {
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<RoomChatBox roomName="demo" onOpenMemory={onOpenMemory} />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/thread Chat buddy{Enter}");
+
+    await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/chat-buddy"));
+    expect(createMemories).toHaveBeenCalledWith("demo", [
+      {
+        key: "context/chat-buddy",
+        value: "# Chat buddy",
+        content_text: "# Chat buddy",
+        created_by: "julia",
+        base_version: 0,
+      },
+    ]);
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+    expect((box as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("opens a /thread the hub says already exists, though this browser hadn't seen it", async () => {
+    // Create-only is the hub's to enforce: the list here may not have loaded,
+    // or someone may have made the page a moment ago.
+    const { ApiError } = await import("@/lib/api");
+    createMemories.mockRejectedValueOnce(new ApiError("stale_base", 409));
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<RoomChatBox roomName="demo" onOpenMemory={onOpenMemory} />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/thread Launch retro{Enter}");
+
+    await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/launch-retro"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("opens a /thread that already has that name rather than replacing it", async () => {
+    const onOpenMemory = vi.fn();
+    renderWithSWR(<RoomChatBox roomName="demo" onOpenMemory={onOpenMemory} />);
+    const box = await textarea();
+    await userEvent.click(box);
+    // The room's memories are loaded once the [[ list can offer them. (`[` is
+    // special to userEvent.type; doubled, it types a literal one.)
+    await userEvent.type(box, "[[[[goals");
+    await screen.findByRole("button", { name: /\[\[context\/goals\]\]/ });
+    await userEvent.clear(box);
+    await userEvent.type(box, "/thread Goals{Enter}");
+
+    await waitFor(() => expect(onOpenMemory).toHaveBeenCalledWith("context/goals"));
+    expect(createMemories).not.toHaveBeenCalled();
+  });
+
+  it("says what's missing from a /thread with no title it can name", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/thread !!!{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent("so it has a name");
+    expect(createMemories).not.toHaveBeenCalled();
+  });
+
   it("says what a key can be when it can't be one", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
@@ -443,6 +813,33 @@ describe("<RoomChatBox /> commands", () => {
     expect(screen.getByRole("button", { name: /Agent…/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Memory…/ }));
     expect(await screen.findByRole("dialog", { name: /New memory in/ })).toBeInTheDocument();
+  });
+
+  it("opens the New Schedule form from the +", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add to the room" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Schedule…/ }));
+    expect(await screen.findByRole("dialog", { name: "New schedule" })).toBeInTheDocument();
+  });
+
+  it("opens the New Schedule form from /schedule with nothing after it", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/schedule{Escape}{Enter}");
+    expect(await screen.findByRole("dialog", { name: "New schedule" })).toBeInTheDocument();
+  });
+
+  it("fills the form from a one-line /schedule without saving it", async () => {
+    createSchedule.mockClear();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "/schedule @scout daily 08:15 check the board{Escape}{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "New schedule" });
+    expect(dialog).toHaveTextContent("every day at 08:15 UTC");
+    expect(screen.getByDisplayValue("check the board")).toBeInTheDocument();
+    expect(createSchedule).not.toHaveBeenCalled();
   });
 
   it("asks what the task is when a command comes with nothing", async () => {
@@ -561,18 +958,18 @@ describe("<RoomChatBox /> command arguments", () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "/engine al");
-    expect(await screen.findByRole("button", { name: /aligner.*Mediates/ })).toBeInTheDocument();
+    await userEvent.type(box, "/engine syn");
+    expect(await screen.findByRole("button", { name: /synthesizer.*Distills/ })).toBeInTheDocument();
     await userEvent.keyboard("{Tab}{Enter}");
 
     await waitFor(() => expect(createEngine).toHaveBeenCalled());
     expect(createEngine).toHaveBeenCalledWith("demo", {
-      handle: "aligner",
-      kind: "aligner",
+      handle: "synthesizer",
+      kind: "synthesizer",
       description: "",
       created_by: "julia",
     });
-    expect(await screen.findByRole("status")).toHaveTextContent("Added @aligner");
+    expect(await screen.findByRole("status")).toHaveTextContent("Added @synthesizer");
   });
 
   it("does not offer members for a handle being made up", async () => {
@@ -581,7 +978,7 @@ describe("<RoomChatBox /> command arguments", () => {
     await userEvent.click(box);
     await userEvent.type(box, "/agent @al");
     await screen.findByLabelText("/agent usage");
-    expect(screen.queryByRole("button", { name: /@aligner/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /@synthesizer/ })).toBeNull();
   });
 });
 
@@ -605,13 +1002,14 @@ describe("<RoomChatBox /> conductor summons", () => {
     await userEvent.keyboard("{Tab}");
     expect(box).toHaveValue("@conductor gated ");
 
-    expect(usage).toHaveTextContent("@conductorgated@proposer@guardian<what…>");
-    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@proposer");
-    expect(usage).toHaveTextContent("Who plays proposer");
+    // Members are named silently: bound to the roles, asked by the conductor in turn.
+    expect(usage).toHaveTextContent("@conductorgated@~proposer@~guardian<what…>");
+    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@~proposer");
+    expect(usage).toHaveTextContent("Who plays proposer. Type @~ to pick them");
 
-    await userEvent.type(box, "@sam ");
-    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@guardian");
-    await userEvent.type(box, "@watcher ");
+    await userEvent.type(box, "@~sam ");
+    expect(usage.querySelector("[aria-current]")).toHaveTextContent("@~guardian");
+    await userEvent.type(box, "@~watcher ");
     expect(usage.querySelector("[aria-current]")).toHaveTextContent("<what…>");
     expect(usage).not.toHaveTextContent("inside a task");
 
@@ -619,7 +1017,7 @@ describe("<RoomChatBox /> conductor summons", () => {
     await userEvent.type(box, "ship the fix{Enter}");
     await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
     expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({
-      content: "@conductor gated @sam @watcher ship the fix",
+      content: "@conductor gated @~sam @~watcher ship the fix",
       episode: thread,
     });
   });
@@ -676,5 +1074,239 @@ describe("<RoomChatBox /> targeting", () => {
   it("still says it is a thread when nothing named it", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" episode="urn:ioc:mycelium:episode:demo:t9" />);
     expect(await screen.findByPlaceholderText(/Reply in this thread/)).toBeInTheDocument();
+  });
+});
+
+describe("<RoomChatBox /> @here and @all", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+  });
+
+  it("offers the groups last in a task, with who @here reaches: the two talking, not the room", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "@");
+
+    const here = await screen.findByRole("button", { name: /@here.*2 in this task/ });
+    const all = screen.getByRole("button", { name: /@all.*6 in the room/ });
+    // After every member, so reaching many is never what Enter picks first.
+    const options = screen.getAllByRole("button").filter((b) => /^@|@\w/.test(b.textContent ?? ""));
+    expect(options.slice(-2)).toEqual([here, all]);
+    expect(screen.queryByRole("dialog", { name: /Who @/ })).toBeNull();
+
+    await userEvent.hover(here);
+    const card = await screen.findByRole("dialog", { name: "Who @here reaches" });
+    expect(card).toHaveTextContent("pings 2");
+    expect(card).toHaveTextContent("builder");
+    expect(card).toHaveTextContent("reviewer");
+    expect(card).not.toHaveTextContent("pricing");
+  });
+
+  it("doesn't offer a group for letters it doesn't start with", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@s");
+    await screen.findByRole("button", { name: /@sam/ });
+    expect(screen.queryByRole("button", { name: /@here|@all/ })).toBeNull();
+  });
+
+  it("counts only the agents an interrupt would stop", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "@!");
+    await userEvent.hover(await screen.findByRole("button", { name: /@here.*2 in this task/ }));
+    const card = await screen.findByRole("dialog", { name: "Who @!here reaches" });
+    expect(card).toHaveTextContent("interrupts 1");
+  });
+
+  it("asks before waking many agents, and sends as written on Enter", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@all please upgrade today");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+
+    const warning = await screen.findByRole("alertdialog", { name: "Wake many agents?" });
+    expect(warning).toHaveTextContent("This wakes 5 agents, and notifies 1 person.");
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+
+    await userEvent.type(box, "{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "@all please upgrade today" });
+  });
+
+  it("sends silently from the warning, so nobody is woken", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@all please upgrade today");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+    await userEvent.click(await screen.findByRole("button", { name: "Send silently" }));
+
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "@~all please upgrade today" });
+  });
+
+  it("sends a small group without asking", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:e:t1" threadLabel="flip reads" />);
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "@here can you two agree?");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("never asks about a silent group", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "@~all for the record");
+    await waitFor(() => expect(fetchMentionGroups).toHaveBeenCalled());
+    await userEvent.type(box, "{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+  });
+});
+
+describe("<RoomChatBox /> emoji", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+  });
+
+  it("offers :tada for :ta and inserts the emoji itself on Enter", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "shipped :ta");
+
+    expect(await screen.findByRole("button", { name: /🎉\s+:tada:/ })).toBeInTheDocument();
+    await userEvent.keyboard("{Enter}");
+    expect(box).toHaveValue("shipped 🎉 ");
+    expect(sendRoomMessage).not.toHaveBeenCalled();
+  });
+
+  it("moves through the list and picks with Tab, as @ does", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, ":thumbs");
+    const options = await screen.findAllByRole("button", { name: /:thumbs/ });
+    expect(options.length).toBeGreaterThan(1);
+    const second = options[1].textContent?.match(/^\S+/)?.[0];
+    await userEvent.keyboard("{ArrowDown}{Tab}");
+    expect(box).toHaveValue(`${second} `);
+  });
+
+  it("turns a whole :name: into its emoji when a space follows", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    // The list loads with the first `:`; then the shortcode is typed out.
+    await userEvent.type(box, "so :ta");
+    await screen.findByRole("button", { name: /:tada:/ });
+    await userEvent.type(box, "da: done");
+    expect(box).toHaveValue("so 🎉 done");
+  });
+
+  it("still sends, as typed, when the emoji list can't load", async () => {
+    emojiLoad.fail = true;
+    try {
+      renderWithSWR(<RoomChatBox roomName="demo" />);
+      const box = await textarea();
+      await userEvent.click(box);
+      await userEvent.type(box, "build failed :x: on main{Enter}");
+      await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+      expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "build failed :x: on main" });
+    } finally {
+      emojiLoad.fail = false;
+    }
+  });
+
+  it("sends the emoji, not the shortcode", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "merged :+1:{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "merged 👍" });
+  });
+
+  it.each([["at 12:30"], ["see https://x"], ["a: b"], ["run `x :ta"], ["run `x :tada: y"]])("leaves %s alone", async (typed) => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    // Typed once to load the list, then cleared, so a miss isn't just the list loading.
+    await userEvent.type(box, ":ta");
+    await screen.findByRole("button", { name: /:tada:/ });
+    await userEvent.clear(box);
+    await userEvent.type(box, typed);
+    expect(screen.queryByRole("button", { name: /:tada:|:taco:|:thirty/ })).toBeNull();
+    expect(box).toHaveValue(typed);
+  });
+});
+
+describe("<RoomChatBox /> reply and quote", () => {
+  it("adds a message's reply and quote to the channel's draft, with the cursor after them", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" receivesInserts />);
+    const box = (await textarea()) as HTMLTextAreaElement;
+    act(() => insertIntoComposer({ room: "demo", text: quoteText("ship it", "sam") }));
+    act(() => insertIntoComposer({ room: "demo", text: replyText("sam") }));
+    await waitFor(() => expect(box).toHaveValue("> @~sam: ship it\n\n@sam "));
+    await waitFor(() => expect(box).toHaveFocus());
+    expect(box.selectionStart).toBe(box.value.length);
+  });
+
+  it("leaves another room's composer, and one that doesn't take them, alone", async () => {
+    renderWithSWR(
+      <>
+        <RoomChatBox roomName="demo" />
+        <RoomChatBox roomName="other" receivesInserts />
+      </>,
+    );
+    act(() => insertIntoComposer({ room: "demo", text: replyText("sam") }));
+    const boxes = await screen.findAllByPlaceholderText(/Message the room/);
+    await new Promise((r) => requestAnimationFrame(r));
+    for (const box of boxes) expect(box).toHaveValue("");
+  });
+
+  it("puts a reply to a message in a thread into that thread's composer, not the room's", async () => {
+    renderWithSWR(
+      <>
+        <RoomChatBox roomName="demo" receivesInserts />
+        <RoomChatBox roomName="demo" episode="urn:ep:demo:t1" threadLabel="Fix login" />
+        <RoomChatBox roomName="demo" episode="urn:ep:demo:t2" threadLabel="Ship it" />
+      </>,
+    );
+    act(() => insertIntoComposer({ room: "demo", episode: "urn:ep:demo:t1", text: replyText("sam") }));
+    const thread = await screen.findByPlaceholderText(/Reply in Fix login/);
+    await waitFor(() => expect(thread).toHaveValue("@sam "));
+    await waitFor(() => expect(thread).toHaveFocus());
+    expect(screen.getByPlaceholderText(/Message the room/)).toHaveValue("");
+    expect(screen.getByPlaceholderText(/Reply in Ship it/)).toHaveValue("");
+    // One from the channel still goes to the room's.
+    act(() => insertIntoComposer({ room: "demo", text: replyText("ana") }));
+    await waitFor(() => expect(screen.getByPlaceholderText(/Message the room/)).toHaveValue("@ana "));
+    expect(thread).toHaveValue("@sam ");
+  });
+
+  it("with a thread open in two places, fills only the composer beside the message clicked", async () => {
+    renderWithSWR(
+      <>
+        <section data-thread="urn:ep:demo:t1" data-testid="pane">
+          <p data-testid="pane-message">a message</p>
+          <RoomChatBox roomName="demo" episode="urn:ep:demo:t1" threadLabel="in the pane" />
+        </section>
+        <section data-thread="urn:ep:demo:t1" data-testid="page">
+          <p data-testid="page-message">the same message</p>
+          <RoomChatBox roomName="demo" episode="urn:ep:demo:t1" threadLabel="on the page" />
+        </section>
+      </>,
+    );
+    const inPane = await screen.findByPlaceholderText(/Reply in in the pane/);
+    const onPage = screen.getByPlaceholderText(/Reply in on the page/);
+    const from = screen.getByTestId("page-message");
+    act(() => insertIntoComposer({ room: "demo", episode: "urn:ep:demo:t1", text: replyText("sam"), from }));
+    await waitFor(() => expect(onPage).toHaveValue("@sam "));
+    expect(inPane).toHaveValue("");
   });
 });

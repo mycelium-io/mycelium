@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -12,7 +12,6 @@ import {
   ArrowUp,
   Bell,
   BellOff,
-  BellRing,
   Boxes,
   Check,
   ChevronRight,
@@ -31,6 +30,7 @@ import {
   Plus,
   Search,
   SearchX,
+  SquareTerminal,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -50,6 +50,7 @@ import {
   type RoomFolder,
 } from "@/lib/room-folders";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
+import { RoomViewIcons, RoomViewsList, type RoomViewsNav } from "@/components/room-views-nav";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { usePrincipal } from "@/components/current-user";
 import {
@@ -63,13 +64,15 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText, absoluteUrl } from "@/lib/clipboard";
-import { useIsDesktop } from "@/lib/desktop";
+import { roomCommand } from "@/lib/agent-command";
+import { terminalLink, useIsDesktop } from "@/lib/desktop";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
 import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
+import { iconButtonClass } from "@/components/ui/icon-button";
 import { KeyBadge } from "@/components/key-badge";
 import { RoomAvatar } from "@/components/ui/room-avatar";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
@@ -106,9 +109,12 @@ interface Props {
   /** Draw the rail as a strip of room monograms rather than a list of names. */
   collapsed?: boolean;
   onCollapsedChange?: (collapsed: boolean) => void;
+  /** The open room's views, drawn under its row (its icon under the monogram
+   *  when folded). Absent off a room page. */
+  roomViews?: RoomViewsNav;
 }
 
-export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
+export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange, roomViews }: Props) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
   const [showCreate, setShowCreate] = useState(false);
@@ -229,6 +235,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   useKeyAction("nav.home", () => router.push("/"));
 
   const openInstallModal = useOpenInstallModal();
+  const desktop = useIsDesktop();
 
   // Every room by name, plus what this rail can reach. Rooms come from
   // the full list, not the filtered one: the palette has a query of its own,
@@ -273,6 +280,19 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         keywords: ["runner", "computer", "agents", "start", "herdr"],
         run: () => router.push("/machines"),
       },
+      ...(desktop
+        ? [
+            {
+              id: "nav.terminal",
+              title: "Open the agents terminal",
+              group: "Navigate",
+              keywords: ["terminal", "herdr", "pane", "agents", "shell"],
+              run: () => {
+                window.location.href = terminalLink();
+              },
+            },
+          ]
+        : []),
       {
         id: "nav.install",
         title: "Install the CLI",
@@ -281,7 +301,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         run: openInstallModal,
       },
     ],
-    [rooms, go, router, openInstallModal, onCollapsedChange],
+    [rooms, go, router, openInstallModal, onCollapsedChange, desktop],
   );
   useCommands(commands);
 
@@ -325,8 +345,10 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               e.dataTransfer.effectAllowed = "move";
             }}
             onDragEnd={() => setDropTarget(null)}
+            // With its views under it, the open room's view row is the one
+            // marked, so the room's own row isn't marked twice.
             className={`group flex h-7 items-center gap-2 rounded px-1.5 transition-colors ${
-              active ? "bg-hairline" : "hover:bg-hairline"
+              active && !roomViews ? "bg-hairline" : "hover:bg-hairline"
             }`}
           >
             <RoomAvatar name={room.name} className="size-[18px] rounded-[4px] text-[8px]">
@@ -376,6 +398,17 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       </RoomContextMenu>
     );
   };
+
+  /** A room's row, and under the open room its views. */
+  const rowWithViews = (room: Room, markPrivate: boolean) =>
+    room.name === activeRoom && roomViews ? (
+      <Fragment key={room.name}>
+        {row(room, markPrivate)}
+        <RoomViewsList {...roomViews} />
+      </Fragment>
+    ) : (
+      row(room, markPrivate)
+    );
 
   // Collapsed: the same rail as a strip of room monograms — every room still
   // one click away, the filter and the names traded for the 48px the window
@@ -457,6 +490,8 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                   </button>
                   </div>
                   </RoomContextMenu>
+                  {/* Folded, the open room's views are icons under its monogram. */}
+                  {active && roomViews && <RoomViewIcons {...roomViews} />}
                 </div>
               );
             })}
@@ -504,9 +539,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
           <button
             onClick={() => onCollapsedChange?.(true)}
             aria-label={railToggleTitle(true)}
-            className="relative flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+            className={iconButtonClass("sm", "relative")}
           >
-            <PanelLeftClose className="size-4" />
+            <PanelLeftClose />
             <KeyBadge action="rooms.toggle" overlay />
           </button>
         </Tooltip>
@@ -610,7 +645,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                       }}
                     />
                   )}
-                  {filed.map(room => row(room, true))}
+                  {filed.map(room => rowWithViews(room, true))}
                   {filed.length === 0 && newRoomIn !== folder.id && (
                     <p className="flex h-7 items-center px-1.5 text-micro text-faint">Drag rooms here</p>
                   )}
@@ -636,7 +671,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
             )
           ) : (
             <>
-              {shared.map(room => row(room, false))}
+              {shared.map(room => rowWithViews(room, false))}
               {mine.length > 0 && (shared.length > 0 || groups.length > 0) && (
                 <div className="mt-2 flex h-6 items-center gap-1.5 px-1.5 text-micro font-medium text-faint">
                   <Lock className="size-3" />
@@ -645,7 +680,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               )}
               {/* A private room says so on its own row wherever no heading
                   above it already does. */}
-              {mine.map(room => row(room, shared.length === 0 && groups.length === 0 && activeScope === "all"))}
+              {mine.map(room => rowWithViews(room, shared.length === 0 && groups.length === 0 && activeScope === "all"))}
             </>
           )}
         </DropZone>
@@ -745,9 +780,9 @@ function AddMenu({ onRoom, onFolder }: { onRoom: () => void; onFolder: () => voi
       <Tooltip content="New room or folder">
         <PopoverTrigger
           aria-label="New room or folder"
-          className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text data-[popup-open]:bg-surface data-[popup-open]:text-text"
+          className={iconButtonClass("sm", "ml-auto data-[popup-open]:bg-hairline data-[popup-open]:text-text")}
         >
-          <Plus className="size-4" />
+          <Plus />
         </PopoverTrigger>
       </Tooltip>
       <PopoverContent align="end" className="w-44 p-1">
@@ -1019,6 +1054,9 @@ function RoomContextMenu({
             Copy room ID
           </ContextMenuItem>
         )}
+        <ContextMenuItem icon={SquareTerminal} onClick={() => void copyText(roomCommand(room.name))}>
+          Copy command for an agent
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem icon={Trash2} destructive onClick={onDelete}>
           Delete room…
@@ -1029,8 +1067,7 @@ function RoomContextMenu({
 }
 
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
-  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
-  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
+  { level: "mentions", label: "On", hint: "badge; bell and sound on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 

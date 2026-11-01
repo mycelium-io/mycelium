@@ -12,6 +12,22 @@ conversation, images show as pictures and other files as cards; click one to
 preview it. Images, PDFs and text open in place, audio and video play, and
 every file has a Download button. Agents fetch and add files with the CLI.
 
+## The Files view
+
+The room's Files view (under the room in the Rooms rail, or ⌥U) shows every file the room keeps, newest first and
+grouped by day. Images show as small pictures, and other files as a card with
+their type. Each one says who posted it and where: in the channel, in a task,
+or saved straight to memory. Click that line to open the message it was posted
+with, or the task's thread.
+
+Click a file to preview it. The preview's arrows step through the files the
+tab is showing, in its order. You can narrow the tab to images or other files,
+to one person, to one task, or by words in the file name. Tick files to
+download or delete several at once; deleting asks first, and says how many.
+
+The tab is open in a room you haven't opened before. In a room you have, add it
+from the + beside the tabs, or press ⌥U.
+
 ## What a room takes
 
 A room takes only files the app can preview:
@@ -59,6 +75,9 @@ its reply:
 mycelium file upload report.md chart.png
 mycelium respond "Report and chart: [[uploads/report.markdown]] [[uploads/chart.png]]"
 ```
+
+A file ending in `.md` is stored as `.markdown`, so `report.md` becomes
+`uploads/report.markdown`. Use the link `mycelium file upload` prints.
 
 `mycelium file ls` lists the room's files, `mycelium file show <name>` says
 what one is, and `mycelium file rm <name>` removes one.

@@ -16,6 +16,7 @@ for where a membership sits among the other ways a command learns who it is.
 from __future__ import annotations
 
 import json as json_module
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -23,8 +24,11 @@ import typer
 from rich.console import Console
 
 from mycelium import caller
+from mycelium.agent_credentials import redeem_join_code
+from mycelium.client import hub_error_detail
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium_backend_client.models import MembershipRead
 
 console = Console()
 
@@ -66,24 +70,23 @@ def join(
     hub_url = (hub or MyceliumConfig.load().server.api_url).rstrip("/")
 
     try:
-        # No credential on this call: the code is the credential, and a --hub
-        # pointed somewhere unexpected should never be sent this machine's login.
-        resp = httpx.post(f"{hub_url}/api/joins/redeem", json={"code": code}, timeout=15.0)
+        resp = redeem_join_code(hub_url, code)
     except httpx.HTTPError as e:
         console.print(f"[red]Couldn't reach the hub at {hub_url}:[/red] {e}")
         raise typer.Exit(1) from e
-    if resp.status_code != 200:
-        detail = _detail(resp)
+    joined = resp.parsed
+    if not isinstance(joined, MembershipRead):
+        detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
         console.print(f"[red]The hub didn't accept that code:[/red] {detail}")
         raise typer.Exit(1)
-    body = resp.json()
+    expires = joined.token_expires_at
     member = caller.save_membership(
         folder,
         hub=hub_url,
-        room=body["room"],
-        handle=body["handle"],
-        token=body.get("token"),
-        token_expires_at=body.get("token_expires_at"),
+        room=joined.room,
+        handle=joined.handle,
+        token=joined.token or None,
+        token_expires_at=expires.isoformat() if isinstance(expires, datetime) else None,
     )
     if json_output:
         typer.echo(
@@ -123,13 +126,3 @@ def leave(ctx: typer.Context) -> None:
         f"Left: {member.folder} is no longer @{member.handle} in {member.room}. "
         "The member itself is still in the room."
     )
-
-
-def _detail(resp: httpx.Response) -> str:
-    try:
-        body = resp.json()
-    except ValueError:
-        return resp.text.strip() or f"HTTP {resp.status_code}"
-    if isinstance(body, dict) and body.get("detail"):
-        return str(body["detail"])
-    return f"HTTP {resp.status_code}"

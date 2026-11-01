@@ -21,8 +21,8 @@ tools, logins and uncommitted changes. They need your machine running. Workers
 work from what's been pushed, in a copy on the hub. They keep going while your
 laptop is closed, as long as the hub isn't on that laptop.
 
-> **Security.** A worker's commands run inside the hub as the hub. They can
-> reach anything the hub can, including every room's files and the model's API
+> **Security.** A worker's commands run inside the hub, as the same user the
+> hub runs as. They can reach anything the hub can, including every room's files and the model's API
 > key. That's fine on a hub only you use. On a hub other people can reach, set
 > `worker.tools` to `false` so workers can only write replies, or don't add
 > workers at all.
@@ -94,13 +94,13 @@ restart the hub:
 |---|---|---|
 | `worker.tools` | `true` | Let workers edit files and run commands. `false` makes them write replies only. |
 | `worker.pi_timeout_s` | `600` | Seconds one request can take. |
-| `worker.max_turns_per_room` | `60` | Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. |
+| `worker.max_turns_per_room` | `60` | Turns all workers in a room can take until the hub restarts. After that, they stay quiet in that room. A room can lower it with its `worker-turns` [room setting](#rooms). |
 
 - **One thing at a time.** A worker handles one request at a time, and nothing
   keeps running between requests. It suits steps that take minutes rather than
   jobs that run for hours.
 - **Mentions.** A worker can mention its teammates but not engines, so it can't
-  start the aligner or the conductor.
+  start the conductor or another engine.
 - **Sandboxing.** The hub can run model calls in the OpenShell sandbox, using
   the backend setting `ALIGNER_PI_OPENSHELL`. Despite its name, that setting
   covers every engine. With it on, workers can't edit files, because the

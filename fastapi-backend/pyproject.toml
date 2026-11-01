@@ -15,7 +15,6 @@ dependencies = [
     "tiktoken>=0.12.0",
     "rapidfuzz>=3.14.5",
     "slim-bindings>=2.1,<2.2",
-    "negmas>=0.15.7",
     "pyjwt[crypto]>=2.10,<3",
     "a2a-sdk==1.1.2",
     "sse-starlette>=3.4.8",
@@ -26,7 +25,14 @@ dependencies = [
     "opentelemetry-sdk>=1.29.0,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0,<2",
     "opentelemetry-instrumentation-fastapi>=0.50b0,<0.67",
-    "pillow>=12.3.0",
+    "pillow>=13.0.0",
+    # Voice (services/voice.py). Pinned: 1.13.8 drops Moonshine v2 pieces
+    # over ~6s, which the service works around by cutting speech shorter, so a
+    # new release is worth re-testing rather than taking blindly. The core
+    # package carries the native libraries; sherpa-onnx requires it, but uv's
+    # lock leaves it out, so it is listed itself.
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8",
 ]
 
 [dependency-groups]
@@ -39,10 +45,15 @@ dev = [
     "pytest>=9.0.1,<10",
     "pytest-asyncio>=1.3.0,<2",
     "respx>=0.22.0",
+    "hypothesis>=6.169.1",
 ]
 
 [tool.uv]
 package = false
+# fastembed caps pillow below 13, which every fixed Pillow is. It uses Pillow
+# only for its image models, and the hub embeds text, so the cap is lifted
+# here rather than holding uploads (services/uploads.py) on an unfixed one.
+override-dependencies = ["pillow>=13.0.0"]
 
 [build-system]
 requires = ["uv_build"]

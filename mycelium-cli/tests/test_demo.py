@@ -152,32 +152,60 @@ def _spec() -> dict:
     }
 
 
+_TASK_JSON = '{"key": "work/investment-portfolio", "episode": "urn:x:t1"}'
+
+
+def _fake_cli(calls: list[list[str]]):  # noqa: ANN202
+    def fake_run(args, *, capture=True):  # noqa: ANN001, ARG001
+        calls.append(args)
+        return _ok(_TASK_JSON if args[:2] == ["board", "new"] else "")
+
+    return fake_run
+
+
 def test_provision_runs_real_cli_sequence(tmp_path) -> None:  # noqa: ANN001
-    """Provisioning creates the room, one agent per persona, then seeds."""
+    """Provisioning creates the room, one agent per persona and the conductor,
+    then files the task the negotiation runs in."""
     spec = _spec()
     calls: list[list[str]] = []
 
-    def fake_run(args, *, capture=True):  # noqa: ANN001, ARG001
-        calls.append(args)
-        return _ok()
-
     with (
         patch.object(demo, "_fetch_persona", return_value="You are a test persona."),
-        patch.object(demo, "_run", side_effect=fake_run),
+        patch.object(demo, "_run", side_effect=_fake_cli(calls)),
         patch.object(demo, "_demo_workdir", side_effect=lambda room, handle: tmp_path / handle),
     ):
-        demo._provision(spec, "claude_code", room="demo-room")
+        key = demo._provision(spec, "claude_code", room="demo-room")
 
-    assert ["room", "create"] in [c[:2] for c in calls]
+    assert key == "work/investment-portfolio"
+    assert [c[:2] for c in calls][0] == ["room", "create"]
     agent_creates = [c for c in calls if c[:2] == ["agent", "create"]]
     assert len(agent_creates) == len(spec["agents"])
     for c in agent_creates:
         assert "--adapter" in c and "claude_code" in c
-    invokes = [c for c in calls if c[:2] == ["agent", "invoke"]]
-    assert len(invokes) == 1
-    seed_text = invokes[0][3]
-    for a in spec["agents"]:
-        assert f"@{a['handle']}" in seed_text
+    engines = [c for c in calls if c[:2] == ["engine", "create"]]
+    assert engines == [
+        ["engine", "create", "conductor", "--kind", "conductor", "--room", "demo-room"]
+    ]
+    filed = [c for c in calls if c[:2] == ["board", "new"]]
+    assert len(filed) == 1
+    assert "--json" in filed[0]
+
+
+def test_provision_stops_when_the_task_cannot_be_filed(tmp_path) -> None:  # noqa: ANN001
+    spec = _spec()
+
+    def fake_run(args, *, capture=True):  # noqa: ANN001, ARG001
+        if args[:2] == ["board", "new"]:
+            return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="nope")
+        return _ok()
+
+    with (
+        patch.object(demo, "_fetch_persona", return_value="persona"),
+        patch.object(demo, "_run", side_effect=fake_run),
+        patch.object(demo, "_demo_workdir", side_effect=lambda room, handle: tmp_path / handle),
+        pytest.raises(typer.Exit),
+    ):
+        demo._provision(spec, "claude_code", room="r")
 
 
 # ── resident (claude_code / cursor) plumbing ────────────────────────────────────
@@ -190,7 +218,7 @@ def test_provision_resident_passes_cwd_and_creates_agents(tmp_path) -> None:  # 
 
     with (
         patch.object(demo, "_fetch_persona", return_value="persona"),
-        patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()),
+        patch.object(demo, "_run", side_effect=_fake_cli(calls)),
         patch.object(demo, "_demo_workdir", side_effect=lambda room, handle: tmp_path / handle),
     ):
         demo._provision(spec, "claude_code", room="r")
@@ -205,23 +233,24 @@ def test_provision_resident_passes_cwd_and_creates_agents(tmp_path) -> None:  # 
         assert cwd.endswith(tuple(a["handle"] for a in spec["agents"]))
 
 
-def test_drive_consensus_summons_aligner_after_positions() -> None:
-    """Once every agent has posted, the demo posts @aligner to trigger convergence."""
-    cfg = type("C", (), {"server": type("S", (), {"api_url": "http://x"})()})()
+def test_drive_consensus_runs_concord_in_the_tasks_thread() -> None:
+    """The demo summons the conductor's concord flow inside the task it filed
+    (a conductor run from the room, outside a task, is refused), naming every
+    agent so the flow binds them."""
     calls: list[list[str]] = []
 
-    with (
-        # all three agents have already spoken → no waiting
-        patch.object(demo, "_room_senders", return_value={"growth", "risk", "execution"}),
-        patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()),
-        patch.object(demo.time, "sleep"),  # skip the settle window
-    ):
-        demo._drive_consensus(cfg, "demo-room", ["growth", "risk", "execution"])
+    with patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()):
+        demo._drive_consensus(
+            "demo-room", "work/portfolio", ["growth", "risk", "execution"], "investment portfolio"
+        )
 
-    sends = [c for c in calls if c[:2] == ["room", "send"]]
-    assert len(sends) == 1
-    assert f"@{demo.ALIGNER_HANDLE}" in sends[0][2]
-    assert "--room" in sends[0] and "demo-room" in sends[0]
+    assert len(calls) == 1
+    cmd = calls[0]
+    assert cmd[:4] == ["board", "coordinate", "work/portfolio", demo.CONDUCTOR_HANDLE]
+    ask = cmd[4]
+    assert ask.startswith("concord @~growth @~risk @~execution: ")
+    assert "investment portfolio" in ask
+    assert cmd[cmd.index("--room") + 1] == "demo-room"
 
 
 def test_provision_aborts_on_persona_fetch_failure() -> None:

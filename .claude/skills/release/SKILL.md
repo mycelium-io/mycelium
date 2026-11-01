@@ -11,11 +11,11 @@ Commit latest changes (if any), tag, cut a GitHub release, and optionally notify
 ## Arguments
 
 - `--with-webex` — after releasing, post a summary to Webex (default: `Mycelium Release Notes` only; add `--with-webex=eng` to also post to `IoC::Mycelium Eng`).
-- `--preview` — cut a prerelease build for testing without affecting stable users. Skips Docker `:latest`, Homebrew, and ClawHub. Webex still gets a short preview ping (eng channel only — not user-facing release notes). Testers opt in via `mycelium upgrade --version <tag>`.
+- `--preview` — cut a prerelease build for testing without affecting stable users. Skips Docker `:latest` and ClawHub. Webex still gets a short preview ping (eng channel only — not user-facing release notes). Testers opt in via `mycelium upgrade --version <tag>`.
 
 ## Why preview releases are safe
 
-The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Latest" label, Homebrew formula, ClawHub) are gated on the tag matching a stable pattern. Tags containing `rc`, `alpha`, `beta`, or `preview` are detected as prereleases by the `detect-release-type` job in `.github/workflows/release.yml` and bypass all of those.
+The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Latest" label, docs site, ClawHub) are gated on the tag matching a stable pattern. Tags containing `rc`, `alpha`, `beta`, or `preview` are detected as prereleases by the `detect-release-type` job in `.github/workflows/release.yml` and bypass all of those.
 
 `install.sh` and `mycelium upgrade` both follow the GitHub `/releases/latest` redirect, which only resolves to releases NOT marked as prerelease. So stable users never see preview builds. Testers install with an explicit version pin.
 

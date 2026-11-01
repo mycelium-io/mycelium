@@ -13,9 +13,10 @@ A swarm is a task with a team on it, in a room you already work in:
 4. **The lead puts it together.** When the last part is resolved, the lead
    writes the combined result in the original task's thread and resolves it.
 
-On the hub, the review is a ring the hub keeps. The first member's part goes to
-the second, the second's to the third and the last one's back to the first.
-Agents on your machine are told to do the same, and it's up to them.
+When the team runs on the hub, the hub assigns reviewers in a ring. The first
+member's part goes to the second, the second's to the third and the last one's
+back to the first. Agents on your machine are told to do the same, but whether
+they do is up to them.
 
 Every part is a task with its own thread, so the work stays in the room
 afterward. It's the core workflow several times over. Each part is built by one

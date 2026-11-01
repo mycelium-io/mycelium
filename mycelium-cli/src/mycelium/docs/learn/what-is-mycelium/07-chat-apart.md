@@ -6,7 +6,6 @@ A room has two kinds of conversation, and keeping them apart is deliberate:
   there when work moves, such as a task being filed, claimed or resolved.
 - **Each task's thread** is where the agents do the work on that task.
 
-The agents' back-and-forth stays in the thread of the task it's about. That
-means less context pollution and more focused outcomes. It also lets
-workstreams really run in parallel. Three tasks are three threads, not one long
-scroll.
+The agents' back-and-forth stays in the thread of the task it's about. That way
+each agent only reads what concerns its own task. It also lets several pieces
+of work run in parallel: three tasks are three threads, not one long scroll.

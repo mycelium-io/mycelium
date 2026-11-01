@@ -10,18 +10,20 @@
  *
  *   <MachinesScreen />            Add machine: pair a remote one, or add one by id
  *     └─ <MachineCard /> per runner
- *          ├─ frameworks   the scan, with Rescan
- *          ├─ agents       started from the app, each with Stop
+ *          ├─ agents       what runs there, first, each with Stop or Restart
+ *          ├─ frameworks   the agent CLIs it can start new ones with, with Rescan
+ *          ├─ roots        the folders they may start in
  *          ├─ pairings     devices that start agents here without asking
  *          └─ jobs         the recent queue, newest first
  */
 
 import { useState } from "react";
 import Link from "next/link";
-import { KeyRound, Laptop, Loader2, Plus, Square, SquareTerminal } from "lucide-react";
+import { EmptyNote } from "@/components/empty-state";
+import { KeyRound, Laptop, Plus, Square, SquareTerminal } from "lucide-react";
 import { stopRunnerAgent, type Runner, type RunnerAgent, type RunnerPairing } from "@/lib/api";
 import { fingerprint, pairingWith, useDeviceKeyId } from "@/lib/device-key";
-import { terminalLink, useIsDesktop } from "@/lib/desktop";
+import { desktopMachine, terminalLink, useIsDesktop } from "@/lib/desktop";
 import {
   describeJob,
   hostOf,
@@ -45,7 +47,7 @@ const RECENT_JOBS = 8;
 
 export function MachinesScreen() {
   const { runners, loading } = useRunners();
-  // Inside the Mac app this Mac is always one of them: the app runs its
+  // Inside the desktop app this computer is always one of them: the app runs its
   // runner, so there is nothing to set up, only a moment to wait for it.
   const desktop = useIsDesktop();
   const keyId = useDeviceKeyId();
@@ -57,7 +59,7 @@ export function MachinesScreen() {
         <div className="flex flex-wrap items-center gap-3 px-1">
           <p className="min-w-0 max-w-2xl flex-1 text-micro leading-relaxed text-muted-foreground">
             {desktop ? (
-              <>This Mac, and any other computer of yours connected with </>
+              <>This {desktopMachine()}, and any other computer of yours connected with </>
             ) : (
               <>Your computers connected to this hub with </>
             )}
@@ -73,27 +75,11 @@ export function MachinesScreen() {
 
         <div className="mt-4 space-y-6">
           {loading && runners.length === 0 && <Skeleton className="h-40 w-full rounded-xl" />}
-          {!loading && runners.length === 0 && (desktop ? <ThisMacConnecting /> : <ConnectMachine />)}
+          {!loading && runners.length === 0 && <ConnectMachine />}
           {runners.map((r) => (
             <MachineCard key={r.id} runner={r} keyId={keyId} />
           ))}
         </div>
-      </div>
-    </div>
-  );
-}
-
-/** In the Mac app before its runner has checked in: it is on its way, not missing. */
-function ThisMacConnecting() {
-  return (
-    <div className="flex items-center gap-3 px-1 py-2">
-      <Loader2 className="size-4 animate-spin text-muted-foreground" />
-      <div>
-        <p className="text-label font-medium text-text">This Mac is connecting</p>
-        <p className="text-micro text-muted-foreground">
-          Mycelium starts this Mac&apos;s runner for you. It appears here in a few seconds. If it
-          doesn&apos;t, open Health check in the menu bar.
-        </p>
       </div>
     </div>
   );
@@ -151,9 +137,58 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
         </div>
       )}
 
+      {/* Your agents first: who is running here, where and doing what. The
+          CLIs and folders after them are what a new one can start with.
+          Every agent on the machine when its runner reports them; a runner
+          from before that, the ones it started. */}
+      {runner.machine ? (
+        <Section title="Agents on this machine">
+          <MachineAgents runner={runner} />
+        </Section>
+      ) : (
+        <Section title="Agents running here">
+          {runner.agents.length === 0 ? (
+            <EmptyNote>None yet. Start one from a room&apos;s Members panel, under Invite.</EmptyNote>
+          ) : (
+            <ul>
+              {runner.agents.map((a) => (
+                <AgentLine key={`${a.room}/${a.handle}`} runner={runner} agent={a} />
+              ))}
+            </ul>
+          )}
+        </Section>
+      )}
+
+      <Section title="Agent CLIs to start new agents with" action={<RescanButton runner={runner} />}>
+        {frameworks.length === 0 ? (
+          <EmptyNote>The machine has not reported a scan yet.</EmptyNote>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-label">
+              <tbody>
+                {frameworks.map((f) => (
+                  <tr key={f.id} className={`h-7 ${f.installed ? "" : "opacity-50"}`}>
+                    <td className="pr-3 text-text">{f.name}</td>
+                    <td className="pr-3 font-mono text-micro text-muted-foreground">
+                      {f.installed ? (f.version ?? "installed") : "not found"}
+                    </td>
+                    <td className="hidden pr-3 font-mono text-micro text-faint sm:table-cell">
+                      {f.path ?? f.command}
+                    </td>
+                    <td className="text-right text-micro text-muted-foreground">
+                      {f.launchable ? (runner.herdr ? "Can start" : `Needs ${hostOf(runner).name}`) : (f.note ?? "")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
       <Section title="Folders agents may start in">
         {runner.roots.length === 0 ? (
-          <p className="text-label text-muted-foreground">None. Start the runner with --root &lt;folder&gt;.</p>
+          <EmptyNote>None. Start the runner with --root &lt;folder&gt;.</EmptyNote>
         ) : (
           <ul className="flex flex-wrap gap-x-4 gap-y-0.5">
             {runner.roots.map((root) => (
@@ -165,62 +200,13 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
         )}
       </Section>
 
-      <Section title="Agent CLIs" action={<RescanButton runner={runner} />}>
-        {frameworks.length === 0 ? (
-          <p className="text-label text-muted-foreground">The machine has not reported a scan yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-label">
-              <tbody>
-                {frameworks.map((f) => (
-                  <tr key={f.id} className={`h-7 ${f.installed ? "" : "opacity-50"}`}>
-                    <td className="pr-3 text-text">{f.name}</td>
-                    <td className="pr-3 font-mono text-micro text-muted-foreground">
-                      {f.installed ? (f.version ?? "installed") : "not installed"}
-                    </td>
-                    <td className="hidden pr-3 font-mono text-micro text-faint sm:table-cell">
-                      {f.path ?? f.command}
-                    </td>
-                    <td className="text-right text-micro text-muted-foreground">
-                      {f.installed && f.launchable ? (runner.herdr ? "Can start" : `Needs ${hostOf(runner).name}`) : (f.note ?? "")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
-
-      {/* Every agent on the machine when its runner reports them; a runner
-          from before that, the ones it started. */}
-      {runner.machine ? (
-        <Section title="Agents on this machine">
-          <MachineAgents runner={runner} />
-        </Section>
-      ) : (
-        <Section title="Agents running here">
-          {runner.agents.length === 0 ? (
-            <p className="text-label text-muted-foreground">
-              None yet. Start one from a room&apos;s Members panel, under Invite.
-            </p>
-          ) : (
-            <ul>
-              {runner.agents.map((a) => (
-                <AgentLine key={`${a.room}/${a.handle}`} runner={runner} agent={a} />
-              ))}
-            </ul>
-          )}
-        </Section>
-      )}
-
       <Section title="Paired computers">
         <Pairings runner={runner} keyId={keyId} />
       </Section>
 
       <Section title="Recent jobs">
         {jobs.length === 0 ? (
-          <p className="text-label text-muted-foreground">Nothing asked of this machine yet.</p>
+          <EmptyNote>Nothing asked of this machine yet.</EmptyNote>
         ) : (
           <ul className="space-y-1">
             {jobs.slice(0, RECENT_JOBS).map((j) => (
@@ -252,10 +238,10 @@ function Pairings({ runner, keyId }: { runner: Runner; keyId: string | null }) {
   const pairings = runner.pairings ?? [];
   if (pairings.length === 0) {
     return (
-      <p className="text-label text-muted-foreground">
+      <EmptyNote>
         None. Every request needs approval on this machine. To pair a computer, run{" "}
         <code className="font-mono text-micro text-text">{PAIR_COMMAND}</code> there, then Add machine → Pair.
-      </p>
+      </EmptyNote>
     );
   }
   return (

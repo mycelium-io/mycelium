@@ -14,7 +14,7 @@ import pathlib
 import re
 
 from app.routes import participate
-from app.services import aligner, auth, principals, tasks
+from app.services import auth, engine_kinds, principals, tasks
 from app.services.agent_registry import norm_handle
 
 APP = pathlib.Path(__file__).resolve().parents[1] / "app"
@@ -28,7 +28,7 @@ def test_every_private_norm_is_the_canonical_one() -> None:
         assert principals._norm(spelling) == "alice"
         assert tasks._norm(spelling) == "alice"
         assert participate._norm(spelling) == "alice"
-        assert aligner._norm(spelling) == "alice"
+        assert engine_kinds.norm(spelling) == "alice"
         assert auth.normalize_handle(spelling) == "alice"
         assert norm_handle(spelling) == "alice"
 
@@ -39,7 +39,7 @@ def test_a_blank_handle_is_blank_in_every_spelling() -> None:
     assert auth.normalize_handle(None) is None
     assert tasks._norm("@") == ""
     assert participate._norm("") == ""
-    assert aligner._norm(" ") == ""
+    assert engine_kinds.norm(" ") == ""
 
 
 def test_no_module_reimplements_the_normalizer_inline() -> None:

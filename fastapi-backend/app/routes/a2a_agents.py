@@ -18,7 +18,7 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import HANDLE_PATTERN, AgentRead
+from app.schemas import HANDLE_PATTERN, AgentRead, refusals
 from app.services import actor
 from app.services.a2a_card import A2aCardError, resolve_card
 from app.services.agent_registry import norm_handle, write_agent_manifest
@@ -54,7 +54,9 @@ class A2aAgentCreate(BaseModel):
     )
 
 
-@router.post("", response_model=AgentRead, status_code=201)
+@router.post(
+    "", response_model=AgentRead, status_code=201, responses=refusals(403, 404, 409, 422, 502)
+)
 async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Request) -> AgentRead:
     """Resolve the remote card, register the manifest, return the room view."""
     if not room_exists(room_name):
@@ -75,7 +77,7 @@ async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Req
         raise HTTPException(status_code=409, detail=f"@{handle} already exists in {room_name}")
 
     # Resolve the card now so an unreachable or malformed endpoint is a clean 502
-    # at registration, not a surprise when the aligner first addresses the seat.
+    # at registration, not a surprise when the conductor first addresses the seat.
     try:
         card = await resolve_card(payload.card)
     except A2aCardError as exc:
@@ -104,7 +106,13 @@ async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Req
         "owner": norm_handle((payload.owner or registrar or "").partition("#")[0]) or None,
         "team": norm_handle(payload.team),
     }
-    await write_agent_manifest(room_name, handle, body, created_by=registrar or "web-ui")
+    await write_agent_manifest(
+        room_name,
+        handle,
+        body,
+        created_by=registrar or "web-ui",
+        principal=actor.principal_handle(request),
+    )
     logger.info(
         "room %s: registered a2a agent @%s (%s, %d skills)",
         room_name,

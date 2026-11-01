@@ -158,13 +158,13 @@ async def test_an_agent_is_findable_by_handle(client):
     await _seed_room(client, "atlas")
     resp = await client.post(
         "/api/rooms/atlas/engines",
-        json={"handle": "aligner", "kind": "aligner", "created_by": "avery"},
+        json={"handle": "conductor", "kind": "conductor", "created_by": "avery"},
     )
     assert resp.status_code in (200, 201), resp.text
 
-    resp = await client.get("/api/search", params={"q": "aligner"})
+    resp = await client.get("/api/search", params={"q": "conductor"})
     hit = next(h for h in resp.json()["results"] if h["type"] == "agent")
-    assert hit["id"] == "aligner"
+    assert hit["id"] == "conductor"
     assert hit["room"] == "atlas"
 
 

@@ -4,6 +4,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { CustomThemeStyle, ThemeFileSync } from "@/components/custom-theme";
+import { THEME_CLASSES, THEME_IDS } from "@/lib/themes";
 import { CurrentUserProvider } from "@/components/current-user";
 import { MachineFromUrl } from "@/components/machine-from-url";
 import { AuthSessionProvider } from "@/components/auth-session";
@@ -11,6 +13,7 @@ import { LoginGate } from "@/components/login-gate";
 import { NamePrompt } from "@/components/name-prompt";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
+import { StrayDropGuard } from "@/components/stray-drop-guard";
 import { SWRProvider } from "@/components/swr-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -35,10 +38,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen bg-bg text-text antialiased">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+        <ThemeProvider
+          attribute="class"
+          themes={THEME_IDS}
+          value={THEME_CLASSES}
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
           {/* One cache for every room read below, above the router so it
               survives navigation between rooms. */}
           <SWRProvider>
+            {/* Inside the cache: a custom theme can be one of this machine's
+                theme files, and the app follows the one picked there. */}
+            <CustomThemeStyle />
+            <ThemeFileSync />
+            {/* A file dropped outside the composer is ignored, not opened in
+                place of the app. */}
+            <StrayDropGuard />
             <CurrentUserProvider>
               <MachineFromUrl />
               <AuthSessionProvider>

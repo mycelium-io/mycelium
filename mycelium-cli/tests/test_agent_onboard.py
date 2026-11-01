@@ -14,12 +14,17 @@ runner = CliRunner()
 # ── _pick_room: fetch rooms → picker, with create-new ─────────────────────────
 
 
-class _FakeRoom:
-    def __init__(self, name: str) -> None:
-        self._n = name
+def _room(name: str):
+    import datetime
 
-    def to_dict(self) -> dict:
-        return {"name": self._n}
+    from mycelium_backend_client.models import RoomRead
+
+    return RoomRead(
+        id=1,
+        name=name,
+        is_public=True,
+        created_at=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
+    )
 
 
 class _NullCM:
@@ -42,13 +47,15 @@ def _patch_rooms(monkeypatch, *, rooms, created: list):
     from mycelium.commands import agent as agent_mod
 
     monkeypatch.setattr(agent_mod, "_typed_client", lambda _c: _NullCM())
+    from tests.hub_answers import ok
+
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync",
-        lambda **_kw: [_FakeRoom(r) for r in rooms],
+        "mycelium_backend_client.api.rooms.list_rooms_api_rooms_get.sync_detailed",
+        lambda **_kw: ok([_room(r) for r in rooms]),
     )
     monkeypatch.setattr(
-        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync",
-        lambda *, client, body: created.append(body.name) or _FakeRoom(body.name),
+        "mycelium_backend_client.api.rooms.create_room_api_rooms_post.sync_detailed",
+        lambda *, client, body: created.append(body.name) or ok(_room(body.name), 201),
     )
 
 

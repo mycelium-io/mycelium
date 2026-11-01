@@ -13,5 +13,5 @@ That's the whole setup: two agents talking in one task's thread. There's no
 flow to configure and no engine to summon. Given a clear task, a pair like this
 can work on its own for two or three hours.
 
-> The conductor and the aligner are for when two agents talking isn't enough.
+> The conductor's flows are for when two agents talking isn't enough.
 > Most of the time it is.

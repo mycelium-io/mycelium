@@ -9,13 +9,14 @@ from a checkout. Settings come from the environment, as in the container.
 """
 
 import argparse
-
-import uvicorn
-
-from app.main import app
+import multiprocessing
 
 
 def main() -> None:
+    import uvicorn
+
+    from app.main import app
+
     parser = argparse.ArgumentParser(prog="mycelium-hub")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
@@ -24,4 +25,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # The voice worker (app/services/voice_worker.py) is this same program,
+    # started again by multiprocessing; this hands it to its job before the
+    # hub's own startup, which is also why the app is imported in main().
+    multiprocessing.freeze_support()
     main()

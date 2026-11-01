@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import { ConductorRow } from "./conductor-row";
 
@@ -41,7 +41,7 @@ describe("ConductorRow", () => {
     expect(screen.getByTestId("conductor-row").textContent).toContain("hit the step cap (6)");
   });
 
-  it("draws a pick as a scorecard: who rated what, the pick, and who's short", () => {
+  it("draws a pick as how satisfied each member is, with the numbers a click away", () => {
     render(
       <ConductorRow
         line={{
@@ -52,26 +52,60 @@ describe("ConductorRow", () => {
             outcome: "infeasible",
             pick: "B",
             text: "10% off",
-            threshold: 70,
+            threshold: 60,
             options: [
               { label: "A", text: "20% off", authors: ["success"] },
               { label: "B", text: "10% off", authors: ["finance"] },
             ],
-            table: { A: { success: 95, finance: 30 }, B: { success: 55, finance: 90 } },
+            table: { A: { success: 95, finance: 30 }, B: { success: 55, finance: 45 } },
+            // finance rates on a 0-50 scale of its own, so its 45 is near its ideal.
+            placed: { A: { success: 0.95, finance: 0.6 }, B: { success: 0.55, finance: 0.9 } },
+            reasons: { B: { success: "Ten percent won't keep them", finance: "margin holds" } },
             cast: ["success", "finance", "legal"],
-            ratings: { success: 55, finance: 90 },
-            lowest: 55,
+            ratings: { success: 55, finance: 45 },
+            lowest: 0.55,
             missing: ["legal"],
             least_happy: "success",
+            short: [{ member: "success", placed: 0.55, why: "Ten percent won't keep them" }],
           },
         }}
-        text="| option | …"
+        text="**B** (best so far): …"
       />,
     );
-    const table = screen.getByRole("table", { name: "Ratings, bar 70" });
-    const rows = table.querySelectorAll("tbody tr");
-    expect(rows[1].textContent).toBe("B 10% off5590?");
-    expect(screen.getByTestId("conductor-row").textContent).toContain("B, @success at 55; no rating from @legal");
+    const row = screen.getByTestId("conductor-row");
+    expect(row.textContent).toContain(
+      "Picked B (10% off): success is short of the bar, because ten percent won't keep them; no rating from legal",
+    );
+    // A bar each, most satisfied first, with why beside it; one under the bar
+    // is drawn in yellow, and one with no rating says so.
+    const seen = screen.getByRole("list", { name: "How satisfied each member is with B" });
+    expect([...seen.querySelectorAll("li")].map((li) => li.textContent)).toEqual([
+      "finance90%margin holds",
+      "success55%Ten percent won't keep them",
+      "legalno rating",
+    ]);
+    const meters = within(seen).getAllByRole("meter");
+    expect(meters.map((m) => m.getAttribute("aria-valuenow"))).toEqual(["90", "55", null]);
+    expect((meters[1].firstChild as HTMLElement).style.background).toBe("var(--yellow)");
+    expect((meters[0].firstChild as HTMLElement).style.background).toBe("var(--accent)");
+    expect(screen.queryByRole("table")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /numbers/ }));
+    const rows = screen.getByRole("table", { name: "Ratings, bar 60%" }).querySelectorAll("tbody tr");
+    expect(rows[1].textContent).toBe("B 10% off55 (55%)45 (90%)?");
+  });
+
+  it("draws a concord step put to everyone as one sentence of what they're doing", () => {
+    render(
+      <ConductorRow
+        line={{ event: "turn", protocol: "concord", step: "score", to: "pm", turn: 3, cap: 20 }}
+        members={["pm", "web", "api"]}
+        text="concord · score · turn 3 of 20 · pm\n\nThe options…"
+      />,
+    );
+    const row = screen.getByTestId("conductor-row").textContent;
+    expect(row).toContain("pm, web and api rate every option, with reasons");
+    expect(row).not.toContain("turn 3 of 20");
   });
 
   it("draws an agreement as a success that says what it went with", () => {
@@ -86,11 +120,12 @@ describe("ConductorRow", () => {
           pick: "C",
           text: "15% off for two years",
         }}
-        text="✓ Everyone's on board: going with C"
+        text="✓ Everyone meets the bar: going with C"
       />,
     );
     const row = screen.getByTestId("conductor-row").textContent;
-    expect(row).toContain("✓ Everyone's on board: going with C");
+    expect(row).toContain("✓ Picked C");
+    expect(row).not.toContain("meets the bar");
     expect(row).toContain("15% off for two years");
   });
 
@@ -106,7 +141,7 @@ describe("ConductorRow", () => {
         text="Nobody added anything new."
       />,
     );
-    expect(screen.getByTestId("conductor-row").textContent).toBe("added: Nobody added anything new: 5 points");
+    expect(screen.getByTestId("conductor-row").textContent).toBe("Nobody added anything new: 5 points");
     expect(screen.queryByRole("button")).toBeNull();
 
     rerender(

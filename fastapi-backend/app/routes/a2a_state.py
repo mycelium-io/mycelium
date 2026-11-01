@@ -24,6 +24,7 @@ from app.schemas import (
     A2aBridgeState,
     A2aExchangeRead,
     A2aExposureRead,
+    refusals,
 )
 from app.services import a2a_activity
 from app.services.agent_registry import room_agents
@@ -32,7 +33,7 @@ from app.services.filesystem import room_exists
 router = APIRouter(prefix="/rooms/{room_name}/a2a", tags=["a2a"])
 
 
-@router.get("/state", response_model=A2aBridgeState)
+@router.get("/state", response_model=A2aBridgeState, responses=refusals(404))
 async def a2a_state(room_name: str, request: Request, limit: int = 25) -> A2aBridgeState:
     """The room's A2A bridge state: bridged members, exposure, recent exchanges."""
     if not room_exists(room_name):

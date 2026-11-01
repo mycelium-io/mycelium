@@ -24,12 +24,14 @@ import {
   launchedHandles,
   listJobs,
   listRunners,
+  mockStartOutcome,
   pairDevice,
   queueJob,
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
-import { demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
+import { mockBoard, mockBoardRow, mockClosedTasks, mockWaiting } from "./board";
+import { demoBusy, demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
 import {
   LEARN_PERSON,
   LEARN_TEAMMATE,
@@ -43,8 +45,27 @@ import {
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
+import {
+  hubSettingsRead,
+  resetRoomSettingMock,
+  restartHubMock,
+  roomSettings,
+  saveHubSettings,
+  setRoomSettingMock,
+} from "./settings";
+import { controlMine, controlOne, pausedIn } from "./pauses";
 import { handleUploads } from "./uploads";
-import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink, Protocol } from "@/lib/api";
+import { handleVoice } from "./voice";
+import { VERIFIER, handleVerifierFlags, verifierSettingsRead } from "./verifier";
+import type {
+  A2aBridgeState,
+  MemoryGraph,
+  MemoryGraphEdge,
+  MemoryLink,
+  Protocol,
+  Schedule,
+  ScheduleRun,
+} from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -113,6 +134,23 @@ function synthesizeRaw(edge: MemoryGraphEdge): string {
   if (edge.kind === "uri") return `myc://${edge.target}`;
   if (edge.kind === "relation") return `${edge.relation ?? "relates-to"}: [[${edge.target}]]`;
   return `[[${edge.target}]]`;
+}
+
+/** A graph edge as the hub's `LinkRead`: every key present, null where the
+ *  edge has none. `source` is null on an outbound link and set on a backlink
+ *  or a broken one. The fixtures write no `#anchor` or `|label`. */
+function linkRead(edge: MemoryGraphEdge, { source }: { source: string | null }): MemoryLink {
+  return {
+    target: edge.target,
+    kind: edge.kind,
+    anchor: null,
+    label: null,
+    relation: edge.relation ?? null,
+    raw: synthesizeRaw(edge),
+    source,
+    resolved: edge.resolved,
+    error: edge.error ?? null,
+  };
 }
 
 /** The backward cursor's test, as the backend applies it: strictly before, and
@@ -250,6 +288,16 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     const body = await readJson(req);
     return json(queueJob(runner.id, "restart", { all: Boolean(body.all), agents: body.agents ?? [] }), 201);
   }
+  if (sub === "adopt" && method === "POST") {
+    const body = await readJson(req);
+    const pane = String(body.pane ?? "");
+    if (!runner.machine?.unenrolled?.some((u) => u.pane === pane)) {
+      return json({ detail: `No agent outside a room is running in pane ${pane} on ${runner.label}.` }, 422);
+    }
+    const spec = { room: String(body.room ?? ""), handle: String(body.handle ?? ""), pane };
+    const by = typeof body.created_by === "string" ? body.created_by : null;
+    return json(queueJob(runner.id, "adopt", spec, by), 201);
+  }
   if (sub === "agents" && method === "POST") {
     if (a !== undefined && b !== undefined && c === "stop") {
       const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };
@@ -274,7 +322,16 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
       framework: framework.id,
       cwd: typeof body.cwd === "string" ? body.cwd : runner.roots[0],
     };
-    const job = queueJob(runner.id, "launch", spec, typeof body.created_by === "string" ? body.created_by : null);
+    const outcome = mockStartOutcome(handle, framework.name, runner.label);
+    const job = queueJob(
+      runner.id,
+      "launch",
+      spec,
+      typeof body.created_by === "string" ? body.created_by : null,
+      outcome?.failWith ?? null,
+      null,
+      outcome?.failResult ?? null,
+    );
     const fx = isDemoScenario() ? getRoomFixture(spec.room) : undefined;
     if (fx) demoOnLaunch(fx, spec.room, handle);
     const lfx = isLearnScenario() ? getRoomFixture(spec.room) : undefined;
@@ -302,6 +359,9 @@ const MOCK_USERS = new Map<string, { handle: string; display_name: string; teams
       : []),
   ].map(([handle, display_name]) => [handle, { handle, display_name, teams: [], notify: null, owns: [] }]),
 );
+
+/** People taken out of a room in this session, by room. */
+const REMOVED_PEOPLE = new Map<string, Set<string>>();
 
 async function handleUsers(req: Request, method: string, rest: string[]): Promise<Response | null> {
   if (rest.length === 0 && method === "GET") {
@@ -342,6 +402,17 @@ async function handleUsers(req: Request, method: string, rest: string[]): Promis
  *  with none, so the rooms list looks as it always has until someone files one. */
 const MOCK_ROOM_FOLDERS = new Map<string, { folders: unknown[] }>();
 
+/** The pre-checks the hub runs, as its list read names them. */
+const MOCK_SCHEDULE_CHECKS: Record<string, string> = {
+  always: "wake every time (no pre-check)",
+  mentions: "messages addressed to the owner since the last run",
+  assigned: "open rows for the owner that nobody holds",
+  stale: "rows the owner holds whose lease is stale or expired",
+  silent: "rows someone else holds whose lease lapsed while they are absent",
+  task: "the schedule's task thread moved since the last run",
+  "search:<query>": "messages matching a room search since the last run",
+};
+
 export async function handleMock(req: Request): Promise<Response | null> {
   const { pathname, searchParams } = new URL(req.url);
   const method = req.method.toUpperCase();
@@ -360,11 +431,28 @@ export async function handleMock(req: Request): Promise<Response | null> {
     return notFound("unknown observability route (mock)");
   }
 
+  // ── /api/demo/busy: the demo take's time skip (demo.ts, act 6) ──────────────
+  if (rest[0] === "demo" && isDemoScenario()) {
+    const fx = getRoomFixture("checkout");
+    if (rest[1] !== "busy" || method !== "POST" || !fx) return notFound("unknown demo act (mock)");
+    demoBusy(fx);
+    return json({ ok: true });
+  }
+
   // ── /api/users ──────────────────────────────────────────────────────────────
   if (rest[0] === "users") return handleUsers(req, method, rest.slice(1));
 
   // ── /api/runners ────────────────────────────────────────────────────────────
   if (rest[0] === "runners") return handleRunners(req, method, rest.slice(1));
+
+  // ── /api/agents/pause|resume|paused: every agent a person owns ──────────────
+  if (rest[0] === "agents" && rest.length === 2) {
+    const by =
+      method === "GET"
+        ? (searchParams.get("owner") ?? "")
+        : String((await readJson(req)).by ?? "");
+    return controlMine(method, rest[1], by.replace(/^@/, "").toLowerCase());
+  }
 
   // ── /api/patterns ───────────────────────────────────────────────────────────
   if (rest[0] === "patterns") {
@@ -445,6 +533,34 @@ export async function handleMock(req: Request): Promise<Response | null> {
       embedding: { status: "ok", model: "BAAI/bge-small-en-v1.5", message: "Model loaded" },
     });
 
+  // ── /api/hub ────────────────────────────────────────────────────────────────
+  if (rest[0] === "hub" && rest[1] === "settings" && method === "GET") return json(hubSettingsRead());
+  if (rest[0] === "hub" && rest[1] === "settings" && method === "PATCH") {
+    const { changes } = (await readJson(req)) as { changes?: Record<string, unknown> };
+    const { status, body } = saveHubSettings(changes ?? {});
+    return json(body, status);
+  }
+  if (rest[0] === "hub" && rest[1] === "restart" && method === "POST") {
+    restartHubMock();
+    return json({ status: "restarting" }, 202);
+  }
+
+  // ── /api/verifier ───────────────────────────────────────────────────────────
+  // On for the hub and added to checkout, on its starting model. Learn runs in
+  // steps, one per read, so the settings page shows it moving.
+  if (rest[0] === "verifier") {
+    if (rest[1] === "settings" && method === "GET") return json(verifierSettingsRead());
+    if (rest[1] === "learn" && method === "POST") {
+      if (VERIFIER.learning.state === "running") return json({ detail: "Learning is already running" }, 409);
+      VERIFIER.learning = { state: "running", done: 0, total: VERIFIER.estimate.messages, error: null };
+      return json(verifierSettingsRead(), 202);
+    }
+    return null;
+  }
+
+  // ── /api/voice ──────────────────────────────────────────────────────────────
+  if (rest[0] === "voice") return handleVoice(req, rest);
+
   // ── /api/search ─────────────────────────────────────────────────────────────
   if (rest[0] === "search" && method === "GET") {
     return json(mockSearch(searchParams.get("q") ?? "", Number(searchParams.get("limit") ?? "20")));
@@ -503,6 +619,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         fx.room.is_public = body.is_public;
         if (!body.is_public && !fx.room.owner) fx.room.owner = String(body.by ?? "") || null;
       }
+      if ("title" in body) fx.room.title = String(body.title ?? "").trim() || null;
       return json(fx.room);
     }
     if (method !== "GET") return null;
@@ -512,6 +629,21 @@ export async function handleMock(req: Request): Promise<Response | null> {
   if (!fx) return notFound(`room ${roomName} not found (mock)`);
 
   switch (sub[0]) {
+    case "settings": {
+      // GET /settings, PUT and DELETE /settings/:id — the room's settings.
+      if (sub.length === 1 && method === "GET") return json(roomSettings(roomName));
+      const id = decodeURIComponent(sub[1] ?? "");
+      if (sub.length === 2 && method === "PUT") {
+        const done = setRoomSettingMock(roomName, id, await readJson(req));
+        if ("ok" in done) return json(done.ok);
+        return json({ detail: { error: "room_setting", message: done.message, key: `settings/${id}` } }, done.status);
+      }
+      if (sub.length === 2 && method === "DELETE") {
+        const reset = resetRoomSettingMock(roomName, id);
+        return reset ? json(reset) : notFound(`No room setting '${id}' (mock)`);
+      }
+      return null;
+    }
     case "memory": {
       // POST /memory/search
       if (sub[1] === "search" && method === "POST") {
@@ -557,7 +689,16 @@ export async function handleMock(req: Request): Promise<Response | null> {
           const idx = fx.memories.findIndex((m) => m.key === item.key);
           const now = new Date().toISOString();
           const next: MockMemory = {
-            ...(idx >= 0 ? fx.memories[idx] : { key: item.key, created_by: "user", version: 0 }),
+            // Every memory carries a thread from the moment it exists, as the
+            // hub mints one at its upsert, so a new one can be discussed.
+            ...(idx >= 0
+              ? fx.memories[idx]
+              : {
+                  key: item.key,
+                  created_by: "user",
+                  version: 0,
+                  episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${item.key}/${now}`).replace(/-/g, "").slice(0, 8)}`,
+                }),
             value: text,
             content_text: item.content_text ?? text,
             version: (idx >= 0 ? fx.memories[idx].version : 0) + 1,
@@ -592,13 +733,41 @@ export async function handleMock(req: Request): Promise<Response | null> {
           ? json(memoryRead(roomName, fx.memories[index]))
           : notFound(`memory ${key} not found (mock)`);
       }
-      // GET /memory?prefix=
+      // GET /memory?prefix=&limit=&offset=
       const prefix = searchParams.get("prefix");
+      const offset = Number(searchParams.get("offset") ?? "0");
+      const limit = Number(searchParams.get("limit") ?? "100");
       return json(
         fx.memories
           .map((m) => memoryRead(roomName, m))
-          .filter((m) => !prefix || String(m.key).startsWith(prefix)),
+          .filter((m) => !prefix || String(m.key).startsWith(prefix))
+          .slice(offset, offset + limit),
       );
+    }
+
+    case "board": {
+      // GET /board, GET /board/{key} — the board as people read it (services/board.py).
+      if (method !== "GET") return null;
+      if (sub.length === 1) return json(mockBoard(fx));
+      if (sub.length === 2 && sub[1] === "closed") {
+        return json(
+          mockClosedTasks(fx, roomName, {
+            q: searchParams.get("q") ?? "",
+            before: searchParams.get("before"),
+            limit: Number(searchParams.get("limit") ?? 30) || 30,
+          }),
+        );
+      }
+      const key = sub.slice(1).map(decodeURIComponent).join("/");
+      const row = mockBoardRow(fx, key);
+      return row ? json(row) : notFound(`No board row '${key}' in this room (mock)`);
+    }
+
+    case "waiting": {
+      // GET /waiting?for=<handle> — what is waiting on a member (services/waiting.py).
+      if (method !== "GET" || sub.length !== 1) return null;
+      const handle = (searchParams.get("for") ?? "").replace(/^@/, "");
+      return json({ handle, items: mockWaiting(fx, handle) });
     }
 
     case "status": {
@@ -630,7 +799,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "messages": {
-      // GET /messages/wire — the wire feed for the Network pane, and the half
+      // GET /messages/wire — the wire history Stream reads, and the half
       // of the channel's feed that carries pings and board notices. Oldest
       // first, the last `limit` of what is older than the cursor — the shape
       // the backend's transcript replay serves.
@@ -641,7 +810,12 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub[1] === "wire" && method === "GET") {
         const limit = Number(searchParams.get("limit") ?? "200");
         const before = searchParams.get("before");
-        const frames = (fx.wire ?? []).filter((f) => olderThan(f.created_at as string | undefined, before));
+        // The hub's wire is the whole transcript: the room's messages and its
+        // notices in one time-ordered list, so the mock merges the two.
+        const said = fx.messages.map((m) => ({ ...m, room_name: roomName }) as Record<string, unknown>);
+        const frames = [...(fx.wire ?? []), ...said]
+          .filter((f) => olderThan(f.created_at as string | undefined, before))
+          .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
         return json(limit > 0 ? frames.slice(-limit) : frames);
       }
       if (method === "GET") {
@@ -684,6 +858,130 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return null;
     }
 
+    case "asks": {
+      // POST /asks — an agent's ask (approve, choose or question), a message
+      // in the task's thread, or the room's channel when it names no task,
+      // carrying `ask`. POST /asks/{id}/answer — anyone in the room's answer,
+      // never an agent's: folded onto the ask, and sent to the agent as its
+      // own message, which names the question (services/approvals.py).
+      if (method !== "POST") return null;
+      const body = await readJson(req);
+      const now = new Date().toISOString();
+      const text = (k: string) => (typeof body[k] === "string" && (body[k] as string).trim() ? (body[k] as string).trim() : undefined);
+      if (sub.length === 1) {
+        const question = text("question");
+        if (!question) return json({ detail: "An ask needs a question." }, 422);
+        const kind = String(body.kind ?? "approve");
+        if (!["approve", "choose", "question"].includes(kind)) return json({ detail: `No ask kind '${kind}'.` }, 422);
+        const given = Array.isArray(body.options) ? (body.options as unknown[]) : [];
+        if (kind === "choose" ? given.length < 2 : given.length > 0) {
+          return json({ detail: "A choose needs two or more options, and only a choose may have them." }, 422);
+        }
+        const options = given.map((o, i) => {
+          const opt = (typeof o === "string" ? { label: o } : o) as { label?: string; detail?: string };
+          return { id: String(i + 1), label: String(opt.label ?? ""), ...(opt.detail ? { detail: opt.detail } : {}) };
+        });
+        const multiple = kind === "choose" && body.multiple === true;
+        const recommend =
+          kind === "approve" && body.recommend === "approve"
+            ? "approve"
+            : kind === "choose" && Array.isArray(body.recommend)
+              ? (body.recommend as unknown[]).map(String).filter((r) => options.some((o) => o.id === r))
+              : undefined;
+        if (Array.isArray(recommend) && recommend.length > 1 && !multiple) {
+          return json({ detail: "Recommend one option unless several can be picked." }, 422);
+        }
+        const handle = String(body.handle ?? "").replace(/^@/, "");
+        const row = typeof body.task === "string" ? fx.memories.find((m) => m.key === body.task) : undefined;
+        if (typeof body.task === "string" && !row) return json({ detail: `No task ${body.task}.` }, 404);
+        const to = String(body.to ?? row?.created_by ?? "operator").replace(/^@/, "");
+        const id = stableUuid(`${roomName}/ask/${now}`).replace(/-/g, "").slice(0, 8);
+        const ask = {
+          id,
+          kind,
+          to,
+          question,
+          ...Object.fromEntries(["why", "happens", "undo", "link"].flatMap((k) => (text(k) ? [[k, text(k)]] : []))),
+          ...(options.length ? { options } : {}),
+          ...(multiple ? { multiple } : {}),
+          ...(recommend && recommend.length ? { recommend } : {}),
+          ...(kind === "question" && text("suggest") ? { suggest: text("suggest") } : {}),
+        };
+        const msg: MockMessage = {
+          id: `ask-${id}`,
+          sender_handle: handle,
+          recipient_handle: to,
+          message_type: "broadcast",
+          content: question,
+          episode: row?.episode ?? null,
+          created_at: now,
+          metadata: { ask },
+        };
+        fx.messages.push(msg);
+        publish(roomName, { ...msg, room_name: roomName });
+        return json({ room: roomName, task: row?.key ?? null, episode: msg.episode, message_id: msg.id, ask }, 201);
+      }
+      if (sub.length === 3 && sub[2] === "answer") {
+        const askId = decodeURIComponent(sub[1]);
+        const asked = fx.messages.find((m) => (m.metadata as { ask?: { id?: string } } | null | undefined)?.ask?.id === askId);
+        if (!asked) return json({ detail: `No ask ${askId}.` }, 404);
+        const ask = (asked.metadata as { ask: Record<string, unknown> }).ask;
+        const by = String(body.by ?? "").replace(/^@/, "");
+        if (!by || fx.memories.some((m) => m.key === `agents/${by}`)) {
+          return json({ detail: `Only a person answers an ask, and @${by} isn't one.` }, 403);
+        }
+        if (ask.answer) {
+          const had = ask.answer as { by: string };
+          return json({ detail: `Already answered by @${had.by}` }, 409);
+        }
+        const options = (ask.options ?? []) as { id: string; label: string }[];
+        const note = text("text") ?? text("reason");
+        let decided: Record<string, unknown>;
+        let said: string;
+        if (ask.kind === "approve") {
+          if (body.decision !== "approved" && body.decision !== "declined") return json({ detail: "An approve needs a decision." }, 422);
+          decided = { decision: body.decision };
+          said = `${body.decision === "approved" ? "Approved" : "Declined"} "${String(ask.question)}"`;
+        } else if (ask.kind === "choose") {
+          const choices = (Array.isArray(body.choices) ? (body.choices as unknown[]) : []).map(String);
+          if (!choices.length || choices.some((c) => !options.some((o) => o.id === c)) || (choices.length > 1 && !ask.multiple)) {
+            return json({ detail: ask.multiple ? "Pick one or more of its options." : "Pick exactly one of its options." }, 422);
+          }
+          const chosen = options.filter((o) => choices.includes(o.id)).map((o) => o.label);
+          decided = { choices, chosen };
+          said = `Chose "${chosen.join(", ")}" for "${String(ask.question)}"`;
+        } else {
+          if (!note) return json({ detail: "A question needs an answer." }, 422);
+          decided = {};
+          said = `Answered "${String(ask.question)}": ${note}`;
+        }
+        const answer = {
+          kind: ask.kind,
+          question: ask.question,
+          for: ask.to,
+          by,
+          at: now,
+          ...decided,
+          ...(note ? { text: note } : {}),
+        };
+        ask.answer = answer;
+        const reply: MockMessage = {
+          id: `answer-${askId}`,
+          sender_handle: by,
+          recipient_handle: asked.sender_handle,
+          message_type: "broadcast",
+          content: note && ask.kind !== "question" ? `${said}\n\nNote: ${note}` : said,
+          episode: asked.episode ?? null,
+          created_at: now,
+          metadata: { answer: { ask: askId, ...answer } },
+        };
+        fx.messages.push(reply);
+        publish(roomName, { ...reply, room_name: roomName });
+        return json({ room: roomName, message_id: reply.id, ask, answer: { ask: askId, ...answer } });
+      }
+      return null;
+    }
+
     case "tasks": {
       // POST /tasks — a row and its thread, minted together (services/tasks.py).
       if (sub.length !== 1 || method !== "POST") return null;
@@ -695,11 +993,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (fx.memories.some((m) => m.key === key)) return json({ detail: `${key} already exists` }, 409);
       const assignee = typeof body.assignee === "string" && body.assignee ? body.assignee.replace(/^@/, "") : null;
       const kind = key.startsWith("decisions/") ? "decision" : "action";
+      const parent = typeof body.parent === "string" && body.parent ? body.parent : null;
+      if (parent && !fx.memories.some((m) => m.key === parent)) {
+        return json({ detail: `No task '${parent}' to be part of.` }, 404);
+      }
       const row: MockMemory = {
         key,
         value: title,
         content_text: title,
-        meta: { kind, status: "open", ...(assignee ? { assignee } : {}) },
+        meta: { kind, status: "open", ...(assignee ? { assignee } : {}), ...(parent ? { "part-of": parent } : {}) },
         created_by: by,
         updated_by: by,
         version: 1,
@@ -781,6 +1083,16 @@ export async function handleMock(req: Request): Promise<Response | null> {
       const kind = String(body.kind ?? "");
       if (!/^[a-z0-9][a-z0-9_-]*$/.test(handle)) return json({ detail: "Handle must be a lowercase slug." }, 422);
       if (!kind) return json({ detail: "An engine needs a kind." }, 422);
+      if (kind === "aligner") {
+        return json(
+          {
+            detail:
+              "The aligner was retired, so nothing started. To negotiate, run `mycelium board coordinate <row> conductor \"concord …\"` " +
+              "to help members agree, or `\"accord …\"` to get them on the same page.",
+          },
+          422,
+        );
+      }
       const key = `agents/${handle}`;
       if (fx.memories.some((m) => m.key === key)) return json({ detail: `@${handle} is already in ${roomName}` }, 409);
       const by = String(body.created_by ?? "user");
@@ -803,6 +1115,29 @@ export async function handleMock(req: Request): Promise<Response | null> {
       );
     }
 
+    case "invites": {
+      // POST /invites — a join code for an agent, added to the room if new.
+      if (sub.length !== 1 || method !== "POST") return null;
+      const body = await readJson(req);
+      const handle = String(body.handle ?? "").trim().replace(/^@/, "").toLowerCase();
+      if (!/^[a-z0-9][a-z0-9_-]*$/.test(handle)) return json({ detail: "Handle must be a lowercase slug." }, 422);
+      const key = `agents/${handle}`;
+      const by = String(body.created_by ?? "user");
+      if (!fx.memories.some((m) => m.key === key)) {
+        fx.memories.push({
+          key,
+          value: `adapter: claude_code\nframework: external\nowner: ${by}\n`,
+          created_by: by,
+          version: 1,
+          updated_at: new Date().toISOString(),
+        });
+        publish(roomName, memoryChangedFrame(key, 1, by));
+      }
+      const minutes = Number(body.ttl_minutes ?? 10);
+      const expires = new Date(Date.now() + minutes * 60_000).toISOString();
+      return json({ code: "k7mq-2xpa-9vtd", room: roomName, handle, expires_at: expires }, 201);
+    }
+
     case "swarms": {
       // POST /swarms — a team put on a task. Only a Learn take plays one; the
       // default fixtures have no workers to run it.
@@ -820,6 +1155,37 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const brief = String(body.brief ?? "").trim();
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
+      }
+      // POST /agents/{handle}/pause|resume|stop — for its owner only.
+      if (sub.length === 3 && ["pause", "resume", "stop"].includes(sub[2]) && method === "POST") {
+        const by = String((await readJson(req)).by ?? "").replace(/^@/, "").toLowerCase();
+        return controlOne(fx, roomName, decodeURIComponent(sub[1]), sub[2], by);
+      }
+      // POST /agents/{handle}/rename — one a machine runs waits for a yes
+      // there (the job is queued, nothing moves); any other is renamed at once,
+      // its memories moving to the new handle as the hub does.
+      if (sub.length === 3 && sub[2] === "rename" && method === "POST") {
+        const old = decodeURIComponent(sub[1]);
+        const to = String((await readJson(req)).to ?? "").replace(/^@/, "");
+        const base = `agents/${old}`;
+        if (!fx.memories.some((m) => m.key === base)) return json({ detail: `No agent @${old} in ${roomName}.` }, 404);
+        if (!/^[a-z0-9][a-z0-9._@-]*$/.test(to)) return json({ detail: "That isn't a handle." }, 422);
+        if (fx.memories.some((m) => m.key === `agents/${to}`)) {
+          return json({ detail: `@${to} is already a member of ${roomName}.` }, 409);
+        }
+        const on = runnerAgentOf(roomName, old)?.runner ?? null;
+        if (on) {
+          const job = queueJob(on, "rename", { room: roomName, handle: old, to });
+          return json({ handle: to, was: old, pending: true, memories: [], rows: [], restart_runner: on, restart_job: job.id });
+        }
+        const moved: string[] = [];
+        for (const m of fx.memories) {
+          if (m.key === base || m.key.startsWith(`${base}/`)) {
+            m.key = `agents/${to}${m.key.slice(base.length)}`;
+            moved.push(m.key);
+          }
+        }
+        return json({ handle: to, was: old, pending: false, memories: moved, rows: [], restart_runner: null, restart_job: null });
       }
       // Agents are `agents/<handle>` memories whose body is a YAML manifest —
       // the same projection the backend's agents route does.
@@ -880,8 +1246,138 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json(MOCK_PROTOCOLS);
     }
 
+    case "mentions": {
+      // GET /mentions/groups — who `@here` and `@all` reach. Agents are the
+      // room's non-engine `agents/` memories, people whoever else has posted;
+      // `@here` in a thread is whoever posted in it. The sender is left out.
+      if (sub[1] !== "groups" || method !== "GET") return null;
+      const url = new URL(req.url);
+      const episode = url.searchParams.get("episode");
+      const sender = (url.searchParams.get("sender") ?? "").toLowerCase();
+      // An engine that only posts (the conductor's lines) has no manifest here.
+      const engines = new Set<string>(["conductor", "verifier", "synthesizer"]);
+      const agents = new Set<string>();
+      for (const m of fx.memories) {
+        if (!m.key.startsWith("agents/") || m.key.slice(7).includes("/")) continue;
+        (/adapter:\s*engine/.test(manifestText(m)) ? engines : agents).add(m.key.slice(7));
+      }
+      const status = (h: string) => {
+        const s = fx.presence?.find((p) => p.handle === h)?.status;
+        return s === "working" || s === "blocked" ? s : agents.has(h) ? "idle" : null;
+      };
+      const lastPost = new Map<string, string>();
+      const everyone = new Set<string>(agents);
+      for (const msg of fx.messages) {
+        const h = msg.sender_handle;
+        if (engines.has(h) || !h) continue;
+        everyone.add(h);
+        if (episode && msg.episode === episode && (lastPost.get(h) ?? "") < msg.created_at) lastPost.set(h, msg.created_at);
+      }
+      const read = (h: string, inThread: boolean) => ({
+        handle: h,
+        kind: agents.has(h) ? "agent" : "person",
+        status: status(h),
+        posted_at: inThread ? (lastPost.get(h) ?? null) : null,
+        role: inThread ? "posted" : null,
+      });
+      const all = [...everyone].filter((h) => h.toLowerCase() !== sender).map((h) => read(h, false));
+      const here = episode
+        ? [...lastPost.keys()].filter((h) => h.toLowerCase() !== sender).map((h) => read(h, true))
+        : all;
+      return json({ here: { count: here.length, members: here }, all: { count: all.length, members: all } });
+    }
+
     case "uploads":
       return handleUploads(req, roomName, fx, sub);
+
+    case "verifier":
+      return handleVerifierFlags(req, roomName, fx, sub);
+
+    case "schedules": {
+      // The room's schedules, from the fixture; writes are session-local.
+      const list = (fx.schedules ??= []);
+      const name = sub[1] ? decodeURIComponent(sub[1]) : null;
+      const found = name ? list.find((s) => s.name === name) : undefined;
+      const read = (s: Schedule) => ({ ...s, history: s.history ?? [] });
+      if (!name) {
+        if (method === "GET") {
+          return json({ schedules: list.map(read), total: list.length, checks: MOCK_SCHEDULE_CHECKS });
+        }
+        if (method !== "POST") return null;
+        const body = await readJson(req);
+        const now = new Date().toISOString();
+        const made: Schedule = {
+          name: String(body.name ?? ""),
+          owner: String(body.owner ?? "").replace(/^@/, ""),
+          every: (body.every as string | undefined) ?? null,
+          cron: (body.cron as string | undefined) ?? null,
+          prompt: String(body.prompt ?? ""),
+          check: String(body.check ?? "always"),
+          task: (body.task as string | undefined) ?? null,
+          state: "active",
+          paused: false,
+          created_by: String(body.created_by ?? "web-ui"),
+          created_at: now,
+          updated_by: String(body.created_by ?? "web-ui"),
+          updated_at: now,
+          expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+          next_run: new Date(Date.now() + 30 * 60_000).toISOString(),
+          last_run: null,
+          last_result: null,
+          runs: 0,
+          wakes: 0,
+          quiet: 0,
+          history: [],
+        };
+        list.push(made);
+        return json(read(made), 201);
+      }
+      if (!found) return notFound(`schedule ${name} not found (mock)`);
+      if (sub[2] === "run" && method === "POST") {
+        const body = await readJson(req);
+        const run: ScheduleRun = {
+          at: new Date().toISOString(),
+          result: body.wake ? "woke" : "quiet",
+          trigger: "manual",
+          missed: 0,
+          found: [],
+          found_total: 0,
+          detail: null,
+        };
+        found.history = [run, ...(found.history ?? [])];
+        found.last_run = run.at;
+        found.last_result = run.result;
+        found.runs = (found.runs ?? 0) + 1;
+        if (run.result === "woke") found.wakes = (found.wakes ?? 0) + 1;
+        else found.quiet = (found.quiet ?? 0) + 1;
+        return json(run);
+      }
+      if (sub.length !== 2) return null;
+      if (method === "GET") return json(read(found));
+      if (method === "DELETE") {
+        list.splice(list.indexOf(found), 1);
+        return new Response(null, { status: 204 });
+      }
+      if (method !== "PATCH") return null;
+      const body = await readJson(req);
+      const by = typeof body.updated_by === "string" && body.updated_by ? body.updated_by : "unknown";
+      const at = new Date().toISOString();
+      if (typeof body.paused === "boolean" && body.paused !== found.paused) {
+        found.paused = body.paused;
+        found.state = body.paused ? "paused" : "active";
+        found.paused_by = body.paused ? by : null;
+        found.paused_at = body.paused ? at : null;
+      }
+      if (body.renew) found.expires_at = new Date(Date.now() + 7 * 86_400_000).toISOString();
+      for (const field of ["every", "cron", "prompt", "check", "task"] as const) {
+        if (typeof body[field] === "string") found[field] = body[field] as string;
+      }
+      if (typeof body.every === "string") found.cron = null;
+      if (typeof body.cron === "string") found.every = null;
+      found.updated_by = by;
+      found.updated_at = at;
+      return json(read(found));
+    }
 
     case "skills": {
       // GET /skills — the composer's `/` autocomplete. A skill is a `skills/…`
@@ -914,7 +1410,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "a2a": {
-      // GET /a2a/state — the Network pane's bridge strip. A room with no
+      // GET /a2a/state — the bridge strip on the room's settings page. A room with no
       // bridge answers with an empty one, exactly like the backend does.
       if (sub[1] !== "state" || method !== "GET") return null;
       return json(fx.a2a ?? emptyBridge(roomName));
@@ -932,7 +1428,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         return json({
           broken: graph.edges
             .filter((e) => !e.resolved)
-            .map((e) => ({ source: e.source, target: e.target, kind: e.kind, resolved: false, error: e.error, raw: synthesizeRaw(e) })),
+            .map((e) => linkRead(e, { source: e.source })),
           // Sorted, like the backend's `integrity()`, so a consumer that ever
           // relies on the order sees the same thing here as in production.
           // orphan = inbound===0 AND outbound===0 (fully isolated)
@@ -966,18 +1462,77 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (!key) return notFound("missing key (mock)");
       const outbound: MemoryLink[] = graph.edges
         .filter((e) => e.source === key)
-        .map((e) => ({ target: e.target, kind: e.kind, relation: e.relation, resolved: e.resolved, error: e.error, raw: synthesizeRaw(e) }));
+        .map((e) => linkRead(e, { source: null }));
       const backlinks: MemoryLink[] = graph.edges
         .filter((e) => e.target === key && e.resolved)
-        .map((e) => ({ target: key, source: e.source, kind: e.kind, relation: e.relation, resolved: true, raw: synthesizeRaw(e) }));
-      return json({ outbound, backlinks });
+        .map((e) => linkRead(e, { source: e.source }));
+      return json({ key, outbound, backlinks });
+    }
+
+    case "members": {
+      // The room's people, as the hub seeds a room that predates its list: the
+      // owner, agent owners, posters and whoever is present, kept only when
+      // they have a user record and aren't an agent here. Removals last for
+      // the session.
+      const removed = REMOVED_PEOPLE.get(roomName) ?? new Set<string>();
+      if (sub[1] && method === "DELETE") {
+        const handle = decodeURIComponent(sub[1]).toLowerCase();
+        removed.add(handle);
+        REMOVED_PEOPLE.set(roomName, removed);
+        return new Response(null, { status: 204 });
+      }
+      if (sub[1] || method !== "GET") return null;
+      const manifests = fx.memories.filter((m) => m.key.startsWith("agents/") && !m.key.slice(7).includes("/"));
+      const agentList = manifests.map((m) => {
+        const manifest = manifestText(m);
+        return {
+          handle: m.key.slice(7),
+          owner: /owner:\s*@?(\S+)/.exec(manifest)?.[1] ?? null,
+          engine: /adapter:\s*engine/.test(manifest),
+        };
+      });
+      const agentHandles = new Set(agentList.map((a) => a.handle.toLowerCase()));
+      const candidates = [
+        fx.room.owner,
+        ...agentList.map((a) => a.owner),
+        ...fx.messages.map((m) => m.sender_handle),
+        ...(fx.presence ?? []).map((p) => p.handle),
+      ];
+      const people = [
+        ...new Set(candidates.filter((h): h is string => !!h).map((h) => h.toLowerCase())),
+      ]
+        .filter((h) => MOCK_USERS.has(h) && !agentHandles.has(h) && !removed.has(h))
+        .map((handle) => ({ handle, joined_at: fx.room.created_at, via: "seeded" as const }));
+      const known = new Set([...agentHandles, ...people.map((p) => p.handle)]);
+      const present = new Set((fx.presence ?? []).map((p) => p.handle.toLowerCase()));
+      const holding = new Set(
+        fx.memories
+          .map((m) => (typeof m.meta?.assignee === "string" ? m.meta.assignee.replace(/^@/, "").toLowerCase() : ""))
+          .filter(Boolean),
+      );
+      const others = [...new Set([...present, ...holding])]
+        .filter((h) => !known.has(h))
+        .sort()
+        .map((handle) => ({ handle, holds_task: holding.has(handle), present: present.has(handle) }));
+      const entry = ({ handle, owner }: { handle: string; owner: string | null }) => ({ handle, owner });
+      return json({
+        people,
+        agents: agentList.filter((a) => !a.engine).map(entry),
+        engines: agentList.filter((a) => a.engine).map(entry),
+        others,
+      });
     }
 
     case "sessions": {
       // Presence: a room's fixture may name resident members (there is no SLIM
       // node here to report them), which the board projects into resident rows.
       if (sub[1] === "members" && method === "GET") {
-        return json({ members: fx.presence ?? [], floors: fx.floors ?? [] });
+        return json({
+          members: fx.presence ?? [],
+          floors: fx.floors ?? [],
+          subscriptions: fx.subscriptions ?? [],
+          paused: pausedIn(roomName),
+        });
       }
       return null;
     }

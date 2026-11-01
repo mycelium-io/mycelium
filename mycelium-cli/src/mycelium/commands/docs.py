@@ -42,13 +42,12 @@ SECTIONS: list[tuple[str, str]] = [
     ("slim", "SLIM"),
     ("engines", "Engines"),
     ("conductor", "The Conductor"),
-    ("aligner", "The Aligner"),
     ("synthesizer", "The Synthesizer"),
     ("persona", "Persona"),
     ("worker", "Worker"),
     ("hello", "Hello"),
     ("server", "Run It on a Server"),
-    ("desktop", "The Mac App"),
+    ("desktop", "The Desktop App"),
     ("hub-and-spoke", "Hub & Spoke"),
     ("models", "Models"),
     ("machines", "Start Agents From the App"),
@@ -60,6 +59,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("working-the-board", "Working the Board"),
     ("structured-memory", "Structured Memory"),
     ("files", "Files"),
+    ("voice", "Voice"),
     ("security-planes", "Running a Shared Hub"),
     ("auth", "Authentication"),
     ("troubleshooting", "Troubleshooting"),
@@ -68,8 +68,6 @@ SECTIONS: list[tuple[str, str]] = [
     ("flows", "Writing Flows"),
     ("messages", "Messages"),
     ("metrics", "Metrics"),
-    ("status-providers", "Adding a Status Provider"),
-    ("keycloak-oidc", "Keycloak / OIDC Setup"),
 ]
 
 # Subdirectories the docs tree is organized into, in lookup order. "commands"

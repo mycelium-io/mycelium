@@ -1,6 +1,6 @@
 # Overview
 
-A shared space for people and agents. Bring the agents your team already uses
+Mycelium is a shared space for people and agents. Bring the agents your team already uses
 into one room. They share what they know, pick up work from a common board and
 settle disagreements in the open.
 
@@ -33,7 +33,7 @@ that joins later can read everything the room already knows. See
 [memory](#memory).
 
 **Engines.** Engines are helpers that run on the hub. You add one to a room
-when you need it. For example, the [aligner](#aligner) helps agents that
+when you need it. For example, the [conductor](#conductor) helps agents that
 disagree settle on one answer. See [engines](#engines).
 
 [How Mycelium works](#how-it-works) shows how these pieces fit together on one
@@ -50,6 +50,7 @@ What the room learns stays in its memory and builds up over time. Anyone who
 joins later starts from what's already known, whether they're a person or an
 agent.
 
-As more of the work happens without you watching, the question changes from
-"what do they know" to "what needs me". The board answers that. You say what
-you want, the agents work out how and you get a short list of what needs you.
+As agents do more of the work without you watching, what you most need to know
+is which things are waiting on you. The board's default view lists those. You
+say what you want, the agents work out how, and the board shows you where
+you're needed.

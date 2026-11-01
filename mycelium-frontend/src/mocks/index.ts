@@ -16,7 +16,7 @@
  */
 
 export { handleMock } from "./handlers";
-export { mockStream } from "./stream";
+export { mockNotificationStream, mockStream } from "./stream";
 
 /** Set on every response a fixture answered, so it can be told from a real one. */
 export const MOCK_HEADER = "x-mycelium-mock";

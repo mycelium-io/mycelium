@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.schemas import refusals
 from app.services.filesystem import room_exists
 from app.services.status import discovery, registry
 from app.services.status.types import ROW_FIELD, CachedStatus, Ref
@@ -136,7 +137,7 @@ def _schedule_background_refresh(runtime: StatusRuntime, refs: list[Ref], now: d
     return True
 
 
-@router.get("", response_model=RoomStatusResponse)
+@router.get("", response_model=RoomStatusResponse, responses=refusals(404))
 async def get_room_status(
     room_name: str,
     refresh: bool = Query(

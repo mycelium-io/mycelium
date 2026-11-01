@@ -3,37 +3,58 @@
 
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Settings } from "lucide-react";
 import { AccountMenu } from "@/components/account-menu";
 import { KeyBadge } from "@/components/key-badge";
 import { NotificationBell } from "@/components/notification-bell";
-import { useIsDesktop } from "@/lib/desktop";
-
-const noSubscribe = () => () => {};
+import { iconButtonClass } from "@/components/ui/icon-button";
+import { Tooltip } from "@/components/ui/tooltip";
+import { settingHref } from "@/lib/client-settings";
+import { desktopMachine, useIsDesktop } from "@/lib/desktop";
+import { useHubAddress } from "@/lib/hub-address";
 
 /**
  * Which hub this is, as the title bar names it: a hub on this computer by
- * that ("This Mac" in the Mac app), any other by its host name. Never a port,
+ * that ("This Mac" in the app on a Mac), any other by its host name. Never a port,
  * which says nothing to a person. Empty while rendering on the server.
  */
-export function hubLabel(host: string, desktop: boolean): string {
+export function hubLabel(host: string, desktop: boolean, machine: string = desktopMachine()): string {
   const name = host.replace(/:\d+$/, "");
-  if (/^(127\.0\.0\.1|localhost|\[::1\])$/.test(name)) return desktop ? "This Mac" : "This computer";
+  if (/^(127\.0\.0\.1|localhost|\[::1\])$/.test(name)) return desktop ? `This ${machine}` : "This computer";
   return name;
 }
 
 export function useHubLabel(): string {
   const desktop = useIsDesktop();
-  const host = useSyncExternalStore(noSubscribe, () => window.location.host, () => "");
-  return hubLabel(host, desktop);
+  const address = useHubAddress();
+  return hubLabel(address.replace(/^[a-z]+:\/\//, ""), desktop);
+}
+
+/** The way into Settings from every screen. Lit while a settings page is open. */
+function SettingsButton() {
+  const onSettings = (usePathname() ?? "").startsWith("/settings");
+  return (
+    <Tooltip content="Settings" side="bottom">
+      <Link
+        href={settingHref("general")}
+        aria-label="Settings"
+        aria-current={onSettings ? "page" : undefined}
+        className={iconButtonClass("md", "aria-[current=page]:bg-hairline")}
+      >
+        <Settings />
+      </Link>
+    </Tooltip>
+  );
 }
 
 /**
  * The strip across the top of every screen, the way an editor draws one:
  * where you are on the left (the hub, then the page), and who you are on the
- * right. Thin, and the same in a browser and in the Mac app.
+ * right. Thin, and the same in a browser and in the desktop app.
  */
 export function TitleBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNode }) {
   const hub = useHubLabel();
@@ -43,7 +64,7 @@ export function TitleBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNod
         href="/"
         className="relative flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
       >
-        <Image src="/logo.png" alt="Mycelium" width={16} height={16} className="flex-shrink-0 opacity-90" />
+        <Image src="/logo-128.png" alt="Mycelium" width={16} height={16} className="flex-shrink-0 opacity-90" />
         <span className="truncate font-medium">{hub || "Mycelium"}</span>
         <KeyBadge action="nav.home" />
       </Link>
@@ -57,6 +78,7 @@ export function TitleBar({ crumb, right }: { crumb?: ReactNode; right?: ReactNod
       )}
       <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
         {right}
+        <SettingsButton />
         <NotificationBell />
         <AccountMenu />
       </div>

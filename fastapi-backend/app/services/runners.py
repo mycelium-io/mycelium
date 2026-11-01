@@ -54,6 +54,9 @@ class _Entry:
     hello: RunnerHello
     last_seen: datetime
     started_at: datetime
+    #: Hellos since the first, so a report can be told apart from a runner's
+    #: first look after the hub (or herdr) came back.
+    heartbeats: int = 0
     jobs: OrderedDict[str, RunnerJobRead] = field(default_factory=OrderedDict)
     wake: asyncio.Event = field(default_factory=asyncio.Event)
 
@@ -91,7 +94,13 @@ class RunnerRegistry:
         else:
             entry.hello = hello
             entry.last_seen = now
+            entry.heartbeats += 1
         return entry.read(now)
+
+    def heartbeats(self, runner_id: str) -> int:
+        """How many heartbeats ``runner_id`` has sent since its hello to this hub."""
+        entry = self._runners.get(runner_id)
+        return entry.heartbeats if entry is not None else 0
 
     def touch(self, runner_id: str) -> bool:
         entry = self._runners.get(runner_id)
@@ -160,6 +169,24 @@ class RunnerRegistry:
     def get(self, runner_id: str) -> RunnerRead | None:
         entry = self._runners.get(runner_id)
         return entry.read(_now()) if entry is not None else None
+
+    def can_reply(self, room: str) -> dict[str, tuple[bool, str | None]]:
+        """``{handle: (can_reply, why)}`` for ``room``, from runners checking in now.
+
+        Only agents a runner has a verdict on; one whose runner stopped
+        checking in drops out, so a closed laptop leaves no stale "can't
+        reply" behind. Should two runners report one handle, a runner whose
+        token for it works wins.
+        """
+        now = _now()
+        said: dict[str, tuple[bool, str | None]] = {}
+        for entry in self._runners.values():
+            if now - entry.last_seen > STALE_AFTER:
+                continue
+            for c in entry.hello.credentials:
+                if c.room == room and not said.get(c.handle, (False, None))[0]:
+                    said[c.handle] = (c.can_reply, None if c.can_reply else c.why)
+        return said
 
     def all(self) -> list[RunnerRead]:
         now = _now()
@@ -234,7 +261,11 @@ def check_framework(runner: RunnerRead, framework_id: str) -> None:
             f"{host} isn't running on {runner.label}, so it can't start agents. Start it there."
         )
     fw = framework_of(runner, framework_id)
-    if fw is None or not fw.installed:
+    if fw is None:
+        raise RunnerError(f"{framework_id} is not an agent CLI {runner.label} knows.")
+    # A runner offers every kind its host can start, found or not: the host's
+    # shell may find what the scan didn't, and the start says if it can't.
+    if not fw.launchable and not fw.installed:
         raise RunnerError(f"{framework_id} is not installed on {runner.label}.")
     if not fw.launchable:
         raise RunnerError(

@@ -9,25 +9,44 @@ from typer.testing import CliRunner
 
 from mycelium import __version__
 from mycelium.cli import app
-from mycelium.commands import version as version_cmd
+from mycelium_backend_client.models import WhoamiRead
+from tests.conftest import install_stand_in_hub
 
 runner = CliRunner()
+
+#: What a hub at 9.9.9 answers on ``/health``.
+_HEALTH = {"status": "ok", "service": "mycelium-backend", "version": "9.9.9"}
 
 
 @pytest.fixture
 def hub(monkeypatch: pytest.MonkeyPatch) -> dict:
-    state: dict = {"response": httpx.Response(200, json={"status": "ok", "version": "9.9.9"})}
+    from mycelium import identity
 
-    def fake_get(url: str, timeout: float) -> httpx.Response:
+    state: dict = {
+        "response": httpx.Response(200, json=_HEALTH),
+        # What /api/whoami answers; None is a hub with sign-in off answering nothing.
+        "whoami": None,
+    }
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        url = str(request.url.copy_with(query=None))
         state["url"] = url
         response = state["response"]
         if isinstance(response, Exception):
             raise response
-        response.request = httpx.Request("GET", url)
+        if callable(response):
+            response = response(url)
         return response
 
-    monkeypatch.setattr(version_cmd.httpx, "get", fake_get)
+    install_stand_in_hub(monkeypatch).answer = answer
+    monkeypatch.setattr(
+        identity,
+        "_hub_whoami",
+        lambda _config: WhoamiRead.from_dict(state["whoami"]) if state["whoami"] else None,
+    )
     monkeypatch.setenv("MYCELIUM_API_URL", "http://hub.test:8000")
+    for name in ("MYCELIUM_AGENT_PANE", "MYCELIUM_AGENT_HANDLE", "HERDR_PANE_ID"):
+        monkeypatch.delenv(name, raising=False)
     return state
 
 
@@ -66,6 +85,50 @@ def test_json_after_the_command(hub: dict) -> None:  # noqa: ARG001 - the stubbe
     result = runner.invoke(app, ["version", "--json"])
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["hub"] == "9.9.9"
+
+
+def test_a_hub_reached_at_its_apps_address_is_asked_under_api(hub: dict) -> None:
+    """The app answers only /api/*, so a bare /health there is a 404, not a dead hub."""
+
+    def app_address(url: str) -> httpx.Response:
+        if url.endswith("/api/health"):
+            return httpx.Response(200, json=_HEALTH)
+        return httpx.Response(404)
+
+    hub["response"] = app_address
+    result = runner.invoke(app, ["version"])
+    assert "hub  9.9.9" in result.output
+    assert hub["url"] == "http://hub.test:8000/api/health"
+
+
+def test_a_refused_credential_is_said_with_its_fix_not_as_unreachable(hub: dict) -> None:
+    hub["whoami"] = {"gated": True, "handle": None}
+    result = runner.invoke(app, ["version"])
+    assert "hub  9.9.9" in result.output
+    assert "no credential: this terminal sends none" in result.output
+    assert "mycelium login" in result.output
+    assert "unreachable" not in result.output
+
+
+def test_an_agents_pane_is_pointed_at_its_runner_not_at_signing_in(
+    hub: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hub["whoami"] = {"gated": True, "handle": None}
+    monkeypatch.setenv("MYCELIUM_AGENT_PANE", "1")
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "coder")
+    result = runner.invoke(app, ["version"])
+    out = " ".join(result.output.split())
+    assert "This is @coder's pane" in out
+    assert "mycelium runner status" in out
+    assert "mycelium login" not in out
+
+
+def test_an_accepted_credential_says_who_and_from_where(hub: dict) -> None:
+    hub["whoami"] = {"gated": True, "handle": "avery"}
+    result = runner.invoke(app, ["--json", "version"])
+    body = json.loads(result.output)
+    assert body["credential"]["accepted"] is True
+    assert body["credential"]["as"] == "avery"
 
 
 def test_cli_only_never_asks_the_hub(hub: dict) -> None:

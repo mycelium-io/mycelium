@@ -107,10 +107,49 @@ export const NOTICE_SUBKINDS = [
   "blocked",
   "unblocked",
   "expired",
+  "quiet",
   "floor",
+  "upstream",
+  "check",
 ] as const;
 
 export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
+
+/** What an `upstream` notice says happened to the pull request a row links,
+ *  frozen beside the subkinds. */
+export const UPSTREAM_CHANGES = [
+  "opened",
+  "review_requested",
+  "approved",
+  "changes_requested",
+  "ci_failed",
+  "ci_passed",
+  "merged",
+  "closed",
+] as const;
+
+/** The label an `upstream` notice wears, by what changed. */
+const UPSTREAM_LABEL: Record<string, string> = {
+  opened: "Pull request opened",
+  review_requested: "Review requested",
+  approved: "Approved",
+  changes_requested: "Changes requested",
+  ci_failed: "CI went red",
+  ci_passed: "CI went green",
+  merged: "Merged",
+  closed: "Closed",
+};
+
+/** Whether a timeline label is one an `upstream` notice wears. */
+export function isUpstreamLabel(label: string): boolean {
+  return Object.values(UPSTREAM_LABEL).includes(label);
+}
+
+/** Whether an `upstream` change is news for the chat (work going up for
+ *  review, landing, or CI breaking) rather than for the task's activity alone. */
+export function upstreamInChat(change: string | null | undefined): boolean {
+  return change === "opened" || change === "merged" || change === "ci_failed";
+}
 
 /** What a notice says: what happened, to which task, and the thread to open. */
 export interface Notice {
@@ -121,13 +160,25 @@ export interface Notice {
   by: string | null;
   /** The board kind, on a `filed` notice, so the line reads "New decision". */
   kind: string | null;
-  /** Who a `filed` task is for (its assignee), so the line can read "for @x". */
+  /** Who a `filed` task is for (its assignee), so the line can read "for @x";
+   *  on a reassigning `claimed` one, who it went to. */
   assignee: string | null;
+  /** On a reassigning `claimed` notice, who held the task before (#1136). */
+  from: string | null;
+  /** On a `released` or `expired` notice the hub raised, why the hold ended. */
+  why: string | null;
   /** On a `floor` notice: the handles the floor was given to (empty when the
    *  holder alone has it). */
   speakers: string[];
   /** On a `floor` notice: the floor opened back up. */
   released: boolean;
+  /** On an `upstream` notice: what happened (one of {@link UPSTREAM_CHANGES}),
+   *  to which pull request (`owner/repo#123`), its link, and who a review was
+   *  asked of. */
+  change: string | null;
+  ref: string | null;
+  url: string | null;
+  who: string[];
 }
 
 /**
@@ -154,8 +205,14 @@ export function noticeOf(raw: Record<string, unknown> | null | undefined): Notic
     by: str(data.by),
     kind: str(data.kind),
     assignee: str(data.for),
+    from: str(data.from),
+    why: str(data.why),
     speakers: str(data.speakers)?.split(",").filter(Boolean) ?? [],
     released: data.released === "1",
+    change: str(data.change),
+    ref: str(data.ref),
+    url: str(data.url),
+    who: str(data.who)?.split(",").filter(Boolean) ?? [],
   };
 }
 
@@ -171,9 +228,16 @@ const FILED_AS: Record<string, string> = {
   signal: "note",
 };
 
-/** The label a notice wears in the timeline, by subkind (and, when filed, kind). */
-export function noticeLabel(subkind: string, kind: string | null | undefined): string {
+/** The label a notice wears in the timeline, by subkind (and, when filed, kind;
+ *  for an `upstream` one, what changed). */
+export function noticeLabel(
+  subkind: string,
+  kind: string | null | undefined,
+  change?: string | null,
+): string {
   switch (subkind) {
+    case "upstream":
+      return (change && UPSTREAM_LABEL[change]) || "Pull request";
     case "filed":
       return `New ${(kind && FILED_AS[kind]) || "task"}`;
     case "claimed":
@@ -188,8 +252,12 @@ export function noticeLabel(subkind: string, kind: string | null | undefined): s
       return "Unblocked";
     case "expired":
       return "Expired";
+    case "quiet":
+      return "Quiet";
     case "floor":
       return "Floor";
+    case "check":
+      return "Verifier";
     default:
       return subkind;
   }

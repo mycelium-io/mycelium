@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { inferSchema, groupableFields } from "@/lib/board/schema";
 import { projectItems, EPISODE_FIELD, THREAD_FIELDS, THREAD_STATES, TASK_FIELDS } from "@/lib/board/projection";
 import { applyView, filterItems, attentionFilterCounts, groupItems, UNGROUPED, DEFAULT_VIEW } from "@/lib/board/view";
-import { ASSIGNMENT_STATES, DEFAULT_TTL_MINUTES, assignmentOf } from "@/lib/board/assignment";
+import { ASSIGNMENT_STATES, DEFAULT_TTL_MINUTES, assignmentOf, holderOf } from "@/lib/board/assignment";
 import {
   applyRowAction,
   attentionFilterOf,
@@ -59,7 +59,7 @@ describe("inferSchema", () => {
 
   it("keeps one-off prose as text, so grouping can't make a column per row", () => {
     const schema = inferSchema([
-      item("a", { note: "the aligner stalled on a prose reply" }),
+      item("a", { note: "the conductor stalled on a prose reply" }),
       item("b", { note: "cache TTL sweep needs a second pass" }),
     ]);
     expect(schema.find(f => f.name === "note")?.type).toBe("text");
@@ -118,8 +118,8 @@ describe("projectItems", () => {
       value: "flip reads behind a flag",
       meta: { kind: "action", status: "open", assignee: "@growth" },
       version: 1,
-      created_by: "aligner",
-      updated_by: "aligner",
+      created_by: "conductor",
+      updated_by: "conductor",
       updated_at: "2026-08-20T10:00:00Z",
     },
     {
@@ -127,8 +127,8 @@ describe("projectItems", () => {
       value: "retire the legacy store",
       meta: { kind: "action", status: "resolved", assignee: "@risk" },
       version: 1,
-      created_by: "aligner",
-      updated_by: "aligner",
+      created_by: "conductor",
+      updated_by: "conductor",
       updated_at: "2026-08-20T10:00:00Z",
     },
   ] as unknown as Parameters<typeof projectItems>[0]["memories"];
@@ -143,13 +143,14 @@ describe("projectItems", () => {
       now: "2026-08-22T10:00:00Z",
     });
 
-  it("names who a compiled task is for without claiming it", () => {
+  it("holds a compiled task for who it is for", () => {
     const [open, done] = projected();
-    // An assignment is not a lease: the row stays unclaimed until somebody
-    // takes it, so nothing asserts a holder who never agreed to hold it.
+    // Being given the work is holding it (#1136): no claim is written, and the
+    // row reads held by its assignee.
     expect(open.fields).toMatchObject({ assignee: "@growth", status: "open" });
     expect(open.fields.owner).toBeNull();
-    expect(assignmentOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBe("unclaimed");
+    expect(assignmentOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBe("held");
+    expect(holderOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBe("growth");
     expect(open.title).toBe("flip reads behind a flag");
     expect(done.fields.status).toBe("resolved");
   });
@@ -191,7 +192,7 @@ describe("a task is one row, and it is a thread", () => {
     tasks: ["work/cutover"],
     message_count: 7,
     updated_at: NOW,
-    updated_by: "aligner",
+    updated_by: "conductor",
   } as unknown as Parameters<typeof projectItems>[0]["episodes"][number];
 
   const task = (extra: Record<string, unknown> = {}) => ({
@@ -199,8 +200,8 @@ describe("a task is one row, and it is a thread", () => {
     value: "run the cutover",
     meta: { kind: "action", status: "open", ...extra },
     version: 1,
-    created_by: "aligner",
-    updated_by: "aligner",
+    created_by: "conductor",
+    updated_by: "conductor",
     updated_at: NOW,
     episode: URN,
   }) as unknown as Parameters<typeof projectItems>[0]["memories"][number];

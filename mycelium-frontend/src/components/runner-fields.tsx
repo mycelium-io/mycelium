@@ -5,9 +5,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, Download, Laptop, RefreshCw } from "lucide-react";
-import { DMG_URL, useIsDesktop } from "@/lib/desktop";
-import { useIsMac } from "@/lib/client-hooks";
+import { Check, Download, Laptop, Loader2, RefreshCw } from "lucide-react";
+import { desktopMachine, useAppDownload, useIsDesktop } from "@/lib/desktop";
+import { useRunnerSignedOutOf } from "@/lib/desktop-app";
 import { rescanRunner, type Framework, type Runner } from "@/lib/api";
 import {
   hostMissing,
@@ -20,21 +20,66 @@ import {
 import { addMachine } from "@/lib/my-machines";
 import { CopyField } from "@/components/ui/copy-field";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
 
 /** The one command that puts a machine on this page. */
 export const CONNECT_COMMAND = "mycelium runner";
 
 /**
+ * In the desktop app, which starts this computer's runner itself: say it's
+ * connecting, and what to do when it never does. `mycelium runner` there only
+ * says one is already running, so it's never the advice here. The usual reason
+ * it doesn't connect is a hub with sign-in on that this computer isn't signed
+ * in to, and when the app knows that, it says so outright.
+ */
+export function ThisComputerConnecting() {
+  const machine = desktopMachine();
+  const refusedBy = useRunnerSignedOutOf();
+  if (refusedBy) {
+    return (
+      <div role="status" className="space-y-1 px-1 py-2">
+        <p className="text-label font-medium text-text">
+          This {machine} isn&apos;t signed in to {refusedBy.replace(/\/+$/, "")}
+        </p>
+        <p className="text-micro leading-relaxed text-muted-foreground">
+          The hub asks for sign-in, so this {machine}&apos;s runner can&apos;t connect. Run{" "}
+          <code className="font-mono text-text">mycelium login</code> in a terminal, then quit and reopen Mycelium.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start gap-3 px-1 py-2">
+      <Loader2 className="mt-0.5 size-4 animate-spin text-muted-foreground" />
+      <div className="space-y-1">
+        <p className="text-label font-medium text-text">This {machine} is connecting</p>
+        <p className="text-micro leading-relaxed text-muted-foreground">
+          Mycelium starts this {machine}&apos;s runner for you, and it appears here in a few seconds.
+        </p>
+        <p className="text-micro leading-relaxed text-muted-foreground">
+          If it doesn&apos;t and this hub asks you to sign in, run{" "}
+          <code className="font-mono text-text">mycelium login</code> in a terminal, then quit and reopen Mycelium.
+          Health check in {machine === "Mac" ? "the menu bar" : "Mycelium's tray menu"} says what&apos;s wrong.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
  * What to do when none of your machines is connected: run one command, then
  * add the machine to this browser with the code it prints. Only machines
  * added here are listed, so nobody sees anyone else's (`my-machines.ts`).
+ * In the desktop app, which connects this computer itself, it says so instead.
  */
 export function ConnectMachine({ compact = false }: { compact?: boolean }) {
-  // In a browser on a Mac, the app is the short way: it connects this computer
-  // itself, with herdr and the CLI inside. The command stays for everyone else.
-  const mac = useIsMac();
+  // In a browser on a computer the app runs on, the app is the short way: it
+  // connects this computer itself, with herdr and the CLI inside. The command
+  // stays for everyone else.
+  const download = useAppDownload();
   const desktop = useIsDesktop();
-  const offerApp = mac && !desktop;
+  const offerApp = download !== null && !desktop;
+  if (desktop) return <ThisComputerConnecting />;
   return (
     <div className={`rounded-lg border border-dashed border-border ${compact ? "p-3" : "p-5"}`}>
       <div className="flex items-center gap-2">
@@ -44,11 +89,11 @@ export function ConnectMachine({ compact = false }: { compact?: boolean }) {
       {offerApp && (
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <a
-            href={DMG_URL}
+            href={download?.url}
             className="inline-flex h-7 items-center gap-1.5 rounded-md bg-accent px-2.5 text-label font-medium text-accent-fg transition-opacity hover:opacity-90"
           >
             <Download className="size-3.5" />
-            Get Mycelium for Mac
+            Get Mycelium for {download?.platform}
           </a>
           <span className="text-micro text-muted-foreground">
             The app connects this computer for you. No terminal needed.
@@ -125,33 +170,35 @@ export function MachinePicker({
       <label htmlFor="runner-machine" className="block text-micro font-medium text-muted-foreground">
         {label}
       </label>
-      <select
+      <Select
         id="runner-machine"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-label text-text outline-none hover:border-border2 focus:border-accent"
+        size="md"
+        className="w-full"
       >
         {runners.map((r) => (
           <option key={r.id} value={r.id}>
             {r.label || r.id}
           </option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }
 
 /**
- * The agent CLIs this machine can start, as one row of choices. Only what can
- * be picked is shown; the rest of the scan (what isn't installed, or what the
- * machine's host can't start) is one line pointing at the Machines page, which
- * lists it all.
+ * The agent CLIs this machine can start, as one row of choices: every kind its
+ * host can start, with the ones the scan didn't find marked "not found". The
+ * host starts a CLI from the person's own shell, which may have one the scan
+ * missed, and a start of one that isn't there says so. What the host can't
+ * start is one line pointing at the Machines page, which lists it all.
  */
 export function FrameworkPicker({
   runner,
   value,
   onChange,
-  usable = (f) => runner.herdr && f.installed && f.launchable,
+  usable = (f) => runner.herdr && f.launchable,
 }: {
   runner: Runner;
   value: string | null;
@@ -187,7 +234,7 @@ export function FrameworkPicker({
                 role="radio"
                 aria-checked={picked}
                 aria-label={f.name}
-                title={f.path ?? undefined}
+                title={f.path ?? `${f.name} wasn't found on this machine. Starting it tries its shell anyway.`}
                 onClick={() => onChange(f.id)}
                 className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-label transition-colors ${
                   picked
@@ -197,7 +244,11 @@ export function FrameworkPicker({
               >
                 {picked && <Check className="size-3 text-accent" />}
                 <span className="font-medium">{f.name}</span>
-                {version && <span className="font-mono text-micro text-faint">{version}</span>}
+                {f.installed ? (
+                  version && <span className="font-mono text-micro text-faint">{version}</span>
+                ) : (
+                  <span className="text-micro text-faint">not found</span>
+                )}
               </button>
             );
           })}

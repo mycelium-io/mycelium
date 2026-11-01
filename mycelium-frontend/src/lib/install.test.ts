@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentHandoffPrompt,
   CLI_INSTALL_COMMAND,
+  HARNESS_SPEC_URL,
   PLATFORMS,
   configSetCommand,
   detectPlatform,
@@ -72,27 +73,30 @@ describe("install content", () => {
     expect(setup).not.toContain("mycelium iam avery");
   });
 
-  it("hands an existing coding session the room, hub, and first collaboration step", () => {
+  it("hands a coding session, wherever it runs, a join code and the spec for staying woken", () => {
     const prompt = agentHandoffPrompt({
       hubUrl: "https://hub.example.com",
-      authRequired: false,
-      principal: "avery",
       roomName: "atlas",
+      handle: "muse",
+      code: "k7mq-2xpa-9vtd",
+      until: "14:32",
     });
     expect(prompt).toContain("room `atlas`");
-    expect(prompt).toContain("--room atlas --owner avery");
+    expect(prompt).toContain("as @muse");
+    // The code makes it the member: no login, no config, no handle to invent.
+    expect(prompt).toContain("mycelium join k7mq-2xpa-9vtd --hub https://hub.example.com");
+    expect(prompt).toContain("until 14:32");
+    expect(prompt).not.toContain("mycelium login");
+    expect(prompt).not.toContain("agent create");
     expect(prompt).toContain("mycelium board --room atlas");
-    expect(prompt).toContain("--timeout 30");
     // `room messages` takes the room positionally; `--room` is not an option
     // there, so a pasted prompt carrying it fails on the agent's first read.
     expect(prompt).toContain("mycelium room messages atlas --limit 20");
     expect(prompt).not.toContain("room messages --room");
-    // A reader that is never told how to speak, or how to take a second turn,
-    // joins the room and then goes quiet.
     expect(prompt).toContain("mycelium skill print");
-    expect(prompt).not.toContain("adapter add");
-    expect(prompt).toContain("mycelium respond --room atlas --handle");
-    expect(prompt).toContain("await again");
+    // How it stays woken is the spec's, not a loop of the prompt's own.
+    expect(prompt).toContain(HARNESS_SPEC_URL);
+    expect(prompt).not.toContain("--timeout");
   });
 
   it("notes the WSL constraint on Windows only", () => {

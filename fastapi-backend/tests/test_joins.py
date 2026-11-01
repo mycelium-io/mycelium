@@ -12,7 +12,14 @@ from httpx import AsyncClient
 from app.services import auth as auth_service
 from app.services import member_tokens
 from app.services.filesystem import get_room_dir, write_memory_file
-from app.services.joins import CODE_TTL_S, JoinError, Joins, joins, normalize
+from app.services.joins import (
+    CODE_TTL_S,
+    MAX_CODE_TTL_S,
+    JoinError,
+    Joins,
+    joins,
+    normalize,
+)
 
 ROOM = "join-room"
 
@@ -58,6 +65,14 @@ def test_a_code_expires():
         table.redeem(code, now=1000.0 + CODE_TTL_S + 1)
 
 
+def test_a_code_lasts_as_long_as_asked_up_to_a_day():
+    table = Joins()
+    _, join = table.create(ROOM, "builder", created_by=None, ttl_s=3600, now=1000.0)
+    assert join.expires_at == 1000.0 + 3600
+    _, capped = table.create(ROOM, "builder", created_by=None, ttl_s=10**9, now=1000.0)
+    assert capped.expires_at == 1000.0 + MAX_CODE_TTL_S
+
+
 def test_a_code_is_read_however_it_was_typed():
     table = Joins()
     code, _ = table.create(ROOM, "builder", created_by=None)
@@ -86,6 +101,75 @@ async def test_a_code_names_the_room_and_member(client: AsyncClient):
     assert body["room"] == ROOM
     assert body["handle"] == "builder"
     assert len(body["code"]) == 14
+
+
+@pytest.mark.asyncio
+async def test_asking_for_a_code_can_say_how_long_it_lasts(client: AsyncClient):
+    from datetime import UTC, datetime, timedelta
+
+    await _room(client)
+    _seed_agent("builder")
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/joins", json={"handle": "builder", "ttl_minutes": 60}
+    )
+    assert resp.status_code == 201, resp.text
+    lasts = datetime.fromisoformat(resp.json()["expires_at"]) - datetime.now(UTC)
+    assert timedelta(minutes=59) < lasts <= timedelta(minutes=60)
+    too_long = await client.post(
+        f"/api/rooms/{ROOM}/joins", json={"handle": "builder", "ttl_minutes": 24 * 60 + 1}
+    )
+    assert too_long.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_an_invite_adds_a_new_agent_owned_by_who_asked_and_gives_its_code(
+    client: AsyncClient,
+):
+    from app.services import principals
+
+    await _room(client)
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/invites", json={"handle": "muse", "created_by": "julia"}
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["handle"] == "muse"
+    assert principals.classify_sender(ROOM, "muse") == "agent"
+    assert principals.delegates_to(ROOM, "muse", "julia")
+    redeemed = await client.post("/api/joins/redeem", json={"code": resp.json()["code"]})
+    assert redeemed.json()["handle"] == "muse"
+    # Asking again for the same agent gives a fresh code and leaves it as it was.
+    again = await client.post(f"/api/rooms/{ROOM}/invites", json={"handle": "muse"})
+    assert again.status_code == 201
+    assert again.json()["code"] != resp.json()["code"]
+
+
+@pytest.mark.asyncio
+async def test_an_invited_agent_is_recorded_as_running_externally(client: AsyncClient):
+    """Not as Claude Code, or whatever the hub would guess: nobody here
+    knows what an invited session runs, and the person isn't asked."""
+    from app.services.filesystem import read_memory_file
+
+    await _room(client)
+    resp = await client.post(f"/api/rooms/{ROOM}/invites", json={"handle": "muse"})
+    assert resp.status_code == 201, resp.text
+    found = read_memory_file(get_room_dir(ROOM), "agents/muse")
+    assert found is not None
+    assert yaml.safe_load(found[1])["framework"] == "external"
+
+
+@pytest.mark.asyncio
+async def test_no_invite_for_a_person_or_an_engine(client: AsyncClient):
+    await _room(client)
+    write_memory_file(
+        get_room_dir(ROOM),
+        "agents/aligner",
+        yaml.safe_dump({"adapter": "engine", "kind": "aligner"}),
+        created_by="tester",
+    )
+    resp = await client.post(f"/api/rooms/{ROOM}/invites", json={"handle": "aligner"})
+    assert resp.status_code == 409
+    bad = await client.post(f"/api/rooms/{ROOM}/invites", json={"handle": "Not A Handle!"})
+    assert bad.status_code == 422
 
 
 @pytest.mark.asyncio

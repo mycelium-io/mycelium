@@ -156,7 +156,17 @@
       "expired"
     ],
     "stale_after": 0.5,
-    "default_ttl_minutes": 30,
+    "_holds": "A row with an `assignee` is held by them until it is released, handed off or resolved: being given the work is holding it (#1136). A hold has no timer unless a claim asks for one (`ttl_minutes`): one without is held until something real ends it (the holder's herdr pane closes, the agent is removed from the room, it hands the row off or resolves it; fastapi-backend/app/services/hold_sweep.py), and only a lease reads `expired` off the clock. `holder` is whoever claimed the row, else its assignee. Every copy asserts `hold_cases`.",
+    "default_ttl_minutes": null,
+    "assignee_field": "assignee",
+    "hold_cases": [
+      { "meta": {}, "state": "unclaimed", "holder": null },
+      { "meta": { "assignee": "coder" }, "state": "held", "holder": "coder" },
+      { "meta": { "assignment": "held", "owner": "@coder" }, "state": "held", "holder": "coder" },
+      { "meta": { "assignment": "held", "owner": "@lead", "assignee": "coder" }, "state": "held", "holder": "lead" },
+      { "meta": { "assignment": "released", "assignee": "coder" }, "state": "released", "holder": null },
+      { "meta": { "assignment": "resolved", "assignee": "coder" }, "state": "resolved", "holder": null }
+    ],
     "companion_fields": [
       "claimed_at",
       "ttl_minutes",
@@ -192,6 +202,58 @@
       "capture": "this row is not in the room yet; capture it first",
       "github": "this value belongs to the tool it came from; change it there"
     }
+  },
+  "epic": {
+    "_comment": "The board as people read it, worked out on the hub on read (`GET /rooms/{room}/board`, `GET /rooms/{room}/board/{key}`) and drawn as returned by the CLI (`mycelium board`, `board show`) and the app, so neither projects epics itself. It lists only rows in `assignment.assignable_namespaces` on their own; a decision or a failure shows only as a part of an epic, and a `failed` part reads as blocked. `latest` skips what an engine or the hub posted. An epic is a row other rows name with `parent_relation`; nothing about it is stored. `steps` lists its parts' keys in path order: a part's step is one past the furthest sibling it depends on (`task.dependency_relation`), so parts in one step run side by side, and parts caught in a dependency cycle go last together. `latest` is the newest message said in a part's thread. A part's state is the first of `part_states` that holds: settled, `blocked_by` set or in `failed`, waiting on an unsettled row, held by someone, else open. An ask's `text` is the first line of the message that mentions the member, else its first line. What is waiting on a member is `GET /rooms/{room}/waiting?for=<handle>` (`mycelium waiting`): an agent's ask for its approval that nobody has answered (each its own item, `contracts/approvals.json`), an ask it hasn't posted after in that thread, a floor given to it, or an open row it holds that waits on nothing and has no open parts, one item per thread in that order.",
+    "parent_relation": "part-of",
+    "part_states": [
+      "done",
+      "blocked",
+      "waiting",
+      "working",
+      "open"
+    ],
+    "part_fields": [
+      "key",
+      "title",
+      "episode",
+      "state",
+      "holder",
+      "assignee",
+      "waiting_on",
+      "blocked_by",
+      "latest",
+      "parts",
+      "parts_done",
+      "updated_at"
+    ],
+    "epic_fields": [
+      "lead",
+      "done",
+      "total",
+      "steps",
+      "path"
+    ],
+    "waiting_kinds": [
+      "approve",
+      "ask",
+      "turn",
+      "task"
+    ],
+    "waiting_fields": [
+      "kind",
+      "key",
+      "title",
+      "episode",
+      "epic",
+      "epic_title",
+      "sender",
+      "text",
+      "message_id",
+      "at",
+      "count",
+      "ask_kind"
+    ]
   },
   "schema": {
     "_comment": "Field types the two surfaces must infer identically, and the order options come back in. `cases` is a table both suites run through their own classifier: a field name, the values it holds, and the type both must call it. These drifted once (the GUI grew number-from-string and link rules the CLI never got, and sorted out-of-vocabulary options first where the CLI sorted them last), which is what a table asserted from both sides prevents.",

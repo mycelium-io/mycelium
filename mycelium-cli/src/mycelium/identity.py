@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
+    from mycelium_backend_client.models import WhoamiRead
 
 
 def get_session_path() -> Path:
@@ -63,10 +64,10 @@ LEGACY_ACTOR_SENTINEL = "cli-user"
 #: one process against one hub with one credential, so the answer is stable for
 #: the run; without this, a command that asks "who am I" several times (a board
 #: verb reads it per sub-call) would re-hit the hub each time.
-_WHOAMI_CACHE: dict[str, dict | None] = {}
+_WHOAMI_CACHE: dict[str, "WhoamiRead | None"] = {}
 
 
-def _hub_whoami(config: "MyceliumConfig") -> dict | None:
+def _hub_whoami(config: "MyceliumConfig") -> "WhoamiRead | None":
     """The hub's ``GET /api/whoami``, or None when the hub can't be reached.
 
     Called with whatever credential the CLI holds (or none). The hub derives the
@@ -81,17 +82,17 @@ def _hub_whoami(config: "MyceliumConfig") -> dict | None:
         return _WHOAMI_CACHE[url]
 
     from mycelium import client
+    from mycelium_backend_client.api.auth import whoami_api_whoami_get
+    from mycelium_backend_client.models import WhoamiRead
 
-    result: dict | None
+    result: WhoamiRead | None
     try:
-        with client.hub_client(config, timeout=5.0) as http:
-            resp = http.get("/api/whoami")
-        if resp.status_code == 401:
-            result = {"gated": True, "handle": None}
-        elif resp.status_code != 200:
-            result = None
+        with client.typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as http:
+            resp = whoami_api_whoami_get.sync_detailed(client=http)
+        if resp.status_code == 401:  # noqa: PLR2004
+            result = WhoamiRead(gated=True, handle=None)
         else:
-            result = resp.json()
+            result = resp.parsed if isinstance(resp.parsed, WhoamiRead) else None
     except Exception:
         result = None
     _WHOAMI_CACHE[url] = result
@@ -127,7 +128,7 @@ def resolve_actor(
     if answer.value:
         return answer.value
     who = _hub_whoami(config)
-    if require and who and who.get("gated"):
+    if require and who and who.gated:
         import typer
 
         raise typer.BadParameter(

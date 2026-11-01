@@ -12,7 +12,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
 
 import type { RunnerJob } from "@/lib/api";
 import { listRunners } from "@/mocks/runners";
-import { MachineAgents } from "./machine-agents";
+import { MachineAgents, restartSaid } from "./machine-agents";
 
 function job(over: Partial<RunnerJob> = {}): RunnerJob {
   return {
@@ -75,7 +75,10 @@ describe("MachineAgents", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^Restart 2…/ }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/catches up from the room/)).toBeInTheDocument();
+    // Claude's @reviewer comes back in its own session; opencode's @scribe can't.
+    expect(within(dialog).getByText(/Those in their own session keep their conversation/)).toBeInTheDocument();
+    expect(within(dialog).getByText("In its pane, w3:p2, in its own session")).toBeInTheDocument();
+    expect(within(dialog).getByText("In its pane, w5:p1, in a new session")).toBeInTheDocument();
     expect(within(dialog).getByText(/ask once more/)).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("checkbox", { name: "Restart @scribe" }));
@@ -84,6 +87,12 @@ describe("MachineAgents", () => {
       expect(restartMachineAgents).toHaveBeenCalledWith("morgans-mbp", [{ handle: "reviewer", room: "checkout" }]),
     );
     expect(await within(dialog).findByText("Waiting for a yes on morgans-mbp.")).toBeInTheDocument();
+  });
+
+  it("says what a restart keeps, by whether each agent resumes", () => {
+    expect(restartSaid([{ resumes: true }])).toContain("keeps its conversation");
+    expect(restartSaid([{ resumes: false }, {}])).toContain("catches up from the room");
+    expect(restartSaid([{ resumes: true }, { resumes: false }])).toContain("Those in a new session");
   });
 
   it("restarts nobody once every agent is unticked", async () => {

@@ -27,8 +27,8 @@ Now you can mention it in the room like anyone else:
 
 The hub sends your message to the agent and posts its answer in the room as
 `@researcher`. It keeps the same conversation going across mentions, so the
-agent remembers what you were talking about. The aligner can address it in a
-negotiation the same way.
+agent remembers what you were talking about. The conductor can give it a turn
+in a flow the same way.
 
 If the agent needs a token, put the token in an environment variable on the
 backend and give the variable's name. Only the name is saved in the room. The
@@ -56,7 +56,7 @@ The bridge has some safeguards:
   that's open to the internet.
 - **Bridged agents don't set each other off.** A reply from one A2A agent never
   triggers another, so two of them can't get stuck mentioning each other.
-  People, the aligner and your own agents still get replies.
+  People, the conductor and your own agents still get replies.
 - **No made-up replies.** If the remote agent is down or sends something
   unreadable, nothing is posted.
 
@@ -80,7 +80,7 @@ POST /api/rooms/{room}/a2a
 ```
 
 The message is posted in the room like any other. The call returns only an
-acknowledgement, not an answer. If the message mentions an agent in the room,
+acknowledgment, not an answer. If the message mentions an agent in the room,
 that agent answers in the room as usual.
 
 Anyone who can reach the hub can read any room's card, as the A2A spec
@@ -110,8 +110,9 @@ most recent calls in each direction with what came back or why each failed.
 mycelium network my-room
 ```
 
-In the app, a room's **Network** pane shows the same thing. Rooms without a
-bridge don't show that part.
+In the app, the room's settings page shows the same thing under
+**Connection** (open **Room settings** from the room's `…` menu). Rooms without
+a bridge don't show that part.
 
 To get the raw data:
 

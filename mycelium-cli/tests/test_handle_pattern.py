@@ -1,18 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Handle vs. slug shape rules (CLI side).
+"""Handle shape rules (CLI side).
 
 A *handle* is an identity and can be minted by a real IdP, so an email-shaped
-``preferred_username`` (Cisco SSO / Keycloak) must validate. A *slug* is a
-filename / composer trigger token and stays clean. The two stay separate
-patterns.
+``preferred_username`` (Cisco SSO / Keycloak) must validate.
 """
 
 import pytest
 from pydantic import ValidationError
 
-from mycelium.protocol import AgentManifest, MemoryLogEntry, UserManifest
+from mycelium.protocol import AgentManifest, UserManifest
 
 
 @pytest.mark.parametrize("model", [AgentManifest, UserManifest])
@@ -30,10 +28,3 @@ def test_handle_still_rejects_spaces_and_bad_leading_char(model: type) -> None:
         model(handle="has space")
     with pytest.raises(ValidationError):
         model(handle="!bad")
-
-
-def test_memory_slug_stays_clean() -> None:
-    """A slug is a filename, not an identity — `@` is not allowed."""
-    MemoryLogEntry(category="work", slug="cron-setup", content="ok")
-    with pytest.raises(ValidationError):
-        MemoryLogEntry(category="work", slug="user@example.com", content="ok")

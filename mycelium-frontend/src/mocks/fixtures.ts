@@ -13,7 +13,7 @@
  * Every room is a small online coffee shop at work, so a screenshot reads as
  * something a team actually does rather than as our own vocabulary:
  *   - `checkout`             — a rich, converged room: Apple Pay and the
- *     double-charge fix, a decision the aligner brokered, flows running in
+ *     double-charge fix, a decision the conductor brokered, flows running in
  *     task threads, pull requests with CI;
  *   - `subscription-pricing` — an in-progress negotiation over what the coffee
  *     subscription costs (nothing compiled yet), with a bridged A2A agent;
@@ -33,6 +33,9 @@ import type {
   MemoryGraphNode,
   PresenceMember,
   RoomFloor,
+  RoomSubscription,
+  Schedule,
+  VerifierFlag,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
 import { demoCheckout, isDemoScenario } from "./demo";
@@ -42,6 +45,8 @@ import { PATTERN_ROOMS } from "./patterns";
 // A fixed "now" so relative timestamps render deterministically. Callers
 // offset from this; nothing here calls Date.now(), so snapshots stay stable.
 const NOW = Date.parse("2026-08-28T17:30:00Z");
+/** The fixtures' "now", for a mock route that answers against the real clock. */
+export const MOCK_NOW = NOW;
 const iso = (minsAgo: number): string => new Date(NOW - minsAgo * 60_000).toISOString();
 
 export interface MockRoom {
@@ -53,6 +58,8 @@ export interface MockRoom {
   mas_id?: string | null;
   owner?: string | null;
   members?: string[];
+  /** The room's display title, once someone gives it one. */
+  title?: string | null;
   /** The pattern a room was loaded from, and the task its flow runs in. */
   pattern?: string | null;
   pattern_task?: string | null;
@@ -96,6 +103,14 @@ export interface MockMessage {
   metadata?: Record<string, unknown> | null;
 }
 
+/** A subscription as the hub sends it (`WakeSubscriptionRead`): the app reads
+ *  only `RoomSubscription`'s fields, but the hub always sends these too. */
+export interface MockSubscription extends RoomSubscription {
+  parts: boolean;
+  task: string | null;
+  created_at: string;
+}
+
 export interface RoomFixture {
   room: MockRoom;
   memories: MockMemory[];
@@ -108,12 +123,14 @@ export interface RoomFixture {
   presence?: PresenceMember[];
   /** Floors held in the room's threads right now, served beside presence. */
   floors?: RoomFloor[];
+  /** What the room's agents subscribed to, served beside presence. */
+  subscriptions?: MockSubscription[];
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
-  // Wire frames served at GET /messages/wire, feeding the Network pane's message feed.
+  // Wire frames served at GET /messages/wire, which the channel and Stream read.
   // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
-  // under `content`, plus the flat fields the inspector reads).
+  // under `content`, plus the flat fields the channel and Stream read).
   wire?: Record<string, unknown>[];
   /** The room's A2A bridge, served at GET /a2a/state. Undefined means "no
    *  bridge" — the handler answers with an empty one, like the backend. */
@@ -122,6 +139,12 @@ export interface RoomFixture {
    *  that mention each reference, exactly as the hub returns it, so the mock
    *  exercises the same attach path the real one does. */
   status?: RoomStatus;
+  /** The room's schedules, served at GET /schedules; runs and edits are
+   *  session-local, like the rest of the mock's writes. */
+  schedules?: Schedule[];
+  /** The verifier's lines, served at GET /verifier/flags; *It's fine* is
+   *  session-local. */
+  verifierFlags?: VerifierFlag[];
 }
 
 /**
@@ -148,7 +171,10 @@ function buildMockGraph(
     outbound: outbound.get(m.key) ?? 0,
     inbound: inbound.get(m.key) ?? 0,
   }));
-  return { nodes, edges };
+  // The hub always sends `relation` and `error`, null when an edge has none,
+  // so the hand-written edges only need to name them when they're set.
+  const full = edges.map((e) => ({ ...e, relation: e.relation ?? null, error: e.error ?? null }));
+  return { nodes, edges: full };
 }
 
 // ── agent manifests (YAML strings — the UI parses description/adapter) ─────────
@@ -157,7 +183,7 @@ const agentManifest = (description: string, adapter = "claude_code", owner?: str
   `adapter: ${adapter}\ndescription: "${description}"\n` + (owner ? `owner: ${owner}\n` : "");
 
 /** An external A2A agent's manifest: the card the hub resolved plus what it
- *  advertises, the fields the roster and the Network pane read. */
+ *  advertises, the fields the roster and the room's connection settings read. */
 const a2aManifest = (description: string, card: string, skills: string[]): string =>
   `adapter: a2a\ndescription: "${description}"\n` +
   `a2a_card: ${card}\na2a_endpoint: ${card}/a2a\n` +
@@ -173,7 +199,7 @@ const a2aManifest = (description: string, card: string, skills: string[]): strin
 const checkoutEpisode = (shortId: string): string =>
   `urn:ioc:mycelium:episode:checkout:${shortId}`;
 
-// The launch-day call the aligner brokered. It is an *orphan* episode — no board
+// The launch-day call the conductor brokered. It is an *orphan* episode — no board
 // row is bound to it — because a task's thread is the task's own, not the
 // conversation that produced it. The two tasks it compiled each carry their own
 // thread below; this URN stays the negotiation's record (Episodes rail, message feed).
@@ -191,16 +217,16 @@ const OLD_FORM_THREAD = checkoutEpisode("d2b8e0");
 // The "add Apple Pay" task's thread, where the release flow runs.
 const APPLE_PAY_THREAD = checkoutEpisode("d6f8b0");
 
-// The one call the aligner brokered: which day Apple Pay goes on. Morgan wanted
+// The one call the conductor brokered: which day Apple Pay goes on. Morgan wanted
 // thursday, before the sale; builder wanted a day of test orders first and
 // countered friday morning. They settled on friday morning, before the sale
 // email. A short, ordinary decision, not a set piece.
 //
 // The *chat* is the source. Each reply is a channel broadcast (`say`), and the
-// aligner reads it and emits the structured messages it implies. So one move drives
+// conductor reads it and emits the structured messages it implies. So one move drives
 // three things — the broadcast, the coordination_tick it interprets that from,
-// and the message the Network feed shows — and they can't disagree. `ask`
-// is the aligner's prompt that precedes a reply (it addresses one at a time).
+// and the raw message behind it — and they can't disagree. `ask`
+// is the conductor's prompt that precedes a reply (it addresses one at a time).
 const CHECKOUT_CONSENSUS = { launch: "friday am" };
 interface CheckoutMove {
   round: number;
@@ -230,7 +256,7 @@ const checkoutMessageChain: MyceliumMessage[] = [
       protocol: "ioc",
       kind: "exchange",
       subkind: "tick",
-      participants: { actors: [{ id: "aligner", role: "mediator" }, { id: m.who, role: "agent" }] },
+      participants: { actors: [{ id: "conductor", role: "mediator" }, { id: m.who, role: "agent" }] },
       message: { id: `m${i + 1}`, parents: i ? [`m${i}`] : [], episode: CHECKOUT_EPISODE },
       context: { topic: "urn:concept:mycelium:checkout" },
     },
@@ -243,7 +269,7 @@ const checkoutMessageChain: MyceliumMessage[] = [
       subkind: "converged",
       participants: {
         actors: [
-          { id: "aligner", role: "mediator" },
+          { id: "conductor", role: "mediator" },
           { id: "operator", role: "human" },
           { id: "builder", role: "agent" },
         ],
@@ -259,9 +285,9 @@ const checkoutMessageChain: MyceliumMessage[] = [
 ];
 
 // The mediated negotiation as it appears on the wire: for each move, the
-// aligner's optional prompt and the agent's reply (both chat broadcasts, shown
-// in the channel), then the coordination_tick the aligner emits from that reply
-// (feeds the Network pane, filtered out of the channel). Interleaved and
+// conductor's optional prompt and the agent's reply (both chat broadcasts, shown
+// in the channel), then the coordination_tick the conductor emits from that reply
+// (in the wire history, filtered out of the channel). Interleaved and
 // timestamped so the transcript reads in order — the chat drives the messages.
 const checkoutNegotiation: MockMessage[] = (() => {
   const out: MockMessage[] = [];
@@ -269,12 +295,12 @@ const checkoutNegotiation: MockMessage[] = (() => {
   const step = () => iso((at -= 0.2));
   checkoutMoves.forEach((m, i) => {
     if (m.ask) {
-      out.push({ id: `neg-ask-${i}`, sender_handle: "aligner", message_type: "broadcast", content: m.ask, created_at: step() });
+      out.push({ id: `neg-ask-${i}`, sender_handle: "conductor", message_type: "broadcast", content: m.ask, created_at: step() });
     }
     out.push({ id: `neg-say-${i}`, sender_handle: m.who, message_type: "broadcast", content: m.say, created_at: step() });
     out.push({
       id: `tick-${i + 1}`,
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       message_type: "coordination_tick",
       content: JSON.stringify({ round: m.round, participant_id: m.who, action: m.action, current_offer: m.offer, episode: CHECKOUT_EPISODE }),
       created_at: step(),
@@ -285,10 +311,10 @@ const checkoutNegotiation: MockMessage[] = (() => {
 })();
 
 // The message chain as persister bus frames: bare `{header, payload}` under content,
-// with the flat sender_handle/message_type/created_at the inspector reads.
+// with the flat sender_handle/message_type/created_at the channel and Stream read.
 const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((env, i) => ({
   message_type: `l9_${env.header.kind}`,
-  sender_handle: env.header.participants?.actors?.[0]?.id ?? "aligner",
+  sender_handle: env.header.participants?.actors?.[0]?.id ?? "conductor",
   created_at: iso(44 - i),
   content: env,
 }));
@@ -375,13 +401,13 @@ const checkoutEpisodeSummary: EpisodeSummary = {
   topic: "urn:concept:mycelium:checkout",
   outcome: "converged",
   subkind: "converged",
-  participants: ["operator", "builder", "aligner"],
+  participants: ["operator", "builder", "conductor"],
   metrics: { mpc: 0.86, gar: 0.79, scr: 0.91, provenance_weight: 0.74, participants: 3 },
   assignments: { launch: "friday am" },
   tasks: ["work/turn-on-apple-pay", "work/remove-old-card-form"],
   message_count: 3,
   updated_at: iso(42),
-  updated_by: "aligner",
+  updated_by: "conductor",
 };
 
 // A run the conductor is walking right now inside the "turn on Apple Pay"
@@ -552,62 +578,109 @@ const checkoutReleaseEpisode: EpisodeSummary = {
 
 // "Help them agree" (concord) run on the double-charge decision: reviewer
 // wants refunds automatic, builder wants support to check first, and Morgan
-// is least happy with the first pick. Morgan's fix clears the bar for all
-// three, and the run ends agreed. Scorecards and the close carry structured
-// lines, so the thread draws them as tables and a result line.
+// is least happy with the first pick. Morgan's fix answers everyone's
+// objection and meets the bar for all three, and the run ends agreed.
+// Scorecards and the close carry structured lines, so the thread draws each
+// member's view in words, with the numbers behind a toggle.
 const REFUND_THREAD = checkoutEpisode("a1c3e5");
 const REFUND_CAST = ["builder", "reviewer", "operator"];
 const refundOptions = [
-  { label: "A", text: "Refund the second charge automatically, right away.", authors: ["reviewer"] },
-  { label: "B", text: "Send every double charge to support to check before refunding.", authors: ["builder"] },
+  {
+    label: "A",
+    text: "Refund the second charge automatically, right away.",
+    authors: ["reviewer"],
+    why: { reviewer: "The customer did nothing wrong and shouldn't have to wait." },
+  },
+  {
+    label: "B",
+    text: "Send every double charge to support to check before refunding.",
+    authors: ["builder"],
+    why: { builder: "Some double charges are two real orders, and refunding those loses money." },
+  },
   {
     label: "C",
     text: "Refund automatically when the second charge is under $50; support checks anything larger within a day.",
     authors: ["operator"],
+    why: { operator: "Small ones are nearly always the button bug, and big ones are worth a look." },
   },
 ];
+const refundTable = {
+  A: { builder: 60, reviewer: 90, operator: 40 },
+  B: { builder: 80, reviewer: 35, operator: 75 },
+  C: { builder: 78, reviewer: 85, operator: 88 },
+};
+const refundReasons = {
+  A: {
+    builder: "Risks refunding real repeat orders",
+    reviewer: "Fast, and the customer isn't blamed",
+    operator: "I can't refund big orders blind",
+  },
+  B: {
+    builder: "Safe, though slow for the customer",
+    reviewer: "Makes a customer wait on something that's our fault",
+    operator: "Slow, but nothing goes out unchecked",
+  },
+  C: {
+    builder: "Most real repeat orders are over $50, so this covers my worry",
+    reviewer: "Fast for nearly everyone, and a day is fine for the rest",
+    operator: "This is what I'd sign off on",
+  },
+};
+/** Every member rated the two reference outcomes 0 and 100, so a rating is
+ *  placed where it reads. */
+const refundPlaced = Object.fromEntries(
+  Object.entries(refundTable).map(([label, row]) => [
+    label,
+    Object.fromEntries(Object.entries(row).map(([h, r]) => [h, r / 100])),
+  ]),
+);
 const refundFirstPick = {
   outcome: "infeasible" as const,
   pick: "A",
   text: refundOptions[0].text,
-  threshold: 70,
+  threshold: 60,
   options: refundOptions.slice(0, 2),
-  table: {
-    A: { builder: 60, reviewer: 90, operator: 40 },
-    B: { builder: 80, reviewer: 35, operator: 75 },
-  },
+  table: { A: refundTable.A, B: refundTable.B },
+  placed: { A: refundPlaced.A, B: refundPlaced.B },
+  reasons: { A: refundReasons.A, B: refundReasons.B },
   cast: REFUND_CAST,
-  ratings: { builder: 60, reviewer: 90, operator: 40 },
-  lowest: 40,
+  ratings: refundTable.A,
+  lowest: 0.4,
   missing: [],
   least_happy: "operator",
+  short: [{ member: "operator", placed: 0.4, why: refundReasons.A.operator }],
 };
 const refundAgreed = {
   outcome: "feasible" as const,
   pick: "C",
   text: refundOptions[2].text,
-  threshold: 70,
+  threshold: 60,
   options: refundOptions,
-  table: { ...refundFirstPick.table, C: { builder: 78, reviewer: 85, operator: 88 } },
+  table: refundTable,
+  placed: refundPlaced,
+  reasons: refundReasons,
   cast: REFUND_CAST,
-  ratings: { builder: 78, reviewer: 85, operator: 88 },
-  lowest: 78,
+  ratings: refundTable.C,
+  lowest: 0.78,
   missing: [],
   least_happy: null,
+  short: [],
 };
 const concordSteps: FlowStep[] = [
+  { id: "anchor", to: "all", collect: "anchors", next: "propose" },
   { id: "propose", to: "all", collect: "options", next: "score" },
   { id: "score", to: "all", collect: "scores", next: "pick" },
   {
     id: "pick",
     kind: "select",
-    threshold: 0.7,
-    max_repairs: 2,
-    next: { feasible: "agreed", infeasible: "repair", stuck: "no_deal" },
+    threshold: 0.6,
+    max_repairs: 5,
+    next: { feasible: "agreed", infeasible: "repair", stuck: "best", nothing: "no_deal" },
   },
   { id: "repair", to: "bottleneck", collect: "options", next: "rescore" },
   { id: "rescore", to: "all", collect: "scores", next: "pick" },
   { id: "agreed", end: "converged" },
+  { id: "best", end: "resolved" },
   { id: "no_deal", end: "rejected" },
 ];
 const checkoutConcordEpisode: EpisodeSummary = {
@@ -617,7 +690,7 @@ const checkoutConcordEpisode: EpisodeSummary = {
   outcome: "converged",
   subkind: "converged",
   participants: [...REFUND_CAST, "conductor"],
-  // The summary carries the aligner's quality numbers only; a run's
+  // The summary carries the episode's quality numbers only; a run's
   // satisfaction is in its record and on its close.
   metrics: null,
   assignments: { decision: refundOptions[2].text },
@@ -630,30 +703,31 @@ const checkoutConcordEpisode: EpisodeSummary = {
   flow: {
     name: "concord",
     description:
-      "Help them agree. Everyone suggests, everyone rates, the least happy agent suggests a fix, until one option clears the bar for all.",
+      "Help them agree. Everyone rates two shared reference outcomes, proposes an option and says why, and rates every option with a reason; the member least happy with the best one proposes something new that answers the objections, until it meets everyone's bar or the best found stands.",
     roles: [],
-    max_steps: 9,
+    max_steps: 20,
     bound: {},
     cast: REFUND_CAST,
     ask: "when someone is charged twice, refund it automatically or send it to support first?",
     steps: concordSteps,
   },
   trace: [
-    { step: "propose", turn: 1, asked: REFUND_CAST, stances: {}, stance: null, next: "score", at: iso(5.2) },
-    { step: "score", turn: 2, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(4.6) },
+    { step: "anchor", turn: 1, asked: REFUND_CAST, stances: {}, stance: null, next: "propose", at: iso(5.4) },
+    { step: "propose", turn: 2, asked: REFUND_CAST, stances: {}, stance: null, next: "score", at: iso(5.2) },
+    { step: "score", turn: 3, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(4.6) },
     {
       step: "pick",
-      turn: 2,
-      select: { outcome: "infeasible", pick: "A", lowest: 40, missing: [], least_happy: "operator" },
+      turn: 3,
+      select: { outcome: "infeasible", pick: "A", lowest: 0.4, missing: [], least_happy: "operator" },
       next: "repair",
       at: iso(4.5),
     },
-    { step: "repair", turn: 3, asked: ["operator"], stances: {}, stance: null, next: "rescore", at: iso(3.8) },
-    { step: "rescore", turn: 4, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(2.8) },
+    { step: "repair", turn: 4, asked: ["operator"], stances: {}, stance: null, next: "rescore", at: iso(3.8) },
+    { step: "rescore", turn: 5, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(2.8) },
     {
       step: "pick",
-      turn: 4,
-      select: { outcome: "feasible", pick: "C", lowest: 78, missing: [], least_happy: null },
+      turn: 5,
+      select: { outcome: "feasible", pick: "C", lowest: 0.78, missing: [], least_happy: null },
       next: "agreed",
       at: iso(2.7),
     },
@@ -675,47 +749,54 @@ function refundThread(): MockMessage[] {
     ...(conductor ? { metadata: { conductor } } : {}),
   });
   const turn = (step: string, to: string, turnNo: number, mins: number) =>
-    post("conductor", `concord · ${step} · turn ${turnNo} of 9 · ${to}`, mins, {
+    post("conductor", `concord · ${step} · turn ${turnNo} of 20 · ${to}`, mins, {
       event: "turn",
       protocol: "concord",
       step,
       to,
       turn: turnNo,
-      cap: 9,
+      cap: 20,
     });
+  const rated = (label: "A" | "B" | "C") => (h: keyof typeof refundReasons.A) =>
+    `${label}: ${refundTable[label][h]} - ${refundReasons[label][h]}`;
   return [
-    post("conductor", "Running concord with builder, reviewer, operator as members.", 5.5, {
+    post("conductor", "Running concord with builder, reviewer, operator as members.", 5.6, {
       event: "open",
       protocol: "concord",
       roles: {},
       members: REFUND_CAST,
       steps: concordSteps,
     }),
-    ...REFUND_CAST.map((h) => turn("propose", h, 1, 5.4)),
-    post("builder", "Send them to support first. Some double charges are two real orders, and refunding those loses money.", 5.3),
-    post("reviewer", "Refund automatically, right away. The customer did nothing wrong and shouldn't have to wait.", 5.3),
-    post("operator", "Refund automatically, right away.", 5.2),
-    ...REFUND_CAST.map((h) => turn("score", h, 2, 5.0)),
-    post("builder", "A risks refunding real repeat orders; B is safe but slow for the customer.", 4.8),
-    post("reviewer", "B makes a customer wait on something that's our fault.", 4.7),
-    post("operator", "A is right for small amounts but I'm not comfortable refunding big orders blind. B is slow.", 4.6),
-    post("conductor", "pick: A, @operator at 40", 4.5, { event: "select", step: "pick", next: "repair", select: refundFirstPick }),
-    turn("repair", "operator", 3, 4.4),
-    post(
-      "operator",
-      "Refund automatically when the second charge is under $50; support checks anything larger within a day. Small ones are nearly always the button bug, and big ones are worth a look.",
-      3.8,
-    ),
-    ...REFUND_CAST.map((h) => turn("rescore", h, 4, 3.6)),
-    post("builder", "Most real repeat orders are over $50, so this covers my worry.", 3.2),
-    post("reviewer", "Fast for nearly everyone, and a day is fine for the rest.", 3.0),
-    post("operator", "This is what I'd sign off on.", 2.9),
-    post("conductor", "pick: C, everyone at 70+", 2.7, { event: "select", step: "pick", next: "agreed", select: refundAgreed }),
-    post("conductor", "✓ Everyone's on board: going with C.", 2.6, {
+    ...REFUND_CAST.map((h) => turn("anchor", h, 1, 5.55)),
+    post("builder", "bad: 0 - customers charged twice and nobody notices\nideal: 100 - every real double charge refunded the same day, nothing else", 5.5),
+    post("reviewer", "bad: 0 - customers wait days for our mistake\nideal: 100 - refunded before they notice", 5.5),
+    post("operator", "bad: 0 - we refund real orders and lose the money\nideal: 100 - only true duplicates go back, fast", 5.45),
+    ...REFUND_CAST.map((h) => turn("propose", h, 2, 5.4)),
+    post("builder", `${refundOptions[1].text}\nwhy: ${refundOptions[1].why.builder}`, 5.3),
+    post("reviewer", `${refundOptions[0].text}\nwhy: ${refundOptions[0].why.reviewer}`, 5.3),
+    post("operator", "Refund the second charge automatically, right away.", 5.2),
+    ...REFUND_CAST.map((h) => turn("score", h, 3, 5.0)),
+    post("builder", [rated("A")("builder"), rated("B")("builder")].join("\n"), 4.8),
+    post("reviewer", [rated("A")("reviewer"), rated("B")("reviewer")].join("\n"), 4.7),
+    post("operator", [rated("A")("operator"), rated("B")("operator")].join("\n"), 4.6),
+    post("conductor", "pick: A: operator is short of the bar, because i can't refund big orders blind", 4.5, {
+      event: "select",
+      step: "pick",
+      next: "repair",
+      select: refundFirstPick,
+    }),
+    turn("repair", "operator", 4, 4.4),
+    post("operator", `${refundOptions[2].text}\nwhy: ${refundOptions[2].why.operator}`, 3.8),
+    ...REFUND_CAST.map((h) => turn("rescore", h, 5, 3.6)),
+    post("builder", rated("C")("builder"), 3.2),
+    post("reviewer", rated("C")("reviewer"), 3.0),
+    post("operator", rated("C")("operator"), 2.9),
+    post("conductor", "pick: C: everyone meets the bar", 2.7, { event: "select", step: "pick", next: "agreed", select: refundAgreed }),
+    post("conductor", "✓ Everyone meets the bar: going with C.", 2.6, {
       event: "close",
       protocol: "concord",
       outcome: "converged",
-      steps: 4,
+      steps: 5,
       reason: "reached `agreed`",
       pick: "C",
       text: refundOptions[2].text,
@@ -892,6 +973,22 @@ function alertsThread(): MockMessage[] {
 // something in every attention filter (needs-you, in-flight, resolved) and a
 // column for every inferred field, without any in-app demo layer.
 const checkoutBoardRows: MockMemory[] = [
+  // The epic: a task with parts. Each part names it with `part-of`, and the
+  // board draws it as a path, ordered by the parts' `depends-on`.
+  {
+    key: "work/apple-pay-for-everyone",
+    value:
+      "Apple Pay for everyone\n\n" +
+      "Customers can pay with Apple Pay at checkout before the spring sale, " +
+      "without double charges.",
+    meta: { kind: "action", status: "open", assignee: "@builder", priority: "high" },
+    content_text: "Apple Pay at checkout for everyone before the spring sale, without double charges.",
+    created_by: "operator",
+    updated_by: "operator",
+    version: 1,
+    updated_at: iso(60 * 25),
+    episode: checkoutEpisode("e0a2c4"),
+  },
   // What the launch-day agreement compiled into. Two tasks from one negotiation
   // are two tasks with two threads, not two rows sharing the conversation that
   // produced them — so each carries its own episode, not the negotiation's.
@@ -901,10 +998,18 @@ const checkoutBoardRows: MockMemory[] = [
       "Turn on Apple Pay for everyone\n\n" +
       "Behind the `checkout.apple_pay` switch, off for now. Don't turn it on until the " +
       "test orders pass and @reviewer signs off. Waiting on the Apple Pay PR (#502).",
-    meta: { "depends-on": ["work/add-apple-pay", "work/review-double-charge-fix"], kind: "action", status: "open", assignee: "@builder", priority: "high", issue: "#502" },
+    meta: {
+      "part-of": "work/apple-pay-for-everyone",
+      "depends-on": ["work/add-apple-pay", "work/review-double-charge-fix", "failed/test-on-real-iphone"],
+      kind: "action",
+      status: "open",
+      assignee: "@builder",
+      priority: "high",
+      issue: "#502",
+    },
     content_text: "Turn on Apple Pay for everyone, behind a switch. Waiting on the test orders.",
-    created_by: "aligner",
-    updated_by: "aligner",
+    created_by: "conductor",
+    updated_by: "conductor",
     version: 1,
     updated_at: iso(40),
     episode: LAUNCH_THREAD,
@@ -914,8 +1019,8 @@ const checkoutBoardRows: MockMemory[] = [
     value: "Remove the old card form after the sale",
     meta: { "depends-on": ["work/turn-on-apple-pay"], kind: "action", status: "open", assignee: "@builder", issue: "#499" },
     content_text: "Remove the old card form once Apple Pay has run clean through the sale.",
-    created_by: "aligner",
-    updated_by: "aligner",
+    created_by: "conductor",
+    updated_by: "conductor",
     version: 1,
     updated_at: iso(40),
     episode: OLD_FORM_THREAD,
@@ -943,6 +1048,8 @@ const checkoutBoardRows: MockMemory[] = [
     key: "failed/test-on-real-iphone",
     value: "Test Apple Pay on a real iPhone",
     meta: {
+      "part-of": "work/apple-pay-for-everyone",
+      "depends-on": ["work/add-apple-pay"],
       status: "blocked",
       kind: "blocked",
       owner: "@operator",
@@ -960,7 +1067,7 @@ const checkoutBoardRows: MockMemory[] = [
   {
     key: "work/review-double-charge-fix",
     value: "Review the double-charge fix (PR #504)",
-    meta: { "depends-on": ["work/stripe-payments"],
+    meta: { "part-of": "work/apple-pay-for-everyone", "depends-on": ["work/stripe-payments"],
       status: "in_review",
       kind: "review",
       owner: "@reviewer",
@@ -980,7 +1087,7 @@ const checkoutBoardRows: MockMemory[] = [
   {
     key: "work/add-apple-pay",
     value: "Add Apple Pay to checkout",
-    meta: { "depends-on": ["work/stripe-payments"],
+    meta: { "part-of": "work/apple-pay-for-everyone", "depends-on": ["work/stripe-payments"],
       status: "in_progress",
       kind: "action",
       owner: "@builder",
@@ -1038,6 +1145,7 @@ const checkoutBoardRows: MockMemory[] = [
     key: "work/stripe-payments",
     value: "Move card payments to Stripe",
     meta: {
+      "part-of": "work/apple-pay-for-everyone",
       status: "resolved",
       kind: "action",
       owner: "@builder",
@@ -1101,8 +1209,8 @@ const checkout: RoomFixture = {
       episode: checkoutEpisode("b3d5f7"),
     },
     {
-      key: "agents/aligner",
-      value: agentManifest("Helps members agree when they disagree.", "engine"),
+      key: "agents/conductor",
+      value: agentManifest("Runs a flow in a task's thread, like helping members agree.", "engine"),
       created_by: "operator",
       version: 1,
       updated_at: iso(60 * 20),
@@ -1112,7 +1220,7 @@ const checkout: RoomFixture = {
       key: "decisions/apple-pay-launch",
       value: "Turn Apple Pay on friday morning, after a day of test orders on real phones. Keep the old card form as a fallback through the sale.",
       content_text: "Turn Apple Pay on friday morning, after a day of test orders on real phones. Keep the old card form as a fallback through the sale.",
-      created_by: "aligner",
+      created_by: "conductor",
       version: 3,
       updated_at: iso(41),
       episode: checkoutEpisode("e6a8c0"),
@@ -1196,27 +1304,29 @@ const checkout: RoomFixture = {
     { id: "h2", sender_handle: "builder", message_type: "broadcast", content: "on it. moving card payments to stripe first, apple pay is easier on top of that.", created_at: iso(1440) },
     { id: "h3", sender_handle: "builder", message_type: "broadcast", content: "stripe payments are merged (#499). starting on apple pay.", created_at: iso(1400) },
     // ── Apple Pay gets built, and the work hanging off it ──
-    { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. it's up as #502 so it can go to staging.", created_at: iso(140) },
+    { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is approved and green, so it can go to staging.", created_at: iso(140) },
     { id: "h5", sender_handle: "reviewer", message_type: "broadcast", content: "i'll do the testing. i need it on staging to try real phones and real cards.", created_at: iso(130) },
     { id: "h6", sender_handle: "operator", message_type: "broadcast", content: "adding an alert for when payments start failing, so we hear about it before customers email us.", created_at: iso(95) },
     { id: "h7", sender_handle: "builder", message_type: "broadcast", content: "some order emails are going out twice when stripe retries a webhook. filing it, i'll fix it after apple pay.", created_at: iso(58) },
+    // Builder forgets #499 merged yesterday (h3): the verifier's darker line.
+    { id: "h7b", sender_handle: "builder", message_type: "broadcast", content: "apple pay sits on top of #499, which still needs a review before it can merge.", created_at: iso(55) },
     // ── the test-first correction ──
     { id: "q1", sender_handle: "reviewer", message_type: "broadcast", content: "can we switch apple pay on before i've tried a real iphone? it passes in the simulator.", created_at: iso(52) },
     { id: "q2", sender_handle: "operator", message_type: "broadcast", content: "no. the simulator doesn't use real cards. if it breaks on a real phone during the sale we lose orders. test first.", created_at: iso(51) },
     { id: "q3", sender_handle: "reviewer", message_type: "broadcast", content: "fair. i'll test on staging and keep it switched off until then.", created_at: iso(50) },
     // ── the launch-day call ──
-    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@builder @reviewer we need a day to switch apple pay on. @aligner run it.", created_at: iso(48) },
+    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@conductor concord @~operator @~builder: we need a day to switch apple pay on.", created_at: iso(48) },
     { id: "a2", sender_handle: "operator", message_type: "coordination_join", content: JSON.stringify({ handle: "operator", intent: "on before the sale email", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     { id: "a3", sender_handle: "builder", message_type: "coordination_join", content: JSON.stringify({ handle: "builder", intent: "a full day of test orders first", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
-    // The aligner brokers a couple of short rounds. Each reply is a chat
-    // broadcast; the aligner reads it and emits the coordination_tick the Network
-    // pane reconstructs. The chat is the source (see checkoutMoves).
+    // The conductor brokers a couple of short rounds. Each reply is a chat
+    // broadcast; the conductor reads it and emits a coordination_tick
+    // from it. The chat is the source (see checkoutMoves).
     ...checkoutNegotiation,
-    { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
+    { id: "a6", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
     // The room files the work the call breaks into. The two task-created notices
     // land right after this line (see the `l9` feed below), so the chat reads
     // "here is the work" → the tasks, in sequence.
-    { id: "file1", sender_handle: "aligner", message_type: "broadcast", content: "settled: test orders thursday, apple pay on friday morning. filing the work:", created_at: iso(40) },
+    { id: "file1", sender_handle: "conductor", message_type: "broadcast", content: "settled: test orders thursday, apple pay on friday morning. filing the work:", created_at: iso(40) },
     { id: "a7", sender_handle: "builder", message_type: "broadcast", content: "stripe has been live a full day. 312 orders, no failed payments.", created_at: iso(30) },
     // ── follow-on work ──
     { id: "h8", sender_handle: "builder", message_type: "broadcast", content: "the double-charge fix is up for review, #504.", created_at: iso(14) },
@@ -1224,9 +1334,149 @@ const checkout: RoomFixture = {
     // Two agents staging the "turn on Apple Pay" row talk inside its thread. The
     // channel does not carry this, so the room hears the pings below instead,
     // and the prose reads in the thread pane.
+    // After the run agrees, the decision is put to Morgan in its own task's
+    // thread: what the board's "Waiting on you" lists until Morgan answers there.
+    { id: "r1", sender_handle: "reviewer", message_type: "broadcast", content: "@operator we agreed to refund double charges under $50 automatically and send the rest to support. Can I close this?", created_at: iso(2), episode: REFUND_THREAD },
     { id: "t1", sender_handle: "builder", message_type: "broadcast", content: "apple pay is behind the `checkout.apple_pay` switch, off for now.", created_at: iso(22), episode: LAUNCH_THREAD },
     { id: "t2", sender_handle: "reviewer", message_type: "broadcast", content: "don't switch it on until i've placed test orders on a real phone. i'll post the results here.", created_at: iso(21), episode: LAUNCH_THREAD },
     { id: "t3", sender_handle: "builder", message_type: "broadcast", content: "sounds good, waiting on you.", created_at: iso(20), episode: LAUNCH_THREAD },
+    { id: "t4", sender_handle: "builder", message_type: "broadcast", content: "reviewer approved #502, so i'm putting it on staging for the test orders.", created_at: iso(19), episode: LAUNCH_THREAD },
+    // Builder asks Morgan's OK to flip it: an approval the thread draws as a
+    // card, and the board lists under Waiting on you until it's answered.
+    {
+      id: "t5",
+      sender_handle: "builder",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Turn Apple Pay on for everyone on Friday at 9:00",
+      created_at: iso(4),
+      episode: LAUNCH_THREAD,
+      metadata: {
+        ask: {
+          id: "7e21c0a4",
+          kind: "approve",
+          to: "operator",
+          question: "Turn Apple Pay on for everyone on Friday at 9:00",
+          happens: "The checkout.apple_pay switch turns on for every customer.",
+          why: "Test orders passed on a real iPhone and a Pixel, and #502 is merged.",
+          undo: "Turn the switch off. It takes effect within a minute.",
+        },
+      },
+    },
+    // Asks in the room's channel, one of each kind: reviewer's pick, builder's
+    // open question with a draft answer, and an approve Jamie answered for
+    // Morgan, which reads as a folded line.
+    {
+      id: "k1",
+      sender_handle: "reviewer",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Which of these should go in before the sale?",
+      created_at: iso(3),
+      metadata: {
+        ask: {
+          id: "3f9c1a2b",
+          kind: "choose",
+          to: "operator",
+          question: "Which of these should go in before the sale?",
+          why: "All three are small. The first two would have caught last week's double charges before a customer did.",
+          options: [
+            {
+              id: "1",
+              label: "Refund a double charge automatically when it's under $50, and send the rest to support",
+              detail: "Customers get their money back in minutes.",
+            },
+            { id: "2", label: "Alert the room when one order is charged twice, with the order and the card's last four digits" },
+            { id: "3", label: "Move the receipt email off the checkout request" },
+          ],
+          multiple: true,
+          recommend: ["1", "2"],
+        },
+      },
+    },
+    {
+      id: "k4",
+      sender_handle: "builder",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Which payment providers should the sale take?",
+      created_at: iso(7),
+      metadata: {
+        ask: {
+          id: "c81d0e55",
+          kind: "choose",
+          to: "operator",
+          question: "Which payment providers should the sale take?",
+          options: [
+            { id: "1", label: "Stripe, with Apple Pay and Google Pay turned on for every customer" },
+            { id: "2", label: "Adyen, for the customers in the EU whose banks ask for a second check" },
+            { id: "3", label: "PayPal" },
+          ],
+          multiple: true,
+          recommend: ["1"],
+          answer: {
+            kind: "choose",
+            question: "Which payment providers should the sale take?",
+            for: "operator",
+            by: "operator",
+            at: iso(6),
+            choices: ["1", "2"],
+            chosen: [
+              "Stripe, with Apple Pay and Google Pay turned on for every customer",
+              "Adyen, for the customers in the EU whose banks ask for a second check",
+            ],
+            text: "PayPal after the sale",
+          },
+        },
+      },
+    },
+    {
+      id: "k2",
+      sender_handle: "builder",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Where is checkout slowest for you right now?",
+      created_at: iso(2),
+      metadata: {
+        ask: {
+          id: "9d4e6f10",
+          kind: "question",
+          to: "operator",
+          question: "Where is checkout slowest for you right now?",
+          suggest: "The card form takes a few seconds to appear.",
+        },
+      },
+    },
+    {
+      id: "k3",
+      sender_handle: "reviewer",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Merge #504 before the sale?",
+      created_at: iso(5),
+      metadata: {
+        ask: {
+          id: "5b2c8e71",
+          kind: "approve",
+          to: "operator",
+          question: "Merge #504 before the sale?",
+          why: "The double-charge fix is reviewed and CI is green.",
+          answer: {
+            kind: "approve",
+            question: "Merge #504 before the sale?",
+            for: "operator",
+            by: "jamie",
+            at: iso(4),
+            decision: "approved",
+            text: "merge it, I'll watch the refunds",
+          },
+        },
+      },
+    },
+    // The parts' own threads, so each running part has a latest line.
+    { id: "p1", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is up, with the button behind the switch.", created_at: iso(26), episode: APPLE_PAY_THREAD },
+    { id: "p2", sender_handle: "reviewer", message_type: "broadcast", content: "approved #502. ci is green, so it can go to staging.", created_at: iso(18), episode: APPLE_PAY_THREAD },
+    { id: "p3", sender_handle: "reviewer", message_type: "broadcast", content: "reading #504 now. the refund path looks right, checking the retry case.", created_at: iso(9), episode: checkoutEpisode("c5e7a9") },
     // The old card form's own thread: a leftover chased down.
     { id: "r1", sender_handle: "builder", message_type: "broadcast", content: "12 orders last week still used the old card form after stripe went live. all from one cached page.", created_at: iso(16), episode: OLD_FORM_THREAD },
     { id: "r2", sender_handle: "builder", message_type: "broadcast", content: "cleared the cache. every order today went through stripe.", created_at: iso(15), episode: OLD_FORM_THREAD },
@@ -1285,12 +1535,157 @@ const checkout: RoomFixture = {
     { thread: "d2b8e0", episode: OLD_FORM_THREAD, key: "work/remove-old-card-form", title: "Remove the old card form after the sale", holder: "conductor", speakers: ["operator"] },
     { thread: "d6f8b0", episode: APPLE_PAY_THREAD, key: "work/add-apple-pay", title: "Add Apple Pay to checkout", holder: "conductor", speakers: ["reviewer"] },
   ],
+  // reviewer watches the Apple Pay work and every merge, so it hears about
+  // both without anyone mentioning it.
+  subscriptions: [
+    { id: "5c1e0a7b", handle: "reviewer", kind: "task", target: "work/add-apple-pay", parts: true, task: null, created_at: iso(140), describe: "work/add-apple-pay and its parts", until: null },
+    { id: "9d42f3e1", handle: "reviewer", kind: "notice", target: "upstream:merged", parts: false, task: null, created_at: iso(320), describe: "upstream:merged notices", until: null },
+  ],
   // builder holds an open SLIM socket; reviewer is present on a server-held
   // await lease. Both are agents in the roster, so the board projects a resident
   // row for each — the presence signal that a live SLIM node would otherwise supply.
   presence: [
     { handle: "builder", kind: "slim", last_seen: null },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
+  ],
+  // The verifier couldn't find an approval for #502, which builder called
+  // approved: nobody in the room had reviewed it yet.
+  verifierFlags: [
+    {
+      flag_id: "vf1",
+      failure: "ungranted_approval",
+      message_id: "h4",
+      key: "live",
+      about: "builder",
+      by: "verifier",
+      claim: "approval",
+      ref: "#502",
+      line: "Can't find an approval for #502.",
+      sure: false,
+      quotes: ["#502 is approved and green"],
+      sentence: "#502 is approved and green, so it can go to staging.",
+      why: "Nobody in this room has approved #502. It's still waiting for review.",
+      checked: [
+        { what: "Approvals of #502 in this room", found: "none" },
+        { what: "Pull request changes for #502", found: "opened, review requested" },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(139),
+    },
+    // The same claim again, inside the launch task's thread.
+    {
+      flag_id: "vf2",
+      failure: "ungranted_approval",
+      message_id: "t4",
+      key: "work/turn-on-apple-pay",
+      about: "builder",
+      by: "verifier",
+      claim: "approval",
+      ref: "#502",
+      line: "Can't find an approval for #502.",
+      sure: false,
+      quotes: ["reviewer approved #502"],
+      sentence: "reviewer approved #502, so i'm putting it on staging for the test orders.",
+      why: "Reviewer hasn't approved #502 in this room. They said they'd test it on a real phone first.",
+      checked: [
+        { what: "Approvals of #502 in this room", found: "none" },
+        { what: "Pull request changes for #502", found: "opened, review requested" },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(18.5),
+    },
+    // The records say the opposite: #499 merged a day ago (h3), so this line is
+    // the darker one, and it says when.
+    {
+      flag_id: "vf3",
+      failure: "stale_state",
+      message_id: "h7b",
+      key: "live",
+      about: "builder",
+      by: "verifier",
+      claim: "open",
+      ref: "#499",
+      line: `#499 was already merged, at ${new Date(iso(1400)).toISOString().slice(11, 16)}.`,
+      sure: true,
+      quotes: ["#499, which still needs a review"],
+      sentence: "apple pay sits on top of #499, which still needs a review before it can merge.",
+      why: "Builder said #499 was merged yesterday, so it doesn't need a review.",
+      checked: [
+        {
+          what: "Merges of #499 in this room",
+          found: `merged at ${new Date(iso(1400)).toISOString().slice(11, 16)} (@builder)`,
+        },
+      ],
+      state: "shown",
+      fine_by: null,
+      at: iso(54.5),
+    },
+  ],
+  // Builder looks in on its own leases twice an hour; reviewer was set to chase
+  // anyone who goes quiet on a claimed row, and is paused for the launch.
+  schedules: [
+    {
+      name: "lease-check",
+      owner: "builder",
+      every: "30m",
+      cron: null,
+      prompt: "Renew or hand back anything you hold that has gone stale.",
+      check: "stale",
+      task: null,
+      state: "active",
+      paused: false,
+      created_by: "julia",
+      created_at: iso(60 * 26),
+      updated_at: iso(60 * 26),
+      expires_at: iso(-60 * 24 * 6),
+      next_run: iso(-12),
+      last_run: iso(18),
+      last_result: "quiet",
+      runs: 52,
+      wakes: 3,
+      quiet: 49,
+      history: [
+        { at: iso(18), result: "quiet", trigger: "schedule", missed: 0, found: [], found_total: 0, detail: null },
+        { at: iso(48), result: "quiet", trigger: "schedule", missed: 0, found: [], found_total: 0, detail: null },
+        {
+          at: iso(78),
+          result: "woke",
+          trigger: "schedule",
+          missed: 0,
+          found: ['work/turn-on-apple-pay "Turn on Apple Pay for everyone": your lease is stale'],
+          found_total: 1,
+          detail: null,
+        },
+        { at: iso(108), result: "quiet", trigger: "schedule", missed: 2, found: [], found_total: 0, detail: null },
+      ],
+    },
+    {
+      name: "quiet-holders",
+      owner: "reviewer",
+      every: null,
+      cron: "0 9 * * 1-5",
+      prompt: "Someone holds a row and went quiet. Ask them in its thread, or release it.",
+      check: "silent",
+      task: null,
+      state: "paused",
+      paused: true,
+      created_by: "julia",
+      created_at: iso(60 * 72),
+      updated_by: "julia",
+      updated_at: iso(60 * 3),
+      paused_by: "julia",
+      paused_at: iso(60 * 3),
+      expires_at: iso(-60 * 24 * 4),
+      next_run: iso(-60 * 20),
+      last_run: iso(60 * 27),
+      last_result: "woke",
+      runs: 3,
+      wakes: 1,
+      quiet: 2,
+      history: [],
+    },
   ],
   // Every board row's origin, as the notice the room filed it with — each timed
   // just after the chat line that sets it up, so the channel reads talk → filing
@@ -1310,10 +1705,10 @@ const checkout: RoomFixture = {
     checkoutNotice("blocked", "failed/test-on-real-iphone", "Test Apple Pay on a real iPhone", checkoutEpisode("b4d6f8"), "operator", 128),
     checkoutNotice("filed", "work/payment-alerts", "Alert us when payments start failing", checkoutEpisode("e7a9c1"), "operator", 94.8, "action"),
     checkoutNotice("filed", "failed/duplicate-order-emails", "Order emails go out twice when Stripe retries", checkoutEpisode("f8b0d2"), "builder", 57.8, "concern"),
-    // The two the launch-day call compiled, filed by the aligner right after its
+    // The two the launch-day call compiled, filed by the conductor right after its
     // "filing the work" line (iso(40)).
-    checkoutNotice("filed", "work/turn-on-apple-pay", "Turn on Apple Pay for everyone", LAUNCH_THREAD, "aligner", 39.9, "action", "@builder"),
-    checkoutNotice("filed", "work/remove-old-card-form", "Remove the old card form after the sale", OLD_FORM_THREAD, "aligner", 39.8, "action", "@builder"),
+    checkoutNotice("filed", "work/turn-on-apple-pay", "Turn on Apple Pay for everyone", LAUNCH_THREAD, "conductor", 39.9, "action", "@builder"),
+    checkoutNotice("filed", "work/remove-old-card-form", "Remove the old card form after the sale", OLD_FORM_THREAD, "conductor", 39.8, "action", "@builder"),
     checkoutNotice("filed", "work/review-double-charge-fix", "Review the double-charge fix (PR #504)", checkoutEpisode("c5e7a9"), "builder", 13.8, "review"),
     checkoutNotice("filed", "decisions/double-charge-refunds", "Double charges: refund automatically, or send to support first?", checkoutEpisode("a1c3e5"), "reviewer", 5.8, "decision"),
     // builder takes the Apple Pay switch row before staging it, then the thread moves.
@@ -1410,7 +1805,7 @@ const pricing: RoomFixture = {
   memories: [
     { key: "agents/finance", value: agentManifest("Keeps an eye on the margin on every bag we ship."), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("c0e2a4") },
     { key: "agents/growth", value: agentManifest("Wants more subscribers; favors a low price to start."), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("d1f3b5") },
-    { key: "agents/aligner", value: agentManifest("Helps members agree when they disagree.", "engine"), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("e2a4c6") },
+    { key: "agents/conductor", value: agentManifest("Runs a flow in a task's thread, like helping members agree.", "engine"), created_by: "operator", version: 1, updated_at: iso(160), episode: pricingEpisode("e2a4c6") },
     { key: "agents/market-prices", value: a2aManifest("What other coffee subscriptions charge.", "https://market-prices.example", ["prices", "compare"]), created_by: "operator", version: 1, updated_at: iso(30), episode: pricingEpisode("a4c6e8") },
     { key: "context/goal", value: "Pick a price for the monthly coffee subscription.", content_text: "Pick a price for the monthly coffee subscription.", created_by: "operator", version: 1, updated_at: iso(175), episode: pricingEpisode("b5d7f9") },
     {
@@ -1428,7 +1823,7 @@ const pricing: RoomFixture = {
     },
   ],
   messages: [
-    { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@finance @growth what should the monthly subscription cost? @aligner help them agree.", created_at: iso(12) },
+    { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@conductor concord @~finance @~growth: what should the monthly subscription cost?", created_at: iso(12) },
     { id: "p2", sender_handle: "finance", message_type: "coordination_join", content: JSON.stringify({ handle: "finance", intent: "margin at or above 40%", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p3", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "500 subscribers by summer", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p4", sender_handle: "finance", message_type: "broadcast", content: "$24 a month for two bags keeps us at 40%.", created_at: iso(9) },
@@ -1445,13 +1840,13 @@ const pricing: RoomFixture = {
       topic: "urn:concept:mycelium:subscription-pricing",
       outcome: "open",
       subkind: null,
-      participants: ["finance", "growth", "aligner"],
+      participants: ["finance", "growth", "conductor"],
       metrics: null,
       assignments: null,
       tasks: [],
       message_count: 4,
       updated_at: iso(9),
-      updated_by: "aligner",
+      updated_by: "conductor",
     },
   ],
   episodeDetails: {},
@@ -1675,7 +2070,7 @@ const storefrontMemories: MockMemory[] = [
 ];
 
 // The room at true scale: a dozen people each fielding a few one-ticket agents,
-// plus the aligner and a bridged agent. The Members rail has to stay legible at
+// plus the conductor and a bridged agent. The Members rail has to stay legible at
 // three dozen agents and a dozen owners, and the Memory tree has to survive as
 // many `agents/*` manifests plus the work they file. That pressure is the design
 // target, so the fixture carries it.
@@ -1737,7 +2132,7 @@ const storefrontExtraAgents: StorefrontAgent[] = [
   { handle: "task-459", description: "Write descriptions for the three new single origins.", minsAgo: 4 },
   { handle: "task-461", description: "Put the sale banner on the home page.", minsAgo: 3 },
   { handle: "task-462", description: "Check every page still works on an old iPhone.", minsAgo: 2 },
-  { handle: "aligner", description: "Helps members agree when they disagree.", adapter: "engine", minsAgo: 500 },
+  { handle: "conductor", description: "Runs a flow in a task's thread, like helping members agree.", adapter: "engine", minsAgo: 500 },
 ];
 
 const storefrontExtraAgentMemories: MockMemory[] = storefrontExtraAgents.map((a, i) => ({
@@ -2145,7 +2540,7 @@ const storefront: RoomFixture = {
     { handle: "task-454", kind: "lease", last_seen: iso(2) },
     { handle: "task-458", kind: "lease", last_seen: iso(4) },
     { handle: "task-459", kind: "lease", last_seen: iso(1) },
-    { handle: "aligner", kind: "lease", last_seen: iso(5) },
+    { handle: "conductor", kind: "lease", last_seen: iso(5) },
   ],
 };
 

@@ -25,8 +25,6 @@ from __future__ import annotations
 
 import asyncio
 
-import httpx
-
 from mycelium.slim.client import SlimClient, SlimError
 from mycelium.slim.naming import DEFAULT_WORKSPACE, SlimIdentity, node_reachable
 
@@ -51,11 +49,19 @@ async def announce_presence(api_url: str, room: str, handle: str) -> None:
     Mirrors ``ParticipantCreate``, the same request body a resident connector
     sends on every join/reconnect.
     """
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
-        resp = await client.post(
-            f"{api_url}/api/rooms/{room}/sessions", json={"agent_handle": handle}
+    from mycelium.client import typed_client
+    from mycelium_backend_client.api.sessions import join_room_api_rooms_room_name_sessions_post
+    from mycelium_backend_client.errors import UnexpectedStatus
+    from mycelium_backend_client.models import ParticipantCreate
+
+    body = ParticipantCreate.from_dict({"agent_handle": handle})
+    async with typed_client(base_url=api_url, timeout=_HTTP_TIMEOUT_S) as client:
+        resp = await join_room_api_rooms_room_name_sessions_post.asyncio_detailed(
+            room, client=client, body=body
         )
-    resp.raise_for_status()
+    if resp.status_code >= 400:  # noqa: PLR2004
+        # A 422 is in the spec, so the client hands it back rather than raising.
+        raise UnexpectedStatus(resp.status_code, resp.content)
 
 
 async def publish_once(

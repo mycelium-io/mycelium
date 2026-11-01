@@ -21,7 +21,8 @@ import logging
 import platform
 import re
 import time
-from dataclasses import dataclass
+from contextlib import AbstractContextManager, nullcontext
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -39,14 +40,50 @@ from mycelium.runner.log import ms
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
     from mycelium.runner.daemon import State, Tracked
+    from mycelium_backend_client.models import WakeOutcome
 
 
 #: Wakes delivered, in the runner's log.
 _log = logging.getLogger("mycelium.runner.sync")
 
 
+#: The steps of a start, as the runner reports them and the app draws them:
+#: a terminal opened for the agent, its shell reached a prompt and the agent
+#: CLI started in it, the agent came up, and its introduction is handed over.
+STEP_TERMINAL, STEP_SHELL, STEP_AGENT, STEP_INTRO = "terminal", "shell", "agent", "intro"
+
+
 class HostError(Exception):
-    """A host couldn't do what it was asked; the message says why, for a person."""
+    """A host couldn't do what it was asked; the message says why, for a person.
+
+    A start that got partway also says which step it stopped at (``step``) and
+    the terminal it left open for the person to look at (``ref``). Never what
+    that terminal shows: it goes to the hub, and a screen stays on this machine.
+    """
+
+    def __init__(self, message: str, *, step: str | None = None, ref: str | None = None) -> None:
+        super().__init__(message)
+        self.step = step
+        self.ref = ref
+
+
+class StartHooks:
+    """What a host tells the runner while it starts an agent. Does nothing by default."""
+
+    def step(self, step: str, ref: str | None = None) -> None:
+        """The start reached ``step`` (``STEP_TERMINAL``, ``STEP_SHELL``...), in the
+        terminal ``ref`` once one is open, so the person can look at it from then on."""
+
+    def slow_shell(self, ref: str) -> None:
+        """The terminal ``ref`` opened, but its shell is slow to reach a prompt.
+
+        The start keeps waiting; this is for telling the person, who can look
+        at that terminal for what's holding it up.
+        """
+
+    def unlocked(self) -> AbstractContextManager[None]:
+        """Held while the host waits on the agent, with nothing of the runner's locked."""
+        return nullcontext()
 
 
 @dataclass
@@ -64,6 +101,9 @@ class Started:
     status: str | None = None
     #: Its introduction wasn't handed over: the runner gives it once the agent is idle.
     intro_pending: bool = False
+    #: What the host answered for the person on the way, from their choice to
+    #: start it here (a first-run question its CLI asks), in its kind's words.
+    passed: list[str] = field(default_factory=list)
 
 
 class AgentHost(Protocol):
@@ -77,6 +117,8 @@ class AgentHost(Protocol):
     worktrees: bool
     #: Why an agent the host no longer has reads as stopped, for a person.
     gone_detail: str
+    #: Why an agent that exited where it ran, which is still open, reads as stopped.
+    exited_detail: str
 
     def available(self) -> bool:
         """Whether agents can be started here right now."""
@@ -96,12 +138,24 @@ class AgentHost(Protocol):
         cwd: Path,
         env: dict[str, str],
         intro: str,
+        hooks: StartHooks | None = None,
     ) -> Started:
-        """Start ``kind`` as ``@handle`` and give it ``intro``. Raises :class:`HostError`."""
+        """Start ``kind`` as ``@handle`` and give it ``intro``. Raises :class:`HostError`.
+
+        ``hooks`` hears each step as it's reached, and is asked to unlock the
+        runner while the host waits on the agent.
+        """
         ...
 
     def alive(self, ref: str) -> bool:
         """Whether the agent at ``ref`` is still there."""
+        ...
+
+    def still_open(self, ref: str) -> bool:
+        """Whether the place the agent at ``ref`` ran in is still open with no agent
+        in it, so an agent started there again is the same member. ``True`` when
+        the host can't tell, so a stopped agent is never forgotten on a guess.
+        """
         ...
 
     def statuses(self) -> dict[str, tuple[str, str | None]] | None:
@@ -112,8 +166,20 @@ class AgentHost(Protocol):
         ...
 
     def blocker(self, ref: str, kind: str) -> str | None:
-        """What a person needs to answer the ``blocked`` agent at ``ref``: what its
-        screen shows and how to get to it. ``None`` when the host can't say."""
+        """What a person needs to answer the ``blocked`` agent at ``ref``: what it
+        commonly waits for and how to get to it. ``None`` when the host can't say.
+
+        Never what its screen shows: this goes to the hub, and a screen stays on
+        this machine, where the app shows it live.
+        """
+        ...
+
+    def first_run(self, ref: str, kind: str | None, passed: list[str] | None = None) -> str | None:
+        """What the agent at ``ref`` waits on at a first-run screen its CLI shows
+        (a sign-in), after getting it past any a key passes; ``None`` when it's
+        past them or the host can't tell. Said in the kind's words, never the
+        screen's, since it goes to the hub. What a key answered for the person
+        is added to ``passed``."""
         ...
 
     def wake(self, ref: str, text: str) -> None:
@@ -122,6 +188,16 @@ class AgentHost(Protocol):
 
     def stop(self, agent: Tracked) -> None:
         """End the agent. Best-effort: one that's already gone is stopped."""
+        ...
+
+    def interrupt(self, ref: str, kind: str | None) -> bool:
+        """Stop the agent at ``ref`` mid-turn, keeping its session. ``True`` if it was
+        working and was sent its key.
+
+        Only a working agent is interrupted: on an idle one the key could clear
+        what a person was typing into it. ``kind`` picks the key. What it is told
+        comes after, as the wake the hub queued, once it is idle.
+        """
         ...
 
     def gone(self, agent: Tracked) -> None:
@@ -141,8 +217,6 @@ class AgentHost(Protocol):
 
 #: herdr states as the app reads them.
 _HERDR_STATUS = {"idle": "idle", "done": "idle", "working": "working", "blocked": "blocked"}
-#: How many of a blocked agent's last screen lines the app is shown.
-_BLOCKER_LINES = 6
 
 
 class HerdrHost:
@@ -157,6 +231,7 @@ class HerdrHost:
     joins = False
     worktrees = False
     gone_detail = "its herdr pane closed"
+    exited_detail = "it exited, and its herdr pane is still open"
 
     def __init__(
         self,
@@ -191,6 +266,32 @@ class HerdrHost:
         state.workspaces[room] = (workspace, pane)
         return workspace, pane
 
+    def _left_open(
+        self, state: State, room: str, handle: str, kind: str, cwd: Path
+    ) -> tuple[str, str] | None:
+        """The pane an earlier start of ``@handle`` left open, if it's still there to start in.
+
+        A start that fails leaves its pane open, so starting again goes back to
+        it rather than opening another one each time. Only a pane in the same
+        folder, and not holding some other kind of agent, is taken back.
+        """
+        mapping = self.bridge.registry.get(room, handle)
+        if mapping is None or mapping.cwd != str(cwd):
+            return None
+        try:
+            panes = self.bridge.list_panes()
+        except HerdrError:
+            return None
+        found = next((p for p in panes if str(p.get("pane_id")) == mapping.pane), None)
+        workspace = str(found.get("workspace_id") or "") if found else ""
+        if not workspace:
+            return None
+        agent = self.bridge.get_agent(mapping.pane)
+        if agent is not None and mapping.kind != kind:
+            return None
+        state.workspaces[room] = (workspace, mapping.pane)
+        return workspace, mapping.pane
+
     def start(
         self,
         state: State,
@@ -201,16 +302,18 @@ class HerdrHost:
         cwd: Path,
         env: dict[str, str],
         intro: str,
+        hooks: StartHooks | None = None,
     ) -> Started:
         from mycelium.commands.swarm import _start_when_ready
+        from mycelium.integrations.herdr import ShellNotReadyError
 
-        workspace, pane = self._open_pane(state, room, handle, cwd, env)
-        try:
-            came_up = _start_when_ready(self.bridge, handle, kind, pane)
-        except HerdrError as e:
-            # No agent on the pane: nothing started, so nothing is left open.
-            self._close_quietly(pane)
-            raise HostError(str(e)) from e
+        hooks = hooks or StartHooks()
+        hooks.step(STEP_TERMINAL)
+        workspace, pane = self._left_open(state, room, handle, kind, cwd) or self._open_pane(
+            state, room, handle, cwd, env
+        )
+        # Mapped before anything starts in it, so a sync pass that finds the
+        # agent knows whose it is, and the wait below needs no lock against one.
         # Not ``managed``: a closed pane stops the agent, it does not delete it
         # from the room, so the app can start it again with its notes intact.
         # Its folder is kept so it can be restarted there.
@@ -219,17 +322,60 @@ class HerdrHost:
         )
         self.bridge.registry.bind(workspace, room)
         state.owned[workspace] = room
+        hooks.step(STEP_SHELL, pane)
+        try:
+            with hooks.unlocked():
+                came_up = _start_when_ready(
+                    self.bridge,
+                    handle,
+                    kind,
+                    pane,
+                    room=room,
+                    on_slow_shell=lambda: hooks.slow_shell(pane),
+                )
+        except HerdrError as e:
+            # The pane stays open: whatever it shows (a shell still starting, an
+            # update or sign-in the agent CLI asks for first) is the person's to
+            # see and answer, and starting again goes back to it.
+            raise HostError(
+                str(e),
+                step=STEP_SHELL if isinstance(e, ShellNotReadyError) else STEP_AGENT,
+                ref=pane,
+            ) from e
         if came_up is not None:
             # It started but never read as ready, most often stopped at a prompt.
             # The pane stays open for the person to answer, and the introduction
             # waits until the agent is idle rather than being typed into it.
+            # One stopped at a first-run question the person already answered by
+            # starting it here (whether to trust the folder) is got past, and its
+            # introduction goes in once it's idle.
             status = _HERDR_STATUS.get(str(came_up.get("agent_status") or ""), "running")
-            return Started(ref=pane, workspace=workspace, status=status, intro_pending=True)
+            passed: list[str] = []
+            if status == "blocked" and not self.first_run(pane, kind, passed) and passed:
+                status = "running"
+            return Started(
+                ref=pane, workspace=workspace, status=status, intro_pending=True, passed=passed
+            )
+        # Ready by herdr's reading, which a CLI's first-run screen can pass for.
+        # One a key gets past is got past; one the person must answer (a
+        # sign-in) leaves it waiting, its introduction held until it's idle.
+        passed = []
+        if self.first_run(pane, kind, passed):
+            return Started(
+                ref=pane, workspace=workspace, status="blocked", intro_pending=True, passed=passed
+            )
+        hooks.step(STEP_INTRO, pane)
         self.bridge.prompt(pane, intro, wait=False)
-        return Started(ref=pane, workspace=workspace)
+        return Started(ref=pane, workspace=workspace, passed=passed)
 
     def alive(self, ref: str) -> bool:
         return self.bridge.get_agent(ref) is not None
+
+    def still_open(self, ref: str) -> bool:
+        try:
+            return any(str(p.get("pane_id")) == ref for p in self.bridge.list_panes())
+        except HerdrError:
+            return True
 
     def statuses(self) -> dict[str, tuple[str, str | None]] | None:
         try:
@@ -248,9 +394,11 @@ class HerdrHost:
     def blocker(self, ref: str, kind: str) -> str | None:
         from mycelium.integrations.agents import of_kind
 
-        parts = [self.bridge.read_pane(ref, lines=_BLOCKER_LINES), of_kind(kind).blocked_hint()]
-        parts.append(f"Answer it in its pane: herdr agent focus {ref}")
+        parts = [of_kind(kind).blocked_hint(), f"Answer it in its pane: herdr agent focus {ref}"]
         return "\n".join(p for p in parts if p)
+
+    def first_run(self, ref: str, kind: str | None, passed: list[str] | None = None) -> str | None:
+        return self.bridge.past_first_run(ref, kind, passed)
 
     def wake(self, ref: str, text: str) -> None:
         try:
@@ -268,6 +416,18 @@ class HerdrHost:
         self._close_quietly(agent.pane)
         self.gone(agent)
 
+    def interrupt(self, ref: str, kind: str | None) -> bool:
+        from mycelium.integrations.agents import of_kind
+
+        agent = self.bridge.get_agent(ref)
+        if agent is None or agent.get("agent_status") != "working":
+            return False
+        try:
+            self.bridge.send_keys(ref, of_kind(kind or agent.get("agent")).interrupt_key())
+        except HerdrError as e:
+            raise HostError(f"couldn't interrupt the agent in {ref}: {e}") from e
+        return True
+
     def gone(self, agent: Tracked) -> None:
         mapping = self.bridge.registry.get(agent.room, agent.handle)
         if mapping is not None and mapping.pane == agent.pane:
@@ -279,7 +439,8 @@ class HerdrHost:
         It stops being synced and its room binding is dropped, so nothing of a
         finished workspace is left in the user's herdr bindings.
         """
-        busy = {a.workspace for a in state.agents.values() if a.live}
+        # An agent that exited in a pane still open may be started there again.
+        busy = {a.workspace for a in state.agents.values() if a.live or a.exited}
         for workspace in [w for w in state.owned if w not in busy]:
             del state.owned[workspace]
             self.bridge.registry.unbind(workspace)
@@ -293,7 +454,9 @@ class HerdrHost:
         # opened and any a person bound (`mycelium herdr sync --workspace …`).
         # Binding one is the choice to sync it, and the runner is what does.
         targets = dict(state.owned) | self.bridge.registry.bindings()
-        if not targets:
+        # A pane mapped on its own (an agent brought into a room from the app)
+        # still needs its presence and wakes, even with no workspace bound.
+        if not targets and not self.bridge.registry.all():
             return
         result = sync_pass(
             config,
@@ -332,6 +495,7 @@ class OmnigentHost:
     joins = True
     worktrees = True
     gone_detail = "its Omnigent session ended"
+    exited_detail = gone_detail
 
     def __init__(
         self,
@@ -424,6 +588,7 @@ class OmnigentHost:
         cwd: Path,
         env: dict[str, str],  # noqa: ARG002 - a session takes no environment; the join code carries it
         intro: str,
+        hooks: StartHooks | None = None,  # noqa: ARG002 - a session starts in one call, with no steps to say
     ) -> Started:
         from mycelium.integrations.agents import of_kind
 
@@ -459,6 +624,9 @@ class OmnigentHost:
             return False
         return bool(session.get("runner_online", True)) and session.get("status") != "failed"
 
+    def still_open(self, ref: str) -> bool:  # noqa: ARG002 - a session ends with its agent
+        return False
+
     def _sessions(self) -> list[dict[str, Any]]:
         listed = self._get("/v1/sessions", visibility="all", limit="200")
         rows = listed.get("data", []) if isinstance(listed, dict) else listed
@@ -481,6 +649,14 @@ class OmnigentHost:
     def blocker(self, ref: str, kind: str) -> str | None:  # noqa: ARG002
         return None
 
+    def first_run(
+        self,
+        ref: str,  # noqa: ARG002
+        kind: str | None,  # noqa: ARG002
+        passed: list[str] | None = None,  # noqa: ARG002
+    ) -> str | None:
+        return None
+
     def wake(self, ref: str, text: str) -> None:
         self._post(
             f"/v1/sessions/{ref}/events",
@@ -496,6 +672,11 @@ class OmnigentHost:
         except HostError:
             pass
 
+    def interrupt(self, ref: str, kind: str | None) -> bool:  # noqa: ARG002
+        """Omnigent has no interrupt that keeps a session: the message reaches the
+        agent as an ordinary wake, at its next idle."""
+        return False
+
     def gone(self, agent: Tracked) -> None:  # noqa: ARG002 - Omnigent keeps nothing to forget
         return None
 
@@ -508,7 +689,13 @@ class OmnigentHost:
         Omnigent queues a message sent to a busy session, so a wake is handed
         over whatever the agent is doing.
         """
-        from mycelium.commands.herdr import _push_presence, fetch_wakes, wake_prompt_for
+        from mycelium.commands.herdr import (
+            _push_presence,
+            fetch_wakes,
+            outcome,
+            report_wakes,
+            wake_prompt_for,
+        )
 
         live = [a for a in state.agents.values() if a.live]
         if not live:
@@ -523,11 +710,15 @@ class OmnigentHost:
                 {h: {"status": a.status, "title": a.detail} for h, a in members.items()},
                 self._ttl_s,
             )
+            outcomes: list[WakeOutcome | None] = []
             for wake in fetch_wakes(config, room):
-                handle, reason = str(wake.get("handle") or ""), wake.get("reason") or "mention"
+                handle, reason = wake.handle, wake.reason or "mention"
                 agent = members.get(handle)
                 if agent is None:
                     _log.warning("wake @%s (%s) in %s: no session here is it", handle, reason, room)
+                    outcomes.append(
+                        outcome(wake, delivered=False, why="no Omnigent session here is it")
+                    )
                     continue
                 line = f"wake @{handle} ({reason}) -> {agent.pane}"
                 started = time.monotonic()
@@ -536,12 +727,14 @@ class OmnigentHost:
                 except HostError as e:
                     _log.warning("%s failed %dms: %s", line, ms(started), e)
                     log.print(f"[yellow]↯ skip[/yellow] @{agent.handle} [dim]{e}[/dim]")
+                    outcomes.append(outcome(wake, delivered=False, why=f"Omnigent refused it: {e}"))
                     continue
                 _log.info("%s ok %dms", line, ms(started))
                 log.print(
-                    f"[green]↯ woke[/green] @{agent.handle} "
-                    f"[dim]on {wake.get('reason') or 'mention'} → {agent.pane}[/dim]"
+                    f"[green]↯ woke[/green] @{agent.handle} [dim]on {reason} → {agent.pane}[/dim]"
                 )
+                outcomes.append(outcome(wake, delivered=True))
+            report_wakes(config, room, outcomes)
 
 
 def branch_for(room: str, handle: str) -> str:

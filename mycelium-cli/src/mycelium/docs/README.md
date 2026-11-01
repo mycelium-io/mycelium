@@ -12,13 +12,21 @@ file for giving to a model. Edit the markdown here, not the generated HTML.
 | `walkthrough/` | Your first room, step by step |
 | `learn/` | The courses on `learn.html`: a folder per course, a `course.json` (title, modules, lessons, quick checks, and a section's `video`) and a markdown file per lesson. A section's video is a take recorded by `mycelium-promo/learn/` into `docs/learn/video/` |
 | `concepts/` | How it works, rooms, the board, memory, episodes, swarms, identity, SLIM |
-| `engines/` | The engines a room runs: conductor, aligner, synthesizer, persona, worker, hello |
+| `engines/` | The engines a room runs: conductor, synthesizer, persona, worker, verifier, hello |
 | `guides/` | Step-by-step guides, from the quick start to sign-in and troubleshooting |
-| `reference/` | Architecture, board and flow reference, messages, metrics, and contributor notes |
+| `reference/` | Architecture, board and flow reference, messages and metrics |
+
+Notes for contributors aren't on the site. They live beside the code they're
+about:
+
+- [Keycloak / OIDC setup](../docker/keycloak/README.md): sign-in end to end on
+  a development stack.
+- [Adding a status provider](../../../../fastapi-backend/app/services/status/providers/README.md):
+  live status on board rows from a tracker other than GitHub.
 
 The site reads in this order: Get Started, Walkthrough, Concepts, Engines,
 Guides, Reference. Learn (`learn.html`) is its own place beside them, linked
-from the top bar. The dense material sits at the bottom.
+from the top bar. The most detailed material comes last.
 
 The docs use one word for each thing; the glossary at the end of
 `concepts/how-it-works.md` is the list. In particular: **engine** (never "the

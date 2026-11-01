@@ -9,6 +9,7 @@
 import type { SearchResponse } from "@/lib/search";
 import type { MessageSearchResponse } from "@/lib/message-search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
+import { uiTokenHeaders } from "@/lib/ui-token";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
 import type { LockRecord, TallyRecord } from "@/lib/conductor-line";
@@ -42,6 +43,8 @@ async function errorDetail(res: Response): Promise<string> {
     const d = data?.detail;
     if (typeof d === "string") return d;
     if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg);
+    // A structured refusal ({error, message, ...}) carries its own sentence.
+    if (d && typeof d === "object" && typeof d.message === "string") return d.message;
   } catch {
     // fall through to the status line
   }
@@ -160,6 +163,114 @@ export async function setRoomTitle(roomName: string, title: string): Promise<Roo
   });
 }
 
+// ── Room settings ────────────────────────────────────────────────────────────
+
+/** One room setting as the hub reports it: its value, and where that comes from. */
+export interface RoomSetting {
+  id: string;
+  kind: "bool" | "int" | "set";
+  value: unknown;
+  /** room = set for this room; hub = the hub's value; default = the table's. */
+  source: "room" | "hub" | "default";
+  /** What the room runs with when it sets nothing. */
+  hub_value: unknown;
+  options: string[];
+  min: number | null;
+  /** The hub's cap, for a setting a room may only lower. */
+  max: number | null;
+  inherits: string | null;
+  reason: string | null;
+  version: number | null;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export async function fetchRoomSettings(roomName: string): Promise<RoomSetting[]> {
+  return apiFetch<RoomSetting[]>(`${roomApiPath(roomName)}/settings`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is RoomSetting[],
+  });
+}
+
+/** Set a room setting for this room. Throws `ApiError` saying what's allowed. */
+export async function setRoomSetting(
+  roomName: string,
+  id: string,
+  value: unknown,
+  by: string,
+  baseVersion: number | null = null,
+): Promise<RoomSetting> {
+  return apiFetch<RoomSetting>(`${roomApiPath(roomName)}/settings/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value, by: by || "user", base_version: baseVersion }),
+  });
+}
+
+/** Go back to the hub's value (or the default) for a room setting. */
+export async function resetRoomSetting(roomName: string, id: string): Promise<RoomSetting> {
+  return apiFetch<RoomSetting>(`${roomApiPath(roomName)}/settings/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+// ── Hub settings ─────────────────────────────────────────────────────────────
+
+/** Whether this caller may change the hub's settings from the Hub page. */
+export interface HubEditing {
+  may_edit: boolean;
+  /** Why not, when it may not. */
+  reason: string | null;
+  /** The hub can restart itself to apply what was saved (a desktop hub). */
+  can_restart: boolean;
+  /** Keys the desktop app sets itself, changed in the app's own settings. */
+  app_owned: string[];
+  /** Keys saved since the hub started, which apply at its next start. */
+  pending: string[];
+  /** What each editable key is set to, for an editor only. A key is only
+   *  whether it is set. */
+  values: Record<string, unknown>;
+}
+
+/** What a hub is set up with. A key or an address is never sent, except an
+ *  address to someone who may change it. */
+export interface HubSettings {
+  model: { model: string | null; provider: string | null; has_key: boolean; custom_endpoint: boolean };
+  experiences: { id: string; title: string; description: string; open: string; unit: string; scenarios: number }[];
+  personas_only: boolean;
+  share_usage: boolean;
+  workers: { tools: boolean; turn_timeout_s: number; max_turns_per_room: number };
+  dependency_gate: boolean;
+  patterns_inline: boolean;
+  sign_in: boolean;
+  voice: { enabled: boolean; model: string; speech?: boolean; speech_has_key?: boolean };
+  verifier: boolean;
+  editing: HubEditing;
+}
+
+export async function fetchHubSettings(): Promise<HubSettings | null> {
+  return apiFetch<HubSettings | null>("/api/hub/settings", { cache: "no-store", fallback: null });
+}
+
+/** Save settings to the hub's config.toml, by config key. An empty text or key
+ *  clears it. They apply when the hub next starts. Throws `ApiError` saying
+ *  why a change was refused; a refused change saves nothing. */
+export async function updateHubSettings(
+  changes: Record<string, unknown>,
+): Promise<{ saved: string[]; pending: string[]; restart_needed: boolean }> {
+  return apiFetch("/api/hub/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ changes }),
+  });
+}
+
+/** Restart a desktop hub so what was saved applies. It answers before it goes. */
+export async function restartHub(): Promise<void> {
+  await apiFetch("/api/hub/restart", { method: "POST" });
+}
+
 /** The rooms listed for `viewer`: every shared room, and their private ones. */
 export async function fetchRooms(viewer = ""): Promise<Room[]> {
   const path = viewer ? `/api/rooms?${new URLSearchParams({ viewer })}` : "/api/rooms";
@@ -201,7 +312,15 @@ export async function deleteRoom(roomName: string): Promise<void> {
 /** Put a task on a room's board, with its thread minted (the app's `board new`). */
 export async function createTask(
   roomName: string,
-  data: { title: string; handle: string; assignee?: string; key?: string; parent?: string },
+  data: {
+    title: string;
+    /** What the task is, in markdown: written into the row under its title. */
+    content?: string;
+    handle: string;
+    assignee?: string;
+    key?: string;
+    parent?: string;
+  },
 ): Promise<Memory> {
   return apiFetch<Memory>(`${roomApiPath(roomName)}/tasks`, {
     method: "POST",
@@ -382,19 +501,29 @@ export async function writeFields(
   });
 }
 
-/** `fetchMemories`'s page size — exported so a caller showing a raw count
- *  (the dashboard's room cards) can tell "exactly this many" apart from
- *  "at least this many" instead of reporting the cap as a true total. */
-export const MEMORIES_PAGE_LIMIT = 50;
+/** The most the hub serves in one list call. */
+export const MEMORIES_PAGE_LIMIT = 1000;
+/** The most `fetchMemories` reads, newest first. A room with this many may
+ *  have more, so a caller showing a count says "the newest" rather than "all". */
+export const MEMORIES_MAX = 5000;
 
+/** Every memory in a room (or under `prefix`), newest first, up to `MEMORIES_MAX`. */
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
-  const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT) });
-  if (prefix) params.set("prefix", prefix);
-  return apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
-    cache: "no-store",
-    fallback: [],
-    guard: isArray as (d: unknown) => d is Memory[],
-  });
+  // Pages are offsets into a newest-first list, so a write between two calls
+  // shifts the next page by one: keyed, a memory read twice is kept once.
+  const byKey = new Map<string, Memory>();
+  for (let offset = 0; offset < MEMORIES_MAX; offset += MEMORIES_PAGE_LIMIT) {
+    const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT), offset: String(offset) });
+    if (prefix) params.set("prefix", prefix);
+    const page = await apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
+      cache: "no-store",
+      fallback: [],
+      guard: isArray as (d: unknown) => d is Memory[],
+    });
+    for (const memory of page) if (!byKey.has(memory.key)) byKey.set(memory.key, memory);
+    if (page.length < MEMORIES_PAGE_LIMIT) break;
+  }
+  return [...byKey.values()].slice(0, MEMORIES_MAX);
 }
 
 /** One memory by key. Returns null when it isn't there (or the read failed). */
@@ -565,6 +694,191 @@ export async function fetchSkills(roomName: string): Promise<Skill[]> {
   return data.skills ?? [];
 }
 
+// ── Schedules ────────────────────────────────────────────────────────────────
+// An agent's recurring check-in, kept and fired by the hub. Each run asks a
+// cheap pre-check first; only one that finds something wakes the agent (a
+// model turn), and nothing a run does is said in the room.
+
+export type ScheduleResult = "woke" | "quiet" | "held" | "busy" | "error";
+
+export interface ScheduleRun {
+  at: string;
+  result: ScheduleResult;
+  trigger: "schedule" | "manual";
+  missed?: number;
+  found?: string[];
+  found_total?: number;
+  detail?: string | null;
+}
+
+export interface Schedule {
+  name: string;
+  owner: string;
+  every?: string | null;
+  cron?: string | null;
+  prompt?: string;
+  check: string;
+  task?: string | null;
+  state: "active" | "paused" | "expired";
+  paused: boolean;
+  created_by: string;
+  created_at: string;
+  /** Who made the last change, and when. */
+  updated_by?: string;
+  updated_at: string;
+  /** Who paused it and when, while it is paused. */
+  paused_by?: string | null;
+  paused_at?: string | null;
+  expires_at: string;
+  next_run?: string | null;
+  last_run?: string | null;
+  last_result?: ScheduleResult | null;
+  runs?: number;
+  wakes?: number;
+  quiet?: number;
+  history?: ScheduleRun[];
+}
+
+export interface ScheduleList {
+  schedules: Schedule[];
+  total: number;
+  checks?: Record<string, string>;
+}
+
+export interface ScheduleEdit {
+  every?: string;
+  cron?: string;
+  prompt?: string;
+  check?: string;
+  task?: string;
+  paused?: boolean;
+  renew?: boolean;
+  renew_days?: number;
+  /** Who is making the change; the hub records it as `updated_by`. */
+  updated_by?: string;
+}
+
+function schedulePath(roomName: string, name?: string): string {
+  const base = `${roomApiPath(roomName)}/schedules`;
+  return name ? `${base}/${encodeURIComponent(name)}` : base;
+}
+
+export async function fetchSchedules(roomName: string): Promise<ScheduleList> {
+  return apiFetch<ScheduleList>(schedulePath(roomName), {
+    cache: "no-store",
+    fallback: { schedules: [], total: 0, checks: {} },
+  });
+}
+
+export async function createSchedule(
+  roomName: string,
+  body: ScheduleEdit & { name: string; owner: string; prompt: string; created_by?: string },
+): Promise<Schedule> {
+  return apiFetch<Schedule>(schedulePath(roomName), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateSchedule(roomName: string, name: string, body: ScheduleEdit): Promise<Schedule> {
+  return apiFetch<Schedule>(schedulePath(roomName, name), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function runSchedule(roomName: string, name: string, wake = false): Promise<ScheduleRun> {
+  return apiFetch<ScheduleRun>(`${schedulePath(roomName, name)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wake }),
+  });
+}
+
+export async function deleteSchedule(roomName: string, name: string): Promise<void> {
+  await apiFetch<void>(schedulePath(roomName, name), { method: "DELETE" });
+}
+
+// ── Verifier ─────────────────────────────────────────────────────────────────
+// The engine that checks what agents say about approvals and merges against the
+// room's records, and the lines it adds under messages (`routes/verifier.py`).
+
+/** One record the verifier looked at, listed by *Show why*. */
+export interface VerifierChecked {
+  what: string;
+  found: string;
+  /** The message or notice it found, when there is one. */
+  id?: string | null;
+  at?: string | null;
+}
+
+/** A claim the verifier couldn't confirm, drawn as a line under its message. */
+export interface VerifierFlag {
+  flag_id: string;
+  /** Which multi-agent failure it found, e.g. `ungranted_approval` (`FAILURE_NAMES`). */
+  failure?: string;
+  /** The message it goes under: its id in the room's history read. */
+  message_id: string;
+  /** The same message's id as it arrives live, before a reload reads it from history. */
+  envelope_id?: string;
+  key: string;
+  about: string;
+  by: string;
+  claim: "approval" | "open";
+  ref: string;
+  /** The line to show, written by the verifier. */
+  line: string;
+  /** True when the records say the opposite; false when nothing was found. */
+  sure: boolean;
+  /** The exact words to underline. */
+  quotes: string[];
+  sentence: string;
+  why?: string;
+  checked?: VerifierChecked[];
+  state: "shown" | "fine";
+  fine_by?: string | null;
+  at: string;
+}
+
+export interface VerifierSettings {
+  enabled: boolean;
+  /** The rooms that added the verifier. */
+  rooms: string[];
+  model: string;
+  using: "starting" | "learned" | "none";
+  /** Messages it learned from, or null on the starting model. */
+  learned: number | null;
+  answers_since_learned: number;
+  estimate: { messages: number; approx_tokens: number; approx_usd: number };
+  learning: { state: "idle" | "running" | "done" | "failed"; done: number; total: number; error?: string | null };
+}
+
+export async function fetchVerifierFlags(roomName: string): Promise<VerifierFlag[]> {
+  return apiFetch<VerifierFlag[]>(`${roomApiPath(roomName)}/verifier/flags`, { cache: "no-store", fallback: [] });
+}
+
+/** Someone says a flagged claim is fine: the line goes for everyone, and the
+ *  answer is kept for the verifier to learn from. */
+export async function markVerifierFlagFine(roomName: string, flagId: string, by?: string): Promise<VerifierFlag> {
+  return apiFetch<VerifierFlag>(`${roomApiPath(roomName)}/verifier/flags/${encodeURIComponent(flagId)}/fine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by }),
+  });
+}
+
+export async function fetchVerifierSettings(): Promise<VerifierSettings> {
+  return apiFetch<VerifierSettings>("/api/verifier/settings", { cache: "no-store" });
+}
+
+/** Start learning from the rooms it checks. Refused (409) when no room has
+ *  added it, or a run is already going. */
+export async function startVerifierLearn(): Promise<VerifierSettings> {
+  return apiFetch<VerifierSettings>("/api/verifier/learn", { method: "POST" });
+}
+
 // ── Uploads ──────────────────────────────────────────────────────────────────
 // A file the room keeps: an `uploads/<name>` memory plus the bytes it names.
 // Linked from chat as `[[uploads/<name>]]`; the bytes are at `url`, sandboxed.
@@ -585,6 +899,24 @@ export interface Upload {
   episode?: string | null;
   /** The file's bytes, under `/api`. Add `?download=1` to save rather than show. */
   url: string;
+  /** A small WebP of an image, for a gallery; absent for other kinds. */
+  thumb_url?: string | null;
+  /** The first message that linked this upload; absent when none does (saved
+   *  straight to memory, or its message is gone). */
+  posted_in?: UploadOrigin | null;
+}
+
+/** The message an upload was posted with. */
+export interface UploadOrigin {
+  /** The message's id, as the room's history reads it. */
+  message_id: string;
+  sender: string;
+  at: string;
+  /** The task thread it was said in; null when it was said in the channel. */
+  episode?: string | null;
+  /** That thread's board row, when a row carries it. */
+  task?: string | null;
+  task_title?: string | null;
 }
 
 export interface UploadList {
@@ -593,6 +925,43 @@ export interface UploadList {
   /** Extensions this hub takes, lowercase, no dot. */
   accepted: string[];
   max_bytes: number;
+}
+
+/** One member a group mention reaches, as the hub resolves it for delivery. */
+export interface MentionGroupMember {
+  handle: string;
+  kind: "agent" | "person";
+  status: "working" | "idle" | "blocked" | "done" | null;
+  /** When they last posted in the thread, for `@here` in one. */
+  posted_at: string | null;
+  /** Why `@here` reaches them in a thread: they posted, or the task is for them or held by them. */
+  role: "posted" | "assignee" | "holder" | null;
+}
+
+export interface MentionGroup {
+  count: number;
+  members: MentionGroupMember[];
+}
+
+/** Who `@here` and `@all` reach for this sender, in this thread or the channel. */
+export interface MentionGroups {
+  here: MentionGroup;
+  all: MentionGroup;
+}
+
+const NO_GROUP: MentionGroup = { count: 0, members: [] };
+
+export async function fetchMentionGroups(
+  roomName: string,
+  episode: string | null,
+  sender: string,
+): Promise<MentionGroups> {
+  const q = new URLSearchParams({ sender });
+  if (episode) q.set("episode", episode);
+  return apiFetch<MentionGroups>(`${roomApiPath(roomName)}/mentions/groups?${q}`, {
+    cache: "no-store",
+    fallback: { here: NO_GROUP, all: NO_GROUP },
+  });
 }
 
 export async function fetchUploads(roomName: string): Promise<UploadList> {
@@ -617,6 +986,8 @@ export function uploadFile(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${roomApiPath(roomName)}/uploads`);
+    // Not a fetch, so the launch's token is set here (`lib/ui-token.ts`).
+    for (const [name, value] of Object.entries(uiTokenHeaders())) xhr.setRequestHeader(name, value);
     xhr.responseType = "json";
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total);
@@ -651,6 +1022,79 @@ export async function fetchUploadText(upload: Upload): Promise<string> {
   return res.text();
 }
 
+// ── Voice ────────────────────────────────────────────────────────────────────
+// The composer's mic: audio goes to the hub in small chunks while the mic is
+// on, and comes back as text for the draft. See lib/voice.ts.
+
+export interface VoiceStatus {
+  /** `not_downloaded`: the hub fetches its model the first time a mic is on. */
+  state: "ready" | "not_downloaded" | "unavailable";
+  detail: string;
+  language: string;
+  sample_rate: number;
+  model: string;
+  /** The hub has a speech server, so notifications can be read aloud. */
+  speech?: boolean;
+}
+
+export interface VoiceHeard {
+  texts: string[];
+  speaking: boolean;
+  /** False while the hub loads its model: the chunk wasn't read, so send it again. */
+  ready?: boolean;
+}
+
+export async function fetchVoiceStatus(): Promise<VoiceStatus | null> {
+  return apiFetch<VoiceStatus | null>("/api/voice", { cache: "no-store", fallback: null });
+}
+
+/** One chunk of an open mic's audio, as 16-bit PCM; `final` turns it off. */
+export async function sendVoiceChunk(sessionId: string, pcm: Int16Array, final = false): Promise<VoiceHeard> {
+  const query = final ? "?final=true" : "";
+  return apiFetch<VoiceHeard>(`/api/voice/sessions/${sessionId}${query}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength) as ArrayBuffer,
+  });
+}
+
+export async function closeVoiceSession(sessionId: string): Promise<void> {
+  await apiFetch(`/api/voice/sessions/${sessionId}`, { method: "DELETE", fallback: undefined });
+}
+
+/** A person's own voice and speed for reading aloud; unset uses the hub's. */
+export interface SpeechChoice {
+  voice?: string | null;
+  speed?: number;
+}
+
+/** `text` said by the hub's speech server, as audio to play. Reading a
+ *  notification aloud asks for a sentence at a time. */
+export async function fetchSpeech(text: string, signal?: AbortSignal, choice: SpeechChoice = {}): Promise<ArrayBuffer> {
+  const body: Record<string, unknown> = { text };
+  if (choice.voice) body.voice = choice.voice;
+  if (choice.speed && choice.speed !== 1) body.speed = choice.speed;
+  const res = await fetch("/api/voice/speech", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) throw new ApiError(await errorDetail(res), res.status);
+  return res.arrayBuffer();
+}
+
+export interface SpeechVoices {
+  /** Empty when the speech server doesn't list them. */
+  voices: string[];
+  /** The hub's own voice, used when a person chose none. */
+  default: string;
+}
+
+export async function fetchSpeechVoices(): Promise<SpeechVoices | null> {
+  return apiFetch<SpeechVoices | null>("/api/voice/voices", { cache: "no-store", fallback: null });
+}
+
 /** A flow the room's conductor can run: `@conductor <name> @a @b: …`. */
 export interface Protocol {
   name: string;
@@ -668,6 +1112,120 @@ export async function fetchProtocols(roomName: string): Promise<Protocol[]> {
     cache: "no-store",
     fallback: [],
     guard: isArray as (d: unknown) => d is Protocol[],
+  });
+}
+
+/** Where a part of an epic stands (contracts/board-vocabulary.json, `epic`). */
+export type PartState = "done" | "blocked" | "waiting" | "working" | "open";
+
+/** The newest message said in a task's thread. */
+export interface LatestLine {
+  sender: string;
+  text: string;
+  at?: string | null;
+}
+
+/** One task as the board reads it for people (`GET /rooms/{room}/board`). */
+export interface BoardPart {
+  key: string;
+  title: string;
+  episode?: string | null;
+  state: PartState;
+  holder?: string | null;
+  assignee?: string | null;
+  waiting_on: string[];
+  blocked_by?: string | null;
+  latest?: LatestLine | null;
+  parts: number;
+  parts_done: number;
+  updated_at?: string | null;
+}
+
+/** A task with parts: its progress, and its parts in path order. `steps` holds
+ *  the parts' keys, one list per step; parts in one step run side by side. */
+export interface BoardEpic extends BoardPart {
+  lead?: string | null;
+  done: number;
+  total: number;
+  steps: string[][];
+  path: BoardPart[];
+}
+
+export interface BoardRead {
+  epics: BoardEpic[];
+  /** Open tasks that are part of no open epic. */
+  tasks: BoardPart[];
+}
+
+/** A room's open epics and its other open tasks, worked out by the hub, so the
+ *  app and `mycelium board` draw the same thing. */
+export async function fetchRoomBoard(roomName: string): Promise<BoardRead> {
+  return apiFetch<BoardRead>(`${roomApiPath(roomName)}/board`, {
+    cache: "no-store",
+    fallback: { epics: [], tasks: [] },
+  });
+}
+
+/** A closed task, as the board's history reads it: the row it was, with when
+ *  it closed and who closed it (`GET /rooms/{room}/board/closed`). */
+export interface ClosedTask extends BoardPart {
+  closed_at: string;
+  closed_by?: string | null;
+}
+
+/** One page of closed tasks, newest closed first. `more` says an older page
+ *  follows, read with `before` set to the last row's `closed_at`. */
+export interface ClosedPage {
+  tasks: ClosedTask[];
+  more: boolean;
+  /** Every closed task the search matches, not only this page's. */
+  total: number;
+}
+
+export async function fetchClosedTasks(
+  roomName: string,
+  opts: { q?: string; before?: string | null; limit?: number } = {},
+): Promise<ClosedPage> {
+  const params = new URLSearchParams();
+  if (opts.q?.trim()) params.set("q", opts.q.trim());
+  if (opts.before) params.set("before", opts.before);
+  params.set("limit", String(opts.limit ?? 30));
+  return apiFetch<ClosedPage>(`${roomApiPath(roomName)}/board/closed?${params}`, {
+    cache: "no-store",
+    fallback: { tasks: [], more: false, total: 0 },
+  });
+}
+
+/** One thing waiting on a member (`GET /rooms/{room}/waiting?for=`). */
+export interface WaitingItem {
+  /** `approve` is an agent's ask (of any kind), `ask` a message that asks you. */
+  kind: "approve" | "ask" | "turn" | "task";
+  /** On an agent's ask: which kind it is (approve, choose or question). */
+  ask_kind?: "approve" | "choose" | "question" | null;
+  key?: string | null;
+  title?: string | null;
+  episode?: string | null;
+  epic?: string | null;
+  epic_title?: string | null;
+  sender?: string | null;
+  text?: string | null;
+  message_id?: string | null;
+  at?: string | null;
+  count: number;
+}
+
+export interface WaitingRead {
+  handle: string;
+  items: WaitingItem[];
+}
+
+/** What is waiting on `handle`: asks it hasn't answered, its turn in a flow,
+ *  and the open tasks it holds that wait on nothing. */
+export async function fetchWaiting(roomName: string, handle: string): Promise<WaitingRead> {
+  const query = new URLSearchParams({ for: handle });
+  return apiFetch<WaitingRead>(`${roomApiPath(roomName)}/waiting?${query}`, {
+    cache: "no-store",
+    fallback: { handle, items: [] },
   });
 }
 
@@ -725,6 +1283,8 @@ export interface MessageQuery {
    * exactly what an offset does.
    */
   before?: string | null;
+  /** Only messages created at or after this stamp: what a view missed. */
+  since?: string | null;
 }
 
 export async function fetchMessages(
@@ -736,6 +1296,7 @@ export async function fetchMessages(
   if (limit) params.set("limit", String(limit));
   if (query.episode) params.set("episode", query.episode);
   if (query.before) params.set("before", query.before);
+  if (query.since) params.set("since", query.since);
   const qs = params.toString();
   return apiFetch<MessagesResponse>(
     `${roomApiPath(roomName)}/messages${qs ? `?${qs}` : ""}`,
@@ -801,6 +1362,37 @@ export async function sendRoomMessage(
   });
 }
 
+/** What the hub says once an ask is answered: the ask with its answer folded
+ *  on, the answer itself, and the message that carried it to the agent. */
+export interface AskAnswered {
+  room: string;
+  message_id: string;
+  ask: Record<string, unknown>;
+  answer: Record<string, unknown>;
+}
+
+/** Answer an agent's ask. The hub takes it only from the person asked, once,
+ *  and sends it back to the agent as values it can act on. */
+export async function answerAsk(
+  roomName: string,
+  askId: string,
+  answer: {
+    by: string;
+    /** An approve's yes or no. */
+    decision?: "approved" | "declined";
+    /** A choose's option ids. */
+    choices?: string[];
+    /** The note on any kind, and the whole answer to a question. */
+    text?: string;
+  },
+): Promise<AskAnswered> {
+  return apiFetch<AskAnswered>(`${roomApiPath(roomName)}/asks/${encodeURIComponent(askId)}/answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(answer),
+  });
+}
+
 export interface AgentSummary {
   handle: string;
   adapter: string;
@@ -830,15 +1422,42 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   });
 }
 
+/** What renaming an agent moved, or that it waits for a yes on the machine running it. */
+export interface AgentRenamed {
+  handle: string;
+  was: string;
+  /** Nothing has changed yet: the machine running it asks first (follow `restart_job`). */
+  pending: boolean;
+  memories: string[];
+  rows: string[];
+  /** The machine restarting it under the new handle, and that job; null when none has it. */
+  restart_runner: string | null;
+  restart_job: string | null;
+}
+
+/** Give an agent a new handle; the room is told, by `by`, in the same call. */
+export async function renameAgent(
+  roomName: string,
+  handle: string,
+  to: string,
+  by: string | null,
+): Promise<AgentRenamed> {
+  return apiFetch<AgentRenamed>(`${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, by }),
+  });
+}
+
 export type EngineKind =
-  | "aligner"
   | "synthesizer"
   | "hello"
   | "conductor"
   | "persona"
-  | "worker";
+  | "worker"
+  | "verifier";
 
-/** Invite a first-party cognition engine (aligner / synthesizer / hello) into a room.
+/** Invite a first-party cognition engine (conductor / synthesizer / hello) into a room.
  *  Engines are backend-owned — registration is just a manifest write with no
  *  machine-local side effects — so the UI can do this natively (no CLI). */
 export async function createEngine(
@@ -860,6 +1479,33 @@ export async function registerA2aAgent(
   data: { handle: string; card: string; description?: string },
 ): Promise<AgentSummary> {
   return apiFetch<AgentSummary>(`${roomApiPath(roomName)}/a2a-agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** A join code an agent redeems with `mycelium join` to become a member. */
+export interface JoinCode {
+  code: string;
+  room: string;
+  handle: string;
+  expires_at: string;
+}
+
+/** A join code for `handle`, which the hub adds to the room first if it's new,
+ *  owned by `created_by`. The code works once, for `ttl_minutes` (default 10,
+ *  at most a day). Throws `ApiError` (409 for a person's or an engine's handle). */
+export async function createInvite(
+  roomName: string,
+  data: {
+    handle: string;
+    ttl_minutes?: number;
+    created_by?: string;
+    description?: string;
+  },
+): Promise<JoinCode> {
+  return apiFetch<JoinCode>(`${roomApiPath(roomName)}/invites`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -952,6 +1598,8 @@ export interface MachineAgent {
   restores: boolean | null;
   /** Stopped or gone, with a folder and CLI to restart it. */
   restartable: boolean;
+  /** A restart brings it back in its own session, keeping its conversation. */
+  resumes?: boolean;
 }
 
 export interface MachineWorkspace {
@@ -999,6 +1647,23 @@ export interface MachineReport {
   missing_integrations: string[];
   workspaces: MachineWorkspace[];
   problems: MachineProblem[];
+  /** Agent CLIs running in herdr panes that no room has yet. Absent from an older runner. */
+  unenrolled?: MachineUnenrolled[];
+}
+
+/** An agent CLI running on a machine that no room has yet, which Members → Add can bring in. */
+export interface MachineUnenrolled {
+  pane: string;
+  /** The agent CLI, as herdr names its kind. */
+  kind: string | null;
+  state: "working" | "idle" | "blocked" | "unknown";
+  folder: string | null;
+  workspace: string | null;
+  workspace_label: string | null;
+  /** The pane's tab name. */
+  tab_label: string | null;
+  /** A handle made from the tab name, for the person to edit. */
+  suggested_handle: string | null;
 }
 
 /** A device paired with a machine, and what the pairing covers (set on that machine). */
@@ -1030,7 +1695,16 @@ export interface PairingOutcome {
   reason?: string | null;
 }
 
-export type RunnerJobKind = "launch" | "stop" | "scan" | "swarm" | "restart" | "pair";
+export type RunnerJobKind =
+  | "launch"
+  | "stop"
+  | "scan"
+  | "swarm"
+  | "restart"
+  | "pair"
+  | "interrupt"
+  | "adopt"
+  | "rename";
 /** `waiting`: the machine's runner is asking the person there before it starts anything. */
 export type RunnerJobStatus = "queued" | "running" | "waiting" | "done" | "failed";
 
@@ -1111,6 +1785,19 @@ export async function launchRunnerAgent(id: string, data: RunnerAgentLaunch): Pr
   });
 }
 
+/** Bring an agent already running on a machine into a room as `handle`; the machine asks
+ *  first, then types its introduction once it's idle. Throws `ApiError`. */
+export async function adoptRunnerAgent(
+  id: string,
+  data: { room: string; pane: string; handle: string; created_by?: string },
+): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/adopt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 /** Restart stopped agents on a machine, as themselves; the machine asks first. Throws `ApiError`. */
 export async function restartMachineAgents(
   id: string,
@@ -1146,7 +1833,7 @@ export async function stopRunnerAgent(id: string, room: string, handle: string):
   );
 }
 
-// ── A2A bridge (the Network pane's off-channel half) ─────────────────────────
+// ── A2A bridge (the room's off-channel traffic) ──────────────────────────────
 //
 // A bridged agent is reached over HTTP by the hub, not over the room's SLIM
 // channel, so none of it shows up in the coordination telemetry above. This is
@@ -1231,6 +1918,13 @@ export interface PresenceMember {
   /** herdr's terminal title, the agent's current task ("Review PR comments").
    *  Shown as the roster's activity line for herdr-hosted members. */
   title?: string | null;
+  /** False when the runner that hosts the agent knows its credential is
+   *  missing, refused or expired, so it can't answer. Null when no runner
+   *  checking in has a verdict (a person, an engine, someone else's agent, an
+   *  older runner, a runner gone quiet): say nothing then. */
+  can_reply?: boolean | null;
+  /** Why it can't, as the runner says it, naming the machine. Shown as is. */
+  cant_reply_why?: string | null;
 }
 
 /** A thread whose floor a run of backend code holds: who holds it and who it
@@ -1248,22 +1942,145 @@ export interface RoomFloor {
   speakers: string[];
 }
 
+/** Something an agent subscribed to (`mycelium subscribe`), so it is woken
+ *  when it happens without anyone asking it. */
+export interface RoomSubscription {
+  id: string;
+  handle: string;
+  kind: "task" | "notice" | "member" | "search";
+  target: string;
+  /** How a person reads it: "work/x and its parts", "resolved notices". */
+  describe: string;
+  /** When it ends, if it was given an end; a task's ends with the task. */
+  until: string | null;
+}
+
+/** A paused agent: who paused it and when. Its wakes are held until it's resumed. */
+export interface AgentPause {
+  handle: string;
+  by: string;
+  at: string;
+}
+
 export interface RoomPresence {
   members: PresenceMember[];
   floors: RoomFloor[];
+  subscriptions: RoomSubscription[];
+  /** Absent from a hub older than pausing. */
+  paused?: AgentPause[];
 }
 
 /** Live presence set for a room: SLIM-connected + server-held lease members,
- *  and the floors held in its threads right now. */
+ *  the floors held in its threads right now, what its agents subscribed to,
+ *  and who is paused. */
 export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> {
-  const data = await apiFetch<{ members?: PresenceMember[]; floors?: RoomFloor[] }>(
-    `${roomApiPath(roomName)}/sessions/members`,
-    { cache: "no-store", fallback: {} },
-  );
+  const data = await apiFetch<{
+    members?: PresenceMember[];
+    floors?: RoomFloor[];
+    subscriptions?: RoomSubscription[];
+    paused?: AgentPause[];
+  }>(`${roomApiPath(roomName)}/sessions/members`, { cache: "no-store", fallback: {} });
   return {
     members: Array.isArray(data.members) ? data.members : [],
     floors: Array.isArray(data.floors) ? data.floors : [],
+    subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
+    paused: Array.isArray(data.paused) ? data.paused : [],
   };
+}
+
+/** What happened to one agent you paused, resumed or stopped. */
+export interface AgentControlResult {
+  room: string;
+  handle: string;
+  paused: (AgentPause & { room: string }) | null;
+  runner: string | null;
+  job: string | null;
+}
+
+export type AgentControlVerb = "pause" | "resume" | "stop";
+
+/** Pause, resume or stop one agent you own. */
+export async function controlAgent(
+  roomName: string,
+  handle: string,
+  verb: AgentControlVerb,
+  by: string,
+): Promise<AgentControlResult> {
+  return apiFetch<AgentControlResult>(
+    `${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/${verb}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ by: by || null }),
+    },
+  );
+}
+
+/** Pause or resume every agent `by` owns, in every room. */
+export async function controlMyAgents(
+  verb: "pause" | "resume",
+  by: string,
+): Promise<{ agents: AgentControlResult[] }> {
+  return apiFetch<{ agents: AgentControlResult[] }>(`/api/agents/${verb}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by }),
+  });
+}
+
+/** Every paused agent `owner` owns, across rooms. */
+export async function fetchMyPaused(owner: string): Promise<(AgentPause & { room: string })[]> {
+  if (!owner) return [];
+  return apiFetch<(AgentPause & { room: string })[]>(
+    `/api/agents/paused?owner=${encodeURIComponent(owner)}`,
+    { cache: "no-store", fallback: [] },
+  );
+}
+
+/** How a person joined a room: made it, was added, posted in it, or was there
+ *  before rooms kept a list. */
+export type JoinedVia = "created" | "added" | "message" | "seeded";
+
+/** One of a room's people, as the hub recorded them joining. */
+export interface RoomPerson {
+  handle: string;
+  joined_at: string;
+  via: JoinedVia;
+}
+
+/** A handle that holds a task or is present, but is neither a person nor an agent here. */
+export interface RoomOther {
+  handle: string;
+  holds_task: boolean;
+  present: boolean;
+}
+
+/** Everyone in a room from the hub's records, not from who has posted. */
+export interface RoomPeople {
+  people: RoomPerson[];
+  agents: { handle: string; owner: string | null }[];
+  engines: { handle: string; owner: string | null }[];
+  others: RoomOther[];
+}
+
+export async function fetchRoomPeople(roomName: string): Promise<RoomPeople> {
+  const data = await apiFetch<Partial<RoomPeople>>(`${roomApiPath(roomName)}/members`, {
+    cache: "no-store",
+    fallback: {},
+  });
+  return {
+    people: Array.isArray(data.people) ? data.people : [],
+    agents: Array.isArray(data.agents) ? data.agents : [],
+    engines: Array.isArray(data.engines) ? data.engines : [],
+    others: Array.isArray(data.others) ? data.others : [],
+  };
+}
+
+/** Take a person out of a room. Throws `ApiError` on failure. */
+export async function removeRoomPerson(roomName: string, handle: string): Promise<void> {
+  await apiFetch<void>(`${roomApiPath(roomName)}/members/${encodeURIComponent(handle)}`, {
+    method: "DELETE",
+  });
 }
 
 // ── Principals (self-asserted user store) ─────────────────────────────────────
@@ -1311,6 +2128,34 @@ export async function saveRoomFolders(handle: string, layout: RoomFolders): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(layout),
   });
+}
+
+/** This machine's themes (`~/.mycelium/themes/`, the ones `mycelium theme`
+ *  writes) and which one is picked, from the app's own server. `available` is
+ *  false where the app keeps no theme files (anywhere but the desktop app). */
+export interface LocalThemes {
+  themes: { id: string; name: string; mode: "light" | "dark"; colors: Record<string, string> }[];
+  current: string | null;
+  available: boolean;
+}
+
+export async function fetchLocalThemes(): Promise<LocalThemes> {
+  const data = await apiFetch<Partial<LocalThemes> | null>(`/api/themes`, { cache: "no-store", fallback: null });
+  return {
+    themes: Array.isArray(data?.themes) ? data.themes : [],
+    current: typeof data?.current === "string" ? data.current : null,
+    available: data?.available === true,
+  };
+}
+
+/** Pick a theme in this machine's `~/.mycelium/theme.json`, as `mycelium theme use` does. */
+export async function saveLocalTheme(theme: string): Promise<string | null> {
+  const data = await apiFetch<{ theme?: string | null }>(`/api/themes`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme }),
+  });
+  return data.theme ?? null;
 }
 
 /** Teams rolled up from agent manifests and user memberships. */
@@ -1376,9 +2221,10 @@ export async function fetchUsage(days = 30): Promise<UsageKpis | null> {
 
 // ── Messages / episodes ─────────────────────────────────────────────────────
 // Episodes are the persisted, causally-linked message record of a coordination
-// session (one markdown file per session under `log/episodes/`). The protocol
-// inspector reads them for the rich causal chain + consensus metrics; wire
-// envelopes carry empty `message.parents` — the chain lives here instead.
+// session (one markdown file per session under `log/episodes/`). The episode
+// detail view and the metrics page read them for the causal chain and the
+// consensus metrics; wire envelopes carry empty `message.parents`, so the chain
+// lives here instead.
 
 export interface MessageActor {
   id: string;
@@ -1450,9 +2296,10 @@ export interface FlowStep {
   prompt?: string;
   wait?: "reply" | "none";
   rounds?: number;
-  /** What the replies add to the run: suggestions, ratings of them, or
-   *  pieces of the shared summary (points and the meanings of words). */
-  collect?: "options" | "scores" | "pieces" | null;
+  /** What the replies add to the run: suggestions, ratings of them, ratings
+   *  of the two reference outcomes, the key terms, or pieces of the shared
+   *  summary (points and the meanings of words). */
+  collect?: "options" | "scores" | "anchors" | "keywords" | "pieces" | null;
   /** What every reply must carry; a reply without it is asked once more. */
   require?: "stance" | "scores" | "pieces" | null;
   /** A select step's bar, 0-1, and how many fixes it sends for. */
@@ -1493,7 +2340,7 @@ export interface FlowTraceEntry {
   stance?: string | null;
   /** A select step's pick: how it went, and who is short. */
   select?: {
-    outcome: "feasible" | "infeasible" | "stuck";
+    outcome: "feasible" | "infeasible" | "stuck" | "nothing";
     pick: string | null;
     lowest: number | null;
     missing: string[];
@@ -1585,7 +2432,7 @@ export interface AuthStatus {
   warnings?: string[];
 }
 
-/** The three `/health` blocks the Network tab reads. They arrive in one
+/** The three `/health` blocks the connection settings read. They arrive in one
  *  response, so the deployment's posture (identity tier, auth gate) costs no
  *  extra call beyond the coordination telemetry the tab already polls. */
 export interface NetworkStatus {

@@ -3,8 +3,10 @@
 
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
+import { settingHref, useClientSetting } from "@/lib/client-settings";
 import { bindingsInScope, type Binding, type KeyScope } from "@/lib/keymap";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
 
@@ -51,7 +53,10 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
     };
   }, [open, onClose]);
 
-  const groups = useMemo(() => groupBindings(bindingsInScope(scopes)), [scopes]);
+  // The person's own keys, so the sheet shows what the keys do for them.
+  const [overrides] = useClientSetting("keys.overrides");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the keymap reads overrides itself
+  const groups = useMemo(() => groupBindings(bindingsInScope(scopes)), [scopes, overrides]);
 
   if (!open) return null;
 
@@ -117,6 +122,11 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
             </section>
           ))}
         </div>
+        <footer className="border-t border-border px-5 py-2.5 text-micro text-muted-foreground">
+          <Link href={settingHref("keys")} onClick={onClose} className="text-accent hover:underline">
+            Change shortcuts…
+          </Link>
+        </footer>
       </div>
     </div>
   );

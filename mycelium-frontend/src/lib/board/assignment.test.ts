@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BLOCKED_FIELD,
+  ASSIGNEE_FIELD,
   ASSIGNMENT_COMPANION_FIELDS,
   ASSIGNMENT_REFUSALS,
   ASSIGNMENT_STATES,
@@ -28,6 +29,7 @@ import {
   assignmentNote,
   assignmentOf,
   assignmentRefusal,
+  holderOf,
   isBlocked,
   leaseFreshness,
   releasePatch,
@@ -83,6 +85,17 @@ describe("the assignment contract", () => {
     expect(CONTRACT.attention_of_assignment).toEqual(ATTENTION_OF_ASSIGNMENT);
   });
 
+  it("says who holds a row the way every copy does", () => {
+    expect(CONTRACT.assignee_field).toBe(ASSIGNEE_FIELD);
+    for (const c of CONTRACT.hold_cases as { meta: Record<string, unknown>; state: string; holder: string | null }[]) {
+      const item = row(c.meta);
+      // A row with no assignment fields at all has no assignment axis here,
+      // which the hub reads as unclaimed.
+      expect(assignmentOf(item, NOW) ?? "unclaimed").toBe(c.state);
+      expect(holderOf(item, NOW)).toBe(c.holder);
+    }
+  });
+
   it("writes only fields the contract names", () => {
     const patch = claimPatch("growth", new Date(NOW).toISOString());
     const written = Object.keys(patch).filter(k => k !== "owner" && k !== "assignment");
@@ -126,15 +139,25 @@ describe("assignment state", () => {
     expect(assignmentOf(row({ assignment: "held", claimed_at: ago(1) }), NOW)).toBe("unclaimed");
   });
 
-  it("refuses a claim it cannot date or bound", () => {
-    // "Held forever, on nobody's word" is exactly the assertion an actor that can
-    // vanish is not entitled to make.
+  it("expires a lease it cannot date", () => {
     expect(assignmentOf(row({ assignment: "held", owner: "@growth", ttl_minutes: 30 }), NOW)).toBe(
       "expired",
     );
-    expect(assignmentOf(row({ assignment: "held", owner: "@growth", claimed_at: ago(1) }), NOW)).toBe(
-      "expired",
+  });
+
+  it("keeps a hold with no timer until something real ends it", () => {
+    // The hub ends it when the holder's pane closes or it leaves the room (#1136).
+    expect(assignmentOf(row({ assignment: "held", owner: "@growth", claimed_at: ago(600) }), NOW)).toBe(
+      "held",
     );
+    expect(remainingMinutes(row({ assignment: "held", owner: "@growth" }), NOW)).toBeNull();
+  });
+
+  it("holds a row for whoever it was given to, with no claim", () => {
+    const item = row({ assignment: "unclaimed", assignee: "coder" });
+    expect(assignmentOf(item, NOW)).toBe("held");
+    expect(holderOf(item, NOW)).toBe("coder");
+    expect(attentionFilterOf(item, NOW)).toBe("in_flight");
   });
 
   it("has no assignment axis at all for a row nobody holds that kind of way", () => {

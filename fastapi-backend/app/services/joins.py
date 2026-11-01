@@ -10,7 +10,8 @@ room, the handle and, on a hub with its auth gate on, a token of its own
 (``member_tokens``). Nothing about the machine the agent runs on has to be set up
 first.
 
-A code is short, single-use, and good for ten minutes, so seeing one in a
+A code is short, single-use, and good for ten minutes unless whoever asks for
+it chooses longer (up to a day), so seeing one in a
 transcript is harmless once it has been used. Codes are kept in memory, like
 runners; a restart forgets the ones nobody redeemed. Only a hash of each code is
 held, so this table can't be read back into working codes.
@@ -24,8 +25,12 @@ import threading
 import time
 from dataclasses import dataclass
 
-#: How long a code can wait to be redeemed.
+#: How long a code can wait to be redeemed, unless whoever asks for it says.
+#: Short: a code's lifetime is part of what keeps a leaked one harmless.
 CODE_TTL_S = 10 * 60
+#: The longest anyone may ask for: long enough to set up a machine somewhere
+#: else later in the day.
+MAX_CODE_TTL_S = 24 * 60 * 60
 #: Unambiguous letters: no 0/O, 1/I/L.
 _ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
 _GROUPS, _GROUP_LEN = 3, 4
@@ -59,14 +64,22 @@ class Joins:
         self._lock = threading.Lock()
 
     def create(
-        self, room: str, handle: str, *, created_by: str | None, now: float | None = None
+        self,
+        room: str,
+        handle: str,
+        *,
+        created_by: str | None,
+        ttl_s: int = CODE_TTL_S,
+        now: float | None = None,
     ) -> tuple[str, Join]:
-        """A new code for ``handle`` in ``room``."""
+        """A new code for ``handle`` in ``room``, good for ``ttl_s`` seconds
+        (at most :data:`MAX_CODE_TTL_S`)."""
         now = time.time() if now is None else now
         code = "-".join(
             "".join(secrets.choice(_ALPHABET) for _ in range(_GROUP_LEN)) for _ in range(_GROUPS)
         )
-        join = Join(room=room, handle=handle, created_by=created_by, expires_at=now + CODE_TTL_S)
+        lasts = max(1, min(int(ttl_s), MAX_CODE_TTL_S))
+        join = Join(room=room, handle=handle, created_by=created_by, expires_at=now + lasts)
         with self._lock:
             self._forget_expired(now)
             self._codes[_digest(code)] = join

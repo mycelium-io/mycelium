@@ -22,37 +22,58 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EMPTY_LAYOUT, type RoomFolders } from "@/lib/room-folders";
 import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
+import useSWRInfinite from "swr/infinite";
 import {
   fetchA2aBridge,
   fetchEpisodes,
+  fetchMyPaused,
   fetchMemories,
   fetchMessages,
   fetchNetworkStatus,
   fetchRoom,
   fetchRoomAgents,
+  fetchRoomBoard,
+  fetchClosedTasks,
+  type ClosedPage,
+  fetchWaiting,
   fetchRoomMembers,
+  fetchRoomPeople,
   fetchRoomStatus,
   fetchRoomFolders,
   fetchProtocols,
   fetchRooms,
+  fetchRoomSettings,
+  fetchSchedules,
   fetchSkills,
   fetchUploads,
+  fetchMentionGroups,
+  fetchVerifierFlags,
   logFetchError,
   saveRoomFolders,
   searchMessages,
   type A2aBridgeState,
+  type AgentPause,
   type AgentSummary,
+  type BoardRead,
   type EpisodeSummary,
+  type WaitingItem,
   type Memory,
   type NetworkStatus,
   type PresenceMember,
   type Protocol,
   type Room,
+  type JoinedVia,
   type RoomFloor,
+  type RoomOther,
+  type RoomSubscription,
+  type RoomPeople,
   type RoomPresence,
   type RoomMessage,
+  type RoomSetting,
+  type ScheduleList,
   type Skill,
   type UploadList,
+  type VerifierFlag,
 } from "@/lib/api";
 import { floorsByHandle } from "@/lib/floors";
 import { latestPreview } from "@/lib/room-preview";
@@ -70,9 +91,18 @@ const POLL = {
   room: 30_000,
   agents: 30_000,
   members: 30_000,
+  // Changes when someone joins or is taken out; the panel revalidates on its own changes.
+  people: 30_000,
   messages: 30_000,
   memories: 30_000,
   skills: 30_000,
+  // A change made here revalidates at once; this catches one made elsewhere.
+  settings: 60_000,
+  // A run is pushed (`schedule_changed`); this only catches a missed push.
+  schedules: 30_000,
+  // A flag and its dismissal arrive as `check` notices, which re-read this;
+  // the poll only catches a missed one.
+  verifierFlags: 60_000,
   uploads: 30_000,
   // Read only while a conductor summon is being written; a room's own flows
   // change about as often as its skills.
@@ -83,11 +113,12 @@ const POLL = {
   // is how often a resolved answer reaches the board, not how often GitHub is
   // asked. Polling harder would not make anything fresher.
   status: 20_000,
+  // A board move is pushed as a notice and the board revalidates on it; this
+  // catches a thread's latest line, which moves without one.
+  board: 15_000,
+  waiting: 15_000,
   a2a: 15_000,
 } as const;
-
-/** Messages are read here only to find who has posted; one page is plenty. */
-const POSTER_LIMIT = 200;
 
 /** The command center wants only the last thing said, and `latestPreview`
  *  scans a short window past any protocol ticks on top of it. */
@@ -125,11 +156,13 @@ const NO_STATUS: RoomStatus = {
 };
 const NO_ROOMS: Room[] = [];
 const NO_AGENTS: AgentSummary[] = [];
-const NO_PRESENCE: RoomPresence = { members: [], floors: [] };
+const NO_PRESENCE: RoomPresence = { members: [], floors: [], subscriptions: [], paused: [] };
 const NO_MESSAGES: RoomMessage[] = [];
-const NO_POSTERS: string[] = [];
+const NO_PEOPLE: RoomPeople = { people: [], agents: [], engines: [], others: [] };
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
+const NO_SETTINGS: RoomSetting[] = [];
+const NO_SCHEDULES: ScheduleList = { schedules: [], total: 0, checks: {} };
 const NO_UPLOADS: UploadList = { uploads: [], total: 0, accepted: [], max_bytes: 0 };
 const NO_PROTOCOLS: Protocol[] = [];
 const NO_EPISODES: EpisodeSummary[] = [];
@@ -138,14 +171,21 @@ type RoomResource =
   | "room"
   | "agents"
   | "members"
+  | "people"
   | "messages"
   | "memories"
   | "skills"
+  | "settings"
+  | "schedules"
   | "uploads"
   | "protocols"
   | "episodes"
   | "status"
-  | "a2a";
+  | "board"
+  | "board-closed"
+  | "waiting"
+  | "a2a"
+  | "verifier-flags";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
 function roomKey(room: string, resource: RoomResource, ...rest: (string | number)[]) {
@@ -248,6 +288,16 @@ export function useRoomFolders() {
   return { layout, update };
 }
 
+/** Every agent you own that is paused, across rooms, for the status rail. */
+export function useMyPaused() {
+  const handle = usePrincipal();
+  const { data, mutate } = useSWR(["my-paused", handle], () => fetchMyPaused(handle), {
+    refreshInterval: POLL.members,
+  });
+  const refresh = useCallback(() => void mutate(), [mutate]);
+  return { paused: data ?? [], refresh };
+}
+
 /** fetchRoom failure logged; returns null for caller to render. */
 export function useRoom(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, error, refresh } = useRoomQuery(
@@ -277,27 +327,26 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
     room, "members", fetchRoomMembers, NO_PRESENCE, POLL.members, opts,
   );
-  return { members: data.members, floors: data.floors, loading, refresh };
+  return {
+    members: data.members,
+    floors: data.floors,
+    // Absent from a members read older than subscriptions.
+    subscriptions: data.subscriptions ?? [],
+    // Absent from a hub older than pausing.
+    paused: data.paused ?? [],
+    loading,
+    refresh,
+  };
 }
 
-/** Handles that have broadcast — reachable by `@` even when not present. */
-export function useRoomPosters(room: string, opts: RoomQueryOptions = {}) {
-  const { data, isLoading, mutate } = useSWR(
-    room ? (["room", room, "messages", POSTER_LIMIT] as const) : null,
-    () => fetchMessages(room, POSTER_LIMIT),
-    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+/** Everyone in a room from the hub's records: its people (recorded when they
+ *  joined), and the handles that hold a task or are present but are neither a
+ *  person nor an agent. */
+export function useRoomPeople(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "people", fetchRoomPeople, NO_PEOPLE, POLL.people, opts,
   );
-  const posters = useMemo(() => {
-    if (!data) return NO_POSTERS;
-    return data.messages
-      .filter((m) => m.message_type === "broadcast")
-      .map((m) => m.sender_handle ?? "")
-      .filter(Boolean);
-  }, [data]);
-  const refresh = useCallback(() => {
-    void mutate();
-  }, [mutate]);
-  return { posters, loading: isLoading, refresh };
+  return { people: data.people, others: data.others, loading, refresh };
 }
 
 /** Recent chat, for surfaces that read the room's history rather than tail it.
@@ -461,7 +510,7 @@ export function useRoomRowNames(room: string): Map<string, RowNaming> {
 }
 
 /** The last readable line in a room, for an inbox-style row. Its own SWR key,
- *  so it never collides with the 200-message page `useRoomPosters` holds. */
+ *  so it never collides with a longer page of the same messages. */
 export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
   const { data, isLoading, mutate } = useSWR(
     room ? (["room", room, "messages", LATEST_LIMIT] as const) : null,
@@ -484,6 +533,58 @@ export function useRoomStatus(room: string, opts: RoomQueryOptions = {}) {
   return { status: data, loading, error, refresh };
 }
 
+const NO_BOARD: BoardRead = { epics: [], tasks: [] };
+const NO_WAITING: WaitingItem[] = [];
+
+/** The room's open epics and other open tasks, as the hub works them out. */
+export function useRoomBoard(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "board", fetchRoomBoard, NO_BOARD, POLL.board, opts,
+  );
+  return { board: data, loading, refresh };
+}
+
+/**
+ * The room's closed tasks, newest closed first, a page at a time, matching
+ * `q` when there is one. Parked while `on` is false, so a folded list reads
+ * nothing. `more()` reads the next older page.
+ */
+export function useRoomClosedTasks(room: string, q: string, on: boolean) {
+  const { data, isLoading, size, setSize } = useSWRInfinite<ClosedPage>(
+    (index, previous: ClosedPage | null) => {
+      if (!on || !room) return null;
+      if (previous && !previous.more) return null;
+      const before = previous?.tasks[previous.tasks.length - 1]?.closed_at ?? "";
+      return ["room", room, "board-closed", q, index === 0 ? "" : before] as const;
+    },
+    ([, r, , query, before]: readonly [string, string, string, string, string]) =>
+      fetchClosedTasks(r, { q: query, before: before || null }),
+    { revalidateFirstPage: true },
+  );
+  const tasks = useMemo(() => (data ?? []).flatMap(p => p.tasks), [data]);
+  const last = data?.[data.length - 1];
+  const more = useCallback(() => void setSize(size + 1), [setSize, size]);
+  return {
+    tasks,
+    total: data?.[0]?.total ?? null,
+    hasMore: !!last?.more,
+    loading: isLoading || (size > 0 && data !== undefined && data.length < size),
+    more,
+  };
+}
+
+/** What is waiting on `handle` in the room. Parked until there is a handle. */
+export function useRoomWaiting(room: string, handle: string, opts: RoomQueryOptions = {}) {
+  const key = handle ? roomKey(room, "waiting", handle) : null;
+  const { data, isLoading, mutate } = useSWR(key, () => fetchWaiting(room, handle), {
+    refreshInterval: opts.refreshInterval ?? POLL.waiting,
+  });
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  return { items: data?.items ?? NO_WAITING, loading: isLoading, refresh };
+}
+
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
     room, "memories", fetchMemories, NO_MEMORIES, POLL.memories, opts,
@@ -491,11 +592,83 @@ export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
   return { memories: data, loading, refresh };
 }
 
+/** A room's settings, with where each value comes from. One cache entry for the
+ *  settings page and every view that acts on a setting (the channel reads which
+ *  board moves to show from it). */
+export function useRoomSettings(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "settings", fetchRoomSettings, NO_SETTINGS, POLL.settings, opts,
+  );
+  return { settings: data, loading, refresh };
+}
+
 export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
     room, "skills", fetchSkills, NO_SKILLS, POLL.skills, opts,
   );
   return { skills: data, loading, refresh };
+}
+
+/** The room's schedules, and the pre-checks its hub runs. One cache entry, so
+ *  the Schedules tab and the Members rail's clock badges share one read. */
+export function useRoomSchedules(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "schedules", fetchSchedules, NO_SCHEDULES, POLL.schedules, opts,
+  );
+  return { schedules: data.schedules, checks: data.checks ?? {}, loading, refresh };
+}
+
+const NO_FLAGS: VerifierFlag[] = [];
+
+/** The verifier's lines still showing, by the message each goes under. A flag
+ *  someone said is fine is left out.
+ *
+ *  Keyed by both of a message's ids: the one the room's history read gives it,
+ *  and its envelope id, which is what a message that arrived live over the
+ *  stream carries until a reload reads it from history. */
+export function useRoomVerifierFlags(room: string, opts: RoomQueryOptions = {}) {
+  const { data, refresh } = useRoomQuery(
+    room, "verifier-flags", fetchVerifierFlags, NO_FLAGS, POLL.verifierFlags, opts,
+  );
+  const byMessage = useMemo(() => verifierFlagsByMessage(data), [data]);
+  return { byMessage, refresh };
+}
+
+export function verifierFlagsByMessage(flags: VerifierFlag[]): Map<string, VerifierFlag[]> {
+  const out = new Map<string, VerifierFlag[]>();
+  for (const flag of flags) {
+    if (flag.state !== "shown") continue;
+    for (const id of new Set([flag.message_id, flag.envelope_id].filter(Boolean) as string[])) {
+      out.set(id, [...(out.get(id) ?? []), flag]);
+    }
+  }
+  return out;
+}
+
+/** Handles that own a live (not expired) schedule, for the Members rail's clock. */
+export function useScheduledHandles(room: string): Map<string, number> {
+  const { schedules } = useRoomSchedules(room);
+  return useMemo(() => {
+    const out = new Map<string, number>();
+    for (const s of schedules) {
+      if (s.state === "expired") continue;
+      out.set(s.owner, (out.get(s.owner) ?? 0) + 1);
+    }
+    return out;
+  }, [schedules]);
+}
+
+/** Who `@here` and `@all` reach for `sender`, in `episode`'s thread or (with
+ *  none) the channel. The same answer the hub delivers by, so the count and the
+ *  names the composer shows are who gets woken. Read only while `enabled`:
+ *  most composers never type a group. */
+export function useMentionGroups(room: string, episode: string | null, sender: string, enabled: boolean) {
+  const { data, isLoading } = useSWR(
+    enabled && room && sender ? (["room", room, "mention-groups", episode ?? "", sender] as const) : null,
+    () => fetchMentionGroups(room, episode, sender),
+    { refreshInterval: POLL.members },
+  );
+  return { groups: data ?? null, loading: isLoading };
 }
 
 /** The room's uploads, and what its hub takes. One cache entry, so every
@@ -553,15 +726,19 @@ export function useRoomRevalidate(room: string): () => void {
 
 // ── Roster ───────────────────────────────────────────────────────────────────
 
-/** A person in the room: an agent's owner, someone who has posted, someone
- *  present, or you. Never an agent — those are listed as agents. */
+/** One of the room's people, as the hub recorded them joining. Never an agent,
+ *  and never someone only guessed from having posted. */
 export interface RosterPerson {
   handle: string;
+  /** How they joined: made the room, were added, posted, or were there before
+   *  rooms kept a list. */
+  via: JoinedVia;
+  joinedAt: string;
   /** Team slugs, unioned from the agents this person owns. */
   teams: string[];
   /** True when this is the handle the browser is acting as. */
   you: boolean;
-  /** True when they own ≥1 agent here (vs. only having posted). */
+  /** True when they own ≥1 agent here. */
   owns: boolean;
   presence?: PresenceMember;
 }
@@ -569,23 +746,37 @@ export interface RosterPerson {
 export interface RoomRoster {
   agents: AgentSummary[];
   people: RosterPerson[];
+  /** Handles that hold a task or are present but are neither a person nor an
+   *  agent here, such as an agent with no manifest in this room. */
+  others: RoomOther[];
   /** handle (lowercased) → presence, for badging a row live or awaiting. */
   presence: Map<string, PresenceMember>;
   /** handle (lowercased) → the floor it holds or was given, for badging whose turn it is. */
   floors: Map<string, RoomFloor>;
+  /** handle (lowercased) → what it subscribed to, for its hover card. */
+  subscriptions: Map<string, RoomSubscription[]>;
+  /** handle (lowercased) → its pause, for a paused agent. */
+  paused: Map<string, AgentPause>;
   loading: boolean;
   refresh: () => void;
 }
 
 /**
- * Everyone in a room, computed once: agents from the manifests, people from
- * agent owners ∪ posters ∪ present members ∪ you. The Members rail and the
- * composer's `@` popover are two views of this one answer.
+ * Everyone in a room, computed once: agents from the manifests, people from the
+ * hub's record of who joined (`GET /rooms/{room}/members`), never from who has
+ * posted. The Members rail and the composer's `@` popover are two views of this
+ * one answer.
  */
 export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRoster {
   const { agents, loading, refresh: refreshAgents } = useRoomAgents(room, opts);
-  const { members, floors: floorList, refresh: refreshMembers } = useRoomMembers(room, opts);
-  const { posters, refresh: refreshPosters } = useRoomPosters(room, opts);
+  const {
+    members,
+    floors: floorList,
+    subscriptions: subscriptionList,
+    paused: pausedList,
+    refresh: refreshMembers,
+  } = useRoomMembers(room, opts);
+  const { people: joined, others, refresh: refreshPeople } = useRoomPeople(room, opts);
   const { principal } = useCurrentUser();
   const me = principal.trim().toLowerCase();
 
@@ -594,48 +785,63 @@ export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRo
     [members],
   );
   const floors = useMemo(() => floorsByHandle(floorList), [floorList]);
+  const subscriptions = useMemo(() => {
+    const byHandle = new Map<string, RoomSubscription[]>();
+    for (const s of subscriptionList) {
+      const handle = s.handle.toLowerCase();
+      byHandle.set(handle, [...(byHandle.get(handle) ?? []), s]);
+    }
+    return byHandle;
+  }, [subscriptionList]);
+  const paused = useMemo(
+    () => new Map(pausedList.map((p) => [p.handle.toLowerCase(), p])),
+    [pausedList],
+  );
+
+  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle.toLowerCase())), [agents]);
 
   const people = useMemo(() => {
-    const agentHandles = new Set(agents.map((a) => a.handle.toLowerCase()));
-    const byHandle = new Map<string, RosterPerson>();
-    const add = (raw: string, owns: boolean) => {
-      const handle = raw.trim().replace(/^@/, "").toLowerCase();
-      if (!handle || agentHandles.has(handle)) return;
-      const existing = byHandle.get(handle);
-      if (existing) {
-        existing.owns = existing.owns || owns;
-        return;
-      }
-      byHandle.set(handle, {
-        handle,
-        teams: [],
-        you: handle === me,
-        owns,
-        presence: presence.get(handle),
-      });
-    };
-    for (const a of agents) if (a.owner) add(a.owner, true);
-    for (const p of posters) add(p, false);
-    for (const m of members) add(m.handle, false);
-    if (me) add(me, false);
+    const owned = (handle: string) => agents.filter((a) => (a.owner ?? "").toLowerCase() === handle);
+    return joined
+      // The hub never records an agent as a person; this keeps a manifest
+      // written since the last read from being drawn twice.
+      .filter((p) => !agentHandles.has(p.handle.toLowerCase()))
+      .map((p): RosterPerson => {
+        const handle = p.handle.toLowerCase();
+        const mine = owned(handle);
+        return {
+          handle,
+          via: p.via,
+          joinedAt: p.joined_at,
+          teams: [...new Set(mine.flatMap((a) => (a.team ? [a.team] : [])))],
+          you: handle === me,
+          owns: mine.length > 0,
+          presence: presence.get(handle),
+        };
+      })
+      .sort((x, y) => x.handle.localeCompare(y.handle));
+  }, [agents, agentHandles, joined, presence, me]);
 
-    for (const person of byHandle.values()) {
-      person.teams = [
-        ...new Set(
-          agents
-            .filter((a) => (a.owner ?? "").toLowerCase() === person.handle && a.team)
-            .map((a) => a.team as string),
-        ),
-      ];
-    }
-    return [...byHandle.values()].sort((x, y) => x.handle.localeCompare(y.handle));
-  }, [agents, members, posters, presence, me]);
+  const otherHandles = useMemo(
+    () => others.filter((o) => !agentHandles.has(o.handle.toLowerCase())),
+    [others, agentHandles],
+  );
 
   const refresh = useCallback(() => {
     refreshAgents();
     refreshMembers();
-    refreshPosters();
-  }, [refreshAgents, refreshMembers, refreshPosters]);
+    refreshPeople();
+  }, [refreshAgents, refreshMembers, refreshPeople]);
 
-  return { agents, people, presence, floors, loading, refresh };
+  return {
+    agents,
+    people,
+    others: otherHandles,
+    presence,
+    floors,
+    subscriptions,
+    paused,
+    loading,
+    refresh,
+  };
 }

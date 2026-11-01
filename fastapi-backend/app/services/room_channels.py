@@ -20,7 +20,7 @@ green without a live fabric — the sole failure mode is "no SLIM channel," neve
 On provision the moderator starts a
 long-lived :class:`~app.services.persister.RoomPersister` that consumes the
 channel — recording the transcript, re-serving missed messages to reconnecting
-members, and watching for ``@``-summon / ``commit:converged`` triggers. This
+members, and watching for ``@``-summon triggers. This
 module owns that task's start/stop lifecycle and surfaces the reconnect signal
 (a membership add for a handle the persister has seen before) into a re-serve.
 """
@@ -31,6 +31,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import secrets
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -38,7 +39,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.services import custody, message_format, slim_identity
+from app.services import custody, groups, message_format, slim_identity
 from app.services.agent_registry import norm_handle
 from app.services.floor import Floor
 from app.services.message_models import Kind
@@ -49,13 +50,16 @@ from app.services.message_slim import (
     serialize_content,
 )
 from app.services.persister import (
-    AddressedHook,
-    ConvergedHook,
+    AskedHook,
     RoomPersister,
     SummonHook,
+    TranscriptRecord,
     bus_frame,
+    envelope_sender,
     parse_mentions,
+    record_episode,
     record_from,
+    rename_cursors_on_disk,
 )
 from app.services.slim_client import (
     SlimClient,
@@ -71,25 +75,41 @@ if TYPE_CHECKING:
 
 # The room-aware summon hook the manager holds: unlike the persister's
 # per-message ``SummonHook`` (which knows only the handle + envelope), this
-# carries the ``room`` so the engine wired to it (the aligner) knows which
-# channel to judge. ``_start_persister`` adapts it down to the persister's
+# carries the ``room`` so the engines wired to it know which channel the
+# summon came from. ``_start_persister`` adapts it down to the persister's
 # signature by binding the room.
 RoomSummonHook = Callable[[str, str, "MyceliumMessage", list[str], str], None]
 
-# The room-aware converged hook, same shape reasoning as ``RoomSummonHook``: the
-# persister's ``ConvergedHook`` is ``(envelope)`` only, but the consumer wired to
-# it (the plan-sync consumer) needs the room to compile that room's plan + sync its
-# memory. ``_converged_adapter`` binds the room down to the persister signature.
-RoomConvergedHook = Callable[[str, "MyceliumMessage"], None]
-# The room-aware addressed hook: ``(room, handle, envelope, message_text)`` for
-# each message recipient of a turn that named nobody in its text.
-RoomAddressedHook = Callable[[str, str, "MyceliumMessage", str], None]
+# The room-aware turn hook: ``(room, handle, envelope, message_text)`` for each
+# handle a message put a turn to (:mod:`app.services.asks`), the way the conductor
+# and the conductor ask one member. The members the hub plays answer it.
+RoomTurnHook = Callable[[str, str, "MyceliumMessage", str], None]
 # The board-event hook: ``(room, data)`` for every notice raised, where ``data``
 # is the notice's payload (``subkind``, ``key``, ``title``, ``episode``, ``by``,
 # and ``for`` on a ``filed`` row given to someone).
 RoomNoticeHook = Callable[[str, dict[str, str]], None]
+# The every-message hook: ``(room, record)`` once per message the room records,
+# after it is durable. The verifier reads agents' prose off it.
+RoomRecordedHook = Callable[[str, "TranscriptRecord"], None]
 
 logger = logging.getLogger(__name__)
+
+#: How a held wake's reason ranks when another wake for the same handle
+#: arrives: something it subscribed to least, so it never replaces an ask,
+#: then a text mention, a turn put to it, a task given to it or its schedule
+#: above that, and an interrupt above those. A resume outranks everything: its
+#: digest covers whatever else was asked while the agent was paused. A reason
+#: not listed ranks with a turn.
+WAKE_RANK = {
+    "subscribed": -1,
+    "mention": 0,
+    "turn": 1,
+    "assigned": 1,
+    "handback": 1,
+    "schedule": 1,
+    "interrupt": 2,
+    "resumed": 3,
+}
 
 # The moderator's app id (third Name segment) on every room channel. Distinct
 # from any real agent handle so it never collides with a participant, and
@@ -150,9 +170,9 @@ def _is_own_registered_agent(room: str, handle: str) -> bool:
 
 def _registered_kind(room: str, handle: str) -> str | None:
     """The engine kind ``handle``'s manifest in ``room`` names, or ``None``."""
-    from app.services.aligner import _registered_engine_kind
+    from app.services.engine_kinds import registered_engine_kind
 
-    return _registered_engine_kind(room, handle)
+    return registered_engine_kind(room, handle)
 
 
 def _is_engine(room: str, handle: str) -> bool:
@@ -222,7 +242,7 @@ class ManagedRoomChannel:
 
         This is the canonical one-liner that replaces the repeated
         ``serialize_content → channel.send → persister.ingest_local`` sequence
-        in the bridge, server, aligner, and synthesizer. The caller builds the
+        in the bridge, server, and engines. The caller builds the
         message (since kind/recipients/payload vary per call site); this
         method owns the three mechanical steps that follow it.
 
@@ -327,22 +347,23 @@ class RoomChannelManager:
         # membership frozen, applied once it closes (see flush_deferred_invites).
         self._deferred_invites: dict[str, set[str]] = {}
         # Trigger hooks handed to every persister, both room-aware and wired at
-        # startup (``main.py``): ``on_summon`` → the SIEP aligner's
-        # ``handle_summon``; ``on_converged`` → the plan-sync consumer's
-        # ``handle_converged``. Unset → the persister's log-only defaults.
+        # startup (``main.py``): ``on_summon`` → every engine's
+        # ``handle_summon``. Unset → the persister's log-only default.
         self.on_summon: RoomSummonHook | None = None
-        self.on_converged: RoomConvergedHook | None = None
-        self.on_addressed: RoomAddressedHook | None = None
+        self.on_turn: RoomTurnHook | None = None
         # Fired after every notice, so something that acts on the board (the
         # worker engine, the herdr doorbell) hears it move without polling it.
         # A notice still wakes no ``await``; this is an in-process listener.
         self.on_notice: RoomNoticeHook | None = None
+        # Fired for every recorded message, so something that reads the room as
+        # it goes (the verifier) doesn't poll the transcript. Wakes nobody.
+        self.on_recorded: RoomRecordedHook | None = None
         self._metrics = ChannelMetrics()
         # Server-held presence: a handle that participates over HTTP (the CLI
         # ``await``/``respond`` long-poll) never holds a client SLIM connection,
         # so it isn't in ``managed.members``. The backend keeps it "present" via a
         # lease (room → handle → monotonic expiry), refreshed on every await/reply,
-        # and unions it into ``members`` so the mediator's roster includes it. This
+        # and unions it into ``members`` so an engine's roster includes it. This
         # is how a turn-based agent (a Claude session) is a first-class member
         # without holding a socket between turns.
         self._leases: dict[str, dict[str, float]] = {}
@@ -360,10 +381,14 @@ class RoomChannelManager:
         # wall-clock last_seen). ``title`` is herdr's terminal title (the agent's
         # current task). Pushed by the host-side `mycelium herdr sync` bridge (the
         # backend can't see the host's herdr socket). Purely a presence/UI surface —
-        # it never enters `members()` (the mediator roster), so a herdr-alive-but-
+        # it never enters `members()` (the engines' roster), so a herdr-alive-but-
         # not-joined agent is *visible* without being made a negotiation participant.
-        # Entries lapse on their TTL if sync stops.
-        self._herdr: dict[str, dict[str, tuple[str | None, str | None, float, float]]] = {}
+        # Entries lapse on their TTL if sync stops. Kept per source (the machine
+        # that pushed them), so one machine's push never removes another's
+        # agents: room → source → handle → (status, title, expires, last_seen).
+        self._herdr: dict[
+            str, dict[str, dict[str, tuple[str | None, str | None, float, float]]]
+        ] = {}
         # herdr wake queue: room → list of pending {handle, ts} "doorbells". A tag
         # of a herdr-present handle enqueues one entry (deduped by handle — the
         # wake is a nudge, not a payload; the agent reads the room itself, so extra
@@ -396,7 +421,7 @@ class RoomChannelManager:
                     "provisioned": True,
                     "persister_alive": task is not None and not task.done(),
                     # Union of SLIM-connected members and live server-held `await`
-                    # leases — the same roster `members()` serves the mediator, so
+                    # leases — the same roster `members()` serves the engines, so
                     # a bare-CLI participant long-polling `await` is visible here.
                     "members": self.members(room),
                     "deferred_invites": len(self._deferred_invites.get(room, ())),
@@ -439,7 +464,7 @@ class RoomChannelManager:
 
         A client-connected agent shows up in ``managed.members`` (SLIM presence); a
         server-held agent (HTTP ``await`` long-poll) shows up via a live lease. The
-        mediator's roster is this union, so both kinds are first-class participants.
+        engines' roster is this union, so both kinds are first-class participants.
         """
         managed = self._channels.get(room)
         slim_members = set(managed.members) if managed is not None else set()
@@ -483,36 +508,61 @@ class RoomChannelManager:
                 out[h] = MemberPresence(kind="herdr", wake_pending=True)
         return out
 
-    def _live_herdr(self, room: str) -> dict[str, tuple[str | None, str | None, float]]:
-        """Unexpired herdr presence for ``room``: handle → (status, title, last_seen).
+    def _live_by_source(
+        self, room: str
+    ) -> dict[str, dict[str, tuple[str | None, str | None, float]]]:
+        """Unexpired herdr presence for ``room`` by source: source → handle →
+        (status, title, last_seen).
 
-        Opportunistically drops lapsed entries so a handle whose sync stopped
-        (herdr closed, bridge killed) disappears from the surface on its own.
+        Opportunistically drops lapsed entries, and sources left with none, so a
+        handle whose sync stopped (herdr closed, runner stopped) disappears from
+        the surface on its own.
         """
         now = time.monotonic()
-        entries = self._herdr.get(room)
-        if not entries:
+        sources = self._herdr.get(room)
+        if not sources:
             return {}
-        live = {
-            h: (status, title, seen)
-            for h, (status, title, exp, seen) in entries.items()
-            if exp > now
-        }
-        if len(live) != len(entries):
-            self._herdr[room] = {h: e for h, e in entries.items() if e[2] > now}
+        live: dict[str, dict[str, tuple[str | None, str | None, float]]] = {}
+        kept: dict[str, dict[str, tuple[str | None, str | None, float, float]]] = {}
+        for source, entries in sources.items():
+            fresh = {h: e for h, e in entries.items() if e[2] > now}
+            if fresh:
+                kept[source] = fresh
+                live[source] = {h: (s, t, seen) for h, (s, t, _exp, seen) in fresh.items()}
+        self._herdr[room] = kept
         return live
 
+    def _live_herdr(self, room: str) -> dict[str, tuple[str | None, str | None, float]]:
+        """Unexpired herdr presence for ``room``, merged across the machines that
+        push it: handle → (status, title, last_seen). A handle more than one
+        machine reports takes the most recent report."""
+        merged: dict[str, tuple[str | None, str | None, float]] = {}
+        for entries in self._live_by_source(room).values():
+            for handle, entry in entries.items():
+                if handle not in merged or entry[2] > merged[handle][2]:
+                    merged[handle] = entry
+        return merged
+
     def set_herdr_presence(
-        self, room: str, statuses: dict[str, str | dict], *, ttl_s: float = 90.0
+        self,
+        room: str,
+        statuses: dict[str, str | dict],
+        *,
+        ttl_s: float = 90.0,
+        source: str = "",
     ) -> None:
-        """Replace the herdr liveness overlay for ``room`` (the sync bridge's push).
+        """Replace ``source``'s herdr liveness for ``room`` (a sync bridge's push).
 
         ``statuses`` maps handle → herdr agent state, either a bare status string or
         ``{"status": ..., "title": ...}`` (the title is herdr's terminal title, the
         agent's current task). Each entry is stamped with a fresh ``ttl_s`` expiry; a
         handle omitted from a later push lapses on its own once its TTL elapses (so a
-        closed pane clears without an explicit delete). Replaces rather than merges —
-        the push is the full current view.
+        closed pane clears without an explicit delete).
+
+        A push is the full current view of the machine that sent it, so it
+        replaces that ``source``'s entries and no other's: two machines' agents
+        in one room are both present, whichever pushed last. A bridge that names
+        no source shares the one ``""`` source with any other that doesn't.
         """
         now_m = time.monotonic()
         now_w = time.time()
@@ -524,12 +574,17 @@ class RoomChannelManager:
             else:
                 status, title = value, None
             overlay[handle] = (status, title, now_m + ttl_s, now_w)
-        self._herdr[room] = overlay
+        self._herdr.setdefault(room, {})[source] = overlay
 
     def herdr_status(self, room: str, handle: str) -> str | None:
         """The live herdr state for ``handle`` in ``room``, or ``None`` if not
         herdr-present. Used to decide whether a mention should enqueue a wake."""
         return self._live_herdr(room).get(handle, (None,))[0]
+
+    def herdr_handles_from(self, room: str, source: str) -> set[str]:
+        """The handles ``source``'s latest push reports live in ``room``: the
+        agents whose panes that machine holds."""
+        return set(self._live_by_source(room).get(source, {}))
 
     def enqueue_herdr_wake(
         self,
@@ -541,6 +596,7 @@ class RoomChannelManager:
         title: str | None = None,
         sender: str | None = None,
         episode: str | None = None,
+        why: str | None = None,
     ) -> None:
         """Ring the doorbell for a herdr-present handle in ``room``.
 
@@ -554,8 +610,12 @@ class RoomChannelManager:
 
         ``reason`` says what kind of doorbell it is, so the bridge can word the
         prompt: ``mention`` (someone tagged you), ``turn`` (a turn is addressed
-        to you), or ``assigned`` (the row ``key`` was given to you). The most
-        specific reason pending wins over a mention.
+        to you), ``assigned`` (the row ``key`` was given to you), or
+        ``interrupt`` (an ``@!`` stopped your turn to say this), or
+        ``subscribed`` (something it subscribed to happened; ``why`` says which
+        subscription and what). The most specific reason pending wins over a
+        mention, and an interrupt over the rest, since the agent's turn was
+        stopped to deliver it; a subscription never replaces any of them.
 
         ``sender`` and ``episode`` say who rang last and where. What they said
         isn't kept here: when the wake is delivered, the digest it carries is
@@ -571,73 +631,156 @@ class RoomChannelManager:
             entry["from"] = sender.lstrip("@")
         if episode:
             entry["episode"] = episode
+        if why:
+            entry["why"] = why
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
-                for field in ("from", "episode"):
-                    if field in entry:
-                        w[field] = entry[field]
-                # The reason only moves up: a turn or an assignment outranks a mention.
-                if reason != "mention":
+                # The reason only moves up: a turn or an assignment outranks a
+                # mention, and an interrupt outranks them all. Who rang and
+                # where move with it, so a wake never names the sender of a
+                # lesser one: an interrupt from a person stays theirs when an
+                # agent mentions the same handle after it.
+                if WAKE_RANK.get(reason, 1) >= WAKE_RANK.get(w.get("reason", "mention"), 1):
+                    # A subscription's why belongs to it alone; an ask that
+                    # replaces it doesn't carry it on.
+                    w.pop("why", None)
                     w.update({k: v for k, v in entry.items() if k != "handle"})
                 return
+        # Its id follows it to the runner and back, so the wake log
+        # (:mod:`app.services.wake_log`) records it once, with its outcome.
+        entry["id"] = secrets.token_hex(6)
         queue.append(entry)
 
-    def enqueue_herdr_wakes_for_mentions(
-        self,
-        room: str,
-        content: str,
-        *,
-        exclude: str | None = None,
-        sender: str | None = None,
-        episode: str | None = None,
+    def note_unrecorded_asks(
+        self, room: str, *, sender: str, text: str, episode: str | None = None
     ) -> list[str]:
-        """Enqueue a herdr wake for each ``@``-mentioned handle that is herdr-present.
+        """Log, for each agent ``text`` asks, that no wake went for it.
 
-        The **one** mention→wake hook every write path shares — a human ``POST
-        /messages`` and an agent ``/reply`` alike — so a tag from *any* source
-        reaches a resident-but-idle herdr agent. A handle with no herdr presence
-        isn't ours; the normal SLIM/consent path covers it. Pass ``exclude`` (the
-        sender's own handle) so a reply that mentions itself doesn't enqueue a
-        self-wake. Returns the handles enqueued.
-
-        A text that summons a conductor wakes nobody: the handles named beside
-        one are bound to its roles, and the conductor addresses each in its
-        turn, which rings the doorbell then (:meth:`herdr_wake_addressed`).
+        A person's message posted while the room's channel isn't live is kept
+        and shown, but never reaches the transcript, which is where every
+        doorbell rings from (:meth:`ring_asked`) and what ``await`` and the
+        digest read. Nothing rings, so this says why in the wake log, read the
+        same way the persister would read the message. Returns the handles.
         """
-        mentions = [raw.lstrip("@").lower() for raw in parse_mentions(content or "")]
-        if any(_registered_kind(room, h) == "conductor" for h in mentions):
-            return []
-        exclude_norm = exclude.lstrip("@").lower() if exclude else None
-        enqueued: list[str] = []
-        for handle in mentions:
-            if handle == exclude_norm:
-                continue
-            if self.herdr_status(room, handle) is not None:
-                self.enqueue_herdr_wake(room, handle, sender=sender or exclude, episode=episode)
-                enqueued.append(handle)
-        return enqueued
+        from app.services import wake_log
+        from app.services.asks import asked
+        from app.services.principals import classify_sender
 
-    def herdr_wake_addressed(
+        extra, _by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
+        envelope = message_format.build_envelope(
+            kind=Kind.exchange,
+            episode=episode or message_format.live_episode_urn(room),
+            sender=sender,
+            sender_role="human",
+            recipients=parse_mentions(text),
+            topic=message_format.topic_urn(room),
+            payload_type="message",
+        )
+        noted: list[str] = []
+        for handle, why in asked(serialize_content(envelope, extra=extra)).items():
+            if classify_sender(room, handle) != "agent":
+                continue
+            wake_log.dropped(
+                room,
+                {"handle": handle, "reason": why, "from": sender, "episode": episode},
+                "the room's channel isn't live, so the message isn't in the transcript yet",
+                outcome="unreached",
+            )
+            noted.append(handle)
+        return noted
+
+    def ring_asked(
         self,
         room: str,
         handle: str,
+        reason: str,
         *,
         sender: str | None = None,
         episode: str | None = None,
     ) -> bool:
-        """Ring a herdr-present handle that was just put a turn (a message recipient).
+        """Ring the herdr doorbell of a handle a message just asked for something.
 
-        How the aligner and the conductor reach a member: an exchange naming it,
-        with nobody mentioned in the text. Without this a herdr agent only woke
-        on a text mention, so a conductor step addressed to one waited out its
-        timeout. ``True`` when a wake was queued.
+        Who was asked, and why, is :mod:`app.services.asks`'s to say; every
+        message recorded in a room is held to it on the way in
+        (``persister`` → :meth:`_asked_adapter`), whichever path wrote it, so a
+        mention from the app, from ``respond``, from a worker or from an engine
+        rings the same way. A handle with no herdr pane isn't rung; a
+        registered agent that nothing is running is logged as unreached.
+        ``True`` when a wake was queued.
+
+        An ``interrupt`` also stops a working agent's turn, when the sender may
+        (:mod:`app.services.interrupts`); otherwise it rings as a ``mention``.
         """
         name = handle.lstrip("@").lower()
-        if self.herdr_status(room, name) is None:
+        status = self.herdr_status(room, name)
+        if status is None:
+            if self._unreachable_agent(room, name):
+                from app.services import wake_log
+
+                # Not lost: the agent reads it on its next `await`. Nothing
+                # could be woken with it now, which is what the log says.
+                wake_log.dropped(
+                    room,
+                    {"handle": name, "reason": reason, "from": sender, "episode": episode},
+                    "nothing is running it: no herdr pane reports it and it isn't awaiting",
+                    outcome="unreached",
+                )
             return False
-        self.enqueue_herdr_wake(room, name, reason="turn", sender=sender, episode=episode)
+        if reason == "interrupt":
+            from app.services import interrupts, pauses
+
+            # A paused agent stays paused: the @! waits for its resume like
+            # any other ask.
+            if pauses.is_paused(room, name) or not interrupts.request(room, name, sender, status):
+                reason = "mention"
+        self.enqueue_herdr_wake(room, name, reason=reason, sender=sender, episode=episode)
         return True
+
+    def ring_subscribed(self, room: str, record: TranscriptRecord) -> list[str]:
+        """Ring the doorbell of each herdr-present handle ``record`` falls under
+        a subscription of, and end the task subscriptions it finished.
+
+        Every recorded message is held to the room's subscriptions on the way
+        in (:meth:`_recorded_adapter`), as it is to :mod:`app.services.asks`; a
+        handle the record asks is rung for that instead (:meth:`ring_asked`),
+        so this rings only the rest, ranked below any ask. A handle with no
+        herdr pane reads it on its next ``await``. Returns who was rung.
+        """
+        from app.services import subscriptions
+        from app.services.asks import woken_by
+
+        # Whoever its sender was answering, stamped now: ``await`` reads it
+        # later, when that turn may be over.
+        subscriptions.note_posted(room, record)
+        subs = subscriptions.load(room)
+        if not subs:
+            return []
+        rung: list[str] = []
+        for handle, wake in woken_by(room, record).items():
+            if wake.reason != "subscribed" or self.herdr_status(room, handle) is None:
+                continue
+            self.enqueue_herdr_wake(
+                room,
+                handle,
+                reason="subscribed",
+                sender=record.sender,
+                episode=record_episode(record),
+                why=wake.why,
+            )
+            rung.append(handle)
+        subscriptions.end_settled(room, record)
+        return rung
+
+    def _unreachable_agent(self, room: str, handle: str) -> bool:
+        """Whether ``handle`` is a registered agent that a mention can't reach
+        right now: no herdr pane reports it and it holds no ``await`` lease. A
+        person or an engine is reached some other way, and isn't one."""
+        from app.services.principals import classify_sender
+
+        if classify_sender(room, handle) != "agent":
+            return False
+        return handle not in self.members(room)
 
     def herdr_wake_assigned(self, room: str, notice: dict[str, str]) -> bool:
         """Ring the herdr-present handle a newly filed row was given to.
@@ -666,36 +809,73 @@ class RoomChannelManager:
 
         The non-destructive counterpart to :meth:`drain_herdr_wakes`: it peeks the
         hold queue for the presence surface without releasing anything, so the UI
-        can badge a tagged-but-busy agent. Stale-expired wakes (older than
-        ``hold_ttl_s``) are excluded, matching what drain would drop.
+        can badge a tagged-but-busy agent. A wake older than ``hold_ttl_s`` for
+        an agent no herdr pane reports is excluded, matching what drain would drop.
         """
         queue = self._herdr_wakes.get(room)
         if not queue:
             return set()
         now = time.monotonic()
-        return {w["handle"] for w in queue if now - float(w.get("ts", now)) <= hold_ttl_s}
+        live = self._live_herdr(room)
+        return {
+            w["handle"]
+            for w in queue
+            if w["handle"] in live or now - float(w.get("ts", now)) <= hold_ttl_s
+        }
 
-    def drain_herdr_wakes(self, room: str, *, hold_ttl_s: float = 600.0) -> list[dict]:
+    def drain_herdr_wakes(
+        self, room: str, *, hold_ttl_s: float = 600.0, source: str | None = None
+    ) -> list[dict]:
         """Release wakes for handles that are **currently idle**; hold the rest.
 
         The "agent hold": a queued wake is returned to the bridge only once herdr
         shows its handle ``idle``/``done`` (ready to take a turn). A ``working``/
-        ``blocked`` handle keeps its wake queued until it frees up. A wake older
-        than ``hold_ttl_s`` is dropped so a never-idle agent doesn't hold a tag
-        forever. Presence is refreshed by the sync bridge every few seconds, so
-        the backend's view of "idle" is near-live.
+        ``blocked`` handle keeps its wake queued until it frees up, however long
+        its turn runs: a mention for an agent on a long task reaches it when the
+        task ends, not never. A wake is dropped only once it's older than
+        ``hold_ttl_s`` and no herdr pane reports its agent any more, so nothing
+        is left to deliver it to. Presence is refreshed by the sync bridge every
+        few seconds, so the backend's view of "idle" is near-live.
+
+        A paused agent's wake is held whatever its state and however long, and
+        never dropped: its resume (``reason="resumed"``) takes its place, and
+        that digest covers everything that arrived during the pause.
+
+        With ``source``, only wakes for handles that machine's own push reports
+        are released: the others are held for the machine whose panes they are,
+        so a runner never takes a wake it can't deliver. With none (a bridge
+        that names no source), any wake is released, as before.
         """
         queue = self._herdr_wakes.get(room)
         if not queue:
             return []
+        from app.services import pauses
+
         now = time.monotonic()
         live = self._live_herdr(room)
+        mine = self.herdr_handles_from(room, source) if source is not None else None
+        paused = pauses.paused_in(room)
         released: list[dict] = []
         held: list[dict] = []
         for w in queue:
-            if now - float(w.get("ts", now)) > hold_ttl_s:
-                continue  # stale hold — drop
             status = live.get(w["handle"], (None,))[0]
+            if w["handle"] in paused:
+                held.append(w)
+                continue
+            if status is None and now - float(w.get("ts", now)) > hold_ttl_s:
+                # Nothing reports the agent any more: dropped, and said why.
+                from app.services import wake_log
+
+                minutes = round(hold_ttl_s / 60)
+                why = (
+                    f"held {minutes} min with no herdr pane reporting it "
+                    "(no runner syncing this room)"
+                )
+                wake_log.dropped(room, w, why)
+                continue
+            if mine is not None and w["handle"] not in mine:
+                held.append(w)  # another machine's agent: that runner takes it
+                continue
             if status in {"idle", "done", "unknown"}:
                 released.append(w)
             else:  # working/blocked (or presence briefly gone) → keep holding
@@ -729,35 +909,14 @@ class RoomChannelManager:
         in the roster; a generous TTL keeps it present through its own think time
         (and avoids a mid-episode membership flap) while a truly-gone agent lapses.
         The not-present → present edge is a join: it emits a coordination_join
-        notice and, like a SLIM join, is checked against a frozen negotiation's
-        roster (:meth:`_enforce_membership_change`, scheduled off the poll).
+        notice. It never touches a running negotiation, which only a party
+        leaving the room ends (:meth:`_abort_if_party_left`).
         """
         was_present = handle in self._live_leases(room)
         self._leases.setdefault(room, {})[handle] = time.monotonic() + ttl_s
         self._last_seen.setdefault(room, {})[handle] = time.time()
         if not was_present:
             self.announce_join(room, handle)
-            self._enforce_membership_change_in_background(room)
-
-    def _enforce_membership_change_in_background(self, room: str) -> None:
-        """Schedule the frozen-roster check for a lease-side join.
-
-        :meth:`refresh_lease` is sync and runs on every poll, so the check is a
-        fire-and-forget task (the ``invite_in_background`` shape) fired only on
-        the join edge, and only when there is something to check: a live channel
-        whose lifecycle is frozen. Without a running loop (a sync caller outside
-        the server) there is nothing to schedule on, and no negotiation to guard.
-        """
-        managed = self._channels.get(room)
-        if managed is None or not managed.lifecycle.frozen:
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        task = loop.create_task(self._enforce_membership_change(managed))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
 
     def _announced_in(self, room: str) -> set[str]:
         """The handles already announced in ``room``, read from its folder once."""
@@ -896,8 +1055,8 @@ class RoomChannelManager:
             # finds the mention as its undelivered tail.
             members_provider=lambda: set(managed.members),
             on_summon=self._summon_adapter(room),
-            on_converged=self._converged_adapter(room),
-            on_addressed=self._addressed_adapter(room),
+            on_asked=self._asked_adapter(room),
+            on_recorded=self._recorded_adapter(room),
             on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
         )
         managed.persister_task = asyncio.create_task(managed.persister.run())
@@ -995,34 +1154,45 @@ class RoomChannelManager:
 
         return adapter
 
-    def _addressed_adapter(self, room: str) -> AddressedHook | None:
-        """Bind ``room`` onto the room-aware ``on_addressed`` hook, like
-        :meth:`_summon_adapter`; ``None`` keeps the persister silent."""
-        hook = self.on_addressed
-        if hook is None:
-            return None
+    def _asked_adapter(self, room: str) -> AskedHook:
+        """What the persister calls for each handle a message asks: ring its
+        doorbell (:meth:`ring_asked`), and hand a turn to :attr:`on_turn`, read
+        at call time so a hook wired after the room started still hears it."""
 
         def adapter(
-            handle: str, envelope: MyceliumMessage, message_text: str = "", _room: str = room
+            handle: str,
+            reason: str,
+            envelope: MyceliumMessage,
+            message_text: str = "",
+            _room: str = room,
         ) -> None:
-            hook(_room, handle, envelope, message_text)
+            message = envelope.header.message
+            self.ring_asked(
+                _room,
+                handle,
+                reason,
+                sender=envelope_sender(envelope),
+                episode=message.episode if message else None,
+            )
+            hook = self.on_turn
+            if reason == "turn" and hook is not None:
+                hook(_room, handle, envelope, message_text)
 
         return adapter
 
-    def _converged_adapter(self, room: str) -> ConvergedHook | None:
-        """Bind ``room`` onto the room-aware ``on_converged`` hook.
+    def _recorded_adapter(self, room: str) -> Callable[[TranscriptRecord], None] | None:
+        """Bind ``room`` onto the room-aware ``on_recorded`` hook. Read at call
+        time, so a hook wired after the room's persister started still fires.
+        The subscriptions' doorbell rings here first (:meth:`ring_subscribed`)."""
 
-        Mirrors :meth:`_summon_adapter`: the persister calls its ``ConvergedHook``
-        with only ``(envelope)``, but the plan-sync consumer needs the room too.
-        When no hook is wired, return ``None`` so the persister keeps its log-only
-        default.
-        """
-        hook = self.on_converged
-        if hook is None:
-            return None
-
-        def adapter(envelope: MyceliumMessage, _room: str = room) -> None:
-            hook(_room, envelope)
+        def adapter(record: TranscriptRecord, _room: str = room) -> None:
+            try:
+                self.ring_subscribed(_room, record)
+            except Exception:
+                logger.exception("subscriptions: ringing failed for %s", record.message_id)
+            hook = self.on_recorded
+            if hook is not None:
+                hook(_room, record)
 
         return adapter
 
@@ -1055,19 +1225,15 @@ class RoomChannelManager:
     async def _register_member(self, managed: ManagedRoomChannel, agent: str) -> None:
         """Post-admit bookkeeping shared by the PSK invite and the custody path.
 
-        Records presence, announces the join, re-serves a reconnecting member's
-        missed tail, and lets a mid-episode membership change abort the episode.
+        Records presence, announces the join, and re-serves a reconnecting
+        member's missed tail. A join never ends a running negotiation.
         """
         managed.members.add(agent)
         self.announce_join(managed.room, agent)
         # Durable inbox: a membership add for a handle the persister has already
-        # seen is a *reconnect* — re-serve its missed tail. Kept separate from the
-        # episode-abort path below: transcript continuity and episode lifecycle
-        # are orthogonal (a reconnect re-serves regardless of episode state, and a
-        # re-serve must not resurrect an aborted episode).
+        # seen is a *reconnect* — re-serve its missed tail.
         if managed.persister is not None and managed.persister.note_join(agent):
             await managed.persister.reserve(agent)
-        await self._enforce_membership_change(managed)
 
     # -- per-actor custodial sessions (#666; identity tiers only) --
 
@@ -1228,6 +1394,9 @@ class RoomChannelManager:
             return None
 
         mentioned = parse_mentions(text)
+        # ``@here`` and ``@all`` reach who they reach now, kept on the message so
+        # every later read of who it asked gives the same answer.
+        extra, by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
         # Every mention is a message recipient (the semantic "to"); everyone else on
         # the channel is an observer. Absent mentions stay recipients so the
         # intent is recorded, but only present ones actually receive the broadcast.
@@ -1238,14 +1407,14 @@ class RoomChannelManager:
             parents=parents,
             sender=sender,
             sender_role="human",
-            recipients=mentioned,
+            recipients=mentioned + [h for h in by_group if h not in mentioned],
             topic=message_format.topic_urn(room),
             payload_type="message",
         )
-        content = serialize_content(envelope, extra={"content": text})
+        content = serialize_content(envelope, extra=extra)
         message_id = envelope.header.message.id if envelope.header.message else None
         try:
-            await managed.channel.send(envelope, extra={"content": text})
+            await managed.channel.send(envelope, extra=extra)
         except Exception as exc:  # best-effort broadcast
             logger.warning("failed to publish human message on room %s: %s", room, exc)
         if managed.persister is not None:
@@ -1311,11 +1480,11 @@ class RoomChannelManager:
         later caller has to remember:
 
         *It wakes nobody.* The ping is addressed to no one and rides a ``ping``
-        payload, which :func:`app.routes.participate._addressed_to` excludes the
-        same way it excludes presence — so a resident agent's ``await`` consumes
+        payload, which asks nobody (:func:`app.services.asks.asks`) the same
+        way presence doesn't — so a resident agent's ``await`` consumes
         it silently instead of spending a turn on it.
 
-        *It does not go out on the wire.* This is the aligner's
+        *It does not go out on the wire.* This is the
         record-locally-don't-broadcast seam: ``ingest_local`` alone, so the ping
         lands in the transcript and on the SSE bus for the GUI without being
         published to the group. Nothing on the channel has to filter it out.
@@ -1367,8 +1536,8 @@ class RoomChannelManager:
         """Raise a **notice** into ``live``: the room's timeline of board events.
 
         The sibling of :meth:`raise_ping`, and it holds the same two structural
-        properties — it wakes nobody (a ``notice`` payload, which
-        :func:`app.routes.participate._addressed_to` excludes) and it does not go
+        properties — it wakes nobody (a ``notice`` payload, which asks nobody:
+        :func:`app.services.asks.asks`) and it does not go
         out on the wire (``ingest_local`` alone) — so a task filed, claimed,
         handed back or resolved reads in the channel in sequence with the chat
         without spending an agent's turn or being filtered out on arrival.
@@ -1439,29 +1608,74 @@ class RoomChannelManager:
         if agent in announced:
             announced.discard(agent)
             _save_announced(room, announced)
-        await self._enforce_membership_change(managed)
+        await self._abort_if_party_left(managed, agent)
         return True
 
-    def open_episode(self, room: str, episode: str, *, negotiation: bool = True) -> bool:
-        """Open an episode over the room's current membership.
+    def rename_member(self, room: str, old: str, new: str) -> None:
+        """Carry what the room holds for ``old`` over to ``new``.
 
-        A negotiation freezes that membership: a subsequent join/leave aborts it.
-        ``negotiation=False`` opens a container — a task's thread — which
-        a join or leave leaves running, because the task outlives what happens
-        inside it.
+        Its presence (lease, last seen, herdr status), its pending doorbell, the
+        floors it was given, whether it was announced, and its read positions, so
+        the renamed agent is the same member under its new name: present if it
+        was, woken by a mention of ``new`` before its machine's next sync pass,
+        and not handed the room again from the start. A SLIM member or custodial
+        session can't be renamed in place; it joins again under ``new`` the next
+        time it is invited.
+        """
+        for times in (self._leases.get(room), self._last_seen.get(room)):
+            if times and old in times:
+                times[new] = times.pop(old)
+        for entries in self._herdr.get(room, {}).values():
+            if old in entries:
+                entries[new] = entries.pop(old)
+        for wake in self._herdr_wakes.get(room, []):
+            if wake.get("handle") == old:
+                wake["handle"] = new
+        announced = self._announced_in(room)
+        if old in announced:
+            announced.discard(old)
+            announced.add(new)
+            _save_announced(room, announced)
+        managed = self._channels.get(room)
+        if managed is None:
+            rename_cursors_on_disk(room, old, new)
+            return
+        if old in managed.members:
+            managed.members.discard(old)
+        for episode, floor in list(managed.floors.items()):
+            holder = new if floor.holder == old else floor.holder
+            speakers = frozenset(new if s == old else s for s in floor.speakers)
+            if (holder, speakers) != (floor.holder, floor.speakers):
+                managed.floors[episode] = Floor(episode, holder, speakers, floor.since)
+        if managed.persister is not None:
+            managed.persister.rename_handle(old, new)
+        else:
+            rename_cursors_on_disk(room, old, new)
 
-        Freezes on :meth:`members` — SLIM presence *plus* server-held leases —
-        not the bare ``managed.members`` SLIM set: a lease-only participant (a
-        headless HTTP ``await``/``respond`` caller with no SLIM socket, never
-        added to ``managed.members`` because it never goes through a SLIM
-        invite at all) is exactly who the mediator negotiates with (see
-        ``aligner.mediate``'s own ``participants``). Freezing on the narrower
-        set left every such participant frozen out of its own negotiation.
+    def open_episode(
+        self,
+        room: str,
+        episode: str,
+        *,
+        negotiation: bool = True,
+        parties: Iterable[str] = (),
+    ) -> bool:
+        """Open an episode; a negotiation freezes on its ``parties``.
+
+        The parties are who the negotiation brokers between (the members a
+        summon named, or a task's members), never everyone present: freezing
+        the room's whole presence is how a busy room's comings and goings
+        aborted runs and pulled in members nobody named. Only one of the
+        parties being removed from the room ends the run
+        (:meth:`_abort_if_party_left`). ``negotiation=False`` opens a container
+        — a task's thread — which nothing ends, because the task outlives what
+        happens inside it.
         """
         managed = self._channels.get(room)
         if managed is None:
             return False
-        managed.lifecycle.open(episode, set(self.members(room)), negotiation=negotiation)
+        frozen = {h for h in (norm_handle(p) for p in parties) if h}
+        managed.lifecycle.open(episode, frozen, negotiation=negotiation)
         return True
 
     # -- the floor --
@@ -1479,12 +1693,16 @@ class RoomChannelManager:
         managed = self._channels.get(room)
         if managed is None or message_format.is_live_episode(room, episode):
             return None
+        previous = managed.floors.get(episode)
         floor = Floor(
             episode=episode,
             holder=norm_handle(holder) or holder,
             speakers=frozenset(h for h in (norm_handle(s) for s in speakers) if h),
+            since=datetime.now(UTC),
         )
-        previous = managed.floors.get(episode)
+        if previous is not None and previous == floor:
+            # The same turn re-held: it has been waiting since it was first given.
+            floor = previous
         managed.floors[episode] = floor
         if previous != floor:
             # Whose turn it is changed: one line in the room's timeline, and the
@@ -1568,36 +1786,36 @@ class RoomChannelManager:
         await self.flush_deferred_invites(room)
         return True
 
-    async def _enforce_membership_change(self, managed: ManagedRoomChannel) -> None:
-        """Abort the active negotiation if membership changed under it.
+    async def _abort_if_party_left(self, managed: ManagedRoomChannel, agent: str) -> None:
+        """End the running negotiation when ``agent``, one of its parties, left the room.
 
-        Compared against the same :meth:`members` union ``open_episode`` froze
-        on — a lease-only participant refreshing/holding its lease is not a
-        membership change; a join or leave on either half of the union is. This
-        runs from the SLIM invite (``_register_member``) and ``remove`` paths and
-        from a lease-side join (``refresh_lease``'s not-present → present edge).
-        A lease that simply expires mid-negotiation, with no join/leave after
-        it, is still not detected here: expiry is derived by the clock, never
-        written, and the mediator's round timeout is what covers a participant
-        that has gone silent.
+        Only the ``remove`` path calls this: presence starting or lapsing is not
+        leaving (see :class:`EpisodeLifecycle`). The abort is recorded here,
+        as one plain line, never a bare protocol record.
         """
-        current_members = self.members(managed.room)
-        if not managed.lifecycle.on_membership_change(set(current_members)):
+        handle = norm_handle(agent) or agent
+        if not managed.lifecycle.on_member_removed(handle):
             return
         episode = managed.lifecycle.episode
         managed.lifecycle.close()
         if not episode:
             return
-        logger.info("Membership change aborted episode %s on room %s", episode, managed.room)
+        logger.info("@%s left %s, ending the negotiation in %s", handle, managed.room, episode)
         try:
             envelope = build_episode_abort_envelope(
-                episode, recipients=current_members, topic=message_format.topic_urn(managed.room)
+                episode,
+                recipients=sorted(managed.lifecycle.members),
+                topic=message_format.topic_urn(managed.room),
+                reason="party_left",
             )
             await managed.channel.send(envelope)
             # Record the abort locally so the transcript/UI see it — SLIM may not
             # loop a broadcast back to its own sender.
             if managed.persister is not None:
-                managed.persister.ingest_local(envelope, serialize_content(envelope))
+                line = f"Negotiation stopped: {handle} left the room."
+                managed.persister.ingest_local(
+                    envelope, serialize_content(envelope, extra={"content": line})
+                )
         except Exception as exc:  # pragma: no cover - best-effort notify
             logger.warning("Failed to publish episode abort for %s: %s", episode, exc)
         # The episode is closed now, so invites deferred while it was active can be

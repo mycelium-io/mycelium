@@ -13,11 +13,11 @@
  *                         indexer, and Pi cognition calls.
  *   `/api/health`         the coordination fabric and the hub's posture, read
  *                         through the shared `useNetworkStatus` cache.
- *   the per-room episodes route  one record per convening of the aligner,
+ *   the per-room episodes route  one record per run of the conductor,
  *                         fanned out across the rooms the hub holds.
  *
  * Server state is SWR-keyed like every other read in the app, so the metrics
- * screen shares its `/health` entry with the Network rail and its room list
+ * screen shares its `/health` entry with the connection settings and its room list
  * with the sidebar rather than opening reads of its own. The screen owns only
  * the cadence, which it passes down as `refreshInterval`.
  */

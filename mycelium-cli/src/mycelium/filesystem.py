@@ -8,13 +8,17 @@ Reads and writes markdown files in .mycelium/ directories.
 Mirrors the backend's filesystem service for local access.
 """
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import MemoryRead
 
 
 def get_mycelium_dir() -> Path:
@@ -150,6 +154,21 @@ def parse_memory(text: str) -> tuple[dict[str, Any], str]:
 # ── File operations ──────────────────────────────────────────────────────────
 
 
+def _memory_path(base_dir: Path, key: str) -> Path:
+    """Where a memory's file is, for a key that names one inside ``base_dir``.
+
+    Keys come from the hub (``sync``, ``room clone``), so one that would leave
+    the folder (``..``, an absolute path), names no file, or holds a ``\\``
+    (a separator on Windows, so ``a\\b`` and ``a/b`` would be one file) raises
+    ``ValueError`` rather than landing wherever it points.
+    """
+    parts = key.split("/")
+    if "\\" in key or key.startswith("/") or any(p.strip() in ("", ".", "..") for p in parts):
+        msg = f"not a valid memory key: {key!r}"
+        raise ValueError(msg)
+    return base_dir / (key if key.endswith(".md") else key + ".md")
+
+
 def write_memory(
     base_dir: Path,
     key: str,
@@ -163,8 +182,7 @@ def write_memory(
     updated_at: datetime | None = None,
 ) -> Path:
     """Write a memory as a markdown file."""
-    filename = key + ".md" if not key.endswith(".md") else key
-    file_path = base_dir / filename
+    file_path = _memory_path(base_dir, key)
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     text = serialize_memory(
@@ -181,10 +199,43 @@ def write_memory(
     return file_path
 
 
+def write_hub_memories(base_dir: Path, memories: "list[MemoryRead]") -> tuple[int, list[str]]:
+    """Write memories the hub listed as local files: how many were written, and
+    why each one that wasn't was skipped."""
+    written = 0
+    skipped: list[str] = []
+    for mem in memories:
+        if isinstance(mem.value, str):
+            content = mem.value
+        else:
+            value = mem.value.to_dict()
+            content = value.get("text", json.dumps(value))
+        try:
+            write_memory(
+                base_dir,
+                # A hub on Windows before 3.0.31 sent its own separator in keys.
+                mem.key.replace("\\", "/"),
+                content,
+                created_by=mem.created_by,
+                updated_by=mem.updated_by or None,
+                version=mem.version,
+                tags=mem.tags or None,
+                created_at=mem.created_at,
+                updated_at=mem.updated_at,
+            )
+        except ValueError as e:
+            skipped.append(str(e))
+            continue
+        written += 1
+    return written, skipped
+
+
 def read_memory(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
     """Read a memory file. Returns (metadata, content) or None."""
-    filename = key + ".md" if not key.endswith(".md") else key
-    file_path = base_dir / filename
+    try:
+        file_path = _memory_path(base_dir, key)
+    except ValueError:
+        return None
     if not file_path.exists():
         return None
     text = file_path.read_text(encoding="utf-8")
@@ -300,7 +351,7 @@ def list_memories(
         try:
             text = f.read_text(encoding="utf-8")
             meta, content = parse_memory(text)
-            key = str(f.relative_to(base_dir))
+            key = f.relative_to(base_dir).as_posix()  # `/` on Windows too
             if key.endswith(".md"):
                 key = key[:-3]
         except Exception:

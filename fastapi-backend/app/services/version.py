@@ -23,7 +23,7 @@ def read_release() -> str:
     """Return the ``project.version`` from ``pyproject.toml``, or ``'unknown'``.
 
     Result is cached after the first call so repeated access (e.g. one per
-    aligner round) is O(1) after warmup.
+    telemetry event) is O(1) after warmup.
     """
     try:
         import tomllib

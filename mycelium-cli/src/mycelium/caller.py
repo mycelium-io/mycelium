@@ -21,7 +21,12 @@ from several places, and they are tried in the same order for all four:
    whose host passes it no environment knows who it is.
 5. **machine**: this machine's own setup: ``config.toml``, ``mycelium login``,
    ``mycelium iam``, and the hub's ``whoami`` for that login.
-6. **default**.
+6. **desktop app**, for the hub only: the hub the desktop app joins in client
+   mode (``~/.mycelium/desktop.json``), when ``config.toml`` names none of its
+   own. It's read, never copied into ``config.toml``, so it follows the app:
+   switch the app back to running its own hub, or remove it, and the CLI goes
+   back to this machine's setting.
+7. **default**.
 
 ``identity.resolve_actor``, ``commands.room._resolve_room``,
 ``client.auth_headers`` and ``MyceliumConfig.load`` keep their signatures and
@@ -52,15 +57,21 @@ ROOM_ENVS = ("MYCELIUM_ROOM_ID", "MYCELIUM_CHANNEL_ID")
 HUB_ENV = "MYCELIUM_API_URL"
 #: What herdr sets in each of its panes, and keeps across its server's restarts.
 PANE_ENV = "HERDR_PANE_ID"
+#: What the runner sets in each pane it starts an agent in.
+AGENT_PANE_ENV = "MYCELIUM_AGENT_PANE"
 
-FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DEFAULT = (
+FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DESKTOP, DEFAULT = (
     "flag",
     "environment",
     "pane",
     "membership",
     "machine",
+    "desktop app",
     "default",
 )
+
+#: The hub ``config.server.api_url`` names when nothing sets it.
+DEFAULT_HUB = "http://localhost:8000"
 
 
 # ── membership: what `mycelium join` saved ───────────────────────────────────
@@ -218,18 +229,50 @@ class Answer:
     source: str
 
 
-def config_overlay() -> dict[str, Any]:
-    """What a membership says about the hub and the room, as config.
+def config_overlay(files_hub: str | None = None) -> dict[str, Any]:
+    """What a membership, or else the desktop app, says about the hub and the
+    room, as config. ``files_hub`` is the hub ``config.toml`` names, if any.
 
     ``MyceliumConfig.load`` merges this between the config files and the
     environment, so every reader of ``config.server.api_url`` and
-    ``config.rooms.active`` sees the membership's answer, and an environment
-    variable still wins over it.
+    ``config.rooms.active`` sees the answer, an environment variable still wins
+    over it, and ``save`` writes back what the files said rather than this.
     """
     member = find_membership()
-    if member is None:
-        return {}
-    return {"server": {"api_url": member.hub}, "rooms": {"active": member.room}}
+    if member is not None:
+        return {"server": {"api_url": member.hub}, "rooms": {"active": member.room}}
+    joined = _desktop_hub_over(files_hub)
+    return {"server": {"api_url": joined}} if joined else {}
+
+
+def desktop_settings_path() -> Path:
+    """Where the desktop app keeps its setting (``desktop.checks`` reads it too)."""
+    return Path.home() / ".mycelium" / "desktop.json"
+
+
+def desktop_hub() -> str | None:
+    """The hub the desktop app joins, when it's in client mode."""
+    try:
+        data = json.loads(desktop_settings_path().read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("mode") != "client":
+        return None
+    return str(data.get("hubUrl") or "").strip().rstrip("/") or None
+
+
+def _desktop_hub_over(files_hub: str | None) -> str | None:
+    """The app's client-mode hub, unless ``config.toml`` names a hub of its own.
+
+    A ``config.toml`` naming the default hub names none: a whole-config save
+    (``mycelium login``, ``iam``) writes every field, defaults included, and in
+    client mode nothing answers on this computer's port anyway.
+    """
+    joined = desktop_hub()
+    if joined is None:
+        return None
+    own = (files_hub or "").strip().rstrip("/")
+    return joined if own in ("", DEFAULT_HUB) else None
 
 
 def hub(config: MyceliumConfig) -> Answer:
@@ -239,6 +282,9 @@ def hub(config: MyceliumConfig) -> Answer:
     member = find_membership()
     if member is not None:
         return Answer(member.hub, MEMBERSHIP)
+    replaced = config._membership_overrides.get(("server", "api_url"))
+    if replaced is not None and replaced[1] == config.server.api_url:
+        return Answer(config.server.api_url, DESKTOP)
     return Answer(config.server.api_url, MACHINE)
 
 
@@ -277,7 +323,7 @@ def handle(
     when the pane can't say which one, it is told it is about to act as this
     machine instead.
     """
-    from mycelium.identity import LEGACY_ACTOR_SENTINEL, _hub_whoami, get_current_handle
+    from mycelium.identity import LEGACY_ACTOR_SENTINEL
 
     if flag and flag != LEGACY_ACTOR_SENTINEL:
         return Answer(flag, FLAG)
@@ -287,18 +333,13 @@ def handle(
     agent = pane_agent()
     if agent is not None and agent.handle:
         return Answer(agent.handle, PANE)
-    member = find_membership()
+    # A pane herdr maps to more than one agent is still an agent's pane, never
+    # whoever this folder's membership names.
+    member = find_membership() if agent is None else None
     if member is not None:
         return Answer(member.handle, MEMBERSHIP)
-    answer = Answer(fallback, DEFAULT)
-    if ask_hub:
-        who = _hub_whoami(config)
-        if who and who.get("handle"):
-            answer = Answer(str(who["handle"]), MACHINE)
-    if answer.source == DEFAULT:
-        local = get_current_handle(config) or config.identity.name
-        if local:
-            answer = Answer(local, MACHINE)
+    found = person(config, ask_hub=ask_hub)
+    answer = Answer(found, MACHINE) if found else Answer(fallback, DEFAULT)
     if agent is not None and answer.source == MACHINE:
         _warn_once(
             f"warning: herdr pane {agent.pane} belongs to more than one agent "
@@ -306,6 +347,23 @@ def handle(
             f"machine's identity. Pass --as <handle> to act as the agent.",
         )
     return answer
+
+
+def person(config: MyceliumConfig, *, ask_hub: bool = True) -> str | None:
+    """The person whose machine this is: the hub's view of its login, else the
+    handle set with ``mycelium iam``.
+
+    The machine source of :func:`handle` on its own, without the flag,
+    environment, herdr pane or folder membership an agent acts through. It is
+    who owns an agent this machine registers, whichever agent is asking.
+    """
+    from mycelium.identity import _hub_whoami, get_current_handle
+
+    if ask_hub:
+        who = _hub_whoami(config)
+        if who and who.handle:
+            return str(who.handle)
+    return get_current_handle(config) or config.identity.name or None
 
 
 def _pane_handles(pane: str) -> str:
@@ -329,26 +387,95 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     An agent's own credential comes first (``agent_credentials``: a token or a
     client from the environment, or one stored for that handle), then the
     membership's token when the call is made as that member, then this
-    machine's ``mycelium login`` session.
+    machine's ``mycelium login`` session, which an agent's pane never gets.
+    In an agent's pane, acting as anyone but that agent is refused.
     """
     from mycelium import agent_credentials
     from mycelium.client import current_token
 
+    pane = in_agent_pane()
+    if pane and acting_as and not _same_handle(acting_as, pane):
+        msg = (
+            f"this is @{pane}'s pane, so commands here act as @{pane} only, "
+            f"not as @{acting_as.lstrip('@')}"
+        )
+        raise ActingAsOtherError(msg)
     agent_token = agent_credentials.access_token(config, acting_as)
     if agent_token:
         return Answer(agent_token, ENVIRONMENT if _env_credential() else MACHINE)
+    if pane and (kept := pane_token()):
+        return Answer(kept, PANE)
     member = find_membership()
+    # In an agent's pane the membership is lent only to the agent it names:
+    # another agent working in that folder sends no token, not that one's.
+    who = acting_as or pane
     if (
         member is not None
         and member.token
         and not member.token_expired()
-        and (acting_as is None or _same_handle(acting_as, member.handle))
+        and (who is None or _same_handle(who, member.handle))
     ):
         return Answer(member.token, MEMBERSHIP)
     session = current_token(config)
     if session is not None:
         return Answer(session.access_token, MACHINE)
     return Answer(None, DEFAULT)
+
+
+def pane_token() -> str | None:
+    """The token the runner keeps for this pane's agent, when it has one that
+    hasn't expired.
+
+    Found by the agent rather than by an environment variable, so an agent
+    started before the runner gave panes a token file, or one herdr restored
+    without its environment, still gets the token the runner keeps for it
+    (``agent_credentials.member_token_path``). The room and handle are herdr's
+    registry's for this pane, else the pane's environment.
+    """
+    from mycelium.agent_credentials import member_token_path
+    from mycelium.tokens import decode_claims
+
+    agent = pane_agent()
+    who = (agent.handle if agent else None) or os.environ.get(HANDLE_ENV, "").strip()
+    where = (agent.room if agent else None) or next(
+        (os.environ[name] for name in ROOM_ENVS if os.environ.get(name)), None
+    )
+    if not who or not where:
+        return None
+    try:
+        token = member_token_path(where, who.lstrip("@")).read_text().strip()
+    except OSError:
+        return None
+    expires = decode_claims(token).get("exp") if token else None
+    if not token or (isinstance(expires, int | float) and expires <= _now_s()):
+        return None
+    return token
+
+
+def _now_s() -> float:
+    return datetime.now(UTC).timestamp()
+
+
+class ActingAsOtherError(Exception):
+    """A command in an agent's pane asked to act as someone else."""
+
+
+def in_agent_pane() -> str | None:
+    """The agent whose pane this is, when it's one the runner started or herdr's
+    registry maps to an agent; ``None`` in a person's own terminal.
+
+    In an agent's pane the person's sign-in is never used and commands act as
+    the agent alone (``credential``, ``session_store``). The marks are in the
+    environment, which an agent can strip; what holds then is that reading the
+    person's sign-in asks the person (``session_store``).
+    """
+    marked = os.environ.get(AGENT_PANE_ENV, "").strip()
+    if marked:
+        return (os.environ.get(HANDLE_ENV, "").strip() or marked).lstrip("@")
+    agent = pane_agent()
+    if agent is not None:
+        return (agent.handle or os.environ.get(HANDLE_ENV, "").strip() or "agent").lstrip("@")
+    return None
 
 
 def _env_credential() -> bool:
@@ -358,6 +485,7 @@ def _env_credential() -> bool:
         os.environ.get(name)
         for name in (
             agent_credentials.STATIC_TOKEN_ENV,
+            agent_credentials.STATIC_TOKEN_FILE_ENV,
             agent_credentials.CLIENT_ID_ENV,
         )
     )

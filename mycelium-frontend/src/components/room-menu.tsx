@@ -3,10 +3,14 @@
 
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Link2, Lock, MoreHorizontal, Trash2, Users } from "lucide-react";
+import { Bell, BellOff, Check, Copy, Link2, Lock, MoreHorizontal, Settings, Trash2, Users } from "lucide-react";
 import { setRoomPrivate } from "@/lib/api";
+import { settingHref } from "@/lib/client-settings";
+import { roomLevel } from "@/lib/notifications";
+import { useOptionalNotifications } from "@/components/notifications-provider";
 import { useRooms } from "@/lib/room-data";
 import { usePrincipal } from "@/components/current-user";
 import { DeleteRoomDialog } from "@/components/delete-room-dialog";
@@ -16,7 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
  * The room's `…` menu in the header: what you do to the room rather than in
  * it. The link to what you're looking at and the room's MAS id live here to be
  * copied, not beside the name, and deleting sits behind a menu instead of an
- * icon next to the title. The link matters most in the Mac app, which has no
+ * icon next to the title. The link matters most in the desktop app, which has no
  * address bar to copy it from.
  */
 export function RoomMenu({
@@ -40,6 +44,8 @@ export function RoomMenu({
   const [copied, setCopied] = useState<"link" | "id" | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const notifications = useOptionalNotifications();
+  const roomMuted = notifications ? roomLevel(notifications.settings, roomName) === "muted" : false;
   // Read when the menu opens, so it names the task or view open right now.
   const link = open && typeof window !== "undefined" ? window.location.href : "";
 
@@ -129,11 +135,36 @@ export function RoomMenu({
               </span>
             </button>
           )}
+          {notifications && (
+            <button
+              type="button"
+              onClick={() =>
+                roomMuted ? notifications.unmuteRoom(roomName) : notifications.muteRoom(roomName)
+              }
+              className={item}
+            >
+              {roomMuted ? (
+                <Bell className="size-3.5 flex-shrink-0 text-muted-foreground" />
+              ) : (
+                <BellOff className="size-3.5 flex-shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block text-text">{roomMuted ? "Unmute notifications" : "Mute notifications"}</span>
+                <span className="block text-micro text-faint">
+                  {roomMuted ? "Its tasks reach your bell again" : "Nothing from this room reaches your bell"}
+                </span>
+              </span>
+            </button>
+          )}
           {error && (
             <p role="alert" className="px-2 py-1 text-micro break-words text-red">
               {error}
             </p>
           )}
+          <Link href={settingHref("room", undefined, roomName)} onClick={() => setOpen(false)} className={item}>
+            <Settings className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            <span className="text-text">Room settings</span>
+          </Link>
           <button
             type="button"
             onClick={() => {

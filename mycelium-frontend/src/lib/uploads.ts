@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import type { Upload, UploadKind } from "@/lib/api";
+import { signedMediaUrl } from "@/lib/ui-token";
 
 /** The memory namespace uploads live in; `[[uploads/<name>]]` links one. */
 export const UPLOADS_PREFIX = "uploads/";
@@ -10,12 +11,14 @@ export function isUploadKey(key: string): boolean {
   return key.startsWith(UPLOADS_PREFIX);
 }
 
-/** The `[[uploads/…]]` links in a message, in order, each once. A code span
- *  or block is prose about the syntax, so links inside one don't count. */
+/** The `[[uploads/…]]` links in a message, in order, each once, with the
+ *  embed form `![[uploads/…]]` too: agents write that one for a picture, and
+ *  it means the same file. A code span or block is prose about the syntax, so
+ *  links inside one don't count. */
 export function uploadKeysIn(text: string): string[] {
   const prose = text.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
   const keys: string[] = [];
-  for (const match of prose.matchAll(/(?<!!)\[\[(uploads\/[^\]|#\n]+)(?:[|#][^\]\n]*)?\]\]/g)) {
+  for (const match of prose.matchAll(/!?\[\[(uploads\/[^\]|#\n]+)(?:[|#][^\]\n]*)?\]\]/g)) {
     const key = match[1].trim();
     if (!keys.includes(key)) keys.push(key);
   }
@@ -26,7 +29,7 @@ export function uploadKeysIn(text: string): string[] {
  *  adds, for drawing above the files themselves. The text sent keeps them (an
  *  agent reads the links); a link written mid-sentence is left where it is. */
 export function withoutTrailingUploadLinks(text: string): string {
-  return text.replace(/(?:^|\n)(?:[ \t]*\[\[uploads\/[^\]\n]+\]\][ \t]*)+\s*$/, "").trimEnd();
+  return text.replace(/(?:^|\n)(?:[ \t]*!?\[\[uploads\/[^\]\n]+\]\][ \t]*)+\s*$/, "").trimEnd();
 }
 
 /** The link to put in a message for an upload. */
@@ -37,6 +40,24 @@ export function uploadLink(upload: Pick<Upload, "key">): string {
 export function extensionOf(filename: string): string {
   const dot = filename.lastIndexOf(".");
   return dot > 0 || (dot === 0 && filename.length > 1) ? filename.slice(dot + 1).toLowerCase() : "";
+}
+
+/** By default, a paste longer than this attaches as a text file rather than
+ *  filling the composer: a log or a settings page reads better as a file, and
+ *  an agent reads it whole with `mycelium memory get uploads/<name>`. Each
+ *  person can change it (`general.long-paste`). */
+export const LONG_PASTE_CHARS = 10_000;
+
+/** The limits Settings offers, in characters; 0 is "never". */
+export const LONG_PASTE_CHOICES = [2_000, 5_000, 10_000, 50_000, 0] as const;
+
+/** The file a long paste attaches as, named for when it was pasted:
+ *  `pasted-text-1042.txt`, with seconds added only when two land in a minute. */
+export function pastedTextFile(text: string, at: Date, taken: readonly string[] = []): File {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  let name = `pasted-text-${pad(at.getHours())}${pad(at.getMinutes())}.txt`;
+  if (taken.includes(name)) name = name.replace(".txt", `${pad(at.getSeconds())}.txt`);
+  return new File([text], name, { type: "text/plain" });
 }
 
 /** Why the hub would refuse this file, said before sending it, or null when
@@ -124,5 +145,14 @@ export function kindLabel(kind: UploadKind): string {
 }
 
 export function downloadUrl(upload: Pick<Upload, "url">): string {
-  return `${upload.url}?download=1`;
+  return signedMediaUrl(`${upload.url}?download=1`);
+}
+
+/** An upload's bytes (or its thumbnail) for an `<img>`, `<audio>` or `<video>`,
+ *  which can't send a header: in the desktop app it carries a short-lived
+ *  signature for that one file, never the launch's token (`lib/ui-token.ts`). */
+export function mediaUrl(url: string): string;
+export function mediaUrl(url: string | null | undefined): string | null | undefined;
+export function mediaUrl(url: string | null | undefined): string | null | undefined {
+  return signedMediaUrl(url);
 }

@@ -28,6 +28,7 @@ from app.schemas import (
     UserCreate,
     UserListResponse,
     UserRead,
+    refusals,
 )
 from app.services import actor, principals, room_folders
 
@@ -43,7 +44,7 @@ async def list_users():
     return UserListResponse(users=users, total=len(users))
 
 
-@router.post("/users", response_model=UserRead, status_code=201)
+@router.post("/users", response_model=UserRead, status_code=201, responses=refusals(500))
 async def create_user(payload: UserCreate):
     """Create or upsert a user in the global store."""
     principals.write_user(payload.model_dump())
@@ -53,7 +54,7 @@ async def create_user(payload: UserCreate):
     return UserRead(**user)
 
 
-@router.get("/users/{handle}", response_model=UserRead)
+@router.get("/users/{handle}", response_model=UserRead, responses=refusals(404))
 async def get_user(handle: str):
     """One user record plus the agents they own."""
     user = principals.user_with_rollup(handle)
@@ -68,13 +69,15 @@ def _own_handle(request: Request, handle: str) -> str:
     return actor.bind_actor(request, handle, field="handle")
 
 
-@router.get("/users/{handle}/room-folders", response_model=RoomFolders)
+@router.get("/users/{handle}/room-folders", response_model=RoomFolders, responses=refusals(403))
 async def get_room_folders(handle: str, request: Request) -> RoomFolders:
     """How this person has organized their rooms list. None yet reads as empty."""
     return room_folders.load(_own_handle(request, handle))
 
 
-@router.put("/users/{handle}/room-folders", response_model=RoomFolders)
+@router.put(
+    "/users/{handle}/room-folders", response_model=RoomFolders, responses=refusals(403, 422)
+)
 async def put_room_folders(handle: str, payload: RoomFolders, request: Request) -> RoomFolders:
     """Replace this person's folders with ``payload`` (the whole layout)."""
     try:

@@ -25,13 +25,16 @@ Design rules (mirrors the package docstring):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from mycelium.filesystem import get_mycelium_dir
@@ -39,12 +42,18 @@ from mycelium.runner.log import ms, slow
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
 #: herdr agent lifecycle states that mean "safe to wake now" — the agent is idle
 #: and will observe a fresh lifecycle change. ``working``/``blocked`` are held
 #: back to the durable cursor (see :meth:`HerdrBridge.wake`).
 _WAKEABLE_STATES = frozenset({"idle", "done", "unknown"})
+
+#: How much of a pane is read to tell a first-run screen, how many keys may be
+#: pressed getting past them (a move and a confirm, with room for one a CLI
+#: refuses as too soon after its question opened), and how long each gets.
+FIRST_RUN_LINES = 30
+FIRST_RUN_KEYS = 4
+FIRST_RUN_SETTLE_S = 1.0
 
 #: Where ``herdr agent start --help`` lists the kinds it can start.
 _POSSIBLE_KINDS = re.compile(r"\[possible values:\s*([^\]]+)\]")
@@ -91,6 +100,44 @@ def too_old(version: str | None) -> bool:
     return bool(have and need and have < need)
 
 
+def config_path() -> Path:
+    """Where herdr reads its settings: ``HERDR_CONFIG_PATH``, else ``~/.config/herdr/config.toml``."""
+    override = os.environ.get("HERDR_CONFIG_PATH")
+    return (
+        Path(override).expanduser()
+        if override
+        else Path.home() / ".config" / "herdr" / "config.toml"
+    )
+
+
+FIRST_RUN_CONFIG = (
+    "# Written by Mycelium when it set up herdr, which runs your agents' terminals.\n"
+    "# herdr shows its first-run screens until this says false.\n"
+    "onboarding = false\n"
+)
+
+
+def skip_first_run() -> bool:
+    """Start herdr past its first-run screens when nobody has set herdr up yet.
+
+    Someone who installed Mycelium has never seen herdr, and its onboarding
+    screens stood in front of the agents' terminals. Only when there's no herdr
+    config at all is one written; an existing one is the person's and is never
+    changed. ``True`` when it wrote one.
+    """
+    path = config_path()
+    if path.exists():
+        return False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(FIRST_RUN_CONFIG)
+    except OSError as e:
+        _log.warning("couldn't write herdr's settings at %s: %s", path, e)
+        return False
+    _log.info("wrote %s so herdr starts past its first-run screens", path)
+    return True
+
+
 class HerdrError(RuntimeError):
     """A herdr CLI call failed. Carries the CLI's error detail when available."""
 
@@ -102,6 +149,38 @@ class HerdrUnavailableError(HerdrError):
     here" (fall back silently) differently from "herdr rejected the command"
     (worth surfacing).
     """
+
+
+class ShellNotReadyError(HerdrError):
+    """A new pane's shell never reached its prompt, so nothing could start in it.
+
+    herdr starts an agent only in a pane sitting at a shell prompt, and a login
+    shell with a heavy profile can take a while to get there.
+    """
+
+
+class AgentNotReadyError(HerdrError):
+    """herdr started the agent CLI in its pane, but it never came up as an agent.
+
+    Most often the CLI is showing something of its own first: an update, a
+    sign-in or a first-run question, which the person at the machine answers.
+    """
+
+
+class AgentExitedError(HerdrError):
+    """herdr started the agent CLI in its pane, and it exited before it came up.
+
+    Its pane is back at the shell, showing whatever the CLI printed on the way
+    out (a refused option, a bad config). Starting it again the same way would
+    only exit again.
+    """
+
+
+#: herdr's word for an agent CLI that exited during its start.
+EXITED_DURING_START = "exited before becoming interactive"
+
+#: herdr's word for a pane with no shell prompt to start an agent at.
+NOT_A_SHELL = "not an available shell"
 
 
 @dataclass(frozen=True)
@@ -121,10 +200,54 @@ class HerdrPaneMapping:
     managed: bool = False
     #: The folder it works in, which is where a restart starts it again.
     cwd: str | None = None
+    #: The agent CLI's own session in this pane, as herdr last reported it, so a
+    #: restart or a rename resumes its conversation rather than starting a new one.
+    session: str | None = None
 
     @property
     def key(self) -> str:
         return f"{self.room}/{self.handle.lstrip('@')}"
+
+
+#: What herdr accepts as an agent name (its own rule, from ``invalid_agent_name``).
+_HERDR_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+_HERDR_NAME_MAX = 32
+
+
+def herdr_name(room: str, handle: str) -> str:
+    """The name herdr shows for ``handle``'s agent in ``room``: readable, unique per machine.
+
+    herdr names are unique across the machine, while a handle is unique only in
+    its room, so the name carries both (``reviewer_mycelium-general``). ``_``
+    appears only between the two. When either had to change to fit herdr's
+    rule, or the pair is longer than herdr allows (then the room is cut), a
+    short hash of the pair keeps it unique. Only a label: who a pane is comes
+    from the registry, never from this name.
+    """
+
+    def clean(text: str) -> str:
+        return re.sub(r"[^a-z0-9-]+", "-", text.lower()).strip("-") or "x"
+
+    raw = handle.lstrip("@")
+    h, r = clean(raw), clean(room)
+    if not h[0].isalpha():
+        h = f"a{h}"
+    name = f"{h}_{r}"
+    if len(name) <= _HERDR_NAME_MAX and (h, r) == (raw, room):
+        return name
+    tag = hashlib.sha1(f"{room}/{raw}".encode()).hexdigest()[:4]
+    room_room = _HERDR_NAME_MAX - len(h) - len(tag) - 2
+    if room_room < 1:
+        return f"{h[: _HERDR_NAME_MAX - len(tag) - 1]}_{tag}"
+    return f"{h}_{r[:room_room].rstrip('-_')}-{tag}"
+
+
+def session_of(agent: dict | None) -> str | None:
+    """The agent CLI's session id herdr reports for a live agent, or ``None``."""
+    found = (agent or {}).get("agent_session")
+    if isinstance(found, dict) and found.get("kind") == "id" and found.get("value"):
+        return str(found["value"])
+    return None
 
 
 @dataclass(frozen=True)
@@ -186,8 +309,8 @@ def build_mention_prompt(room: str, handle: str) -> str:
         f"Run `mycelium await --room {room} --handle {h} --json --timeout 5` to read it "
         f"with everything said since your last turn, then reply with "
         f'`mycelium respond --room {room} --handle {h} --body "..."`. '
-        f"That lands in the room; if the turn names a task, add `--task <task>` "
-        f"to answer in its thread."
+        f"Reply where you were asked: if the turn names a task, add `--task <task>` "
+        f"so it lands in that task's thread; without it, it lands in the room."
     )
 
 
@@ -231,6 +354,7 @@ class HerdrRegistry:
             kind=entry.get("kind"),
             managed=bool(entry.get("managed", False)),
             cwd=entry.get("cwd") or None,
+            session=entry.get("session") or None,
         )
 
     def all(self) -> list[HerdrPaneMapping]:
@@ -250,12 +374,13 @@ class HerdrRegistry:
         return self._mapping(room, h, entry)
 
     def set(self, mapping: HerdrPaneMapping) -> None:
-        """Write ``mapping``. A folder it doesn't say is kept from before, for
-        the same pane and the same kind of agent.
+        """Write ``mapping``. A folder or session it doesn't say is kept from
+        before, for the same pane and the same kind of agent.
 
         The workspace sync rewrites a pane's mapping without knowing which
-        folder the agent was started in, and that folder is where a restart
-        starts it again. Another pane or kind is another agent.
+        folder the agent was started in or which session it's in, and those
+        are what a restart starts it again with. Another pane or kind is
+        another agent.
         """
         data = self._load()
         raw = data.get(mapping.key)
@@ -265,8 +390,38 @@ class HerdrRegistry:
         cwd = mapping.cwd or (before.get("cwd") if same else None)
         if cwd:
             entry["cwd"] = cwd
+        session = mapping.session or (before.get("session") if same else None)
+        if session:
+            entry["session"] = session
         data[mapping.key] = entry
         self._save(data)
+
+    def note_sessions(self, worked: dict[str, str], seen: dict[str, str] | None = None) -> None:
+        """Record, for each mapped pane, the session its agent last worked in.
+
+        ``worked`` is the session herdr reports for each pane whose agent is
+        working; ``seen`` is every session it reports, idle ones too. A pane with no session on record takes the one
+        seen; one with a session keeps it until its agent works in another. A
+        pane that comes back from a herdr restart as a fresh session, idle and
+        empty, so never replaces the conversation a restart should resume.
+
+        Called with what herdr says now, so the session outlives the pane: once
+        an agent has stopped, or its pane has closed, herdr no longer reports it.
+        """
+        data = self._load()
+        changed = False
+        for entry in data.values():
+            if not isinstance(entry, dict):
+                continue
+            pane = str(entry.get("pane"))
+            session = worked.get(pane) or (
+                (seen or {}).get(pane) if not entry.get("session") else None
+            )
+            if session and entry.get("session") != session:
+                entry["session"] = session
+                changed = True
+        if changed:
+            self._save(data)
 
     def remove(self, room: str, handle: str) -> bool:
         data = self._load()
@@ -658,9 +813,7 @@ class HerdrBridge:
                 return
             label = str(tab.get("label") or "")
             words = label.split()
-            if label != str(tab.get("number")) and not (
-                words and all(w.startswith("@") for w in words)
-            ):
+            if label != str(tab.get("number")) and not named_by_mycelium(label):
                 return
             here = {str(p["pane_id"]) for p in panes if p.get("tab_id") == tab_id}
             moved = {m.handle for m in self.registry.all() if m.room == room and m.pane not in here}
@@ -671,9 +824,77 @@ class HerdrBridge:
         except HerdrError as e:
             _log.info("couldn't name the herdr tab of @%s: %s", handle, e)
 
+    def rename_in_tab(self, pane: str, old: str, new: str) -> None:
+        """Swap ``@old`` for ``@new`` in the name of ``pane``'s tab.
+
+        Only a tab Mycelium named (every word an ``@handle``); one a person
+        named keeps their name. Best-effort, as a name is cosmetic.
+        """
+        try:
+            row = next((p for p in self.list_panes() if str(p.get("pane_id")) == pane), None)
+            if row is None or row.get("tab_id") is None or row.get("workspace_id") is None:
+                return
+            tab_id = row["tab_id"]
+            tab = next(
+                (t for t in self._tabs(str(row["workspace_id"])) if t["tab_id"] == tab_id), None
+            )
+            words = str((tab or {}).get("label") or "").split()
+            if not words or not all(w.startswith("@") for w in words) or f"@{old}" not in words:
+                return
+            self.rename_tab(
+                str(tab_id), " ".join(f"@{new}" if w == f"@{old}" else w for w in words)
+            )
+        except HerdrError as e:
+            _log.info("couldn't rename @%s in its herdr tab: %s", old, e)
+
     def close_pane(self, pane: str) -> None:
         """Close ``pane``, ending whatever runs in it."""
         self._run_json(["pane", "close", pane])
+
+    def send_keys(self, pane: str, *keys: str) -> None:
+        """Press ``keys`` in ``pane`` (herdr's names: ``esc``, ``enter``...)."""
+        self._run_quiet(["pane", "send-keys", pane, *keys])
+
+    def past_first_run(
+        self, pane: str, kind: str | None, passed: list[str] | None = None
+    ) -> str | None:
+        """Get the agent in ``pane`` past a first-run screen its CLI shows, where
+        a key does it with nothing to choose; else say what it's waiting on.
+
+        ``None`` when the pane shows none of the screens ``kind`` is known to
+        show (or can't be read), so a prompt can go in. Otherwise what the person
+        has to answer there, like a sign-in, and nothing is typed into it.
+        What each key pressed did for the person, when its screen says, is
+        added to ``passed``.
+        """
+        from mycelium.integrations.agents import AgentKind, of_kind
+
+        if not kind:
+            return None
+        known = of_kind(kind)
+        # A CLI with no first-run screens of its own never has its screen read.
+        if type(known).first_run is AgentKind.first_run:
+            return None
+        # The folder it runs in, as herdr sees its process, for a screen that names one.
+        running = self.get_agent(pane) or {}
+        folder = str(running.get("foreground_cwd") or running.get("cwd") or "") or None
+        pressed = 0
+        while True:
+            screen = self.read_pane(pane, lines=FIRST_RUN_LINES)
+            seen = known.first_run(screen, folder) if screen else None
+            if seen is None:
+                return None
+            # Still there after its key, or one only the person can answer.
+            if seen.key is None or pressed >= FIRST_RUN_KEYS:
+                return seen.what
+            try:
+                self.send_keys(pane, seen.key)
+            except HerdrError:
+                return seen.what
+            if passed is not None and seen.done and seen.done not in passed:
+                passed.append(seen.done)
+            pressed += 1
+            time.sleep(FIRST_RUN_SETTLE_S)
 
     def _run_quiet(self, args: list[str]) -> None:
         """Run a herdr command that prints nothing when it works."""
@@ -847,6 +1068,16 @@ class HerdrBridge:
 def _tab_label(handles: list[str], handle: str) -> str:
     """``@a @b``: the handles in a tab, ``handle`` last, each once."""
     return " ".join(f"@{h}" for h in [*(h for h in handles if h != handle), handle])
+
+
+def named_by_mycelium(label: str) -> bool:
+    """Whether a tab's name is one Mycelium gave it (every word an ``@handle``).
+
+    Such a tab holds agents Mycelium started, and its name lists them, so it is
+    never a name for a new member.
+    """
+    words = label.split()
+    return bool(words) and all(w.startswith("@") for w in words)
 
 
 def _split_target(panes: list[dict]) -> tuple[str | None, str]:

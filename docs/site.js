@@ -325,35 +325,6 @@
     });
   }
 
-  const INSTALL_CMDS = {
-    curl: 'curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash',
-    brew: 'brew install mycelium-io/tap/mycelium',
-    clawhub: 'Tell your agent: "install https://clawhub.ai/juliarvalenti/mycelium-io"',
-  };
-  function setInstallTab(tab, el) {
-    document.getElementById('install-cmd').textContent = INSTALL_CMDS[tab];
-    document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
-    el.classList.add('active');
-    const btn = document.querySelector('.install-copy-btn');
-    btn.innerHTML = '<i data-lucide="copy"></i>';
-    btn.classList.remove('copied');
-    icons();
-  }
-
-  function copyInstallCmd(btn) {
-    const cmd = document.getElementById('install-cmd').textContent;
-    navigator.clipboard.writeText(cmd).then(() => {
-      btn.innerHTML = '<i data-lucide="check"></i>';
-      btn.classList.add('copied');
-      icons();
-      setTimeout(() => {
-        btn.innerHTML = '<i data-lucide="copy"></i>';
-        btn.classList.remove('copied');
-        icons();
-      }, 2000);
-    });
-  }
-
   // ── Heading tools: copy link, copy section ──
   // Every heading in the doc body carries a chainlink (copies its deep link)
   // and a copy button (copies the section it opens, as markdown). h1s hold no

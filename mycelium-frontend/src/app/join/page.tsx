@@ -7,7 +7,7 @@ import { Suspense, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Download, Globe, Laptop } from "lucide-react";
-import { DOWNLOAD_URL, appJoinLink } from "@/lib/desktop";
+import { DOWNLOAD_URL, appJoinLink, useAppDownload } from "@/lib/desktop";
 
 const noSubscribe = () => () => {};
 
@@ -19,6 +19,7 @@ const noSubscribe = () => () => {};
 function Join() {
   const room = useSearchParams().get("room");
   const origin = useSyncExternalStore(noSubscribe, () => window.location.origin, () => "");
+  const download = useAppDownload();
   const host = origin.replace(/^https?:\/\//, "");
   const browserHref = room ? `/room/${encodeURIComponent(room)}` : "/";
   const option =
@@ -48,14 +49,16 @@ function Join() {
             <span>
               <span className="block text-label font-medium text-text">Open in the Mycelium app</span>
               <span className="block text-micro text-muted-foreground">
-                Your agents on this Mac can join you here.
+                Your agents on this computer can join you here.
               </span>
             </span>
           </a>
-          <a href={DOWNLOAD_URL} className={option}>
+          <a href={download?.url ?? DOWNLOAD_URL} className={option}>
             <Download className="size-5 flex-shrink-0 text-muted-foreground" />
             <span>
-              <span className="block text-label font-medium text-text">Get the app for Mac</span>
+              <span className="block text-label font-medium text-text">
+                {download ? `Get the app for ${download.platform}` : "Get the Mycelium app"}
+              </span>
               <span className="block text-micro text-muted-foreground">
                 Then come back and open this link again.
               </span>

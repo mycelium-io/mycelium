@@ -150,6 +150,30 @@ async def test_amend_route_revises_what_the_room_reads(client, tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_amend_answers_with_the_text_it_replaced(client, tmp_path, monkeypatch):
+    """So whoever amended sees at once whether it was the message they meant."""
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    in_memory_store.clear_all()
+    room = "amend-replaced-room"
+    get_room_dir(room)
+    posted = await client.post(
+        f"/api/rooms/{room}/messages",
+        json={"sender_handle": "growth", "message_type": "broadcast", "content": "TTL is 30s"},
+    )
+    message_id = posted.json()["id"]
+    url = f"/api/rooms/{room}/messages/{message_id}/amend"
+
+    first = await client.post(url, json={"sender_handle": "growth", "content": "TTL is 300s"})
+    assert first.json()["replaced"] == "TTL is 30s"
+    assert first.json()["task"] is None  # said in the room, not a task's thread
+
+    # Amended again, what it replaces is what the room showed: the newest text.
+    second = await client.post(url, json={"sender_handle": "growth", "content": "TTL is 3000s"})
+    assert second.json()["replaced"] == "TTL is 300s"
+    assert second.json()["content"] == "TTL is 3000s"
+
+
+@pytest.mark.asyncio
 async def test_amend_accepts_an_unambiguous_id_prefix(client, tmp_path, monkeypatch):
     """The short id `mycelium room messages` prints is enough to name a message."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))

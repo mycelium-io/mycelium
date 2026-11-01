@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.bus import agent_channel, app_channel, bus, room_channel
+from app.schemas import refusals
 from app.services import in_memory_store, room_access
 from app.services.filesystem import read_room_meta, room_exists
 
@@ -56,7 +57,7 @@ async def _sse_from_channel(request: Request, channel: str):
         bus.unsubscribe(channel, queue)
 
 
-@router.get("/rooms/{room_name}/messages/stream")
+@router.get("/rooms/{room_name}/messages/stream", responses=refusals(404))
 async def stream_room_messages(room_name: str, request: Request):
     """Server-Sent Events stream for a room."""
     if not _room_or_session_exists(room_name):

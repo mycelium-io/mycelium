@@ -20,6 +20,7 @@ import pytest
 import yaml
 
 from app.services import assignments, message_format, tasks, worker_engine
+from app.services.asks import asked
 from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
@@ -27,24 +28,18 @@ from app.services.filesystem import (
     write_memory_file,
 )
 from app.services.message_models import Kind
+from app.services.message_slim import serialize_content
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "worker-room"
 
 
 class _Manager(FakeManager):
-    """The fake manager plus the two calls a worker makes after it speaks."""
+    """The fake manager plus the calls a worker makes after it speaks."""
 
     def __init__(self, managed: FakeManaged) -> None:
         super().__init__(managed, [])
-        self.rung: list[str] = []
         self.pings: list[str] = []
-
-    def enqueue_herdr_wakes_for_mentions(
-        self, room: str, content: str, *, exclude: str | None = None, **_: Any
-    ) -> list[str]:
-        self.rung.append(content)
-        return []
 
     def herdr_status(self, room: str, handle: str) -> str | None:
         return None
@@ -128,13 +123,6 @@ def test_action_lines_are_lifted_out_of_the_prose():
 def test_a_new_task_that_names_nobody_is_not_filed():
     actions, _prose = worker_engine.parse_actions("[[new: An orphan task]]")
     assert actions == []
-
-
-def test_a_worker_may_name_a_teammate_but_never_an_engine():
-    team = ["agent-1", "agent-2", "julia"]
-    text = "@agent-2 can you review? @aligner @conductor @agent-1 @julia @nobody"
-    kept = worker_engine.keep_team_mentions(text, team, "agent-1")
-    assert kept == "@agent-2 can you review? aligner conductor agent-1 @julia nobody"
 
 
 def test_the_team_is_the_agents_and_the_workers_not_the_other_engines():
@@ -224,16 +212,22 @@ async def test_done_resolves_the_row_the_thread_belongs_to(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
-async def test_a_mention_of_a_teammate_rings_their_doorbell(monkeypatch: pytest.MonkeyPatch):
+async def test_what_a_worker_says_is_posted_as_it_said_it(monkeypatch: pytest.MonkeyPatch):
+    # Every mention stays, an engine's or an interrupt included: the room asks
+    # each by the same rule as anyone's (``asks.py``) as it records the post.
     _register("agent-1")
     _register("agent-2")
+    said = "Draft is up. @agent-2 can you check the edge cases? cc @aligner, @!agent-3"
     _key, episode = await _task("Draft it")
-    _patch_pi(monkeypatch, "Draft is up. @agent-2 can you check the edge cases?")
-    engine, _managed, manager = _engine()
+    _patch_pi(monkeypatch, said)
+    engine, managed, manager = _engine()
 
     await engine.turn(_ROOM, "agent-1", episode=episode, ask="Do it.")
 
-    assert manager.rung == ["Draft is up. @agent-2 can you check the edge cases?"]
+    ((env, text),) = _posted(managed)
+    assert text == said
+    asking = asked(serialize_content(env, extra={"content": text}))
+    assert asking == {"agent-2": "mention", "aligner": "mention", "agent-3": "interrupt"}
     assert manager.pings == ["agent-1"]
 
 

@@ -17,6 +17,7 @@ import {
   LIVE_SESSION,
   NOTICE_PAYLOAD_TYPE,
   NOTICE_SUBKINDS,
+  UPSTREAM_CHANGES,
   PING_PAYLOAD_FIELDS,
   PING_PAYLOAD_TYPE,
   liveEpisodeUrn,
@@ -26,7 +27,7 @@ const CONTRACT_PATH = path.resolve(__dirname, "../../../contracts/slim-wire.json
 
 function contract(): {
   ping: { payload_type: string; payload_fields: string[] };
-  notice: { payload_type: string; subkinds: string[] };
+  notice: { payload_type: string; subkinds: string[]; upstream_changes: string[] };
   urn: { room: string; session: string; expected_episode: string };
 } {
   return JSON.parse(readFileSync(CONTRACT_PATH, "utf-8"));
@@ -49,5 +50,6 @@ describe("thread wire constants contract", () => {
     const { notice } = contract();
     expect(NOTICE_PAYLOAD_TYPE).toBe(notice.payload_type);
     expect([...NOTICE_SUBKINDS]).toEqual(notice.subkinds);
+    expect([...UPSTREAM_CHANGES]).toEqual(notice.upstream_changes);
   });
 });

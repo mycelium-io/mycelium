@@ -34,6 +34,7 @@ import jwt
 from fastapi import HTTPException, Request
 
 from app.config import PrincipalRole, TrustedIssuer, settings
+from app.schemas import refusals
 from app.services import member_tokens
 from app.services.agent_registry import norm_handle
 
@@ -70,6 +71,12 @@ PUBLIC_PATHS = frozenset(
 #: /.well-known/openid-configuration) — it's discovery metadata (room name +
 #: advertised skills), not room content. The room's RPC endpoint stays gated.
 A2A_CARD_SUFFIX = "/.well-known/agent-card.json"
+
+#: What the gate refuses a gated route with when it's on: 401 for a missing or
+#: invalid token, 503 when it can't check one (no trusted issuers configured, or
+#: an issuer's keys out of reach). Every route but the public ones above declares
+#: these; ``app.main`` adds them to each router whose routes are all gated.
+GATE_REFUSALS = refusals(401, 503)
 
 #: Shortest gap between forced JWKS re-fetches triggered by an unknown ``kid``.
 #: Rotation is picked up within this bound; without it, a flood of junk ``kid``s

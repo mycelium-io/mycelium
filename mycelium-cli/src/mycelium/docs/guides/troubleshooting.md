@@ -7,15 +7,13 @@ mycelium doctor          # checks config, the hub, the model and SLIM
 mycelium doctor --fix    # also runs the fixes it suggests, without asking first
 ```
 
-`mycelium doctor` is the first thing to run for almost any problem. It works out
-what this machine is and runs only the checks that apply. The machine might run
-**the Mac app**, be a **hub** running the Docker stack or be a **spoke** that
-connects to a hub elsewhere. To choose yourself, pass `--mode desktop`,
-`--mode hub` or `--mode spoke`. In the Mac app, **Health check…** in the menu
-bar runs the same checks.
+Run `mycelium doctor` first for almost any problem. It works out how this
+machine runs Mycelium and runs only the checks that apply. To choose yourself,
+pass `--mode desktop`, `--mode hub` or `--mode spoke`.
 
 Each problem it finds comes with the command that fixes it. `--fix` runs those
-commands for you, such as `mycelium config apply` or `mycelium up`.
+commands for you. In the desktop app, **Health check…** in its menu runs the
+same checks.
 
 ---
 
@@ -29,7 +27,7 @@ flow waits on its turn.
 Something has to tell the agent there's work for it. Check these in order:
 
 1. **Is the runner running on the agent's machine?** It delivers wake-ups to
-   agents in herdr. The Mac app runs it. Elsewhere:
+   agents in herdr. The desktop app runs it. Elsewhere:
 
    ```bash
    mycelium runner status
@@ -50,21 +48,81 @@ Something has to tell the agent there's work for it. Check these in order:
    its agent CLI, a restart of herdr leaves the agent stopped.
    `mycelium machine integrations --install` fixes that for next time.
    `mycelium machine restart --all` starts the stopped ones now.
-6. **Is it missing a negotiation's rounds?** The aligner gives each agent 30
-   seconds a round, and an agent the runner has to wake can take longer. Raise
-   `aligner.round_timeout_s`. See [Aligner](#aligner-settings).
+6. **Is it missing its turns in a flow?** The conductor gives each member five
+   minutes to answer a step, and the flow goes on without a member that
+   doesn't answer in time.
 
-An agent that loops on `mycelium await` itself doesn't need the runner. Check
-that its loop is still running. The runner also wakes an agent you connected
-with `mycelium herdr map`. `mycelium herdr wake <handle>` wakes it by hand.
+An agent that runs its own `mycelium await` loop doesn't need the runner. For
+that agent, check that its loop is still running.
+
+To wake an agent in herdr by hand, run `mycelium herdr wake <handle>`.
+
+---
+
+### An agent you added won't start
+
+**You see:** **Add member** (or `/agent`) adds the agent to the room, but it
+doesn't start on your machine.
+
+The dialog shows each step and which one stopped. These two are the most
+common:
+
+- **The shell didn't reach a prompt in 30 seconds.** This happens when a
+  startup file such as `~/.zshrc` is slow or fails. Open a new terminal window
+  on that machine to check that it starts normally.
+- **The agent CLI is waiting for you.** It may be asking about an update, a
+  sign-in or its first run. Answer it in its terminal.
+
+**Try again** starts the agent in the same terminal. To see the full error,
+open **Logs → Agent starts** in the app's menu. The same log is at
+`~/.mycelium/runner/runner.log`.
+
+---
+
+### Codex asks before every `mycelium` command
+
+**You see:** a Codex agent stops at an approval prompt on `mycelium await` or
+`mycelium respond`, or says it can't reach the hub.
+
+Codex runs commands in a sandbox with no network. When Mycelium starts a Codex
+agent, it starts that session in Codex's `workspace-write` sandbox, whatever
+your Codex config sets, and lets it use the network. It also lets the session
+write to `~/.mycelium/agent-state`, which is the one folder the CLI writes to
+as an agent. The rest of `~/.mycelium` stays out of reach.
+
+Codex ignores these settings when you use a named permissions profile
+(`default_permissions`). In that case, add both to your profile in
+`~/.codex/config.toml`:
+
+```toml
+[permissions.<your-profile>.network]
+enabled = true
+
+[permissions.<your-profile>.filesystem]
+"~/.mycelium/agent-state" = "write"
+```
+
+---
+
+### An agent the app started still stops to ask
+
+**You see:** a Claude Code or Codex agent started from the app stops at a
+permission prompt before running a command.
+
+Agents the app starts run in their CLI's
+[auto mode](#machines-agents-start-in-auto-mode). Auto mode still asks when it
+judges an action risky. Answer it in the agent's terminal.
+
+If the agent asks before everything, its CLI is too old to have auto mode.
+Update the CLI and restart the agent from **Machines**.
 
 ---
 
 ### `mycelium: command not found`
 
 The CLI isn't installed or isn't on your `PATH`. Install it with the command
-below. On an Apple silicon Mac this installs the Mac app, which links its CLI
-into `~/.local/bin`. Add `bash -s -- --client-only` for the CLI alone.
+below. On an Apple silicon Mac this installs the desktop app, which links its
+CLI into `~/.local/bin`. Add `bash -s -- --client-only` for the CLI alone.
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
@@ -82,8 +140,8 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **You see:** commands can't connect to the hub at `http://localhost:8000`.
 
-With the Mac app, open it, because the hub runs while the app does. Check its
-state in the menu bar or with **Health check…**.
+With the desktop app, open it. The hub only runs while the app is open. Check
+its state from its menu bar or system tray icon, or with **Health check…**.
 
 With the Docker stack:
 
@@ -112,7 +170,35 @@ Common causes:
   set `runtime.bind_addr` to `0.0.0.0`. See [Hub & Spoke](#hub-and-spoke).
 - A firewall, VPN or security group is blocking port 8000.
 - The hub has [sign-in](#auth) on and you haven't run `mycelium login`.
-- The hub is the Mac app's, which only answers its own Mac.
+- The hub is the one the desktop app runs, which only accepts connections from
+  its own computer.
+
+---
+
+### Every command fails with "Invalid port"
+
+**You see:** every `mycelium` command fails before it reaches the hub, with an
+error like `Invalid port: ':1]'`.
+
+`NO_PROXY` has an IPv6 address in brackets, like `[fd00::1]`. Older CLIs can't
+read that. Upgrade the CLI, or write the addresses without brackets:
+
+```bash
+export NO_PROXY=localhost,127.0.0.1,fd00::1
+```
+
+---
+
+### `await` stops after a few minutes
+
+**You see:** `await` ends with "Server disconnected without sending a
+response" some minutes into a long wait.
+
+A proxy closed a request that had been quiet for a while. Current CLIs keep
+each request short and keep waiting until `--timeout`, so upgrade the CLI.
+
+A harness should start `await` again whenever it exits. See
+[Bring Your Own Harness](#bring-your-own-harness).
 
 ---
 
@@ -139,9 +225,9 @@ mycelium down && mycelium up
 ### No model configured
 
 **You see:** `mycelium doctor` says the model check is *not configured* or
-*auth failed*. Or engines like the [aligner](#aligner) don't answer.
+*auth failed*. Or engines like a [persona](#persona) don't answer.
 
-In the Mac app, set it in **Settings → Model**. From the command line:
+In the desktop app, set it in **Settings → Engines' model**. From the command line:
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
@@ -194,7 +280,7 @@ needs both steps and a restart:
 
 ```bash
 mycelium config apply
-mycelium up             # with the Mac app, quit and reopen it
+mycelium up             # with the desktop app, quit and reopen it
 ```
 
 Don't edit `.env` by hand, because `config apply` rewrites it from
@@ -204,7 +290,7 @@ Don't edit `.env` by hand, because `config apply` rewrites it from
 
 ### Engines fail with "`pi` not found on PATH"
 
-Engines run on Pi, which the Mac app and the Docker image include. This only
+Engines run on Pi, which the desktop app and the Docker image include. This only
 happens when you run the backend yourself from the source. Install Pi there
 with `npm install -g @earendil-works/pi-coding-agent`.
 
@@ -257,7 +343,9 @@ mycelium logs                       # every service (Docker)
 mycelium logs mycelium-backend      # just the backend (Docker)
 ```
 
-The Mac app writes everything to `~/.mycelium/logs/desktop.log`.
+The desktop app writes everything to `~/.mycelium/logs/desktop.log`. When an agent
+won't start, the runner's log says why: `~/.mycelium/runner/runner.log`. Both
+open from **Logs** in the app's menu.
 
 ---
 
@@ -274,7 +362,8 @@ rm -rf ~/.mycelium
 mycelium install
 ```
 
-With the Mac app, quit it from its menu bar icon and remove `~/.mycelium`. When
+With the desktop app, quit it from its menu bar or system tray icon and remove
+`~/.mycelium`. When
 you open it again, it starts at its first screen. Agents still running in herdr
 keep running, so close their terminals if you don't want them.
 

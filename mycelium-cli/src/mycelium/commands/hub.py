@@ -10,8 +10,11 @@ shared mycelium-hosted rendezvous; MLS makes the node a blind ciphertext
 forwarder, so there's no separate command per host.
 """
 
+from __future__ import annotations
+
 import socket
 import subprocess
+from typing import TYPE_CHECKING
 
 import typer
 
@@ -24,6 +27,9 @@ from mycelium.commands.instance import (
 from mycelium.config import MyceliumConfig, SlimConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import HubSettings
 
 app = typer.Typer(
     help="Run and manage the SLIM node (messaging fabric).",
@@ -163,22 +169,20 @@ def connect(
         print_error(e, verbose=verbose)
 
 
-def _settings_lines(s: dict) -> list[str]:
-    model = s.get("model") or {}
-    name = model.get("model") or "none set"
-    key = "key set" if model.get("has_key") else "no key"
+def _settings_lines(s: HubSettings) -> list[str]:
+    name = s.model.model or "none set"
+    key = "key set" if s.model.has_key else "no key"
     lines = [
-        f"  Model         {name} ({key}{', custom endpoint' if model.get('custom_endpoint') else ''})"
+        f"  Model         {name} ({key}{', custom endpoint' if s.model.custom_endpoint else ''})"
     ]
-    xs = s.get("experiences") or []
-    if xs:
-        for x in xs:
-            unit = "scenario" if x["scenarios"] == 1 else "scenarios"
-            lines.append(f"  Experience    {x['title']}: {x['scenarios']} {unit}, at {x['open']}")
+    if s.experiences:
+        for x in s.experiences:
+            unit = "scenario" if x.scenarios == 1 else "scenarios"
+            lines.append(f"  Experience    {x.title}: {x.scenarios} {unit}, at {x.open_}")
     else:
         lines.append("  Experiences   none")
-    lines.append(f"  Personas only {'yes' if s.get('personas_only') else 'no'}")
-    lines.append(f"  Usage stats   {'shared' if s.get('share_usage') else 'not shared'}")
+    lines.append(f"  Personas only {'yes' if s.personas_only else 'no'}")
+    lines.append(f"  Usage stats   {'shared' if s.share_usage else 'not shared'}")
     return lines
 
 
@@ -204,26 +208,31 @@ def hub_settings(
     """
     import json
 
-    from mycelium.client import hub_client, hub_error_detail
+    import httpx
 
-    with hub_client(base_url=hub) as client:
+    from mycelium.client import hub_error_detail, typed_client
+    from mycelium_backend_client.api.hub import hub_settings_api_hub_settings_get
+    from mycelium_backend_client.models import HubSettings
+
+    client = typed_client(base_url=hub, timeout=30, raise_on_unexpected_status=False)
+    with client:
         try:
-            resp = client.get("/api/hub/settings")
-        except Exception as exc:
+            resp = hub_settings_api_hub_settings_get.sync_detailed(client=client)
+        except httpx.HTTPError as exc:
             typer.secho(f"Couldn't reach the hub: {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(1) from None
-    if resp.status_code == 404:
+    if resp.status_code == 404:  # noqa: PLR2004
         typer.secho("This hub is older and doesn't say what it's set up with.", err=True)
         raise typer.Exit(1)
-    if resp.status_code != 200:
+    settings = resp.parsed
+    if not isinstance(settings, HubSettings):
         typer.secho(
             f"The hub said no: {hub_error_detail(resp.content)}", fg=typer.colors.RED, err=True
         )
         raise typer.Exit(1)
-    body = resp.json()
     if json_output:
-        typer.echo(json.dumps(body))
+        typer.echo(json.dumps(settings.to_dict()))
         return
-    typer.echo(f"  {hub or client.base_url}")
-    for line in _settings_lines(body):
+    typer.echo(f"  {hub or client.get_httpx_client().base_url}")
+    for line in _settings_lines(settings):
         typer.echo(line)

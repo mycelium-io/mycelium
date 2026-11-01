@@ -13,7 +13,11 @@ resident agent, which every CLI shares unless its module says otherwise.
 
 from __future__ import annotations
 
+import functools
+import os
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from mycelium.integrations.base import AddOptions, Integration
@@ -21,6 +25,20 @@ from mycelium.protocol import AgentManifest
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
+
+
+@dataclass(frozen=True)
+class FirstRun:
+    """A screen an agent CLI shows before it takes prompts, on its first runs."""
+
+    #: What it is, said for the person: "Codex is asking you to sign in".
+    what: str
+    #: A key that gets past it with nothing to choose (a "Press enter to
+    #: continue" after a sign-in), or ``None`` when only the person can answer it.
+    key: str | None = None
+    #: What pressing ``key`` did, said for the person when it answered a
+    #: question on their behalf ("Trusted the folder for Claude Code").
+    done: str | None = None
 
 
 @dataclass(frozen=True)
@@ -41,9 +59,108 @@ class AgentKind:
         """Arguments every agent of this kind starts with."""
         return []
 
+    def resume_args(self, session: str) -> list[str] | None:  # noqa: ARG002 - a CLI that can resume says how
+        """Arguments that start it in ``session``, its conversation so far; ``None``
+        when it can't be resumed that way, and a restart starts a new session."""
+        return None
+
     def blocked_hint(self) -> str | None:
         """A line on what it commonly waits for when its host reads it as blocked."""
         return None
+
+    def interrupt_key(self) -> str:
+        """The key that stops its current turn and keeps its session, as herdr names
+        keys. Escape for the agent TUIs this table knows."""
+        return "esc"
+
+    def first_run(self, screen: str, folder: str | None = None) -> FirstRun | None:  # noqa: ARG002 - a CLI with such screens says which
+        """The first-run screen ``screen`` (a pane's last lines) shows, if any.
+
+        A host reads an agent as ready from its own signals, and some CLIs open on
+        a screen those read as idle: an introduction or a wake typed there is
+        lost, or its Enter is spent getting past it. So the pane is looked at
+        after a start and before its introduction, for the screens its CLI is
+        known to show. ``folder`` is the one the agent runs in, when the host
+        can say, for a screen that names it.
+        """
+        return None
+
+    def not_ready(self) -> str | None:
+        """Why a start would stop at a first-run screen only the person can get
+        past, like a sign-in, said for them; ``None`` when nothing is known to be
+        in the way. Asked before a start, so it never begins into one."""
+        return None
+
+    def run(self, *args: str, timeout: float = 15) -> subprocess.CompletedProcess | None:
+        """The installed CLI run with ``args``, found and run the way :meth:`offers`
+        does; ``None`` when it isn't found or couldn't be run."""
+        from mycelium.runner.frameworks import locate
+
+        found, search = locate(self.binaries)
+        if not found:
+            return None
+        env = {**os.environ, "PATH": search} if search else None
+        try:
+            return subprocess.run(  # noqa: S603 - the CLI's own path, from the scan's table
+                [found, *args],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    def offers(self, *words: str) -> bool:
+        """Whether the installed CLI's own ``--help`` mentions every one of ``words``.
+
+        A flag a CLI added in a recent release is passed only to an install that
+        has it: an older one would refuse to start over an option it doesn't
+        know, which is worse than starting without it.
+
+        The CLI is found the way the scan finds it (``runner.frameworks.locate``:
+        this process's PATH, then the usual install folders), and its ``--help``
+        runs with that folder first on its PATH: one installed under nvm is often
+        a Node script that needs the ``node`` beside it. One the scan doesn't
+        find is started without the flags.
+        """
+        from mycelium.runner.frameworks import locate
+
+        found, search = locate(self.binaries)
+        if not found:
+            return False
+        try:
+            stamp = Path(found).stat().st_mtime
+        except OSError:
+            return False
+        text = _help_text(found, stamp, search)
+        return all(w in text for w in words)
+
+
+@functools.cache
+def _help_text(binary: str, stamp: float, search: str | None = None) -> str:  # noqa: ARG001 - a new install is a new key
+    """What ``binary --help`` prints, read once per installed binary, run with
+    ``search`` as its PATH when it was found there."""
+    env = {**os.environ, "PATH": search} if search else None
+    try:
+        done = subprocess.run(  # noqa: S603 - the CLI's own path, from the scan's table
+            [binary, "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return f"{done.stdout}\n{done.stderr}"
 
 
 class ResidentIntegration(Integration):

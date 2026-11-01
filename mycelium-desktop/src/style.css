@@ -7,7 +7,7 @@
   --hairline: rgba(255, 255, 255, 0.035);
   --text: #e8ebee;
   --muted-foreground: #a7adb5;
-  --faint: #565d65;
+  --faint: #888f97;
   --border: rgba(255, 255, 255, 0.08);
   --border2: rgba(255, 255, 255, 0.16);
   --accent: #5cc7d2;
@@ -458,6 +458,45 @@ select.field {
   background: var(--amber-soft);
 }
 
+/* Settings › Version: one dense row per release. */
+.versions {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.version-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.version-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.version-date {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.version-row .version-warn {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--amber);
+}
+
+.button.small {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
 .hub-ask .hint {
   margin: 0;
   color: var(--muted-foreground);
@@ -701,6 +740,134 @@ select.field {
   line-height: 1.5;
 }
 
+/* A step in two panes: what the feature is, then its settings. They stack
+   when the window is too narrow for both. */
+.card.wizard {
+  max-width: 880px;
+}
+
+.card-body.split {
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 36px;
+  align-items: start;
+  padding: 28px;
+  /* The tallest step's height, so the card doesn't jump between steps. */
+  min-height: 360px;
+}
+
+.explain {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.explain p {
+  margin: 0;
+  color: var(--muted-foreground);
+  line-height: 1.55;
+}
+
+.explain strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.explain a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.explain a:hover {
+  text-decoration: underline;
+}
+
+/* The model step's picture: what uses the model, and what doesn't. */
+.engine-map svg {
+  display: block;
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+  margin: 4px 0;
+}
+
+.engine-map text {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  fill: var(--text);
+  text-anchor: middle;
+}
+
+.engine-map .caption {
+  fill: var(--muted-foreground);
+  text-anchor: start;
+  font-size: 11px;
+}
+
+.engine-map .group {
+  fill: var(--bg);
+  stroke: var(--border2);
+}
+
+.engine-map .chip {
+  fill: var(--elevated);
+  stroke: var(--border);
+}
+
+.engine-map .model {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+}
+
+.engine-map .model-text {
+  fill: var(--accent);
+  font-weight: 500;
+}
+
+.engine-map .flow {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.engine-map .own {
+  stroke-dasharray: 3 3;
+}
+
+.engine-map .flow.own {
+  stroke: var(--faint);
+}
+
+.engine-map .flow.own.head {
+  stroke-dasharray: none;
+}
+
+.engine-map .group.own + text,
+.engine-map .group.own ~ text:last-of-type {
+  fill: var(--muted-foreground);
+}
+
+.config {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .card-body.split {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 20px 24px;
+    min-height: 0;
+  }
+
+  /* Stacked, the picture sits in the middle of the full width. */
+  .engine-map svg {
+    margin: 4px auto;
+  }
+}
+
 .piece {
   display: grid;
   gap: 16px;
@@ -927,6 +1094,45 @@ select.field {
   inset: 8px 0 0 8px;
 }
 
+/* One line over herdr: what this window is, or who is waiting in it. */
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.terminal-bar span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.terminal-bar[data-tone="waiting"] {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.terminal-bar button {
+  flex: none;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.terminal-bar:not([hidden]) + #terminal {
+  top: 40px;
+}
+
 .terminal-note {
   position: absolute;
   inset: auto 16px 16px 16px;
@@ -936,4 +1142,139 @@ select.field {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
+}
+
+/* An update's download, in a small window of its own. */
+.update-page {
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+.update {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 32px 28px;
+  text-align: center;
+}
+
+.update-mark {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  margin-bottom: 6px;
+}
+
+/* The mark breathes while something is happening, and holds still when it stops. */
+.update:not([data-phase="failed"]) .update-mark {
+  animation: update-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes update-breathe {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+}
+
+.update-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.update-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--elevated);
+  overflow: hidden;
+}
+
+.update-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.update[data-phase="failed"] .update-fill {
+  background: var(--red);
+}
+
+/* Waiting to try again: the bar holds where it got to. */
+.update[data-phase="retrying"] .update-fill {
+  background: var(--yellow, #e5b567);
+}
+
+/* Installing and restarting have no numbers: a full bar that pulses. */
+.update[data-phase="installing"] .update-fill,
+.update[data-phase="restarting"] .update-fill {
+  animation: update-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes update-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.update-bar.indeterminate .update-fill {
+  width: 30% !important;
+  animation: update-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes update-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.update-line {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.update[data-phase="failed"] .update-line {
+  font-family: var(--font-sans);
+  color: var(--text);
+}
+
+.update-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--faint);
+  max-width: 280px;
+}
+
+.update-retry {
+  margin-top: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .update-mark,
+  .update-fill,
+  .update-bar.indeterminate .update-fill {
+    animation: none !important;
+  }
 }

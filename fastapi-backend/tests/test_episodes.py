@@ -4,37 +4,64 @@
 
 import pytest
 
-from app.services import episode_state
+from app.services import episode_state, message_format
+from app.services.message_models import Kind
 
 
 async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: bool = False):
+    """A conductor run's record: its intent, a turn to each member and their
+    replies, and the commit, each parenting the one before it."""
     await client.post("/api/rooms", json={"name": room})
-    ep = episode_state.open_episode(
+    episode = message_format.episode_urn(room, short_id)
+    topic = message_format.topic_urn(room)
+    ep = episode_state.EpisodeState(
+        episode=episode,
+        topic=topic,
         parent_room=room,
         short_id=short_id,
         workspace_id="ws-1",
         mas_id="mas-1",
         agents=["alice", "bob"],
-        joined_intents="- alice: ship it\n- bob: test it",
+        engine_handle="conductor",
     )
+
+    def add(**kw) -> str:
+        env = message_format.build_envelope(episode=episode, topic=topic, **kw)
+        ep.messages.append(message_format.envelope_to_dict(env))
+        assert env.header.message is not None
+        return env.header.message.id
+
+    last = add(kind=Kind.intent, subkind="mission", sender="conductor", payload_type="intent")
+    replies: list[str] = []
     for handle in ("alice", "bob"):
-        episode_state.record_tick(ep, handle=handle, round_n=1, payload={"action": "respond"})
-        episode_state.record_reply(
-            ep,
-            handle=handle,
-            reply={"action": "accept", "confidence": 0.9, "issue": "value"},
-            round_n=1,
+        turn = add(
+            kind=Kind.exchange,
+            parents=[last],
+            sender="conductor",
+            recipients=[handle],
+            payload_type="message",
         )
-    metrics = episode_state.compute_metrics(ep)
-    episode_state.build_consensus_envelope(
-        ep, broken=broken, assignments={"issue": "value"}, metrics=metrics
+        replies.append(
+            add(
+                kind=Kind.exchange,
+                parents=[turn],
+                sender=handle,
+                sender_role="agent",
+                payload_type="reply",
+            )
+        )
+    metrics = {"satisfaction": {"alice": 0.9, "bob": 0.8}, "min_satisfaction": 0.8}
+    outcome = "rejected" if broken else "converged"
+    add(
+        kind=Kind.commit,
+        subkind=outcome,
+        parents=replies,
+        sender="conductor",
+        recipients=["alice", "bob"],
+        payload_type="outcome",
+        payload_data={"metrics": metrics},
     )
-    episode_state.write_episode_record(
-        ep,
-        outcome="rejected" if broken else "converged",
-        metrics=metrics,
-        tasks=["work/ship-auth", "work/write-docs"],
-    )
+    episode_state.write_episode_record(ep, outcome=outcome, metrics=metrics)
     return ep, metrics
 
 
@@ -52,11 +79,11 @@ async def test_list_episodes_returns_summary(client):
     assert summary["outcome"] == "converged"
     assert summary["subkind"] == "converged"
     assert summary["participants"] == ["alice", "bob"]
-    assert summary["tasks"] == ["work/ship-auth", "work/write-docs"]
+    assert summary["tasks"] == []
     assert summary["message_count"] > 0
     # Metrics are lifted straight off the commit envelope, not the markdown.
-    assert summary["metrics"]["mpc"] == metrics["mpc"]
-    assert summary["metrics"]["gar"] == metrics["gar"]
+    assert summary["metrics"]["satisfaction"] == metrics["satisfaction"]
+    assert summary["metrics"]["min_satisfaction"] == metrics["min_satisfaction"]
 
 
 @pytest.mark.asyncio
@@ -193,7 +220,7 @@ def _flow_record(outcome: str, trace: list[dict], *, within: str | None = None) 
             "payload": {"type": "outcome", "data": {}},
         }
     )
-    episode_state.write_episode_record(ep, outcome=outcome, metrics=None, tasks=None)
+    episode_state.write_episode_record(ep, outcome=outcome, metrics=None)
     return f"log/episodes/{ep.short_id}"
 
 

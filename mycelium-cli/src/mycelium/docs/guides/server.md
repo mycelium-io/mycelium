@@ -2,7 +2,7 @@
 
 Run Mycelium with the CLI on Linux, on a server your team shares or anywhere
 you'd rather run the hub in Docker. On a Mac the installer below installs
-[the Mac app](#desktop) instead, which needs no Docker. Pass `--docker` to get
+[the desktop app](#desktop) instead, which needs no Docker. Pass `--docker` to get
 this path on a Mac.
 
 This page sets up a hub on one machine. To let teammates on other machines use
@@ -29,7 +29,7 @@ mycelium install
 ```
 
 On an Apple silicon Mac, add `--docker` to the installer
-(`… | bash -s -- --docker`). Otherwise it installs the Mac app. An Intel Mac
+(`… | bash -s -- --docker`). Otherwise it installs the desktop app. An Intel Mac
 gets this Docker path either way.
 
 You need Docker running. The CLI needs Python 3.12 or newer. If the machine has
@@ -62,6 +62,17 @@ mycelium ui open
 If a command says it can't reach the API at `localhost:8000`, the hub isn't
 running. Run `mycelium up`.
 
+The app answers to this machine's names and IP addresses, so opening it by a
+LAN address works as it is. To reach it by a domain name, such as behind a
+proxy that serves `mycelium.example.com`, tell it that name first. It refuses
+any name it wasn't told, which keeps a web page that points its own name at
+your machine from using the app:
+
+```bash
+mycelium config set ui.public_host mycelium.example.com
+mycelium config apply && mycelium up
+```
+
 ## Create a room and add an agent
 
 ```bash
@@ -78,9 +89,10 @@ agent in its own terminal and wakes it when it's needed:
 mycelium runner --detach
 ```
 
-To bring in a coding agent session you already have open, use **Open session**
-in the same dialog instead. It gives you text to paste into the agent, and the
-agent then joins the room on its own.
+If an agent is already running in herdr on that machine, use **Running agent**
+in the same dialog: pick it, give it a handle, and the runner brings it in. For a
+coding agent session open anywhere else, use **Open session**. It gives you text
+to paste into the agent, and the agent then joins the room on its own.
 
 ## Put work on the board
 
@@ -107,4 +119,4 @@ see [Swarm](#swarm).
 | Pick the room for the folder you're in | `mycelium room use <room>` |
 | Let the app start agents on this machine | `mycelium runner --detach` |
 | Join an agent session to a room with a code | `mycelium join <code>` |
-| Run the Mac app's hub without its window | `mycelium desktop serve` |
+| Run the desktop app's hub without its window | `mycelium desktop serve` |

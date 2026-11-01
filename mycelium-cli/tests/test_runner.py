@@ -3,8 +3,8 @@
 
 """``mycelium runner``: this machine, dialed in, starting agents in herdr.
 
-No hub and no herdr: the hub is an ``httpx.MockTransport`` and herdr a scripted
-runner. These hold what the scan reports (herdr decides what is startable),
+No hub and no herdr: the hub is a stand-in answering at httpx's transport, with
+the shapes the real hub answers, and herdr a scripted runner. These hold what the scan reports (herdr decides what is startable),
 what a launch does in herdr and says to the agent, the folders a job may use,
 a stop, a swarm the hub set up, and that every job is reported back.
 """
@@ -15,7 +15,6 @@ import json
 import re
 import subprocess
 import threading
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +27,12 @@ from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavail
 from mycelium.integrations.herdr.bridge import CALL_TIMEOUT_S, call_timeout
 from mycelium.runner import approvals, daemon, frameworks
 from mycelium.runner.log import open_log
+from mycelium_backend_client.models import HerdrWakeRead
+from tests.conftest import install_stand_in_hub, memory_read
 from tests.herdr_layout import HerdrLayout
+
+#: The real install folders, which every test but the one about them has stubbed out.
+REAL_INSTALL_DIRS = frameworks.install_dirs
 
 HELP = """Start a supported interactive agent in an existing pane
 
@@ -56,15 +60,29 @@ class Herdr:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.live: dict[str, str] = {}
+        #: The agent CLI session herdr reports for a live pane, by pane.
+        self.sessions: dict[str, str] = {}
         #: Open panes, with an agent in them or not.
         self.panes: list[str] = []
         self._panes = 0
         self.fail_start = False
+        #: ``agent start`` runs the agent CLI, which exits before it comes up.
+        self.exits_on_start = False
         #: ``agent start`` fails, but leaves an agent on the pane in this state,
         #: the way one stopped at a first-run prompt never reads as ready.
         self.start_leaves: str | None = None
+        #: How many ``agent start`` calls find the pane's shell still starting.
+        self.shell_starting = 0
+        #: Called on every ``agent start``, to look at the runner while herdr waits.
+        self.on_start: Any = None
+        #: A working agent sent a key settles to idle, the way an interrupted one does.
+        self.keys_settle = False
         #: What ``pane read`` shows.
-        self.screen = "Do you trust the files in this folder?\n\n  1. Yes, proceed\n  2. No, exit\n"
+        self.screen = "Allow this command?\n  make deploy\n\n  1. Yes\n  2. No, exit\n"
+        #: What the screen shows after each key pressed, in turn.
+        self.screens_after_keys: list[str] = []
+        #: The folder herdr says an agent's process runs in.
+        self.agent_cwd: str | None = None
         self.layout = HerdrLayout(self._pane)
 
     def _pane(self, workspace: str = "w9") -> str:
@@ -87,6 +105,12 @@ class Herdr:
             return _proc(_ok(result))
         if head == "agent start":
             pane = args[args.index("--pane") + 1]
+            if self.on_start:
+                self.on_start()
+            if self.shell_starting:
+                self.shell_starting -= 1
+                not_a_shell = f"agent target pane {pane} is not an available shell"
+                return _proc(stderr=json.dumps({"error": not_a_shell}), returncode=1)
             if pane in self.live:
                 taken = f"agent name {args[2]} is already used; candidates: pane_id={pane}"
                 return _proc(stderr=json.dumps({"error": taken}), returncode=1)
@@ -95,6 +119,9 @@ class Herdr:
                 return _proc(stderr=json.dumps({"error": "agent never became ready"}), returncode=1)
             if self.fail_start:
                 return _proc(stderr=json.dumps({"error": "agent never became ready"}), returncode=1)
+            if self.exits_on_start:
+                exited = "agent process exited before becoming interactive"
+                return _proc(stderr=json.dumps({"error": exited}), returncode=1)
             self.live[args[args.index("--pane") + 1]] = "idle"
             return _proc(_ok({}))
         if head == "agent prompt":
@@ -102,18 +129,28 @@ class Herdr:
         if head == "agent list":
             agents = [
                 {"pane_id": p, "agent_status": s, "workspace_id": "w9", "agent": "claude"}
+                | (
+                    {"agent_session": {"kind": "id", "value": self.sessions[p]}}
+                    if p in self.sessions
+                    else {}
+                )
                 for p, s in self.live.items()
             ]
             return _proc(_ok({"agents": agents}))
         if head == "pane read":
             return _proc(_ok({"text": self.screen}))
-        if head == "pane run":
+        if head in ("pane run", "pane send-keys"):
+            if head == "pane send-keys" and self.keys_settle and args[2] in self.live:
+                self.live[args[2]] = "idle"
+            if head == "pane send-keys" and self.screens_after_keys:
+                self.screen = self.screens_after_keys.pop(0)
             return _proc("")
         if head == "agent get":
             status = self.live.get(args[2])
-            return _proc(
-                _ok({"agent": {"pane_id": args[2], "agent_status": status}} if status else {})
-            )
+            agent = {"pane_id": args[2], "agent_status": status}
+            if self.agent_cwd:
+                agent["foreground_cwd"] = self.agent_cwd
+            return _proc(_ok({"agent": agent} if status else {}))
         if head == "pane close":
             self.live.pop(args[2], None)
             if args[2] in self.panes:
@@ -126,20 +163,97 @@ class Herdr:
         return [c for c in self.calls if " ".join(c[:2]) == head and "--help" not in c]
 
 
+_AT = "2026-08-24T10:00:00+00:00"
+
+
+def _runner_read(hello: dict) -> dict:
+    """The hub's ``RunnerRead`` for a hello: the runner it now has."""
+    keep = ("id", "label", "owner", "platform", "version", "herdr", "host", "roots")
+    return {k: hello[k] for k in keep if k in hello} | {
+        "connected": True,
+        "last_seen": _AT,
+        "started_at": _AT,
+    }
+
+
+def _job_read(runner: str, job: str, report: dict) -> dict:
+    """The hub's ``RunnerJobRead`` for a report: the job as it now stands."""
+    return {
+        "id": job,
+        "runner": runner,
+        "kind": "launch",
+        "created_at": _AT,
+        "updated_at": _AT,
+        "status": report.get("status", "queued"),
+        "result": report.get("result"),
+        "error": report.get("error"),
+    }
+
+
+def _message_read(sent: dict) -> dict:
+    """The hub's 201 ``MessageRead`` for a posted message."""
+    return {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "sender_handle": sent.get("sender_handle", ""),
+        "message_type": sent.get("message_type", "broadcast"),
+        "content": sent.get("content", ""),
+        "created_at": _AT,
+        "episode": sent.get("episode"),
+    }
+
+
 class Hub:
     """The hub's side of a runner: what it was sent, and a notes memory for one handle."""
 
     def __init__(self, notes_for: str | None = None) -> None:
         self.seen: list[tuple[str, str, Any]] = []
         self.notes_for = notes_for
+        #: A hub with sign-in on that this machine isn't signed in to.
+        self.signed_out = False
+        #: Agent tokens the hub no longer accepts.
+        self.refused_tokens: set[str] = set()
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content) if request.content else None
         self.seen.append((request.method, request.url.path, body))
-        if request.method == "GET" and request.url.path.endswith("/notes"):
-            if self.notes_for and f"/agents/{self.notes_for}/" in request.url.path:
-                return httpx.Response(200, json={"key": "n", "value": "Be terse."})
+        if self.signed_out:
+            return httpx.Response(401, json={"detail": "missing bearer token"})
+        method, path = request.method, request.url.path
+        parts = path.strip("/").split("/")
+        if path == "/api/whoami":
+            token = request.headers.get("authorization", "").removeprefix("Bearer ")
+            if token in self.refused_tokens:
+                return httpx.Response(401, json={"detail": "invalid token"})
+            return httpx.Response(200, json={"gated": True, "handle": "scout"})
+        if method == "GET" and path.endswith("/notes"):
+            if self.notes_for and f"/agents/{self.notes_for}/" in path:
+                key = f"agents/{self.notes_for}/notes"
+                return httpx.Response(200, json=memory_read(key, parts[2], value="Be terse."))
             return httpx.Response(404, json={"detail": "not found"})
+        if method == "GET" and parts[3:4] == ["memory"]:
+            # An agent's manifest: there, as the agent's start wrote it.
+            key = "/".join(parts[4:])
+            return httpx.Response(200, json=memory_read(key, parts[2], value=f"handle: {key}"))
+        if path.endswith("/sessions/herdr-wakes"):
+            return httpx.Response(200, json={"wakes": []})
+        if path.endswith("/sessions/herdr-presence"):
+            return httpx.Response(204)
+        if method == "POST" and path == "/api/runners":
+            return httpx.Response(200, json=_runner_read(body or {}))
+        if method == "DELETE" and parts[:2] == ["api", "runners"]:
+            return httpx.Response(204)
+        if method == "GET" and path.endswith("/jobs/next"):
+            return httpx.Response(204)
+        if method == "PATCH" and parts[:2] == ["api", "runners"] and "jobs" in parts:
+            return httpx.Response(200, json=_job_read(parts[2], parts[4], body or {}))
+        if method == "POST" and path.endswith("/joins"):
+            join = {"code": "join-code", "room": parts[2], "handle": (body or {}).get("handle")}
+            return httpx.Response(201, json=join | {"expires_at": _AT})
+        if method == "POST" and path.endswith("/memory"):
+            items = (body or {}).get("items", [])
+            return httpx.Response(201, json=[memory_read(i["key"], parts[2]) for i in items])
+        if method == "POST" and path.endswith("/messages"):
+            return httpx.Response(201, json=_message_read(body or {}))
         return httpx.Response(200, json={})
 
     def of(self, method: str, suffix: str) -> list[Any]:
@@ -149,13 +263,7 @@ class Hub:
 @pytest.fixture
 def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
     hub = Hub()
-
-    @contextmanager
-    def client(_config: Any = None, **_kw: Any):
-        with httpx.Client(base_url="http://hub", transport=httpx.MockTransport(hub.handler)) as c:
-            yield c
-
-    monkeypatch.setattr(daemon, "hub_client", client)
+    install_stand_in_hub(monkeypatch).answer = hub.handler
     monkeypatch.setattr("mycelium.commands.swarm.START_RETRY_S", 0)
     return hub
 
@@ -164,13 +272,15 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
 def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
     real_which = frameworks.shutil.which
 
-    def which(name: str) -> str | None:
+    def which(name: str, path: str | None = None) -> str | None:
+        if path is not None:
+            return None
         if name in ("herdr", "claude", "opencode", "aider"):
             return f"/usr/bin/{name}"
         return None if name != "git" else real_which(name)
 
     monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setattr(frameworks, "_version", lambda path: f"{Path(path).name} 1.0")
+    monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
     return Herdr()
 
 
@@ -211,10 +321,91 @@ def test_herdr_decides_what_can_be_started(herdr: Herdr):
     # Installed, but herdr has no kind for it.
     assert found["aider"].installed and not found["aider"].launchable
     assert "no aider kind" in (found["aider"].note or "")
-    # herdr could start it, but it is not here.
-    assert not found["codex"].installed and not found["codex"].launchable
-    # Installed ones lead the list.
-    assert [f.installed for f in frameworks.scan(None)][:3] == [True, True, True]
+    # Not found here, and still offered: herdr starts it from the person's own
+    # shell, which may have it, and the start says if it doesn't.
+    assert not found["codex"].installed and found["codex"].launchable
+    assert found["codex"].note == "not found on this machine"
+    # What can be started leads the list, found ones first.
+    assert [(f.launchable, f.installed) for f in found.values()][:3] == [
+        (True, True),
+        (True, True),
+        (True, False),
+    ]
+
+
+def test_a_startable_cli_carries_no_note(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
+    found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
+    assert found["codex"].launchable
+    assert found["codex"].note is None
+    assert found["claude"].note is None
+
+
+def _program(path: Path, text: str = "#!/bin/sh\necho 1.0\n") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    path.chmod(0o755)
+    return path
+
+
+def test_a_cli_under_nvm_is_found_in_the_newest_node_and_run_with_it_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """codex under nvm: not on the PATH the desktop app hands the runner. The
+    scan finds it in nvm's folders, newest Node first, and its --version runs
+    with that folder first on PATH, where its ``node`` is."""
+    monkeypatch.setattr(frameworks, "install_dirs", REAL_INSTALL_DIRS)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("NVM_DIR", raising=False)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    nodes = tmp_path / ".nvm" / "versions" / "node"
+    # Newest by number, not by spelling: v24.10 is newer than v24.2.
+    _program(nodes / "v9.11.0" / "bin" / "codex")
+    _program(nodes / "v24.2.0" / "bin" / "codex")
+    _program(nodes / "v24.10.1" / "bin" / "node")
+    real = _program(nodes / "v24.10.1" / "bin" / "codex")
+
+    ran: list[tuple] = []
+    monkeypatch.setattr(
+        frameworks, "_version", lambda path, search=None: ran.append((path, search)) or "1.0"
+    )
+    found = {f.id: f for f in frameworks.scan({"codex"})}
+
+    assert found["codex"].installed and found["codex"].launchable
+    assert found["codex"].path == str(real)
+    # (Homebrew's folders are real on this machine, so only codex is checked.)
+    assert [r for r in ran if r[0].endswith("/codex")] == [
+        (str(real), f"{real.parent}:/usr/bin:/bin")
+    ]
+
+
+def test_the_scan_runs_nothing_of_the_persons_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Not their shell, not its rc files: what an rc file prints, how slow it
+    is, or what it starts can't reach the runner."""
+    shell = _program(tmp_path / "shell", "#!/bin/sh\ntouch " + str(tmp_path / "ran") + "\n")
+    monkeypatch.setenv("SHELL", str(shell))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(frameworks, "install_dirs", lambda: [tmp_path / "bin"])
+    _program(tmp_path / "bin" / "codex", "#!/bin/sh\necho 'codex --approve-for-me'\n")
+    real_run = subprocess.run
+    argv: list[list[str]] = []
+
+    def run(cmd: Any, *a: Any, **kw: Any) -> Any:
+        argv.append([str(c) for c in cmd])
+        return real_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    from mycelium.integrations import agents
+
+    frameworks.scan({"codex"})
+    assert agents.of_kind("codex").offers("--approve-for-me")
+
+    assert not (tmp_path / "ran").exists()
+    assert argv
+    assert all(str(shell) not in cmd and "-ilc" not in cmd for cmd in argv)
+    assert not hasattr(frameworks, "terminal_path")
 
 
 def test_without_herdr_nothing_is_startable(herdr: Herdr):
@@ -227,8 +418,115 @@ def test_the_hello_says_what_this_machine_has(make_runner):
     body = make_runner().hello_body()
     assert body["id"] == "julias-mbp-ab12"
     assert body["herdr"] is True
-    assert [f["id"] for f in body["frameworks"] if f["launchable"]] == ["claude", "opencode"]
+    startable = [(f["id"], f["installed"]) for f in body["frameworks"] if f["launchable"]]
+    assert startable == [("claude", True), ("opencode", True), ("codex", False), ("pi", False)]
     assert body["agents"] == []
+
+
+def test_a_hub_that_refuses_this_machine_is_said_as_a_sign_in_and_clears_on_one(
+    make_runner, hub: Hub
+):
+    r = make_runner()
+    hub.signed_out = True
+    assert r.hello() is False
+    assert (r.connected, r.signed_out) == (False, True)
+    hub.signed_out = False
+    assert r.hello() is True
+    assert (r.connected, r.signed_out) == (True, False)
+
+
+def _answering_first(
+    monkeypatch: pytest.MonkeyPatch, hub: Hub, method: str, path: str, answer: httpx.Response
+) -> None:
+    """The hub answers ``method path`` with ``answer`` once, then as before."""
+    pending = [answer]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if pending and request.method == method and request.url.path == path:
+            hub.seen.append((request.method, request.url.path, None))
+            return pending.pop()
+        return hub.handler(request)
+
+    install_stand_in_hub(monkeypatch).answer = handle
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        # A hub a version newer: a field this runner doesn't know, and an
+        # optional one it no longer sends.
+        {"id": "julias-mbp-ab12", "label": "x", "connected": True, "last_seen": _AT,
+         "started_at": _AT, "seen_from": "10.0.0.2"},
+        # A hub whose answer this runner's model can't read at all.
+        {"connected": "maybe", "unexpected": []},
+    ],
+    ids=["newer", "unreadable"],
+)  # fmt: skip
+def test_a_hello_the_hub_takes_is_connected_whatever_its_answer_says(
+    make_runner, hub: Hub, monkeypatch: pytest.MonkeyPatch, answer: dict
+):
+    r = make_runner()
+    _answering_first(monkeypatch, hub, "POST", "/api/runners", httpx.Response(200, json=answer))
+    assert r.hello() is True
+    assert r.connected is True
+
+
+@pytest.mark.parametrize(
+    "job",
+    [
+        # A field this runner doesn't know, and an optional one not sent.
+        {"id": "j9", "runner": "julias-mbp-ab12", "kind": "scan", "created_at": _AT,
+         "updated_at": _AT, "priority": "high"},
+        # A record this runner's model can't read at all (no stamps).
+        {"id": "j9", "kind": "scan", "spec": {}},
+    ],
+    ids=["newer", "unreadable"],
+)  # fmt: skip
+def test_a_job_shaped_by_another_hub_is_taken_not_lost(
+    make_runner, hub: Hub, monkeypatch: pytest.MonkeyPatch, job: dict
+):
+    """The hub hands a job out when it's polled, so one this runner's model
+    wouldn't read must still be taken: here it's run and reported done."""
+    r = make_runner()
+    path = "/api/runners/julias-mbp-ab12/jobs/next"
+    _answering_first(monkeypatch, hub, "GET", path, httpx.Response(200, json=job))
+    assert r.poll_once() is True
+    assert [b["status"] for b in hub.of("PATCH", "/jobs/j9")] == ["done"]
+
+
+def test_the_runner_writes_down_whether_the_hub_hears_it(make_runner, hub: Hub):
+    """What `runner status` and doctor read, whoever asks."""
+    r = make_runner()
+    assert r.local_report()["hub"]["connected"] is False
+    assert r.hello() is True
+    said = r.local_report()["hub"]
+    assert said["connected"] is True
+    assert said["signed_out"] is False
+    assert said["last_heartbeat_at"] is not None
+    hub.signed_out = True
+    r.hello()
+    assert (r.local_report()["hub"]["connected"], r.local_report()["hub"]["signed_out"]) == (
+        False,
+        True,
+    )
+
+
+def test_a_sign_in_that_cant_be_renewed_for_now_is_said_as_connecting_not_signed_out(
+    make_runner, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """The issuer unreachable as the laptop wakes: nothing to sign in again for."""
+    from mycelium.client import RenewalUnreachable
+
+    r = make_runner()
+
+    def unreachable(*_a: Any, **_k: Any) -> Any:
+        # What building a client does when the sign-in needs renewing and can't be.
+        raise RenewalUnreachable("couldn't renew this computer's sign-in: timed out")
+
+    monkeypatch.setattr(daemon, "typed_client", unreachable)
+    assert r.hello() is False
+    assert (r.connected, r.signed_out) == (False, False)
+    assert r.poll_once() is False
 
 
 def test_the_owner_is_a_handle_a_person_reads(make_runner, monkeypatch: pytest.MonkeyPatch):
@@ -298,6 +596,36 @@ def test_the_apps_runner_counts_as_running_and_isnt_stopped_from_a_terminal(
     started = CliRunner().invoke(cmd.app, [])
     assert started.exit_code == 1
     assert "already running" in started.output
+    assert "isn't connected" not in started.output
+
+
+def test_a_runner_already_running_but_signed_out_says_to_sign_in(isolated_home: Path):
+    """Someone runs `mycelium runner` because their machine isn't showing up:
+    the app's runner is going, but the hub refused its sign-in."""
+    import os
+    from datetime import UTC, datetime
+
+    from typer.testing import CliRunner
+
+    from mycelium.commands import runner as cmd
+
+    folder = daemon.runner_dir()
+    (folder / "runner.started-by").write_text(f"{daemon.APP}\n")
+    (folder / "runner.pid").write_text(f"{os.getppid()}\n")
+    (folder / "sync.json").write_text(
+        json.dumps(
+            {
+                "pid": os.getppid(),
+                "at": datetime.now(UTC).isoformat(),
+                "hub": {"url": "https://hub.example.com", "connected": False, "signed_out": True},
+            }
+        )
+    )
+    started = CliRunner().invoke(cmd.app, [])
+    assert started.exit_code == 1
+    said = " ".join(started.output.split())
+    assert "This computer isn't signed in to https://hub.example.com." in said
+    assert "Run `mycelium login` in a terminal here. Then quit and reopen Mycelium." in said
 
 
 def test_a_runner_id_is_made_once_and_kept(tmp_path: Path):
@@ -307,6 +635,225 @@ def test_a_runner_id_is_made_once_and_kept(tmp_path: Path):
 
 
 # ── launch ────────────────────────────────────────────────────────────────────
+
+
+def test_a_launched_agent_is_given_its_own_token_file_on_a_hub_with_auth_on(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    issued: list[tuple[str, str]] = []
+
+    def issue(_config: Any, room: str, handle: str) -> Path:
+        issued.append((room, handle))
+        return tmp_path / "scout.token"
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", issue)
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    assert issued == [("eng", "scout")]
+    create = herdr.of("workspace create")[0]
+    # The path, never the token: a pane's environment is easy to print.
+    assert f"MYCELIUM_AGENT_AUTH_TOKEN_FILE={tmp_path / 'scout.token'}" in create
+    assert not any(arg.startswith("MYCELIUM_AGENT_AUTH_TOKEN=") for arg in create)
+
+
+def test_a_machine_signed_out_of_a_gated_hub_starts_nothing_and_says_why(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    def refuse(_config: Any, _room: str, handle: str) -> Path:
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 401, "")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", refuse)
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="isn't signed in to https://hub.example") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    # The app shows the sign-in reason, and nothing was opened on the machine.
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "signin"
+    assert herdr.of("workspace create") == []
+    assert herdr.of("agent start") == []
+
+
+def _token_until(exp: float) -> str:
+    import base64
+
+    claims = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+    return f"e30.{claims}.sig"
+
+
+def test_running_agents_are_given_a_token_and_it_is_renewed_before_it_ends(
+    make_runner, herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    """An agent started before panes got a token file has one after a round, with no restart."""
+    from mycelium import agent_credentials
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    now = 2_000_000_000.0
+    issued: list[tuple[str, str]] = []
+
+    def issue(_config: Any, room: str, handle: str) -> Path:
+        issued.append((room, handle))
+        path = agent_credentials.member_token_path(room, handle)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_token_until(now + 30 * 86400))
+        return path
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", issue)
+    r = make_runner()
+    herdr.live["w9:p1"] = "idle"
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle="scout", pane="w9:p1", kind="claude"))
+    # Its pane closed: nothing reads a token there.
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle="gone", pane="w9:p7", kind="claude"))
+
+    r.keep_credentials(now=now)
+    assert issued == [("eng", "scout")]
+    r.keep_credentials(now=now + 60)
+    assert issued == [("eng", "scout")], "a fresh token isn't asked for again"
+    r.keep_credentials(now=now + 24 * 86400)
+    assert issued == [("eng", "scout")] * 2, "under a week left, it's renewed"
+
+
+def test_an_agent_the_hub_wont_give_a_token_is_asked_about_hourly_not_every_round(
+    make_runner, herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    asked: list[str] = []
+
+    def refuse(_config: Any, _room: str, handle: str) -> Path:
+        asked.append(handle)
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 403, "not yours")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", refuse)
+    r = make_runner()
+    herdr.live["w9:p1"] = "idle"
+    r.bridge.registry.set(
+        HerdrPaneMapping(room="eng", handle="theirs", pane="w9:p1", kind="claude")
+    )
+
+    r.keep_credentials(now=1000.0)
+    r.keep_credentials(now=1060.0)
+    assert asked == ["theirs"]
+    r.keep_credentials(now=1000.0 + daemon.NO_TOKEN_RETRY_S + 1)
+    assert asked == ["theirs", "theirs"]
+
+
+def test_a_computer_not_signed_in_is_asked_about_every_round(
+    make_runner, herdr: Herdr, monkeypatch: pytest.MonkeyPatch
+):
+    """Signing in is all it takes: the next round gives its agents their tokens."""
+    from mycelium import agent_credentials
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    asked: list[str] = []
+
+    def signed_out(_config: Any, _room: str, handle: str) -> Path:
+        asked.append(handle)
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 401, "")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", signed_out)
+    r = make_runner()
+    herdr.live["w9:p1"] = "idle"
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle="mine", pane="w9:p1", kind="claude"))
+
+    r.keep_credentials(now=1000.0)
+    r.keep_credentials(now=1060.0)
+    assert asked == ["mine", "mine"]
+
+
+def _agent_here(r: daemon.Runner, herdr: Herdr, handle: str, pane: str = "w9:p1") -> None:
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    herdr.live[pane] = "idle"
+    r.bridge.registry.set(HerdrPaneMapping(room="eng", handle=handle, pane=pane, kind="claude"))
+
+
+def test_the_heartbeat_says_which_agents_can_reply_and_why_not(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """The runner that keeps the tokens is the one that knows; the room reads its word."""
+    from mycelium import agent_credentials
+
+    now = 2_000_000_000.0
+    token = _token_until(now + 30 * 86400)
+
+    def issue(_config: Any, room: str, handle: str) -> Path:
+        if handle == "theirs":
+            raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 403, "")
+        path = agent_credentials.member_token_path(room, handle)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # The hub answers every token it accepts as @scout, so @coder's file
+        # holds a token for someone else.
+        path.write_text(f"{token}-revoked" if handle == "revoked" else token)
+        return path
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", issue)
+    hub.refused_tokens.add(f"{token}-revoked")
+    r = make_runner()
+    _agent_here(r, herdr, "scout", "w9:p1")
+    _agent_here(r, herdr, "revoked", "w9:p2")
+    _agent_here(r, herdr, "theirs", "w9:p3")
+    _agent_here(r, herdr, "coder", "w9:p4")
+
+    r.keep_credentials(now=now)
+    said = {c["handle"]: (c["can_reply"], c["why"]) for c in r.hello_body()["credentials"]}
+    assert said["scout"] == (True, None)
+    assert said["revoked"] == (False, f"The hub refused its token ({r.label}).")
+    assert said["theirs"] == (
+        False,
+        f"The hub won't give it a token for whoever {r.label} is signed in as.",
+    )
+    assert said["coder"] == (False, f"Its token is for @scout, not @coder ({r.label}).")
+
+    # Its pane closed: nothing more to say about it.
+    del herdr.live["w9:p2"]
+    r.keep_credentials(now=now + 60)
+    assert "revoked" not in {c["handle"] for c in r.credentials_report()}
+
+
+def test_a_signed_out_computer_says_its_agents_cant_reply_only_once_their_tokens_ran_out(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    now = 2_000_000_000.0
+
+    def signed_out(_config: Any, _room: str, handle: str) -> Path:
+        raise agent_credentials.MemberTokenRefused(handle, "https://hub.example", 401, "")
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", signed_out)
+    r = make_runner()
+    _agent_here(r, herdr, "mine")
+    path = agent_credentials.member_token_path("eng", "mine")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Three days left: a renewal refused changes nothing yet.
+    path.write_text(_token_until(now + 3 * 86400))
+    r.keep_credentials(now=now)
+    assert ("eng", "mine") not in r.can_reply or r.can_reply[("eng", "mine")][0]
+    # Run out.
+    r.keep_credentials(now=now + 4 * 86400)
+    assert r.can_reply[("eng", "mine")] == (
+        False,
+        f"This computer isn't signed in to the hub ({r.label}).",
+    )
+
+
+def test_with_sign_in_off_there_is_no_verdict_on_anyone(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium import agent_credentials
+
+    monkeypatch.setattr(agent_credentials, "issue_member_token", lambda *_a: None)
+    r = make_runner()
+    _agent_here(r, herdr, "mine")
+    r.keep_credentials(now=1000.0)
+    assert r.credentials_report() == []
 
 
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
@@ -327,7 +874,7 @@ def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     assert "MYCELIUM_ROOM_ID=eng" in create
     assert "MYCELIUM_API_URL=http://hub:8000" in create
     start = herdr.of("agent start")[0]
-    assert start[2:6] == ["scout", "--kind", "claude", "--pane"]
+    assert start[2:6] == ["scout_eng", "--kind", "claude", "--pane"]
     assert start[-3:] == ["--", "--allowedTools", "Bash(mycelium:*)"]
     prompt = herdr.of("agent prompt")[0][3]
     assert "You are @scout" in prompt
@@ -401,7 +948,7 @@ def test_the_next_agent_in_a_room_shares_its_workspace(make_runner, herdr: Herdr
     r.launch({"room": "eng", "handle": "two", "framework": "opencode"})
     assert len(herdr.of("workspace create")) == 1
     assert herdr.of("pane split")[0][2] == "w9:p1"
-    assert herdr.of("agent start")[1][2:4] == ["two", "--kind"]
+    assert herdr.of("agent start")[1][2:4] == ["two_eng", "--kind"]
     assert "--allowedTools" not in herdr.of("agent start")[1]
     # Without notes it is pointed at the board instead.
     assert "mycelium board --room eng" in herdr.of("agent prompt")[1][3]
@@ -418,7 +965,7 @@ def test_launching_a_running_agent_again_opens_nothing(make_runner, herdr: Herdr
 @pytest.mark.parametrize(
     ("spec", "said"),
     [
-        ({"framework": "codex"}, "not installed"),
+        ({"framework": "nope"}, "not an agent CLI"),
         ({"framework": "aider"}, "herdr can't start Aider"),
         ({"framework": "claude", "cwd": "/etc"}, "outside the folders"),
         ({"framework": "claude", "cwd": "{root}/../elsewhere"}, "outside the folders"),
@@ -436,13 +983,321 @@ def test_a_launch_this_machine_should_not_do_is_refused(
     assert herdr.of("agent start") == []
 
 
-def test_an_agent_herdr_could_not_start_leaves_no_pane(make_runner, herdr: Herdr, hub: Hub):
+def test_a_start_herdr_refused_keeps_its_pane_and_tries_there_again(
+    make_runner, herdr: Herdr, hub: Hub
+):
     herdr.fail_start = True
     r = make_runner()
-    with pytest.raises(daemon.JobError, match="could not start Claude Code"):
+    with pytest.raises(daemon.JobError, match="herdr couldn't start Claude Code") as failed:
         r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
-    assert [c[2] for c in herdr.of("pane close")] == ["w9:p1"]
+    # Left open, so starting again doesn't open one more terminal each time.
+    assert herdr.of("pane close") == []
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "host"
+    assert failed.value.result["pane"] == "w9:p1"
     assert r.hello_body()["agents"] == []
+
+    herdr.fail_start = False
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert result["pane"] == "w9:p1"
+    assert herdr.panes == ["w9:p1"]
+
+
+def test_a_shell_slow_to_start_is_waited_for(make_runner, herdr: Herdr, hub: Hub):
+    herdr.shell_starting = 5
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert result["pane"] == "w9:p1"
+    assert len(herdr.of("agent start")) == 6
+    assert r.hello_body()["agents"][0]["status"] == "running"
+
+
+def test_a_shell_that_never_comes_up_says_so_and_keeps_its_terminal(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr("mycelium.commands.swarm.SHELL_WAIT_S", 0)
+    herdr.shell_starting = 1
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="didn't reach a shell prompt") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "start @scout again" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["step"] == "shell"
+    assert failed.value.result["why"] == "shell"
+    assert "not an available shell" in failed.value.result["detail"]
+    assert herdr.of("pane close") == []
+
+    # Its shell came up: starting again goes back to that terminal.
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert herdr.panes == ["w9:p1"]
+    assert r.hello_body()["agents"][0]["status"] == "running"
+
+
+def test_an_agent_cli_that_exits_at_start_says_so_and_is_not_started_again(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    herdr.exits_on_start = True
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="exited before it started") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "start @scout again" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "exited"
+    # Where to look, never what it printed: that stays on this machine.
+    assert failed.value.result["pane"] == "w9:p1"
+    assert "make deploy" not in json.dumps(failed.value.result)
+    # Once: starting it the same way again would only exit again.
+    assert len(herdr.of("agent start")) == 1
+
+
+def test_a_cli_that_needs_setting_up_is_told_before_anything_starts(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """Like a Codex that isn't signed in: no pane opened, nothing typed into one."""
+    from mycelium.integrations import agents
+
+    kind = type(agents.of_kind("claude"))
+    monkeypatch.setattr(kind, "not_ready", lambda _self: "Sign in first. Then try again.")
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="can't start on .* yet. Sign in first") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert failed.value.result == {"why": "setup", "detail": "Sign in first. Then try again."}
+    assert herdr.of("agent start") == []
+    assert herdr.panes == []
+
+
+#: Codex's screens, with something private on them that must never leave the machine.
+SIGNED_IN = "sk-live-4f2a9c\n✓ Signed in with your ChatGPT account\n\n  Press enter to continue\n"
+SIGN_IN = (
+    "sk-live-4f2a9c\n> 1. Sign in with ChatGPT\n  2. Sign in with Device Code\n"
+    "  Press enter to continue\n"
+)
+PROMPT = "› Ask Codex to do anything\n"
+
+
+@pytest.fixture
+def first_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Claude standing in for a CLI with first-run screens: Codex's own."""
+    from mycelium.integrations import agents
+    from mycelium.integrations.agents.codex import Codex
+
+    monkeypatch.setattr(type(agents.of_kind("claude")), "first_run", Codex.first_run)
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+
+
+def test_a_welcome_screen_enter_gets_past_is_got_past_before_the_introduction(
+    make_runner, herdr: Herdr, hub: Hub, first_runs: None
+):
+    """A signed-in Codex on its welcome, which herdr reads as ready: Enter, then the introduction."""
+    herdr.screen = SIGNED_IN
+    herdr.screens_after_keys = [PROMPT]
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "waiting" not in result
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["enter"]]
+    prompts = herdr.of("agent prompt")
+    assert len(prompts) == 1
+    assert "You are @scout" in prompts[0][3]
+
+
+def test_a_sign_in_screen_holds_the_introduction_until_it_is_answered(
+    make_runner, herdr: Herdr, hub: Hub, first_runs: None
+):
+    herdr.screen = SIGN_IN
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    # Nothing pressed or typed into a screen only the person can answer.
+    assert herdr.of("pane send-keys") == []
+    assert herdr.of("agent prompt") == []
+    assert result["waiting"].startswith("waiting for input on ")
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "blocked"
+    assert "Codex is asking you to sign in" in agent["detail"]
+    assert "herdr agent focus w9:p1" in agent["detail"]
+
+    # herdr still reads it as idle; it stays waiting, its introduction held.
+    r.refresh()
+    assert r.hello_body()["agents"][0]["status"] == "blocked"
+    assert herdr.of("agent prompt") == []
+
+    # Signed in: the welcome after it is got past, then the introduction goes in, once.
+    herdr.screen = SIGNED_IN
+    herdr.screens_after_keys = [PROMPT]
+    r.refresh()
+    r.refresh()
+    prompts = herdr.of("agent prompt")
+    assert len(prompts) == 1
+    assert "You are @scout" in prompts[0][3]
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+
+    # What reached the hub is the kind's words, never the screen.
+    r.hello()
+    sent = json.dumps([body for _m, _p, body in hub.seen])
+    assert "sk-live-4f2a9c" not in sent
+    assert "Sign in with Device Code" not in sent
+
+
+def test_an_agent_past_its_first_run_never_has_its_screen_read_again(
+    make_runner, herdr: Herdr, hub: Hub, first_runs: None
+):
+    herdr.screen = PROMPT
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert len(herdr.of("agent prompt")) == 1
+    reads = len(herdr.of("pane read"))
+    # Its introduction went in; whatever its screen shows from now on is its own.
+    herdr.screen = SIGNED_IN
+    r.refresh()
+    r.refresh()
+    assert len(herdr.of("pane read")) == reads
+    assert herdr.of("pane send-keys") == []
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+
+
+def test_a_cli_with_no_first_run_screens_never_has_its_screen_read(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    herdr.screen = SIGN_IN
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "opencode"})
+    r.refresh()
+    assert herdr.of("pane read") == []
+    assert len(herdr.of("agent prompt")) == 1
+
+
+def test_a_cli_the_scan_didnt_find_is_started_and_said_to_be_missing_when_it_isnt_there(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    # Its shell says "command not found", so no agent ever appears on the pane.
+    herdr.exits_on_start = True
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="Codex isn't installed on") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
+    assert "Install Codex there, then start @scout again" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "missing"
+    assert failed.value.result["pane"] == "w9:p1"
+    # It was tried: the person's own shell may have had it.
+    assert len(herdr.of("agent start")) == 1
+
+
+def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    # Every start counts as one that ran the CLI and waited on it.
+    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    herdr.fail_start = True
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="didn't finish starting") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    assert "update, a sign-in or a first-run question" in str(failed.value)
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "cli"
+    # Where to look, never what it shows: that stays on this machine.
+    assert failed.value.result["pane"] == "w9:p1"
+    assert "No, exit" not in json.dumps(failed.value.result)
+    # Started once, not again into a CLI that is waiting on the person.
+    assert len(herdr.of("agent start")) == 1
+    assert herdr.of("pane close") == []
+
+
+def test_a_start_reports_its_steps_and_lets_the_sync_pass_run_while_herdr_waits(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr("mycelium.commands.swarm.SHELL_WAIT_S", 0)
+    herdr.shell_starting = 1
+    r = make_runner()
+    locked_during_start: list[bool] = []
+    herdr.on_start = lambda: locked_during_start.append(r._panes.locked())  # noqa: SLF001
+    r.take(
+        {
+            "id": "a1a1a1",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "scout", "framework": "claude"},
+        }
+    )
+
+    failed = _until(lambda: _report(hub, "a1a1a1", "failed"))
+    assert locked_during_start == [False]
+    steps = [b["result"]["step"] for b in hub.of("PATCH", "a1a1a1") if b["status"] == "running"]
+    assert steps == ["terminal", "shell"]
+    assert failed["result"]["step"] == "shell"
+    assert failed["result"]["pane"] == "w9:p1"
+    assert "didn't reach a shell prompt" in failed["error"]
+    # The lock is the runner's again once the job is over.
+    assert not r._panes.locked()  # noqa: SLF001
+
+
+def test_a_start_names_its_terminal_from_the_moment_it_opens_then_introduces_it(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    """The app streams the terminal and offers to open it from the first step that has one."""
+    r = make_runner()
+    r.take(
+        {
+            "id": "a2a2a2",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "scout", "framework": "claude"},
+        }
+    )
+    _until(lambda: _report(hub, "a2a2a2", "done"))
+    running = [b["result"] for b in hub.of("PATCH", "a2a2a2") if b["status"] == "running"]
+    assert running == [
+        {"step": "terminal"},
+        {"step": "shell", "pane": "w9:p1"},
+        {"step": "intro", "pane": "w9:p1"},
+    ]
+    assert len(herdr.of("agent prompt")) == 1
+
+
+def test_a_claude_start_trusts_the_folder_it_was_started_in_then_introduces_it(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """The person chose the folder and approved the start; its trust question is theirs, answered."""
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_FOLDER, CLAUDE_TRUST_ON_YES
+
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+    herdr.start_leaves = "blocked"
+    herdr.agent_cwd = CLAUDE_TRUST_FOLDER
+    herdr.screen = CLAUDE_TRUST
+    # One key refused as too soon after the question opened, then Down, then Enter.
+    herdr.screens_after_keys = [CLAUDE_TRUST, CLAUDE_TRUST_ON_YES, "> "]
+    herdr.keys_settle = True
+    r = make_runner()
+
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["down"], ["down"], ["enter"]]
+    assert result["passed"] == ["Trusted the folder for Claude Code"]
+    assert "waiting" not in result
+    # Once it's idle, its introduction goes in.
+    r.refresh()
+    prompts = herdr.of("agent prompt")
+    assert len(prompts) == 1
+    assert "You are @scout" in prompts[0][3]
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+
+
+def test_a_folder_whose_settings_grant_themselves_more_is_left_for_the_person(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from tests.test_agent_kinds import CLAUDE_TRUST
+
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+    herdr.start_leaves = "blocked"
+    herdr.screen = CLAUDE_TRUST.replace(" Security guide", " These will apply without asking.")
+    r = make_runner()
+
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    r.refresh()
+
+    assert herdr.of("pane send-keys") == []
+    assert herdr.of("agent prompt") == []
+    assert "passed" not in result
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "blocked"
+    assert "asking whether to trust this folder" in agent["detail"]
 
 
 def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(
@@ -462,7 +1317,7 @@ def test_a_launch_stopped_at_a_prompt_keeps_its_pane_and_waits_for_the_person(
     assert herdr.of("agent prompt") == []
     agent = r.hello_body()["agents"][0]
     assert agent["status"] == "blocked"
-    assert "2. No, exit" in agent["detail"]
+    assert "No, exit" not in agent["detail"]
     assert "Claude Code asks before" in agent["detail"]
     assert "herdr agent focus w9:p1" in agent["detail"]
     assert r.bridge.registry.get("eng", "scout") is not None
@@ -532,9 +1387,44 @@ def test_a_closed_pane_is_a_stopped_agent(make_runner, herdr: Herdr, hub: Hub):
     assert r.hello_body()["agents"][0]["status"] == "working"
 
     herdr.live.clear()
+    herdr.panes.clear()
     r.refresh()
     agent = r.hello_body()["agents"][0]
     assert agent["status"] == "stopped"
+    assert agent["detail"] == "its herdr pane closed"
+    assert r.bridge.registry.get("eng", "scout") is None
+
+
+def test_an_agent_quit_and_started_again_in_its_pane_stays_itself(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    """A person quits the agent (to load an MCP, say) and starts it again in the
+    same pane. The pane's mapping stays, so the sync pass never enrolls it as a
+    new member named from its tab."""
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.live.clear()  # quit; the pane is still open
+    r.refresh()
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "stopped"
+    assert agent["detail"] == "it exited, and its herdr pane is still open"
+    mapping = r.bridge.registry.get("eng", "scout")
+    assert mapping is not None
+    assert mapping.pane == "w9:p1"
+    # Its workspace stays bound, so the agent started again there is synced.
+    assert r.bridge.registry.bindings()
+
+    herdr.live["w9:p1"] = "idle"  # started again by hand
+    r.refresh()
+    assert r.hello_body()["agents"][0]["status"] == "idle"
+    assert r.bridge.registry.get("eng", "scout") is not None
+
+    # Quit again and then close the pane: now it has gone.
+    herdr.live.clear()
+    r.refresh()
+    herdr.panes.clear()
+    r.refresh()
+    assert r.hello_body()["agents"][0]["detail"] == "its herdr pane closed"
     assert r.bridge.registry.get("eng", "scout") is None
 
 
@@ -550,6 +1440,84 @@ def test_stop_closes_the_pane_and_keeps_the_agent_listed(make_runner, herdr: Her
     # And it can be started again.
     r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
     assert r.hello_body()["agents"][0]["status"] == "running"
+
+
+def test_interrupt_sends_the_key_only_to_a_working_agent(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    # Idle: the key could clear what a person was typing, so nothing is pressed.
+    herdr.live["w9:p1"] = "idle"
+    assert r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "scout"}}) == {
+        "pane": "w9:p1",
+        "interrupted": False,
+    }
+    assert herdr.of("pane send-keys") == []
+    # Working: its CLI's own key, and the session stays open.
+    herdr.live["w9:p1"] = "working"
+    result = r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "scout"}})
+    assert result == {"pane": "w9:p1", "interrupted": True}
+    assert herdr.of("pane send-keys") == [["pane", "send-keys", "w9:p1", "esc"]]
+    assert herdr.of("pane close") == []
+
+
+def test_interrupt_reaches_an_agent_the_runner_did_not_start(make_runner, herdr: Herdr, hub: Hub):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    r.bridge.registry.set(
+        HerdrPaneMapping(room="eng", handle="julia-claude", pane="w3:p1", kind="claude")
+    )
+    herdr.live["w3:p1"] = "working"
+    result = r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "julia-claude"}})
+    assert result == {"pane": "w3:p1", "interrupted": True}
+    with pytest.raises(daemon.JobError, match="Nothing on"):
+        r.do({"kind": "interrupt", "spec": {"room": "eng", "handle": "nobody"}})
+
+
+def test_a_pause_stops_the_turn_then_says_it_is_a_pause(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    prompts_before = len(herdr.of("agent prompt"))
+    herdr.live["w9:p1"] = "working"
+    herdr.keys_settle = True
+    spec = {"room": "eng", "handle": "scout", "by": "julia"}
+    result = r.do({"kind": "pause", "spec": spec})
+    assert result == {"pane": "w9:p1", "interrupted": True, "told": True}
+    assert herdr.of("pane send-keys") == [["pane", "send-keys", "w9:p1", "esc"]]
+    told = herdr.of("agent prompt")[prompts_before:]
+    assert len(told) == 1
+    assert "Paused by @julia from Mycelium" in told[0][3]
+    assert "isn't a correction" in told[0][3]
+    assert herdr.of("pane close") == []
+
+
+def test_a_pause_leaves_an_idle_agent_untouched(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.live["w9:p1"] = "idle"
+    prompts_before = len(herdr.of("agent prompt"))
+    result = r.do({"kind": "pause", "spec": {"room": "eng", "handle": "scout", "by": "julia"}})
+    # Nothing to stop, and nothing typed into a pane a person may be writing in.
+    assert result == {"pane": "w9:p1", "interrupted": False, "told": False}
+    assert herdr.of("pane send-keys") == []
+    assert len(herdr.of("agent prompt")) == prompts_before
+
+
+def test_stop_reaches_an_agent_the_runner_did_not_start(make_runner, herdr: Herdr, hub: Hub):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    pane = herdr._pane("w3")
+    r.bridge.registry.set(
+        HerdrPaneMapping(room="eng", handle="planner", pane=pane, kind="claude", managed=True)
+    )
+    herdr.live[pane] = "working"
+    assert r.do({"kind": "stop", "spec": {"room": "eng", "handle": "planner"}}) == {"pane": pane}
+    assert herdr.of("pane close") == [["pane", "close", pane]]
+    # Still a member, so it can be started again; the sync pass won't retire it.
+    mapping = r.bridge.registry.get("eng", "planner")
+    assert mapping is not None
+    assert mapping.managed is False
 
 
 def test_the_runner_remembers_its_agents_across_a_restart(make_runner, herdr: Herdr, hub: Hub):
@@ -571,7 +1539,7 @@ def test_every_job_is_reported_done_or_failed(make_runner, herdr: Herdr, hub: Hu
         }
     )
     r.take(
-        {"id": "j2", "kind": "launch", "spec": {"room": "eng", "handle": "b", "framework": "codex"}}
+        {"id": "j2", "kind": "launch", "spec": {"room": "eng", "handle": "b", "framework": "nope"}}
     )
     r.take({"id": "j3", "kind": "reboot", "spec": {}})
 
@@ -581,7 +1549,7 @@ def test_every_job_is_reported_done_or_failed(make_runner, herdr: Herdr, hub: Hu
     assert reports["j2"] == {
         "status": "failed",
         "result": None,
-        "error": "codex is not installed on " + r.label + ".",
+        "error": "nope is not an agent CLI " + r.label + " knows.",
     }
     assert "doesn't know how to do 'reboot'" in reports["j3"]["error"]
     # Each job is followed by a heartbeat, so the app sees the new state at once.
@@ -590,14 +1558,15 @@ def test_every_job_is_reported_done_or_failed(make_runner, herdr: Herdr, hub: Hu
 
 def test_no_sync_pass_runs_while_a_job_opens_panes(make_runner, herdr: Herdr, hub: Hub):
     # A sync pass that saw a new pane before the launch mapped it would enroll
-    # it as a second member (seen live as `@1`), so jobs and passes take turns.
+    # it as a second member (seen live as `@1`), so a job opens and maps its
+    # panes under the lock. Only the wait on herdr after that runs without it.
     r = make_runner()
     during: list[bool] = []
     real_launch = r.launch
 
-    def launch(spec: dict) -> dict:
+    def launch(spec: dict, job_id: str | None = None) -> dict:
         during.append(r._panes.locked())
-        return real_launch(spec)
+        return real_launch(spec, job_id=job_id)
 
     r.launch = launch
     r.take(
@@ -635,7 +1604,7 @@ def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
         }
     )
 
-    assert [c[2] for c in herdr.of("agent start")] == ["agent-1", "agent-2"]
+    assert [c[2] for c in herdr.of("agent start")] == ["agent-1_eng", "agent-2_eng"]
     # The hub already wrote the members; the runner writes only their briefs.
     memory = hub.of("POST", "/api/rooms/eng/memory")
     assert [i["key"] for i in memory[0]["items"]] == [
@@ -643,13 +1612,87 @@ def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
         "agents/agent-2/notes",
     ]
     kickoff = hub.of("POST", "/api/rooms/eng/messages")[0]
-    assert kickoff["content"] == "@conductor swarm @agent-1 @agent-2: Fix the flaky tests"
+    assert kickoff["content"] == "@conductor swarm @~agent-1 @~agent-2: Fix the flaky tests"
     assert kickoff["episode"] == "urn:ep:eng:t1"
     report = next(b for m, p, b in hub.seen if m == "PATCH")
     assert report["status"] == "done"
     assert [a["handle"] for a in r.hello_body()["agents"]] == ["agent-1", "agent-2"]
     env = herdr.of("workspace create")[0]
     assert "MYCELIUM_API_URL=http://hub:8000" in env
+
+
+def test_a_swarm_of_a_cli_that_needs_setting_up_opens_no_panes(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium.integrations import agents
+
+    kind = type(agents.of_kind("claude"))
+    monkeypatch.setattr(kind, "not_ready", lambda _self: "Sign in first. Then try again.")
+    r = make_runner()
+    spec = {
+        "room": "eng",
+        "key": "work/fix",
+        "episode": "urn:ep:eng:t1",
+        "task": "Fix the flaky tests",
+        "team": ["agent-1", "agent-2"],
+        "framework": "claude",
+        "cwd": str(tmp_path),
+    }
+    with pytest.raises(daemon.JobError, match="can't start on .* yet. Sign in first") as failed:
+        r.swarm(spec, "julia")
+    assert failed.value.result == {"why": "setup", "detail": "Sign in first. Then try again."}
+    assert herdr.of("workspace create") == []
+    assert herdr.of("agent start") == []
+
+
+def test_a_swarm_member_left_at_a_sign_in_is_said_to_be_waiting_there(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, first_runs: None
+):
+    herdr.screen = SIGN_IN
+    r = make_runner()
+    spec = {
+        "room": "eng",
+        "key": "work/fix",
+        "episode": "urn:ep:eng:t1",
+        "task": "Fix the flaky tests",
+        "team": ["agent-1"],
+        "framework": "claude",
+        "cwd": str(tmp_path),
+    }
+    with pytest.raises(daemon.JobError, match="waiting there: Codex is asking you to sign in"):
+        r.swarm(spec, "julia")
+    # Nothing typed into it, and its pane is left for the person.
+    assert herdr.of("pane send-keys") == []
+    assert herdr.of("pane close") == []
+
+
+def test_a_swarm_trusts_the_folder_its_claude_members_start_in(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_FOLDER, CLAUDE_TRUST_ON_YES
+
+    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
+    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    herdr.start_leaves = "blocked"
+    herdr.agent_cwd = CLAUDE_TRUST_FOLDER
+    herdr.screen = CLAUDE_TRUST
+    herdr.screens_after_keys = [CLAUDE_TRUST_ON_YES, "> "]
+    herdr.keys_settle = True
+    r = make_runner()
+    spec = {
+        "room": "eng",
+        "key": "work/fix",
+        "episode": "urn:ep:eng:t1",
+        "task": "Fix the flaky tests",
+        "team": ["agent-1"],
+        "framework": "claude",
+        "cwd": str(tmp_path),
+        "kickoff": False,
+    }
+    r.swarm(spec, "julia")
+    assert [c[3:] for c in herdr.of("pane send-keys")] == [["down"], ["enter"]]
+    # Briefed once it's past the question.
+    assert hub.of("POST", "/api/rooms/eng/memory")
 
 
 # ── asking the person at this machine ─────────────────────────────────────────
@@ -701,7 +1744,7 @@ def test_a_launch_from_a_hub_the_runner_does_not_own_waits_for_a_yes(
 
     approvals.answer("a1b2c3d4", yes=True, base=tmp_path)
     _until(lambda: _report(hub, "a1b2c3d4", "done"))
-    assert [c[2] for c in herdr.of("agent start")] == ["a"]
+    assert [c[2] for c in herdr.of("agent start")] == ["a_eng"]
     assert approvals.pending(base=tmp_path) == []
 
 
@@ -765,11 +1808,71 @@ def test_a_restart_from_the_hub_asks_first_then_starts_the_agent_in_its_pane(
     assert "as @a in eng" in waiting["message"]
     starts = len(herdr.of("agent start"))
 
+    # No session on record for it, and the question says what that costs.
+    assert waiting["message"].startswith(
+        "It comes back in a new session, so its conversation won't be kept. "
+        "It catches up from the room:\n"
+    )
+
     approvals.answer("c0ffee01", yes=True, base=tmp_path)
     done = _until(lambda: _report(hub, "c0ffee01", "done"))
     assert done["result"]["restarted"] == {"a": "w9:p1"}
+    assert done["result"]["sessions"] == {"a": None}
     assert len(herdr.of("agent start")) == starts + 1
     assert "You were restarted" in herdr.of("agent prompt")[-1][3]
+
+
+def test_a_restart_names_the_agents_that_wont_keep_their_conversations(
+    make_runner, herdr: Herdr, hub: Hub, quick: None
+):
+    r = make_runner()
+    for handle in ("a", "b", "c"):
+        r.launch({**LAUNCH, "handle": handle})
+    # Only @a has worked in a session on record.
+    herdr.live["w9:p1"] = "working"
+    herdr.sessions["w9:p1"] = "sess-a"
+    r.sync_pass()
+    herdr.live.clear()
+    herdr.sessions.clear()
+
+    agents = [{"handle": h, "room": "eng"} for h in ("a", "b", "c")]
+    question = r.question({"kind": "restart", "spec": {"agents": agents}})
+    assert question["message"].startswith(
+        "@b and @c come back in new sessions and won't keep their conversations; "
+        "the rest keep theirs:\n"
+    )
+
+
+def test_a_restart_resumes_the_session_the_agent_worked_in_and_lets_the_sync_pass_run(
+    make_runner, herdr: Herdr, hub: Hub, quick: None
+):
+    r = make_runner()
+    r.launch(LAUNCH)
+    # It worked in its session, which a sync pass records.
+    herdr.live["w9:p1"] = "working"
+    herdr.sessions["w9:p1"] = "sess-1"
+    r.sync_pass()
+    # herdr's server restarted: the pane came back running a fresh session, idle.
+    herdr.live["w9:p1"] = "idle"
+    herdr.sessions["w9:p1"] = "sess-fresh"
+    r.sync_pass()
+    herdr.live.clear()
+    herdr.sessions.clear()
+
+    question = r.question({"kind": "restart", "spec": {"agents": [{"handle": "a", "room": "eng"}]}})
+    assert question["message"].startswith(
+        "It comes back in its own session and keeps its conversation:\n"
+    )
+
+    locked_during_start: list[bool] = []
+    herdr.on_start = lambda: locked_during_start.append(r._panes.locked())  # noqa: SLF001
+    with r._panes:  # noqa: SLF001 - a job runs holding the panes
+        result = r.restart_agents({"agents": [{"handle": "a", "room": "eng"}]})
+
+    assert result["sessions"] == {"a": "sess-1"}
+    assert herdr.of("agent start")[-1][-2:] == ["--resume", "sess-1"]
+    # The sync pass, and the wakes it delivers, didn't wait on the start.
+    assert locked_during_start == [False]
 
 
 def test_the_question_shows_the_agents_instructions_and_folder(
@@ -791,9 +1894,9 @@ def test_a_launch_this_machine_could_not_do_fails_without_asking(
     make_runner, hub: Hub, tmp_path: Path, quick: None
 ):
     r = make_runner(trust_hub=False)
-    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": {**LAUNCH, "framework": "codex"}})
+    r.take({"id": "a1b2c3d4", "kind": "launch", "spec": {**LAUNCH, "framework": "aider"}})
     failed = _until(lambda: _report(hub, "a1b2c3d4", "failed"))
-    assert "codex is not installed" in failed["error"]
+    assert "herdr can't start Aider" in failed["error"]
     assert approvals.pending(base=tmp_path) == []
 
 
@@ -845,11 +1948,11 @@ def quiet_hub(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """The hub's side of a sync pass: presence taken, and ``wakes`` handed out once."""
     wakes: list[dict] = []
 
-    def fetch(_config: Any, room: str) -> list[dict]:
+    def fetch(_config: Any, room: str, **_kw: Any) -> list[HerdrWakeRead]:
         taken = [w for w in wakes if w.get("room") == room]
         for w in taken:
             wakes.remove(w)
-        return taken
+        return [HerdrWakeRead.from_dict(w) for w in taken]
 
     monkeypatch.setattr("mycelium.commands.herdr.fetch_wakes", fetch)
     monkeypatch.setattr("mycelium.commands.herdr._push_presence", lambda *_a, **_kw: True)
@@ -874,13 +1977,38 @@ def test_each_wake_is_a_line_with_its_pane_outcome_and_time(
     assert r.sync_health()["running_s"] is None
 
 
+def test_the_hub_is_told_what_became_of_each_wake(
+    make_runner, hub: Hub, quiet_hub: list[dict], monkeypatch: pytest.MonkeyPatch
+):
+    told: list[tuple[str, list]] = []
+    monkeypatch.setattr(
+        "mycelium.commands.herdr.report_wakes",
+        lambda _config, room, outcomes, **_kw: told.append((room, outcomes)),
+    )
+    r = make_runner()
+    r.launch(LAUNCH)
+    quiet_hub += [
+        {"room": "eng", "id": "w1", "handle": "a", "reason": "mention"},
+        {"room": "eng", "id": "w2", "handle": "ghost", "reason": "turn"},
+        # From a hub that keeps no wake log: nothing to say about it.
+        {"room": "eng", "handle": "a", "reason": "mention"},
+    ]
+    r.sync_pass()
+    ((room, outcomes),) = [t for t in told if any(t[1])]
+    assert room == "eng"
+    assert [o.to_dict() for o in outcomes if o] == [
+        {"id": "w1", "delivered": True},
+        {"id": "w2", "delivered": False, "why": "no herdr pane here is bound to it"},
+    ]
+
+
 def test_each_job_is_a_line_with_its_outcome_and_time(make_runner, hub: Hub):
     r = make_runner()
     r.take({"id": "j1", "kind": "launch", "spec": LAUNCH})
     r.take({"id": "j2", "kind": "launch", "spec": {**LAUNCH, "framework": "nope"}})
     log = _log()
     assert re.search(r"job j1 launch done \d+ms", log)
-    assert re.search(r"job j2 launch failed \d+ms: nope is not installed", log)
+    assert re.search(r"job j2 launch failed \d+ms: nope is not an agent CLI", log)
 
 
 def test_a_question_asked_and_answered_is_in_the_log(
@@ -1086,7 +2214,7 @@ def test_a_launch_a_paired_device_signed_starts_without_asking(
 
     done = _until(lambda: _report(hub, "c1c1c1", "done"))
     assert done["pairing"] == {"name": "work laptop", "accepted": True}
-    assert [c[2] for c in herdr.of("agent start")] == ["a"]
+    assert [c[2] for c in herdr.of("agent start")] == ["a_eng"]
     assert approvals.pending(base=tmp_path) == []
     assert "signed by 'work laptop'" in (daemon.runner_dir() / "runner.log").read_text()
 
@@ -1294,3 +2422,260 @@ def test_a_binding_that_fails_leaves_the_others_and_the_wakes_going(
     r.sync_pass()
     assert r.sync_health()["bindings"] == []
     assert r.sync_health()["error"] is None
+
+
+# ── adopt: an agent already running here joins a room ────────────────────────
+
+
+def _already_running(herdr: Herdr, status: str = "idle") -> str:
+    """A claude someone started themselves in a herdr pane, in no room."""
+    pane = herdr._pane("w5")  # noqa: SLF001 - the fake's own pane maker
+    herdr.live[pane] = status
+    return pane
+
+
+def test_adopt_asks_on_the_machine_first(make_runner, herdr: Herdr, hub: Hub):
+    assert "adopt" in daemon.ASK_FIRST
+    pane = _already_running(herdr)
+    question = make_runner().question(
+        {
+            "kind": "adopt",
+            "spec": {"room": "eng", "handle": "shop", "pane": pane, "framework": "claude"},
+            "created_by": "julia",
+        }
+    )
+    assert question["title"] == f"Bring the Claude Code in pane {pane} into eng as @shop?"
+    assert "type a short introduction into it once it's idle" in question["message"]
+    assert "@julia" in question["message"]
+
+
+def test_a_signed_adopt_still_asks(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, quick: None
+):
+    from mycelium.runner import pairing
+
+    r = make_runner(trust_hub=False)
+    key, x, y = _device()
+    _pair(r, x, y, pairing.Limits.make(swarms=True))
+    spec = {"room": "eng", "handle": "shop", "pane": _already_running(herdr), "framework": "claude"}
+    r.take({"id": "f1f1f1", "kind": "adopt", "spec": spec, "signature": _sign(key, "adopt", spec)})
+
+    waiting = _until(lambda: _report(hub, "f1f1f1", "waiting"))
+    assert waiting["pairing"] == {
+        "accepted": False,
+        "reason": "bringing in a running agent is always asked",
+    }
+    assert len(approvals.pending(base=tmp_path)) == 1
+
+
+def test_adopt_maps_the_pane_and_introduces_an_idle_agent(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    pane = _already_running(herdr)
+    result = r.adopt({"room": "eng", "handle": "shop", "pane": pane, "framework": "claude"})
+    assert result == {"pane": pane, "introduced": True}
+    mapping = r.bridge.registry.get("eng", "shop")
+    assert (mapping.pane, mapping.managed) == (pane, False)
+    [prompt] = herdr.of("agent prompt")
+    assert prompt[2] == pane
+    intro = prompt[3]
+    assert "You are @shop, a member of the Mycelium room 'eng'" in intro
+    assert "mycelium skill print" in intro
+    assert "mycelium board --room eng" in intro
+    # Its workspace isn't bound: that would enroll every other agent in it.
+    assert r.bridge.registry.bindings() == {}
+    # The runner lists it, so the app can stop it.
+    assert [a["handle"] for a in r.hello_body()["agents"]] == ["shop"]
+
+
+def test_adopt_waits_for_a_working_agent_to_be_idle(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    pane = _already_running(herdr, "working")
+    assert r.adopt({"room": "eng", "handle": "shop", "pane": pane})["introduced"] is False
+    assert herdr.of("agent prompt") == []
+    herdr.live[pane] = "idle"
+    r.refresh()
+    assert [p[2] for p in herdr.of("agent prompt")] == [pane]
+
+
+def test_adopt_refuses_a_pane_another_member_has(make_runner, herdr: Herdr, hub: Hub):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    pane = _already_running(herdr)
+    r.bridge.registry.set(HerdrPaneMapping(room="ops", handle="taken", pane=pane, kind="claude"))
+    with pytest.raises(daemon.JobError, match=f"Pane {pane} is already @taken in ops"):
+        r.adopt({"room": "eng", "handle": "shop", "pane": pane})
+
+
+def test_adopt_refuses_a_pane_with_no_agent_left(make_runner, herdr: Herdr, hub: Hub):
+    with pytest.raises(daemon.JobError, match="No agent is running in pane w5:p7"):
+        make_runner().adopt({"room": "eng", "handle": "shop", "pane": "w5:p7"})
+
+
+def test_an_adopt_that_fails_after_mapping_lets_go_of_the_pane(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    r = make_runner()
+    pane = _already_running(herdr)
+
+    def broken(*_a: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(r.state, "save", broken)
+    with pytest.raises(daemon.JobError, match=f"pane {pane}: disk full"):
+        r.adopt({"room": "eng", "handle": "shop", "pane": pane})
+    assert r.bridge.registry.get("eng", "shop") is None
+    assert "eng/shop" not in r.state.agents
+
+
+def test_stopping_an_adopted_agent_never_closes_its_pane(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    pane = _already_running(herdr)
+    r.adopt({"room": "eng", "handle": "shop", "pane": pane})
+    r.stop_agent({"room": "eng", "handle": "shop"})
+    assert herdr.of("pane close") == []
+    assert pane in herdr.live
+    assert r.bridge.registry.get("eng", "shop") is None
+    assert r.hello_body()["agents"][0]["status"] == "stopped"
+
+
+def test_the_machine_reports_agents_no_room_has(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    pane = _already_running(herdr)
+    [unenrolled] = r.hello_body()["machine"]["unenrolled"]
+    assert (unenrolled["pane"], unenrolled["kind"], unenrolled["state"]) == (pane, "claude", "idle")
+    assert unenrolled["suggested_handle"] == "claude"
+
+
+# ── rename ────────────────────────────────────────────────────────────────────
+
+
+def test_a_renamed_agent_starts_again_under_its_new_handle(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    old_pane = r.state.agents["eng/scout"].pane
+
+    question = r.question(
+        {"kind": "rename", "spec": {"room": "eng", "handle": "scout", "to": "lookout"}}
+    )
+    assert question["title"] == f"Restart @scout as @lookout on {r.label}?"
+    assert "Its pane closes, ending what it's doing" in question["message"]
+
+    done = r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"})
+    # Its old process can't take a new name, so its pane closed and a new one opened.
+    assert old_pane not in herdr.panes
+    assert done == {"handle": "lookout", "pane": done["pane"]}
+    assert done["pane"] in herdr.panes
+    assert herdr.of("agent start")[-1][2] == "lookout_eng"
+    assert any("MYCELIUM_AGENT_HANDLE=lookout" in " ".join(c) for c in herdr.calls)
+    # herdr reported no session for it, so it starts a new one, and says so.
+    assert "--resume" not in herdr.of("agent start")[-1]
+    assert "in a new session, so it doesn't keep its conversation" in question["message"]
+    told = herdr.of("agent prompt")[-1][3]
+    assert told.startswith("[mycelium] You are @lookout") and "You were @scout" in told
+
+    assert r.bridge.registry.get("eng", "scout") is None
+    moved = r.bridge.registry.get("eng", "lookout")
+    assert moved is not None and moved.pane == done["pane"]
+    assert list(r.state.agents) == ["eng/lookout"]
+    assert daemon.State.load(r._state_path).agents["eng/lookout"].pane == done["pane"]
+
+
+def test_a_renamed_agent_comes_back_in_its_own_session(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.sessions[r.state.agents["eng/scout"].pane] = "sess-1"
+
+    question = r.question(
+        {"kind": "rename", "spec": {"room": "eng", "handle": "scout", "to": "lookout"}}
+    )
+    assert "in its own session, keeping its conversation" in question["message"]
+
+    done = r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"})
+    start = herdr.of("agent start")[-1]
+    assert start[2] == "lookout_eng"
+    assert start[-2:] == ["--resume", "sess-1"]
+    told = herdr.of("agent prompt")[-1][3]
+    assert told.startswith("[mycelium] Your conversation was restored. You were @scout")
+    assert "Use --handle lookout from now on" in told
+    moved = r.bridge.registry.get("eng", "lookout")
+    assert moved is not None and (moved.pane, moved.session) == (done["pane"], "sess-1")
+
+
+def test_a_rename_for_an_agent_this_machine_doesnt_have_fails(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="No agent @nobody"):
+        r.rename_agent({"room": "eng", "handle": "nobody", "to": "lookout"})
+
+
+def test_the_hub_renames_before_the_agent_is_touched(make_runner, herdr: Herdr, hub: Hub):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    pane = r.state.agents["eng/scout"].pane
+    starts = len(herdr.of("agent start"))
+
+    r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"}, job_id="j1")
+    # The go-ahead (the job reported running) went to the hub before the pane closed.
+    reports = [(p, b) for m, p, b in hub.seen if m == "PATCH" and p.endswith("/jobs/j1")]
+    assert reports[0][1]["status"] == "running"
+    assert pane not in herdr.panes
+    assert len(herdr.of("agent start")) == starts + 1
+
+
+def test_a_rename_the_hub_refuses_leaves_the_agent_running(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    pane = r.state.agents["eng/scout"].pane
+
+    def refused(_job_id: str) -> None:
+        raise daemon.JobError("Not renamed: @lookout is already a member of eng.")
+
+    monkeypatch.setattr(r, "_go_ahead", refused)
+    with pytest.raises(daemon.JobError, match="already a member"):
+        r.rename_agent({"room": "eng", "handle": "scout", "to": "lookout"}, job_id="j1")
+    assert pane in herdr.panes
+
+
+def test_nothing_a_pane_shows_ever_reaches_the_hub(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    # A terminal can show keys and private code. The app shows it live on this
+    # machine; the hub gets where to look and what state it's in, never what's
+    # on the screen. This fails if any path to the hub starts carrying it.
+    secret = "sk-live-4f2a9c Do you trust the files in this folder?"
+    herdr.screen = secret
+    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    r = make_runner()
+
+    herdr.start_leaves = "blocked"
+    r.take(
+        {
+            "id": "b1b1b1",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "scout", "framework": "claude"},
+        }
+    )
+    _until(lambda: _report(hub, "b1b1b1", "done"))
+    herdr.start_leaves = None
+    herdr.fail_start = True
+    r.take(
+        {
+            "id": "c2c2c2",
+            "kind": "launch",
+            "spec": {"room": "eng", "handle": "lookout", "framework": "claude"},
+        }
+    )
+    _until(lambda: _report(hub, "c2c2c2", "failed"))
+    r.hello()
+
+    sent = json.dumps([body for _m, _p, body in hub.seen])
+    assert "sk-live-4f2a9c" not in sent
+    assert "trust the files" not in sent
+    # Read only on this machine, for a question it may answer, and only while
+    # the introduction is held; this one is none it knows, so nothing is pressed.
+    assert herdr.of("pane send-keys") == []
+    assert list(r.state.agents) == ["eng/scout"]
+    assert r.bridge.registry.get("eng", "scout") is not None

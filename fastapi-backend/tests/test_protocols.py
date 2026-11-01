@@ -338,22 +338,29 @@ def test_spec_of_carries_what_the_app_needs_to_draw_a_pick():
     assert steps["pick"] == {
         "id": "pick",
         "kind": "select",
-        "threshold": 0.7,
-        "max_repairs": 2,
-        "next": {"feasible": "agreed", "infeasible": "repair", "stuck": "no_deal"},
+        "threshold": 0.6,
+        "max_repairs": 5,
+        "next": {
+            "feasible": "agreed",
+            "infeasible": "repair",
+            "stuck": "best",
+            "nothing": "no_deal",
+        },
     }
+    assert steps["anchor"]["collect"] == "anchors"
     assert steps["score"]["collect"] == "scores"
     assert "kind" not in steps["score"], "an ask step's default is dropped"
     accord = protocols.builtin("accord")
     assert accord is not None
     steps = {s["id"]: s for s in protocols.spec_of(accord)["steps"]}
+    assert steps["terms"]["collect"] == "keywords"
     assert steps["frame"]["collect"] == "pieces"
     assert steps["frame"]["require"] == "pieces"
     assert steps["added"] == {
         "id": "added",
         "kind": "tally",
         "of": "points",
-        "max_rounds": 3,
+        "max_rounds": 2,
         "next": {"grew": "more", "settled": "ground", "empty": "nothing"},
     }
     assert steps["words"]["of"] == "terms"
@@ -369,8 +376,13 @@ def test_describe_says_what_a_pick_does():
     concord = protocols.builtin("concord")
     assert concord is not None
     text = protocols.describe(concord)
-    assert "- pick: picks the option the least happy member likes best, bar 70" in text
+    # The bar is said against the reference outcomes, never as a bare number.
+    assert (
+        "- pick: picks the option the least happy member is best off with; it has to be "
+        "at least 60% of the way from each member's bad outcome to its ideal (up to 5 fixes)"
+    ) in text
     assert "- agreed: ends converged" in text
+    assert "- best: ends resolved" in text
 
 
 # ── a shared frame: tally steps, the contested, the lock ─────────────────────
@@ -488,7 +500,7 @@ def test_describe_says_what_a_tally_and_a_lock_do_in_plain_words():
     assert accord is not None
     text = protocols.describe(accord)
     assert (
-        "- added: sees whether the last round added a point, up to 3 rounds; new points: "
+        "- added: sees whether the last round added a point, up to 2 rounds; new points: "
         "more, nothing new: ground, nobody gave any: nothing"
     ) in text
     assert "- words: sees whether a word is used in different senses, at most 2 times" in text

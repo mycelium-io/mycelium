@@ -35,9 +35,9 @@ namespaces are *worked*.
 
 from __future__ import annotations
 
-import fcntl
 import logging
 import re
+import sys
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -60,6 +60,20 @@ if TYPE_CHECKING:
     from app.services.floor import Floor
 
 logger = logging.getLogger(__name__)
+
+
+def _lock_exclusive(fh: Any) -> None:
+    """Hold ``fh`` exclusively until it is closed (flock; a byte lock on Windows)."""
+    if sys.platform == "win32":
+        import msvcrt
+
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(fh, fcntl.LOCK_EX)
+
 
 #: The namespace a task lives in — the one the board leases against.
 WORK_NAMESPACE = "work"
@@ -354,23 +368,29 @@ async def create_task(
     title: str,
     *,
     created_by: str,
+    content: str | None = None,
     key: str | None = None,
     meta: dict[str, Any] | None = None,
 ) -> MemoryRead:
     """Create a task board-first, with its thread already minted.
 
     The row comes first and any coordination inside it is optional, so putting
-    something on the board takes no negotiation to converge first.
+    something on the board takes no negotiation to converge first. ``content``
+    is what the task is, written under the title in the same write: the title
+    stays the row's first line, which is what every surface reads it by, the
+    way ``worker_engine.record_result`` keeps it.
     """
     from app.routes.memory import upsert_memories
     from app.schemas import MemoryBatchCreate, MemoryCreate
 
     row_key = key or f"{WORK_NAMESPACE}/{slugify(title)}"
     fields: dict[str, Any] = {"kind": TASK_KIND, "status": "open", **(meta or {})}
+    described = (content or "").strip()
+    body = f"{title.strip()}\n\n{described}" if described else title
     written = await upsert_memories(
         room,
         MemoryBatchCreate(
-            items=[MemoryCreate(key=row_key, value=title, created_by=created_by, meta=fields)]
+            items=[MemoryCreate(key=row_key, value=body, created_by=created_by, meta=fields)]
         ),
         system={EPISODE_META: mint_episode_urn(room)},
     )
@@ -403,7 +423,7 @@ def backfill_room(room: str) -> int:
         path = base / f"{key}.md"
         try:
             with path.open("r+", encoding="utf-8") as fh:
-                fcntl.flock(fh, fcntl.LOCK_EX)
+                _lock_exclusive(fh)
                 locked_meta, locked_content = parse_memory(fh.read())
                 if system_meta(locked_meta).get(EPISODE_META):
                     continue

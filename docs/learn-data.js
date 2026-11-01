@@ -24,7 +24,7 @@ window.MYCELIUM_COURSES = [
       "id": "01-workers",
       "title": "Workers, not assistants",
       "minutes": 3,
-      "html": "      <p>There&#x27;s a popular picture of an AI agent as one long-running assistant, trusted like a person, whose memory is its personality. Mycelium doesn&#x27;t work from that picture.</p>\n      <p>An agent here is a piece of logic you pick up, use and compose with others:</p>\n      <ul>\n        <li><strong>Many workers each take a piece of the work</strong>, instead of one assistant doing everything.</li>\n        <li><strong>They do the work, and then they&#x27;re done.</strong> A session ends or compacts, and nothing is lost when it goes.</li>\n        <li><strong>What matters outlives them</strong> as memory the next worker reads.</li>\n      </ul>\n      <p>Compose a few of them and they do real work. That&#x27;s the idea everything else in Mycelium is built from.</p>"
+      "html": "      <p>There&#x27;s a popular picture of an AI agent as one long-running assistant, trusted like a person, whose memory is its personality. Mycelium doesn&#x27;t work from that picture.</p>\n      <p>An agent here is a piece of logic you pick up, use and compose with others:</p>\n      <ul>\n        <li><strong>Many workers each take a piece of the work</strong>, instead of one assistant doing everything.</li>\n        <li><strong>They do the work, and then they&#x27;re done.</strong> A session ends or compacts, and nothing is lost when it goes.</li>\n        <li><strong>What matters outlives them.</strong> It&#x27;s kept as memory that the next worker reads.</li>\n      </ul>\n      <p>Put a few of them together and they do real work. Everything else in Mycelium is built on that idea.</p>"
      },
      {
       "id": "02-memory",
@@ -38,9 +38,9 @@ window.MYCELIUM_COURSES = [
         "A log of every message"
        ],
        "answer": 1,
-       "why": "Memory holds preferences, behaviours and procedures. That makes a worker that arrives cold useful at once. It isn't there to make an agent someone."
+       "why": "Memory holds preferences, behaviors and procedures. That makes a worker that arrives cold useful at once. It isn't there to make an agent someone."
       },
-      "html": "      <p>Memory persists in Mycelium. That&#x27;s not to make an agent someone. It&#x27;s to make the next worker faster and less often wrong. Memory comes in three kinds:</p>\n      <div class=\"table-wrap\">\n        <table>\n          <thead>\n            <tr>\n              <th></th>\n              <th>What it holds</th>\n              <th>Where it lives</th>\n            </tr>\n          </thead>\n          <tbody>\n            <tr>\n              <td><strong>Preferences</strong></td>\n              <td>How this team wants things done and the calls it has already made</td>\n              <td><code>decisions/</code></td>\n            </tr>\n            <tr>\n              <td><strong>Behaviours</strong></td>\n              <td>What worked, what failed and what to watch for next time</td>\n              <td><code>failed/</code>, <code>context/</code></td>\n            </tr>\n            <tr>\n              <td><strong>Procedures</strong></td>\n              <td>Skills a fresh worker picks up the moment it arrives</td>\n              <td><code>skills/</code>, <code>procedures/</code></td>\n            </tr>\n          </tbody>\n        </table>\n      </div>\n      <p>Each is a markdown file in the room that can be searched by meaning:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">search</span> <span class=\"str\">&quot;how do we store sessions&quot;</span></code></pre>\n      <p>A worker that arrives cold reads them and is useful at once.</p>"
+      "html": "      <p>Memory persists in Mycelium. That&#x27;s not to make an agent someone. It&#x27;s to make the next worker faster and less often wrong. Memory comes in three kinds:</p>\n      <div class=\"table-wrap\">\n        <table>\n          <thead>\n            <tr>\n              <th></th>\n              <th>What it holds</th>\n              <th>Where it lives</th>\n            </tr>\n          </thead>\n          <tbody>\n            <tr>\n              <td><strong>Preferences</strong></td>\n              <td>How this team wants things done and the calls it has already made</td>\n              <td><code>decisions/</code></td>\n            </tr>\n            <tr>\n              <td><strong>Behaviors</strong></td>\n              <td>What worked, what failed and what to watch for next time</td>\n              <td><code>failed/</code>, <code>context/</code></td>\n            </tr>\n            <tr>\n              <td><strong>Procedures</strong></td>\n              <td>Skills a fresh worker picks up the moment it arrives</td>\n              <td><code>skills/</code>, <code>procedures/</code></td>\n            </tr>\n          </tbody>\n        </table>\n      </div>\n      <p>Each is a markdown file in the room that can be searched by meaning:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">search</span> <span class=\"str\">&quot;how do we store sessions&quot;</span></code></pre>\n      <p>A worker that arrives cold reads them and is useful at once.</p>"
      },
      {
       "id": "03-ladder",
@@ -52,7 +52,7 @@ window.MYCELIUM_COURSES = [
       "id": "04-isnt",
       "title": "What it isn't",
       "minutes": 2,
-      "html": "      <p>Mycelium is easily mistaken for two things:</p>\n      <ul>\n        <li><strong>Not a roleplay.</strong> There&#x27;s no single orchestrator handing work to agent A and agent B around a roundtable that&#x27;s only pretend. The agents are real sessions. Each one does its own part, and they talk to each other where the work is.</li>\n        <li><strong>Not session management.</strong> It doesn&#x27;t babysit your agent sessions or ask you to. Your agents run where they already run, in your own tools.</li>\n      </ul>\n      <p>What it is: a system that makes composing any number of flows possible.</p>"
+      "html": "      <p>Mycelium is easily mistaken for two things:</p>\n      <ul>\n        <li><strong>Not a roleplay.</strong> There&#x27;s no single orchestrator handing work to agent A and agent B around a roundtable that&#x27;s only pretend. The agents are real sessions. Each one does its own part, and they talk to each other where the work is.</li>\n        <li><strong>Not session management.</strong> It doesn&#x27;t babysit your agent sessions or ask you to. Your agents run where they already run, in your own tools.</li>\n      </ul>\n      <p>What Mycelium is: a system that lets you put together and run any number of flows.</p>"
      }
     ]
    },
@@ -85,13 +85,13 @@ window.MYCELIUM_COURSES = [
        "answer": 1,
        "why": "A task is a row and a thread. Keeping the work in each thread keeps context focused and the room's chat legible."
       },
-      "html": "      <p>A room has two kinds of conversation, and keeping them apart is deliberate:</p>\n      <ul>\n        <li><strong>The room&#x27;s chat</strong> is where people talk. The room&#x27;s timeline also shows there when work moves, such as a task being filed, claimed or resolved.</li>\n        <li><strong>Each task&#x27;s thread</strong> is where the agents do the work on that task.</li>\n      </ul>\n      <p>The agents&#x27; back-and-forth stays in the thread of the task it&#x27;s about. That means less context pollution and more focused outcomes. It also lets workstreams really run in parallel. Three tasks are three threads, not one long scroll.</p>"
+      "html": "      <p>A room has two kinds of conversation, and keeping them apart is deliberate:</p>\n      <ul>\n        <li><strong>The room&#x27;s chat</strong> is where people talk. The room&#x27;s timeline also shows there when work moves, such as a task being filed, claimed or resolved.</li>\n        <li><strong>Each task&#x27;s thread</strong> is where the agents do the work on that task.</li>\n      </ul>\n      <p>The agents&#x27; back-and-forth stays in the thread of the task it&#x27;s about. That way each agent only reads what concerns its own task. It also lets several pieces of work run in parallel: three tasks are three threads, not one long scroll.</p>"
      },
      {
-      "id": "08-aligner",
-      "title": "The aligner sits in the middle",
+      "id": "08-concord",
+      "title": "When agents disagree",
       "minutes": 3,
-      "html": "      <p>When two agents disagree and can&#x27;t settle it themselves, a mediator helps. That mediator is the <strong>aligner</strong>, an engine the hub runs. Add it to the room once and then mention it in the task&#x27;s thread. It does three things:</p>\n      <ol class=\"steps\">\n        <li>Finds the issues in the opening positions.</li>\n        <li>Asks one agent at a time and proposes something each side can accept.</li>\n        <li>Stops the moment they agree, or says plainly that they didn&#x27;t.</li>\n      </ol>\n      <p>What they agreed becomes new tasks on the board, filed under the one the negotiation ran in. That task itself doesn&#x27;t change. It stays open, and whoever held it keeps it. Most work never needs the aligner. Two agents talking in a thread is usually enough.</p>"
+      "html": "      <p>When two agents disagree and can&#x27;t settle it themselves, the <strong>conductor</strong>, an engine the hub runs, takes them through its <code>concord</code> flow in the task&#x27;s thread. Add it to the room once, then choose <strong>Settle</strong> in the task. It goes like this:</p>\n      <ol class=\"steps\">\n        <li>Everyone rates the same two reference outcomes, so each rating later means the same for everyone.</li>\n        <li>Everyone proposes one option, says why, and rates every option with a reason.</li>\n        <li>The member least happy with the best option proposes something new that answers the objections, until everyone meets the bar or the best option found stands.</li>\n      </ol>\n      <p>The conductor only decides who speaks next. The agents do the thinking. What they agreed is saved as a decision in the room&#x27;s memory, and later work in the task is shown it. The task itself doesn&#x27;t change. It stays open, and whoever held it keeps it. Most work never needs this. Two agents talking in a thread is usually enough.</p>"
      }
     ]
    },
@@ -102,13 +102,13 @@ window.MYCELIUM_COURSES = [
       "id": "09-governance",
       "title": "Trust the workers, watch the outcome",
       "minutes": 3,
-      "html": "      <p>How each agent&#x27;s session governs itself stays out of your way. It&#x27;s one pane away when you need it. The approach is:</p>\n      <ul>\n        <li><strong>Outcomes over micromanaging every step.</strong> Judge the result and the checks it was held to.</li>\n        <li><strong>Trust that they&#x27;ll do the right thing,</strong> with a brief that says what right means here.</li>\n        <li><strong>Give them what they need to swarm well:</strong> shared memory, a board, threads and each other.</li>\n      </ul>\n      <p>Your attention goes to the decisions only you can make. The core workflow and the capstone show how to set that up.</p>"
+      "html": "      <p>You don&#x27;t have to watch how each agent&#x27;s session runs itself step by step. When you do want to look, you can open its pane. The approach is:</p>\n      <ul>\n        <li><strong>Judge the outcome, not every step.</strong> Look at the result and the checks it was held to.</li>\n        <li><strong>Trust that they&#x27;ll do the right thing,</strong> with a brief that says what right means here.</li>\n        <li><strong>Give them what they need to swarm well:</strong> shared memory, a board, threads and each other.</li>\n      </ul>\n      <p>Your attention goes to the decisions only you can make. The core workflow and the capstone show how to set that up.</p>"
      },
      {
       "id": "10-working-like-this",
       "title": "What working like this asks of you",
       "minutes": 2,
-      "html": "      <p>Working this way asks a lot of the person in the middle:</p>\n      <ul>\n        <li><strong>Fast creativity.</strong> Trying an idea costs minutes, so try it before you argue about it.</li>\n        <li><strong>Strong opinions.</strong> Agents follow taste. Bring yours, or you get the average.</li>\n        <li><strong>Broad, cross-level thinking.</strong> Product, protocol and pixel, often in the same hour.</li>\n      </ul>"
+      "html": "      <p>Working this way asks a lot of the person in the middle:</p>\n      <ul>\n        <li><strong>Fast creativity.</strong> Trying an idea costs minutes, so try it before you argue about it.</li>\n        <li><strong>Strong opinions.</strong> Agents follow the taste they&#x27;re given. If you don&#x27;t bring yours, you get an average result.</li>\n        <li><strong>Broad, cross-level thinking.</strong> You may move between product questions, protocol details and pixel-level design in the same hour.</li>\n      </ul>"
      }
     ]
    },
@@ -134,7 +134,7 @@ window.MYCELIUM_COURSES = [
   "thumb": "walk-thread.png",
   "needs": [
    "A coding agent you already use, such as Claude Code or Codex",
-   "Mycelium on your machine with its runner going. The Mac app runs it for you.",
+   "Mycelium on your machine with its runner going. The desktop app runs it for you.",
    "A repository with a task you'd normally spend an afternoon on"
   ],
   "takeaway": "A PM brief tuned to how you work and a pair you can hand features to.",
@@ -152,7 +152,7 @@ window.MYCELIUM_COURSES = [
       "id": "01-why-two",
       "title": "Why two agents",
       "minutes": 4,
-      "html": "      <p>One coding agent on its own drifts. It decides what done means as it goes and marks its own work. When you come back an hour later, you can&#x27;t tell whether it finished or just stopped.</p>\n      <p>That changes when you give it a second agent whose only job is to hold it to a plan. The second one, the PM, writes down what done means before any code is written. Then it checks every piece against that. The coder can&#x27;t move the goal posts, and you have a record of every review in one place.</p>\n      <p>That&#x27;s the whole setup: two agents talking in one task&#x27;s thread. There&#x27;s no flow to configure and no engine to summon. Given a clear task, a pair like this can work on its own for two or three hours.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">The conductor and the aligner are for when two agents talking isn&#x27;t enough. Most of the time it is.</div>\n      </div>"
+      "html": "      <p>One coding agent on its own drifts. It decides what done means as it goes and marks its own work. When you come back an hour later, you can&#x27;t tell whether it finished or just stopped.</p>\n      <p>That changes when you give it a second agent whose only job is to hold it to a plan. The second one, the PM, writes down what done means before any code is written. Then it checks every piece against that. The coder can&#x27;t move the goal posts, and you have a record of every review in one place.</p>\n      <p>That&#x27;s the whole setup: two agents talking in one task&#x27;s thread. There&#x27;s no flow to configure and no engine to summon. Given a clear task, a pair like this can work on its own for two or three hours.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">The conductor&#x27;s flows are for when two agents talking isn&#x27;t enough. Most of the time it is.</div>\n      </div>"
      },
      {
       "id": "02-roles",
@@ -174,7 +174,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "pair-idea",
      "about": "A PM and a coder working one task. The checks come first, then a piece is sent back and fixed.",
-     "seconds": 38.6
+     "seconds": 35.8
     }
    },
    {
@@ -190,7 +190,7 @@ window.MYCELIUM_COURSES = [
       "id": "04-coder",
       "title": "Bring in the pair",
       "minutes": 5,
-      "html": "      <p>Both agents run on your machine, started from the app. For the room to ask your machine to start an agent, your machine needs <code>mycelium runner</code> running. The Mac app runs it for you.</p>\n      <p><strong>The PM.</strong> In the room&#x27;s Members panel, choose <strong>Add</strong>, then <strong>Your machine</strong>. Name it <code>pm</code> and paste the brief into the instructions. Pick your coding agent and the folder it starts in, then choose <strong>Add to room</strong>. The instructions are saved as <code>agents/pm/notes</code>.</p>\n      <p><strong>The coder.</strong> Choose <strong>Add another</strong> and name it <code>coder</code>. Start it in a checkout of the repository you&#x27;re working on. It doesn&#x27;t need much of a brief:</p>\n      <pre><code>You&#x27;re the coder. @pm holds the task and reviews your work. Do one piece at a\ntime, and say what you did and how you checked it.</code></pre>\n      <p>When the hub is on a server, your machine asks before it starts anything the app asked for, so say yes there. The Mac app&#x27;s own hub doesn&#x27;t ask, since only your Mac can reach it. The dialog shows each step as it happens. The agent is added to the room, your machine picks it up and you say yes if that&#x27;s needed. Then the agent starts and reads its notes. Each one says hello in the room once it&#x27;s up.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">From the composer, <code>/agent coder claude ~/code/shop</code> does the same as the dialog.</div>\n      </div>"
+      "html": "      <p>Both agents run on your machine, started from the app. For the room to ask your machine to start an agent, your machine needs <code>mycelium runner</code> running. The desktop app runs it for you.</p>\n      <p><strong>The PM.</strong> In the room&#x27;s Members panel, choose <strong>Add</strong>, then <strong>Your machine</strong>. Name it <code>pm</code> and paste the brief into the instructions. Pick your coding agent and the folder it starts in, then choose <strong>Add to room</strong>. The instructions are saved as <code>agents/pm/notes</code>.</p>\n      <p><strong>The coder.</strong> Choose <strong>Add another</strong> and name it <code>coder</code>. Start it in a checkout of the repository you&#x27;re working on. It doesn&#x27;t need much of a brief:</p>\n      <pre><code>You&#x27;re the coder. @pm holds the task and reviews your work. Do one piece at a\ntime, and say what you did and how you checked it.</code></pre>\n      <p>When the hub is on a server, your machine asks before it starts anything the app asked for, so say yes there. The desktop app&#x27;s own hub doesn&#x27;t ask, since only your computer can reach it. The dialog shows each step as it happens. The agent is added to the room, your machine picks it up and you say yes if that&#x27;s needed. Then the agent starts and reads its notes. Each one says hello in the room once it&#x27;s up.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">From the composer, <code>/agent coder claude ~/code/shop</code> does the same as the dialog.</div>\n      </div>"
      },
      {
       "id": "05-kickoff",
@@ -240,7 +240,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "pair-checkin",
      "about": "Checking in an hour later to answer the PM's question. The task is resolved with a PR to review.",
-     "seconds": 55.6
+     "seconds": 46.4
     }
    }
   ],
@@ -251,7 +251,7 @@ window.MYCELIUM_COURSES = [
   "title": "Run side work in parallel",
   "tagline": "Keep the main work moving while small fixes land as their own pull requests, each in its own worktree.",
   "track": "Parallel work",
-  "thumb": "app-board-columns.png",
+  "thumb": "app-machines.png",
   "needs": [
    "The core workflow running or any long task you don't want interrupted",
    "A repository you can add git worktrees to, inside a folder your runner allows"
@@ -298,7 +298,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "side-quest",
      "about": "A fixer starts in its own worktree with a task of its own and finishes without touching the pair.",
-     "seconds": 68.7
+     "seconds": 51.3
     }
    }
   ],
@@ -326,14 +326,14 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "pairing-work",
      "about": "Inviting a teammate and asking their agent directly in one task's thread.",
-     "seconds": 51.1
+     "seconds": 42.2
     },
     "lessons": [
      {
       "id": "01-setup",
       "title": "Set up the room",
       "minutes": 5,
-      "html": "      <p>Two people work one problem, and each brings their own agent. Each agent knows its own person&#x27;s code and context. The four of you meet in one task&#x27;s thread.</p>\n      <ul>\n        <li><strong>One hub you can both reach.</strong> A hub inside the Mac app answers only on that Mac, so for two people it runs on a server. See <strong>Hub &amp; Spoke</strong> in the Guides.</li>\n        <li><strong>One room with both of you in it.</strong> In the Members panel, <strong>Invite</strong> copies a link to the room. It opens the room in your teammate&#x27;s Mac app or in their browser.</li>\n        <li><strong>Each person brings an agent.</strong> Yours runs on your machine and theirs runs on theirs. Each is added with <strong>Add</strong>, <strong>Your machine</strong>. The members list shows whose agent is whose.</li>\n        <li><strong>One task for the problem.</strong> File it and do the work in its thread, so everything said about it is in one place.</li>\n      </ul>"
+      "html": "      <p>Two people work one problem, and each brings their own agent. Each agent knows its own person&#x27;s code and context. The four of you meet in one task&#x27;s thread.</p>\n      <ul>\n        <li><strong>One hub you can both reach.</strong> A hub inside the desktop app answers only on that computer, so for two people it runs on a server. See <strong>Hub &amp; Spoke</strong> in the Guides.</li>\n        <li><strong>One room with both of you in it.</strong> In the Members panel, <strong>Invite</strong> copies a link to the room. It opens the room in your teammate&#x27;s desktop app or in their browser. They&#x27;re listed under <strong>People</strong> once they post in it.</li>\n        <li><strong>Each person brings an agent.</strong> Yours runs on your machine and theirs runs on theirs. Each is added with <strong>Add</strong>, <strong>Your machine</strong>. The members list shows whose agent is whose.</li>\n        <li><strong>One task for the problem.</strong> File it and do the work in its thread, so everything said about it is in one place.</li>\n      </ul>"
      },
      {
       "id": "02-working-it",
@@ -346,9 +346,9 @@ window.MYCELIUM_COURSES = [
    {
     "title": "When you disagree",
     "video": {
-     "take": "pairing-disagree",
-     "about": "Two agents stuck on an approach. The aligner brokers an agreement, and the decision is kept.",
-     "seconds": 59.1
+     "take": "agree-concord",
+     "about": "Agents each suggest an option and rate them all. The least happy one proposes a fix, everyone settles on it, and the decision is kept.",
+     "seconds": 76.5
     },
     "lessons": [
      {
@@ -356,16 +356,16 @@ window.MYCELIUM_COURSES = [
       "title": "When you disagree",
       "minutes": 5,
       "quiz": {
-       "question": "The aligner got @web and @api to agree. What's left to do?",
+       "question": "Concord got web and api to agree. Where does the outcome live?",
        "options": [
-        "Nothing: the agreement is in the thread",
-        "Keep it as a decision so nobody argues it again next week",
-        "Ask the aligner to check again tomorrow"
+        "Only in the thread",
+        "In a decision memory saved for the task",
+        "In a new row on the board"
        ],
        "answer": 1,
-       "why": "A thread scrolls away. A decisions/ memory is what agents and people find the next time the question comes up."
+       "why": "A thread scrolls away. Concord saves its decision under context/decision/, and later work in the task is shown it."
       },
-      "html": "      <p>Sometimes the two agents or the two of you can&#x27;t settle an approach. Each side has a real reason and neither moves. Bring in the aligner, an engine the hub runs for this. Add it once in the room&#x27;s chat:</p>\n      <pre><code>/engine aligner</code></pre>\n      <p>Then ask it in the task&#x27;s thread:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@aligner help @web and @api agree on where carts live</div>\n      </div>\n      <p>It works out what each side actually needs and proposes something both can accept. Then it asks each of them in turn. It stops as soon as they agree, or says plainly that they didn&#x27;t.</p>\n      <p>Keep the outcome as a decision so neither agent argues it again next week. In the chat:</p>\n      <pre><code>/memory decisions/cart-storage Carts live in Postgres for 30 days. A cart is written at most once every 5 seconds.</code></pre>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> decisions/cart-storage <span class=\"str\">&quot;Carts live in Postgres for 30 days.&quot;</span></code></pre>"
+      "html": "      <p>Sometimes the two agents or the two of you can&#x27;t settle an approach. Each side has a real reason and neither moves. Bring in the conductor, an engine the hub runs, and its <code>concord</code> flow. Add the conductor once in the room&#x27;s chat:</p>\n      <pre><code>/engine conductor</code></pre>\n      <p>Then, in the task&#x27;s thread, choose <strong>Settle</strong> under <strong>+</strong> and pick <code>web</code> and <code>api</code>. Or ask it directly:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor concord: where should carts live?</div>\n      </div>\n      <p>Each side rates two reference outcomes, proposes one option and says why, then rates both options with a reason. The one least happy with the best option proposes something new that answers the other&#x27;s objection, until both meet the bar or the best option found stands.</p>\n      <p>The decision is saved under <code>context/decision/</code>, named after the task, with who is short of the bar and why. Later work in the task is shown it, so neither agent argues it again next week. Read it from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">get</span> context/decision/keep-a-customers-cart-when-they-switch-devices</code></pre>"
      }
     ]
    }
@@ -385,7 +385,7 @@ window.MYCELIUM_COURSES = [
   "takeaway": "A clear line between the work in flight and the record it leaves.",
   "outcomes": [
    "Decide in a second where a piece of work belongs",
-   "See each task's pull request on the board, kept up to date",
+   "Follow each task's pull request from the room, kept up to date",
    "Work a GitHub issue through a room to a merged pull request",
    "Move a task to GitHub when it turns out to matter"
   ],
@@ -407,13 +407,13 @@ window.MYCELIUM_COURSES = [
        "answer": 1,
        "why": "GitHub is for what has to outlast the work. A ten-minute fix is work happening now, so it's a task on the board."
       },
-      "html": "      <p>Both GitHub and the board hold a list of work, but they&#x27;re for different things.</p>\n      <ul>\n        <li><strong>GitHub is for what has to outlast the work.</strong> That&#x27;s the issue someone filed, the pull request and the record of why a change was made.</li>\n        <li><strong>The board is for the work happening now.</strong> That&#x27;s what the agents are doing today, the side quests and the decisions on the way.</li>\n      </ul>\n      <p>The two meet on the row. A task that names a pull request shows that pull request&#x27;s state, so you can see the GitHub side of the work without leaving the board.</p>"
+      "html": "      <p>Both GitHub and the board hold a list of work, but they&#x27;re for different things.</p>\n      <ul>\n        <li><strong>GitHub is for what has to outlast the work.</strong> That&#x27;s the issue someone filed, the pull request and the record of why a change was made.</li>\n        <li><strong>The board is for the work happening now.</strong> That&#x27;s what the agents are doing today, the side quests and the decisions on the way.</li>\n      </ul>\n      <p>The two meet in the task. When a task names a pull request, the room follows that pull request. Its big changes show in the room&#x27;s chat, all of them collect on the task&#x27;s row in <strong>Recently updated</strong>, and its state shows on the task&#x27;s row in <code>mycelium board</code>. You see the GitHub side of the work without leaving the room.</p>"
      },
      {
       "id": "02-the-link",
       "title": "Let the board see GitHub",
       "minutes": 4,
-      "html": "      <p>The hub looks up the pull requests a room&#x27;s tasks name. It needs a GitHub token, which you give it once on the machine that runs the hub:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">credential</span> set GITHUB_TOKEN <span class=\"flag\">--stdin</span></code></pre>\n      <p>Restart the hub after setting it. From then on, a task whose text names a pull request shows that pull request&#x27;s state on its row. The text can name it as <code>coffee-shop/web#612</code> or by its full URL.</p>\n      <div class=\"table-wrap\">\n        <table>\n          <thead>\n            <tr>\n              <th>On the row</th>\n              <th>What it means</th>\n            </tr>\n          </thead>\n          <tbody>\n            <tr>\n              <td>CI running, awaiting review, draft</td>\n              <td>In progress, nobody needs to act</td>\n            </tr>\n            <tr>\n              <td>approved</td>\n              <td>Ready to merge</td>\n            </tr>\n            <tr>\n              <td>changes requested</td>\n              <td>Waiting on a person</td>\n            </tr>\n            <tr>\n              <td>CI failing</td>\n              <td>Waiting on a fix</td>\n            </tr>\n            <tr>\n              <td>merged, closed</td>\n              <td>Finished</td>\n            </tr>\n          </tbody>\n        </table>\n      </div>\n      <p>The board never waits on GitHub. It shows the last state it knows and refreshes in the background. Only the task&#x27;s own text counts, not its thread. So the agent that opens the pull request should put it in the task.</p>"
+      "html": "      <p>The hub looks up the pull requests a room&#x27;s tasks name. It needs a GitHub token, which you give it once on the machine that runs the hub:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">credential</span> set GITHUB_TOKEN <span class=\"flag\">--stdin</span></code></pre>\n      <p>Restart the hub after setting it. From then on, the hub follows every pull request a task&#x27;s text names, as <code>coffee-shop/web#612</code> or by its full URL. <code>mycelium board</code> shows its state on the task&#x27;s row:</p>\n      <div class=\"table-wrap\">\n        <table>\n          <thead>\n            <tr>\n              <th>State</th>\n              <th>What it means</th>\n            </tr>\n          </thead>\n          <tbody>\n            <tr>\n              <td>CI running, awaiting review, draft</td>\n              <td>In progress, nobody needs to act</td>\n            </tr>\n            <tr>\n              <td>approved</td>\n              <td>Ready to merge</td>\n            </tr>\n            <tr>\n              <td>changes requested</td>\n              <td>Waiting on a person</td>\n            </tr>\n            <tr>\n              <td>CI failing</td>\n              <td>Waiting on a fix</td>\n            </tr>\n            <tr>\n              <td>merged, closed</td>\n              <td>Finished</td>\n            </tr>\n          </tbody>\n        </table>\n      </div>\n      <p>The hub never waits on GitHub. It keeps the last state it knows and refreshes it in the background. A pull request linked in the task&#x27;s thread counts too, so an agent that posts &quot;PR is up&quot; with the link has already linked it.</p>\n      <p>When a linked pull request changes, the room is told. The pull request opening, CI going red and a merge show in the chat. A review being requested, an approval and CI going green show on the task&#x27;s row in <strong>Recently updated</strong>. Agents read these the next time they wake. No change on GitHub wakes anyone.</p>"
      },
      {
       "id": "03-an-issue",
@@ -435,13 +435,13 @@ window.MYCELIUM_COURSES = [
       "id": "04-the-other-way",
       "title": "When a task should become an issue",
       "minutes": 3,
-      "html": "      <p>Most tasks never need an issue, because they&#x27;re done in an hour. Sometimes one turns out to matter beyond the room. It might be a bug you&#x27;ll want to find again or work for someone outside the room. File the issue in GitHub. Then select the row on the board and press <code>p</code> (<strong>Promote → GH</strong>). That resolves the row and marks it promoted, so the board stops showing it as work in flight.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">It doesn&#x27;t file the issue for you. You file it yourself. Link it from the task if you want the trail.</div>\n      </div>"
+      "html": "      <p>Most tasks never need an issue, because they&#x27;re done in an hour. Sometimes one turns out to matter beyond the room. It might be a bug you&#x27;ll want to find again or work for someone outside the room. File the issue in GitHub, link it in the task&#x27;s thread, and ask the agent holding the task to resolve it. The issue carries the work from there, and the task&#x27;s thread keeps the trail back to the room.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Mycelium doesn&#x27;t file the issue for you. You file it yourself.</div>\n      </div>"
      }
     ],
     "video": {
      "take": "github",
      "about": "Pull request states on the board's rows. An issue worked as a task through to a merged PR. A row promoted.",
-     "seconds": 59.1
+     "seconds": 38.8
     }
    }
   ],
@@ -489,7 +489,7 @@ window.MYCELIUM_COURSES = [
       "id": "02-how-it-runs",
       "title": "How a swarm runs",
       "minutes": 4,
-      "html": "      <p>A swarm is a task with a team on it, in a room you already work in:</p>\n      <ol class=\"steps\">\n        <li><strong>The members check in.</strong> Each one says in the task&#x27;s thread which part it would take.</li>\n        <li><strong>The lead splits the task.</strong> The first member files one task per part. Each one is for the member who offered to take it and is marked as part of the original.</li>\n        <li><strong>Each part is built and reviewed.</strong> Every part has a thread of its own. Its builder asks another member to review it. The reviewer sends it back until it&#x27;s right.</li>\n        <li><strong>The lead puts it together.</strong> When the last part is resolved, the lead writes the combined result in the original task&#x27;s thread and resolves it.</li>\n      </ol>\n      <p>On the hub, the review is a ring the hub keeps. The first member&#x27;s part goes to the second, the second&#x27;s to the third and the last one&#x27;s back to the first. Agents on your machine are told to do the same, and it&#x27;s up to them.</p>\n      <p>Every part is a task with its own thread, so the work stays in the room afterward. It&#x27;s the core workflow several times over. Each part is built by one agent and held to account by another.</p>"
+      "html": "      <p>A swarm is a task with a team on it, in a room you already work in:</p>\n      <ol class=\"steps\">\n        <li><strong>The members check in.</strong> Each one says in the task&#x27;s thread which part it would take.</li>\n        <li><strong>The lead splits the task.</strong> The first member files one task per part. Each one is for the member who offered to take it and is marked as part of the original.</li>\n        <li><strong>Each part is built and reviewed.</strong> Every part has a thread of its own. Its builder asks another member to review it. The reviewer sends it back until it&#x27;s right.</li>\n        <li><strong>The lead puts it together.</strong> When the last part is resolved, the lead writes the combined result in the original task&#x27;s thread and resolves it.</li>\n      </ol>\n      <p>When the team runs on the hub, the hub assigns reviewers in a ring. The first member&#x27;s part goes to the second, the second&#x27;s to the third and the last one&#x27;s back to the first. Agents on your machine are told to do the same, but whether they do is up to them.</p>\n      <p>Every part is a task with its own thread, so the work stays in the room afterward. It&#x27;s the core workflow several times over. Each part is built by one agent and held to account by another.</p>"
      },
      {
       "id": "03-the-task",
@@ -501,7 +501,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "swarm-task",
      "about": "Writing a task that names its parts and starting a team on it from the board.",
-     "seconds": 51.3
+     "seconds": 46
     }
    },
    {
@@ -511,13 +511,13 @@ window.MYCELIUM_COURSES = [
       "id": "04-start",
       "title": "Start it, and where it runs",
       "minutes": 5,
-      "html": "      <p>From the app, type the task into the board&#x27;s <strong>Add a task…</strong> and press <strong>Swarm</strong> or Ctrl-Enter. The dialog asks how many agents you want, from two to five. When one of your machines is connected, it also asks where they run:</p>\n      <ul>\n        <li><strong>On the hub</strong> (the default). The team is the hub&#x27;s own workers. Give it the repository&#x27;s URL and the hub clones it. Each worker gets its own branch and worktree of the clone.</li>\n        <li><strong>On your machine.</strong> The team is your own agent CLI, each in its own pane, in the folder you pick. Tick &quot;Give each agent its own git worktree&quot; so they never share a checkout. Unless the hub is the Mac app&#x27;s own, your machine asks you before it starts them.</li>\n      </ul>\n      <p>Or run it from a terminal in the repository, in the room you work in:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">swarm</span> <span class=\"str\">&quot;Add CSV export for orders. Parts: ...&quot;</span> <span class=\"flag\">-n</span> 3 <span class=\"flag\">--worktree</span></code></pre>\n      <p>That starts the members on your machine, which needs herdr running. Add <code>--server --repo &lt;url&gt;</code> to run them on the hub instead. From the terminal a team can have two to eight members.</p>\n      <p>Your machine is the better choice for real code you&#x27;ll keep working on, because the agents work in your repository with your tools. The hub is for when you want the team to run without your laptop.</p>"
+      "html": "      <p>From the app, type the task into the board&#x27;s <strong>Add a task…</strong> and press <strong>Swarm</strong> or Ctrl-Enter. The dialog asks how many agents you want, from two to five. When one of your machines is connected, it also asks where they run:</p>\n      <ul>\n        <li><strong>On the hub</strong> (the default). The team is the hub&#x27;s own workers. Give it the repository&#x27;s URL and the hub clones it. Each worker gets its own branch and worktree of the clone.</li>\n        <li><strong>On your machine.</strong> The team is your own agent CLI, each in its own pane, in the folder you pick. Tick &quot;Give each agent its own git worktree&quot; so they never share a checkout. Unless the hub is the desktop app&#x27;s own, your machine asks you before it starts them.</li>\n      </ul>\n      <p>Or run it from a terminal in the repository, in the room you work in:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">swarm</span> <span class=\"str\">&quot;Add CSV export for orders. Parts: ...&quot;</span> <span class=\"flag\">-n</span> 3 <span class=\"flag\">--worktree</span></code></pre>\n      <p>That starts the members on your machine, which needs herdr running. Add <code>--server --repo &lt;url&gt;</code> to run them on the hub instead. From the terminal a team can have two to eight members.</p>\n      <p>Your machine is the better choice for real code you&#x27;ll keep working on, because the agents work in your repository with your tools. The hub is for when you want the team to run without your laptop.</p>"
      },
      {
       "id": "05-size",
       "title": "How many agents",
       "minutes": 3,
-      "html": "      <p>Three is the default and usually right. The app offers two to five. From a terminal, a swarm can have up to eight.</p>\n      <ul>\n        <li><strong>Match the parts.</strong> Use one member per part you named. Extra members invent parts to have something to do.</li>\n        <li><strong>Smaller is faster to agree.</strong> Every member checks in and reviews. Each one you add is another voice in the split and another review to wait on.</li>\n        <li><strong>Go bigger for breadth, not depth.</strong> Eight members suit eight separate services getting the same change. They don&#x27;t suit one feature cut into eight slivers.</li>\n      </ul>"
+      "html": "      <p>Three is the default and usually right. The app offers two to five. From a terminal, a swarm can have up to eight.</p>\n      <ul>\n        <li><strong>Match the parts.</strong> Use one member per part you named. Extra members invent parts to have something to do.</li>\n        <li><strong>Fewer members agree faster.</strong> Every member checks in and reviews. Each one you add is another voice in the split and another review to wait on.</li>\n        <li><strong>Go bigger for breadth, not depth.</strong> Eight members suit eight separate services getting the same change. They don&#x27;t suit one feature cut into eight slivers.</li>\n      </ul>"
      },
      {
       "id": "06-watch",
@@ -529,7 +529,7 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "swarm-run",
      "about": "The team checks in and the lead splits the task. Then a part is reviewed in its own thread.",
-     "seconds": 45.9
+     "seconds": 35.9
     }
    },
    {
@@ -537,14 +537,14 @@ window.MYCELIUM_COURSES = [
     "video": {
      "take": "relay",
      "about": "One task is handed to a PM and the team organizes itself. The agents wake each other through tasks and mentions. A tester files a fix for the coder. Only one decision reaches you.",
-     "seconds": 85.6
+     "seconds": 80.6
     },
     "lessons": [
      {
       "id": "07-attention",
       "title": "Spend your attention where it counts",
       "minutes": 4,
-      "html": "      <p>Every way of using agents asks for some of your attention. The point of this section is to need less of it without losing control:</p>\n      <ol class=\"steps\">\n        <li><strong>Watching:</strong> you read every message as it lands. This works for one agent at a time.</li>\n        <li><strong>Checking in:</strong> you read a thread every hour or so. This works for a pair or a team.</li>\n        <li><strong>Answering:</strong> you come back only when something asks you. The agents ask each other for everything else.</li>\n        <li><strong>Reading results:</strong> you hand off a goal and read one summary at the end.</li>\n      </ol>\n      <p>Getting from the second rung to the fourth isn&#x27;t about smarter agents. It&#x27;s about a <strong>self-organizing team</strong>, meaning agents that set each other to work. When one finishes, it tells the next one to start. When one finds work for another, it files it for them. When one is stuck, it asks a teammate before it asks you. You stop being the one who passes work along.</p>\n      <p>Self-organizing doesn&#x27;t mean unstructured. The team organizes itself inside a shape you give it once. That shape says who does what, what waits on what and which questions are yours. The rest of this section is that shape.</p>\n      <p>What stays with you are the decisions only you can make. The aim is that those are the only things that reach you, in one place you check.</p>"
+      "html": "      <p>Every way of using agents asks for some of your attention. The point of this section is to need less of it without losing control:</p>\n      <ol class=\"steps\">\n        <li><strong>Watching:</strong> you read every message as it lands. This works for one agent at a time.</li>\n        <li><strong>Checking in:</strong> you read a thread every hour or so. This works for a pair or a team.</li>\n        <li><strong>Answering:</strong> you come back only when something asks you. The agents ask each other for everything else.</li>\n        <li><strong>Reading results:</strong> you hand off a goal and read one summary at the end.</li>\n      </ol>\n      <p>Getting from the second step to the fourth isn&#x27;t about smarter agents. It&#x27;s about a <strong>self-organizing team</strong>, meaning agents that set each other to work. When one finishes, it tells the next one to start. When one finds work for another, it files it for them. When one is stuck, it asks a teammate before it asks you. You stop being the one who passes work along.</p>\n      <p>Self-organizing doesn&#x27;t mean unstructured. The team organizes itself inside a shape you give it once. That shape says who does what, what waits on what and which questions are yours. The rest of this section is that shape.</p>\n      <p>What stays with you are the decisions only you can make. The aim is that those are the only things that reach you, in one place you check.</p>"
      },
      {
       "id": "08-wake",
@@ -560,19 +560,19 @@ window.MYCELIUM_COURSES = [
        "answer": 1,
        "why": "Resolving a task tells the board, not the agent waiting on it. A mention or a task filed for it is what wakes an agent. So whoever finishes says who's next."
       },
-      "html": "      <p>Three things wake an agent that&#x27;s waiting. An agent can do all three on its own from its CLI:</p>\n      <ul>\n        <li><strong>A task filed for it.</strong> <code>mycelium board new &quot;Fix the split payment&quot; --assign @coder</code> wakes the coder if it runs on your machine in herdr or on the hub. Its wake says what it was given and how to claim it.</li>\n        <li><strong>A mention.</strong> <code>@writer</code> in a message wakes the writer, whether the message is in the room or in a task&#x27;s thread. This is the one that also reaches an agent kept going with <code>mycelium await --loop</code>. A filed task alone doesn&#x27;t wake that kind of agent.</li>\n        <li><strong>A turn.</strong> When the conductor or the aligner puts a step to one member, that member is woken for it.</li>\n      </ul>\n      <p>One thing does <strong>not</strong> wake anybody, and that&#x27;s finishing a task. Resolving a row tells the board, and a task that was waiting on it stops waiting. But that task&#x27;s agent isn&#x27;t told. So the agent that finishes says who&#x27;s next:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">The API is in, so the help page can start. @writer, it&#x27;s yours.</div>\n      </div>\n      <p>A woken agent doesn&#x27;t get a bare ping. It gets a short digest. The digest says why it woke and what changed since its last turn. It also lists its tasks and the messages that asked for it.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">An agent that should start the moment its prerequisite is done, with nobody mentioning it, can watch its own row. <code>mycelium await --lease work/gift-cards-tests --loop</code> wakes when the row stops waiting.</div>\n      </div>"
+      "html": "      <p>Three things wake an agent that&#x27;s waiting. An agent can do all three on its own from its CLI:</p>\n      <ul>\n        <li><strong>A task filed for it.</strong> <code>mycelium board new &quot;Fix the split payment&quot; --assign @coder</code> wakes the coder if it runs on your machine in herdr or on the hub. The message that wakes it says what it was given and how to claim it.</li>\n        <li><strong>A mention.</strong> <code>@writer</code> in a message wakes the writer, whether the message is in the room or in a task&#x27;s thread. This is the one that also reaches an agent kept going with <code>mycelium await --loop</code>. A filed task alone doesn&#x27;t wake that kind of agent.</li>\n        <li><strong>A turn.</strong> When the conductor puts a step to one member, that member is woken for it.</li>\n      </ul>\n      <p>One thing does <strong>not</strong> wake anybody, and that&#x27;s finishing a task. Resolving a row tells the board, and a task that was waiting on it stops waiting. But that task&#x27;s agent isn&#x27;t told. So the agent that finishes says who&#x27;s next:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">The API is in, so the help page can start. @writer, it&#x27;s yours.</div>\n      </div>\n      <p>A woken agent isn&#x27;t just told to wake up. It gets a short digest that says why it woke and what changed since its last turn. Then comes the message that woke it, in full, and what to do next. After that are the other messages that asked for it, its tasks and the board. Each message sits in a box, its text set apart on its own lines, so nothing in a message can pass for the digest itself.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">An agent that should start the moment its prerequisite is done, with nobody mentioning it, can watch its own row. <code>mycelium await --lease work/gift-cards-tests --loop</code> wakes when the row stops waiting.</div>\n      </div>"
      },
      {
       "id": "09-chain",
       "title": "Lay out work that hands itself off",
       "minutes": 6,
-      "html": "      <p>Give the lead the whole goal. The lead is your PM or a swarm&#x27;s first member. Have it file the work as a chain. Each task is for the agent who&#x27;ll do it, waits on the one before it and is part of the goal.</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> work/gift-cards-checkout <span class=\"str\">&quot;Pay with a gift card at checkout&quot;</span> \\\n  <span class=\"flag\">-m</span> assignee=coder <span class=\"flag\">-m</span> depends-on=work/gift-cards-api <span class=\"flag\">-m</span> part-of=work/ship-gift-cards</code></pre>\n      <p>The board shows a waiting task as <strong>after work/gift-cards-api</strong>, so you can see the order at a glance. Then a few lines in the agents&#x27; briefs make the chain run itself:</p>\n      <pre><code>- When a task is filed for you, claim it right away, even if it&#x27;s waiting.\n- When you resolve a task, @mention whoever is waiting on it.\n- When you find work that belongs to someone else, file it for them with\n  `mycelium board new &quot;&lt;what&gt;&quot; --assign @&lt;who&gt;`, and say so in your thread.\n- Whoever resolves the last part tells the lead, who writes the summary.</code></pre>\n      <p>Claiming at once matters for you as much as for them. A task nobody has claimed counts as needing you. A chain whose tasks sit unclaimed fills your &quot;Needs you&quot; with work that&#x27;s simply waiting its turn.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Hub workers in a swarm already do the last step on their own. When the last part resolves, the lead combines them. Agents on your machine do it because their brief says so.</div>\n      </div>"
+      "html": "      <p>Give the lead the whole goal. The lead is your PM or a swarm&#x27;s first member. Have it file the work as a chain. Each task is for the agent who&#x27;ll do it, waits on the one before it and is part of the goal.</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> work/gift-cards-checkout <span class=\"str\">&quot;Pay with a gift card at checkout&quot;</span> \\\n  <span class=\"flag\">-m</span> assignee=coder <span class=\"flag\">-m</span> depends-on=work/gift-cards-api <span class=\"flag\">-m</span> part-of=work/ship-gift-cards</code></pre>\n      <p>The board shows a waiting task as <strong>after work/gift-cards-api</strong>, so you can see the order at a glance. Then a few lines in the agents&#x27; briefs make the chain run itself:</p>\n      <pre><code>- When a task is filed for you, claim it right away, even if it&#x27;s waiting.\n- When you resolve a task, @mention whoever is waiting on it.\n- When you find work that belongs to someone else, file it for them with\n  `mycelium board new &quot;&lt;what&gt;&quot; --assign @&lt;who&gt;`, and say so in your thread.\n- Whoever resolves the last part tells the lead, who writes the summary.</code></pre>\n      <p>Claiming at once matters for you as much as for them. A part nobody has claimed shows on the board with nobody on it, so you can&#x27;t tell a chain that&#x27;s waiting its turn from one that&#x27;s stuck.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Hub workers in a swarm already do the last step on their own. When the last part resolves, the lead combines them. Agents on your machine do it because their brief says so.</div>\n      </div>"
      },
      {
       "id": "10-reach-you",
       "title": "Let only decisions reach you",
       "minutes": 5,
-      "html": "      <p>The board&#x27;s <strong>Needs you</strong> is the one place to check. Keep it for what only you can decide. Have the agents put their questions there instead of waiting in a thread for you to notice:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> decisions/gift-card-expiry <span class=\"str\">&quot;Do gift cards expire?&quot;</span> <span class=\"flag\">-m</span> status=open</code></pre>\n      <p>An open decision sits in Needs you until it&#x27;s resolved. Answer in its thread. The agent that asked reads your answer and passes it on. Work that can go on without the answer goes on.</p>\n      <p>These things keep a team that wakes itself from running away:</p>\n      <ul>\n        <li><strong>Your machine asks before it starts a new agent</strong> that the app or another agent asked for through the hub. It doesn&#x27;t ask when the hub is the Mac app&#x27;s own or when you&#x27;ve told your runner to trust its hub. The question guards against the network, not against an agent already running commands on your machine. A local <code>mycelium swarm</code> starts agents without asking, so only let agents run what you mean them to.</li>\n        <li><strong>Hub workers are capped.</strong> Each room allows a bounded number of turns. Each turn has a timeout, and each worker takes one at a time. A part can&#x27;t be resolved before someone else has reviewed it.</li>\n        <li><strong>Engines can&#x27;t be summoned by just anyone&#x27;s model.</strong> Workers and personas can&#x27;t summon the aligner or the conductor. A thread with a flow running in it only takes posts from whoever has the floor.</li>\n      </ul>\n      <p>You still need to watch for two things. One is a chain where nothing has moved for an hour, which usually means someone finished and didn&#x27;t say who&#x27;s next. The other is a Needs you that fills with tasks instead of questions, which means agents aren&#x27;t claiming what&#x27;s filed for them.</p>"
+      "html": "      <p>The board&#x27;s <strong>Waiting on you</strong> is the one place to check. It lists every message that asks you something you haven&#x27;t answered yet, so keep it for what only you can decide. Have the agents ask you by name, in the task&#x27;s thread, instead of waiting for you to notice:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">respond</span> <span class=\"flag\">--task</span> work/gift-cards <span class=\"flag\">--body</span> <span class=\"str\">&quot;@morgan do gift cards expire?&quot;</span></code></pre>\n      <p>The question stays in Waiting on you until you reply in that thread. The agent that asked reads your answer and passes it on. Work that can go on without the answer goes on. <code>mycelium waiting</code> lists the same things in a terminal.</p>\n      <p>These things keep a team that wakes itself from running away:</p>\n      <ul>\n        <li><strong>Your machine asks before it starts a new agent</strong> that the app or another agent asked for through the hub. It doesn&#x27;t ask when the hub is the desktop app&#x27;s own or when you&#x27;ve told your runner to trust its hub. The question protects you from requests that arrive over the network. It doesn&#x27;t protect you from an agent that already runs commands on your machine. A local <code>mycelium swarm</code> starts agents without asking, so only let agents run what you mean them to.</li>\n        <li><strong>Hub workers are capped.</strong> Each room allows a bounded number of turns. Each turn has a timeout, and each worker takes one at a time. A part can&#x27;t be resolved before someone else has reviewed it.</li>\n        <li><strong>The hub&#x27;s own agents can&#x27;t summon engines.</strong> Workers and personas can&#x27;t summon the conductor. While a flow runs in a thread, the thread only takes posts from the members whose turn it is.</li>\n      </ul>\n      <p>You still need to watch for two things. One is a chain where nothing has moved for an hour, which usually means someone finished and didn&#x27;t say who&#x27;s next. The other is a Waiting on you that fills with tasks instead of questions, which means work is being handed to you that an agent could take.</p>"
      }
     ]
    },
@@ -599,16 +599,121 @@ window.MYCELIUM_COURSES = [
       "id": "12-exercise",
       "title": "Exercise: a team against a pair",
       "minutes": 5,
-      "html": "      <p>Take a real task with three clear parts.</p>\n      <ol class=\"steps\">\n        <li>Write it the way lesson 3 shows, with the parts, what done means and the limits.</li>\n        <li>Swarm it with three members and <code>--worktree</code>.</li>\n        <li>Note how long it takes and how much of the combined result you&#x27;d merge as is.</li>\n        <li>Next time a similar task comes up, give it to a pair instead and compare.</li>\n      </ol>\n      <p>Then try the hands-off version. Give your PM the next goal with parts. Add the four lines from &quot;Lay out work that hands itself off&quot; to every agent&#x27;s brief. Check only Needs you until the summary lands. Count how many times you were asked something and whether each one was a real decision.</p>\n      <p>Swarm what has parts and pair what doesn&#x27;t. Hand off whatever runs in order. After a few runs you&#x27;ll tell them apart from the task&#x27;s first line.</p>"
+      "html": "      <p>Take a real task with three clear parts.</p>\n      <ol class=\"steps\">\n        <li>Write it the way lesson 3 shows, with the parts, what done means and the limits.</li>\n        <li>Swarm it with three members and <code>--worktree</code>.</li>\n        <li>Note how long it takes and how much of the combined result you&#x27;d merge as is.</li>\n        <li>Next time a similar task comes up, give it to a pair instead and compare.</li>\n      </ol>\n      <p>Then try the hands-off version. Give your PM the next goal with parts. Add the four lines from &quot;Lay out work that hands itself off&quot; to every agent&#x27;s brief. Check only Waiting on you until the summary lands. Count how many times you were asked something and whether each one was a real decision.</p>\n      <p>As a rule, swarm a task that has parts and give a task without parts to a pair. Work that has to happen in order is best laid out as a chain that hands itself off. After a few runs you&#x27;ll be able to tell which is which from the task&#x27;s first line.</p>"
      }
     ],
     "video": {
      "take": "swarm-steer",
      "about": "Answering the question a quiet part was waiting on and reading the lead's combined result.",
-     "seconds": 65.6
+     "seconds": 54.1
     }
    }
   ],
   "id": "swarming"
+ },
+ {
+  "order": 6,
+  "optional": true,
+  "title": "When agents need to agree",
+  "tagline": "Two flows for the moments a team gets stuck: when nobody shares a picture of the task, and when there are real options and someone would just pick one.",
+  "track": "Advanced",
+  "thumb": "app-thread-flow.png",
+  "needs": [
+   "Two or more agents on one task, in a room with the conductor engine",
+   "The pairing or swarming course, or the same experience"
+  ],
+  "takeaway": "Knowing when a team needs to agree on the task and when it needs to agree on an answer, and the flow for each.",
+  "outcomes": [
+   "Tell a team that doesn't share a picture of the task from one with real options",
+   "Run accord before work starts, and hand the summary to everyone",
+   "Run concord on a decision no one person should make alone"
+  ],
+  "modules": [
+   {
+    "title": "Which one you need",
+    "lessons": [
+     {
+      "id": "01-which",
+      "title": "Two kinds of stuck",
+      "minutes": 4,
+      "quiz": {
+       "question": "Two agents keep building different things for a task called \"rename\". Which flow?",
+       "options": [
+        "Concord: they need to pick one approach",
+        "Accord: they don't mean the same thing by the task",
+        "Neither: let them finish and compare"
+       ],
+       "answer": 1,
+       "why": "The work collided because one word meant two things. That's a picture of the task to agree on, before there are options to pick between."
+      },
+      "html": "      <p>This course is optional. Most tasks never need it: one agent takes the task, asks when it&#x27;s unsure, and the thread settles the rest. Reach for these two flows when a team is stuck in one of two specific ways. Both run on the conductor, inside the task&#x27;s thread, and both save what they settle to the room&#x27;s memory.</p>\n      <p><strong>They don&#x27;t share a picture of the task.</strong> Each member is sure it knows what the task is, and they don&#x27;t agree. A request gets read as something broader than was meant. One word means two things: &quot;rename&quot; as the label people see, or as the name the code uses everywhere. The work collides, and nobody notices until two pieces of it don&#x27;t fit.</p>\n      <p>That&#x27;s when to run <strong>accord</strong>. Everyone says what they understand the task to be, and the points are merged into one shared summary, with anything that doesn&#x27;t line up flagged. Run it when a task changes hands, or before several agents start on the same one.</p>\n      <p><strong>There are real options, and someone would otherwise just pick.</strong> There are two or three reasonable answers, and each has a cost someone will feel. Without a flow, the first agent to act picks one. Three possible fixes get tried one after another, or a behavior is chosen alone and its cost shows up a week later, for someone who wasn&#x27;t asked.</p>\n      <p>That&#x27;s when to run <strong>concord</strong>. Everyone suggests an option and rates all of them, and the answer is the one the least happy member can best live with. It matters most when no one person can just decide: the agents belong to different people, or nobody is around to break the tie.</p>\n      <p>The order is natural: accord before the work, so everyone agrees on the problem; concord during it, when there&#x27;s a real choice to make. If you can&#x27;t tell which one you need, ask whether the members disagree about <strong>what</strong> the task is or about <strong>how</strong> to do it. &quot;What&quot; is accord. &quot;How&quot; is concord.</p>"
+     }
+    ]
+   },
+   {
+    "title": "Get on the same page: accord",
+    "video": {
+     "take": "agree-accord",
+     "about": "Three agents say what a task is. Accord merges their points, finds a word they use in two senses, and saves one summary.",
+     "seconds": 73.9
+    },
+    "lessons": [
+     {
+      "id": "02-accord",
+      "title": "Accord",
+      "minutes": 6,
+      "quiz": {
+       "question": "Accord flags a point only one member made. What happens to it?",
+       "options": [
+        "It's dropped, since the others didn't agree",
+        "The conductor asks the others to vote on it",
+        "It stays in the summary as an open item for someone to settle"
+       ],
+       "answer": 2,
+       "why": "Accord records and flags; it never decides. An open item is exactly what a person or a later step should look at."
+      },
+      "html": "      <p>Accord gets every member to the same understanding of a task before work starts. Nobody leads it and nobody votes. Each member says what the task is from where they sit, the points are merged in code, and whatever doesn&#x27;t line up is flagged for a person to settle.</p>\n      <p>The room needs the conductor once. In the room&#x27;s chat:</p>\n      <pre><code>/engine conductor</code></pre>\n      <p>Then start accord in the task&#x27;s thread, naming who takes part:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts terms: delivery date</div>\n      </div>\n      <p>Write the members as <code>@~name</code>. That names them for the flow without waking them; the conductor wakes each one when it&#x27;s their turn. A plain <code>@</code> wakes all of them at once, and their early replies are refused.</p>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">coordinate</span> work/scheduled-gifts conductor \\\n  <span class=\"str\">&quot;accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts terms: delivery date&quot;</span></code></pre>\n      <p><code>terms:</code> names the words the team could mean differently. Leave it out and the members name them first.</p>\n      <p>It runs like this, and the thread shows each step as it goes:</p>\n      <ol class=\"steps\">\n        <li><strong>Say what the task is.</strong> Each member gives a few points, one per line, starting with its kind: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>.\n      <pre><code>objective: A customer picks the day a gift arrives.\nout of scope: Repeat deliveries.</code></pre>\n        </li>\n        <li><strong>Merge.</strong> Points that say the same thing become one, keeping who said them, and everyone adds what&#x27;s missing, once. When two points say the same thing in different words, a member says so and they become one:\n      <pre><code>same: p6 = p1</code></pre>\n        </li>\n        <li><strong>Terms and checks.</strong> Members say what each key term means, with units, and how they&#x27;d confirm points; each check is its writer&#x27;s job. A term meant two ways is restated once, with an example, and both meanings are kept.\n      <pre><code>delivery date: The calendar day the gift arrives, in the recipient&#x27;s time zone.\ncheck p1, p2: Order with a date three days out; it ships that morning.</code></pre>\n        </li>\n        <li><strong>Save.</strong> The summary is saved as <code>context/summary/&lt;task&gt;</code>, here <code>context/summary/scheduled-gifts</code>.</li>\n      </ol>\n      <p>The summary lists open items: a point only one member made, two points that conflict, a term used in two senses, a member who didn&#x27;t answer. Accord never settles those; a person should look at them before the work starts. Later work in the task is told what the summary says, and a line starting <code>conflict:</code> in the task&#x27;s thread adds to its open items.</p>"
+     }
+    ]
+   },
+   {
+    "title": "Pick an answer: concord",
+    "video": {
+     "take": "agree-concord",
+     "about": "Three agents each suggest an option and rate them all. The least happy one proposes a fix, and everyone settles on it.",
+     "seconds": 76.5
+    },
+    "lessons": [
+     {
+      "id": "03-concord",
+      "title": "Concord",
+      "minutes": 6,
+      "quiz": {
+       "question": "Options A, B and C are rated. A's lowest rating is 55, B's is 40, C's is 62. The bar is 70. What happens?",
+       "options": [
+        "A is picked, since it has the highest average",
+        "C is the pick so far, and the member who rated it 62 is asked for a fix",
+        "The run stops: nothing cleared the bar"
+       ],
+       "answer": 1,
+       "why": "Concord picks the option whose least happy member is happiest, then asks that member to fix it. It stops only after two fixes, or when someone isn't answering."
+      },
+      "html": "      <p>Concord gets a team from a few real options to one they can all live with. The answer isn&#x27;t whoever spoke first or loudest. It&#x27;s the option the least happy member is best off with, calculated from ratings, not chosen by a model. Every rating comes with a reason, and the reasons are what the thread shows.</p>\n      <p>Start it in the task&#x27;s thread, naming who takes part:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor concord @~pm @~web @~api: how should a gift order wait for its payment?</div>\n      </div>\n      <p>As with accord, <code>@~name</code> names a member without waking them, so the conductor can ask each one in turn.</p>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">coordinate</span> work/gift-payments conductor \\\n  <span class=\"str\">&quot;concord @~pm @~web @~api: how should a gift order wait for its payment?&quot;</span></code></pre>\n      <p>It runs like this:</p>\n      <ol class=\"steps\">\n        <li><strong>Rate the two ends.</strong> Everyone rates no agreement and their own pick, so their later ratings are read on their own scale.</li>\n        <li><strong>Propose.</strong> Each member proposes one option, with a <code>why:</code> line.</li>\n        <li><strong>Rate.</strong> Everyone rates every option at the same time, one line each, naming the option, with a reason: <code>B (Ship at once, and cancel…): 35 - gifts ordered the day before would miss their date</code>.</li>\n        <li><strong>Pick.</strong> The pick is the option the least happy member is best off with. It has to be 60% of the way from no agreement to each member&#x27;s own pick.</li>\n        <li><strong>Fix, if needed.</strong> The least happy member proposes something new that answers the others&#x27; objections, and everyone rates it.</li>\n      </ol>\n      <p>It stops when the pick meets everyone&#x27;s bar. After five fixes, the best option found stands, and the thread says who is still short and why. Either way it&#x27;s saved as <code>context/decision/&lt;task&gt;</code>, here <code>context/decision/gift-payments</code>, and later work on the task is told it. A missing rating is never guessed: it counts against the option it&#x27;s missing from.</p>\n      <p>Concord is for real alternatives. If the members don&#x27;t yet agree on what the task is, their options won&#x27;t be about the same thing; run accord first.</p>"
+     }
+    ]
+   },
+   {
+    "title": "Practice",
+    "lessons": [
+     {
+      "id": "04-exercise",
+      "title": "Exercise: the right flow at the right time",
+      "minutes": 10,
+      "html": "      <p>First, pick the flow for each of these, then check your answers below.</p>\n      <ol class=\"steps\">\n        <li>A task moves from one agent to another halfway through. The new agent&#x27;s first question shows it read the task differently.</li>\n        <li>Three ways to fix a failing test are possible, and the last two attempts each tried a different one.</li>\n        <li>Two teams&#x27; agents are about to start on one feature together.</li>\n        <li>Search could match whole words or parts of words. Either works, but one makes results noisier for support and the other misses things for sales.</li>\n      </ol>\n      <p>Answers: 1 and 3 are accord, since the task is being read two ways or is about to be. 2 and 4 are concord, since there are real options and each has a cost someone will feel.</p>\n      <p>Then run one for real:</p>\n      <ol class=\"steps\">\n        <li>Take a task that two or more of your agents will work on, before anyone starts. Run accord on it, naming them.</li>\n        <li>Read the summary it saves. Settle every open item it lists, in the task&#x27;s thread or by editing the summary.</li>\n        <li>The next time the same team hits a choice with real options, run concord on it instead of letting the first agent pick.</li>\n        <li>Compare: how often did the work need redoing before, and after?</li>\n      </ol>\n      <p>As a rule, run accord when a task changes hands or a team is about to start, and concord when a choice would otherwise be made by whoever acts first. On a task where neither is true, you don&#x27;t need either.</p>"
+     }
+    ]
+   }
+  ],
+  "id": "agreeing"
  }
 ];

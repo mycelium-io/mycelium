@@ -16,7 +16,33 @@
  * @typedef {{type: FlagType, alias?: string, dest?: string, help?: string, value?: string}} FlagSpec
  */
 
-const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+export const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+
+/** A mistake in what was typed, said as one line: no stack, nothing to debug. */
+export class UsageError extends Error {}
+
+/** The flag that was probably meant: one that starts the same way, or is a
+ *  letter or two off. */
+function nearest(name, names) {
+  const distance = (a, b) => {
+    const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      let prev = row[0];
+      row[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const here = row[j];
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+        prev = here;
+      }
+    }
+    return row[b.length];
+  };
+  const close = names
+    .map((n) => ({ n, d: n.startsWith(name) || name.startsWith(n) ? 0 : distance(name, n) }))
+    .filter(({ d }) => d <= 2)
+    .sort((a, b) => a.d - b.d);
+  return close[0]?.n;
+}
 
 /**
  * @param {string[]} argv
@@ -38,7 +64,7 @@ export function parse(argv, spec, opts = {}) {
     else if (s.type === "list") (flags[dest] ??= []).push(raw);
     else if (s.type === "map") {
       const eq = String(raw).indexOf("=");
-      if (eq === -1) throw new Error(`--${name} expects key=value, got ${raw}`);
+      if (eq === -1) throw new UsageError(`--${name} expects key=value, got ${raw}`);
       (flags[dest] ??= {})[String(raw).slice(0, eq)] = String(raw).slice(eq + 1);
     } else flags[dest] = raw;
   };
@@ -63,7 +89,10 @@ export function parse(argv, spec, opts = {}) {
         negated = true;
       }
       const s = spec[name];
-      if (!s) throw new Error(`unknown option --${name}`);
+      if (!s) {
+        const guess = nearest(name, Object.keys(spec));
+        throw new UsageError(`unknown option --${name}${guess ? ` (did you mean --${guess}?)` : ""}`);
+      }
       if (s.type === "boolean") set(name, s, !negated);
       else set(name, s, inline ?? argv[++i]);
       continue;
@@ -71,7 +100,7 @@ export function parse(argv, spec, opts = {}) {
     if (arg.startsWith("-") && arg.length > 1 && !/^-\d/.test(arg)) {
       const name = byAlias.get(arg.slice(1));
       const s = name && spec[name];
-      if (!s) throw new Error(`unknown option ${arg}`);
+      if (!s) throw new UsageError(`unknown option ${arg}`);
       if (s.type === "boolean") set(name, s, true);
       else set(name, s, argv[++i]);
       continue;

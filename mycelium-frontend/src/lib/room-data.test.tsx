@@ -8,6 +8,7 @@ import { renderWithSWR } from "@/test/swr";
 vi.mock("@/lib/api", () => ({
   fetchRoomAgents: vi.fn(),
   fetchRoomMembers: vi.fn(),
+  fetchRoomPeople: vi.fn(),
   fetchMessages: vi.fn(),
   fetchMemories: vi.fn(),
   fetchSkills: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
 }));
 
-import { fetchMessages, fetchRoomAgents, fetchRoomMembers } from "@/lib/api";
+import { fetchMessages, fetchRoomAgents, fetchRoomMembers, fetchRoomPeople } from "@/lib/api";
 import { CurrentUserProvider } from "@/components/current-user";
 import { useRoomMessages, useRoomRevalidate, useRoomRoster, useThreadMessages } from "@/lib/room-data";
 
@@ -37,17 +38,23 @@ const agent = (handle: string, extra: Record<string, unknown> = {}) => ({
 
 /** A roster consumer for testing cache dedup (two instances should share one request). */
 function Roster({ room, testId }: { room: string; testId: string }) {
-  const { agents, people } = useRoomRoster(room);
+  const { agents, people, others, subscriptions } = useRoomRoster(room);
   return (
     <ul data-testid={testId}>
       {agents.map((a) => (
         <li key={`agent-${a.handle}`}>{`agent:${a.handle}`}</li>
       ))}
+      {[...subscriptions].map(([handle, subs]) => (
+        <li key={`subscribed-${handle}`}>{`subscribed:${handle}:${subs.map((s) => s.describe).join("+")}`}</li>
+      ))}
       {people.map((p) => (
         <li key={`person-${p.handle}`}>
-          {`person:${p.handle}${p.you ? ":you" : ""}${p.owns ? ":owns" : ""}` +
+          {`person:${p.handle}:${p.via}${p.you ? ":you" : ""}${p.owns ? ":owns" : ""}` +
             `${p.presence ? `:${p.presence.kind}` : ""}${p.teams.length ? `:${p.teams.join("+")}` : ""}`}
         </li>
+      ))}
+      {others.map((o) => (
+        <li key={`other-${o.handle}`}>{`other:${o.handle}`}</li>
       ))}
     </ul>
   );
@@ -70,23 +77,32 @@ describe("useRoomRoster", () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.mocked(fetchRoomAgents).mockReset().mockResolvedValue([
-      agent("aligner", { adapter: "engine", kind: "aligner" }),
+      agent("conductor", { adapter: "engine", kind: "conductor" }),
       agent("bob-code", { owner: "Bob", team: "platform" }),
     ]);
     vi.mocked(fetchRoomMembers).mockReset().mockResolvedValue({
       members: [
-        { handle: "aligner", kind: "slim", last_seen: null },
+        { handle: "conductor", kind: "slim", last_seen: null },
         { handle: "watcher", kind: "lease", last_seen: "2026-08-20T00:00:00Z" },
       ],
       floors: [],
-    });
-    vi.mocked(fetchMessages).mockReset().mockResolvedValue({
-      messages: [
-        { message_type: "broadcast", sender_handle: "sam" },
-        { message_type: "broadcast", sender_handle: "aligner" },
-        { message_type: "l9_exchange", sender_handle: "ignored" },
+      subscriptions: [
+        { id: "a1", handle: "Bob-Code", kind: "task", target: "work/x", describe: "work/x", until: null },
+        { id: "a2", handle: "bob-code", kind: "notice", target: "resolved", describe: "resolved notices", until: null },
       ],
     });
+    vi.mocked(fetchRoomPeople).mockReset().mockResolvedValue({
+      people: [
+        { handle: "bob", joined_at: "2026-10-01T00:00:00Z", via: "created" },
+        { handle: "julia", joined_at: "2026-10-02T00:00:00Z", via: "message" },
+        // Recorded before its manifest was written: drawn as the agent it is.
+        { handle: "bob-code", joined_at: "2026-10-02T00:00:00Z", via: "seeded" },
+      ],
+      agents: [],
+      engines: [],
+      others: [{ handle: "watcher", holds_task: false, present: true }],
+    });
+    vi.mocked(fetchMessages).mockReset();
   });
 
   it("serves two consumers of the same room from one request per resource", async () => {
@@ -97,25 +113,32 @@ describe("useRoomRoster", () => {
       </>,
     );
 
-    await waitFor(() => expect(screen.getAllByText("agent:aligner")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText("agent:conductor")).toHaveLength(2));
     expect(fetchRoomAgents).toHaveBeenCalledTimes(1);
     expect(fetchRoomMembers).toHaveBeenCalledTimes(1);
-    expect(fetchMessages).toHaveBeenCalledTimes(1);
+    expect(fetchRoomPeople).toHaveBeenCalledTimes(1);
   });
 
-  it("unions people from owners, posters, presence and the acting-as handle", async () => {
+  it("groups what each agent subscribed to under its handle, for its hover card", async () => {
+    renderRoster(<Roster room="demo" testId="rail" />);
+    expect(await screen.findByText("subscribed:bob-code:work/x+resolved notices")).toBeInTheDocument();
+  });
+
+  it("lists the people the hub recorded, never guessed from who posted or is present", async () => {
     window.localStorage.setItem("mycelium.principal", "julia");
     renderRoster(<Roster room="demo" testId="rail" />);
 
-    // An owner is a person even when they've never posted, and their teams roll
-    // up from the agents they own.
-    expect(await screen.findByText("person:bob:owns:platform")).toBeInTheDocument();
-    // A poster, and someone present only through an `await` lease.
-    expect(screen.getByText("person:sam")).toBeInTheDocument();
-    expect(screen.getByText("person:watcher:lease")).toBeInTheDocument();
-    expect(screen.getByText("person:julia:you")).toBeInTheDocument();
-    // An agent that posted or is present is listed as an agent, never twice.
-    expect(screen.queryByText(/^person:aligner/)).not.toBeInTheDocument();
+    // Their teams roll up from the agents they own.
+    expect(await screen.findByText("person:bob:created:owns:platform")).toBeInTheDocument();
+    expect(screen.getByText("person:julia:message:you")).toBeInTheDocument();
+    // Present but neither a person nor an agent: listed as another, not a person.
+    expect(screen.getByText("other:watcher")).toBeInTheDocument();
+    expect(screen.queryByText(/^person:watcher/)).not.toBeInTheDocument();
+    // An agent is listed as an agent, never twice.
+    expect(screen.queryByText(/^person:bob-code/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^person:conductor/)).not.toBeInTheDocument();
+    // Messages aren't read to find people at all.
+    expect(fetchMessages).not.toHaveBeenCalled();
   });
 
   it("refetches every consumer of a room when the room is revalidated", async () => {
@@ -133,7 +156,7 @@ describe("useRoomRoster", () => {
 
     await waitFor(() => expect(fetchRoomAgents).toHaveBeenCalledTimes(2));
     expect(fetchRoomMembers).toHaveBeenCalledTimes(2);
-    expect(fetchMessages).toHaveBeenCalledTimes(2);
+    expect(fetchRoomPeople).toHaveBeenCalledTimes(2);
   });
 
   it("keeps rooms apart: a second room is its own set of requests", async () => {

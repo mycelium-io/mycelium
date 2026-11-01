@@ -240,32 +240,39 @@ async def test_mention_invites_remote_agent_by_identity_only(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_episode_abort_ingests_locally_and_flushes_queue(monkeypatch):
-    """A mid-episode membership change aborts the episode: the abort is broadcast
-    AND ingested locally (so the transcript/UI see it, independent of SLIM
-    loopback), and invites deferred during the episode are applied once it closes."""
+    """A party leaving the room aborts the negotiation: the abort is broadcast AND
+    ingested locally with one plain line (so the transcript and the UI read why,
+    not a bare protocol record), and invites deferred during it are applied once
+    it closes."""
     manager, managed = _manager_with_channel(members={"agent-a", "agent-b"})
     _registered(monkeypatch, "dave")
     invite_mock = AsyncMock(return_value=True)
     manager.invite = invite_mock  # type: ignore[method-assign]
-    manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
+    manager.open_episode(
+        _ROOM, "urn:ioc:mycelium:episode:step6-room:e1", parties=["agent-a", "agent-b"]
+    )
 
     # A mention mid-episode is deferred, not applied.
     result = await manager.publish_human(_ROOM, sender="avery", text="@dave join")
     assert result is not None
     assert manager._deferred_invites[_ROOM] == {"dave"}
 
-    # A member drops → membership changed under the episode → abort.
-    managed.members.discard("agent-b")
-    await manager._enforce_membership_change(managed)
+    # Someone who isn't a party leaving changes nothing.
+    await manager._abort_if_party_left(managed, "bystander")
+    assert managed.lifecycle.active
+
+    # A party leaves → abort.
+    await manager._abort_if_party_left(managed, "agent-b")
 
     # The abort is the last thing broadcast on the wire ...
     abort = cast(MagicMock, managed.channel.send).await_args.args[0]
     assert abort.header.kind.value == "commit"
     assert abort.header.subkind == "rejected"
-    # ... and it was ingested locally (the fix — else it's missing from the UI).
-    last_ingested = cast(MagicMock, managed.persister).ingest_local.call_args.args[0]
-    assert last_ingested.header.kind.value == "commit"
-    assert last_ingested.header.subkind == "rejected"
+    assert abort.payload.data["reason"] == "party_left"
+    # ... and it was ingested locally, with a line saying why.
+    ingest = cast(MagicMock, managed.persister).ingest_local.call_args
+    assert ingest.args[0].header.subkind == "rejected"
+    assert ingest.args[1]["content"] == "Negotiation stopped: agent-b left the room."
     # The deferred invite is applied now the episode is closed.
     invite_mock.assert_awaited_once_with(_ROOM, "dave")
     assert not managed.lifecycle.active

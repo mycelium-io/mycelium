@@ -4,38 +4,92 @@
 import { act } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
+const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
+const NOTE_THREAD = "urn:ioc:mycelium:episode:sprint:n1";
+
+/** What the hub's speech server was asked to say, with which voice and speed,
+ *  and whether it has one. */
+const spoken: string[] = [];
+const choices: unknown[] = [];
+const voice = { speech: false };
 vi.mock("@/lib/api", () => ({
+  // Every memory in the room: a board row and a note, each with its thread.
+  fetchMemories: vi.fn(async () => [
+    { key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD },
+    { key: "context/chat-buddy", value: "Talking with the chat buddy", episode: NOTE_THREAD },
+  ]),
+  fetchVoiceStatus: vi.fn(async () => ({ state: "ready", speech: voice.speech })),
+  fetchSpeech: vi.fn(async (text: string, _signal?: AbortSignal, choice?: unknown) => {
+    spoken.push(text);
+    choices.push(choice);
+    return new ArrayBuffer(8);
+  }),
+}));
+const push = vi.fn();
+const path = { current: "/" };
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }), usePathname: () => path.current }));
+const ping = vi.fn();
+/** Playing a sentence waits until the test ends it. */
+const playing: (() => void)[] = [];
+vi.mock("@/lib/audio-ping", () => ({
+  ping: (...a: unknown[]) => ping(...a),
+  primeAudio: () => {},
+  audioReady: () => true,
+  playAudio: () => new Promise<void>((resolve) => playing.push(resolve)),
 }));
 
+import { SWRConfig } from "swr";
 import { CurrentUserProvider } from "@/components/current-user";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { NotificationBell } from "@/components/notification-bell";
+import { OPEN_MENTION_EVENT } from "@/lib/notifications";
+import { clearOnScreen, setOnScreen } from "@/lib/on-screen";
 
 const CREATED = "2026-08-15T10:00:00.000000+00:00";
+let seq = 0;
 
 function renderBell() {
+  // A cache of its own, so whether the hub has a speech server is asked again.
   return render(
-    <CurrentUserProvider>
-      <NotificationsProvider>
-        <NotificationBell />
-      </NotificationsProvider>
-    </CurrentUserProvider>,
+    <SWRConfig value={{ provider: () => new Map() }}>
+      <CurrentUserProvider>
+        <NotificationsProvider>
+          <NotificationBell />
+        </NotificationsProvider>
+      </CurrentUserProvider>
+    </SWRConfig>,
   );
 }
 
-function mention() {
+function message(text: string, episode: string | null = null) {
+  seq += 1;
   return {
-    id: "msg-1",
+    id: `msg-${seq}`,
     room_name: "sprint",
     sender_handle: "alice",
     message_type: "l9_exchange",
     created_at: CREATED,
-    content: JSON.stringify({ content: "hey @bob take a look" }),
+    episode,
+    content: JSON.stringify({ content: text }),
   };
+}
+
+async function start() {
+  renderBell();
+  await act(async () => {});
+  await act(async () => {
+    FakeEventSource.latest().open();
+  });
+}
+
+async function emit(frame: Record<string, unknown>) {
+  await act(async () => {
+    FakeEventSource.latest().emitNotification(frame);
+  });
 }
 
 describe("<NotificationBell />", () => {
@@ -45,80 +99,306 @@ describe("<NotificationBell />", () => {
     resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
+    ping.mockClear();
+    spoken.length = 0;
+    choices.length = 0;
+    playing.length = 0;
+    voice.speech = false;
   });
 
-  it("badges an unread mention and lists it in the popover", async () => {
+  it("lists a message that mentions you, with who and where", async () => {
     const user = userEvent.setup();
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
+    await start();
+    await emit(message("hey @bob take a look"));
 
-    await act(async () => {
-      es.open();
-      es.emitNotification(mention());
-    });
-
-    expect(await screen.findByLabelText("1 unread notifications")).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText("1 unread notifications"));
-    expect(await screen.findByText("sprint")).toBeInTheDocument();
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("sprint · channel")).toBeInTheDocument();
     expect(screen.getByText("hey @bob take a look")).toBeInTheDocument();
   });
 
-  it("ignores a message that doesn't mention or address the acting principal", async () => {
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
-
-    await act(async () => {
-      es.open();
-      es.emitNotification({
-        id: "msg-2",
-        room_name: "sprint",
-        sender_handle: "alice",
-        message_type: "l9_exchange",
-        created_at: CREATED,
-        content: JSON.stringify({ content: "hey @carol take a look" }),
-      });
-    });
-
-    expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
-    expect(screen.queryByText(/unread/)).not.toBeInTheDocument();
+  it("leaves out a message that doesn't mention you, and a silent mention", async () => {
+    await start();
+    await emit(message("hey @carol take a look"));
+    await emit(message("done, for @~bob"));
+    expect(screen.getByLabelText("Mentions")).toBeInTheDocument();
+    expect(ping).not.toHaveBeenCalled();
   });
 
-  it("marking all read clears the unread badge", async () => {
-    const user = userEvent.setup();
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
-
-    await act(async () => {
-      es.open();
-      es.emitNotification(mention());
-    });
-    await screen.findByLabelText("1 unread notifications");
-
-    await user.click(screen.getByLabelText("1 unread notifications"));
-    const panel = await screen.findByText("Notifications");
-    await user.click(within(panel.closest("[data-slot=popover-content]")!).getByLabelText("Mark all read"));
-
-    expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
+  it("plays a sound for a mention", async () => {
+    await start();
+    await emit(message("@bob can you check?"));
+    expect(ping).toHaveBeenCalledTimes(1);
   });
 
-  it("dismissing a notification removes it from the list", async () => {
+  it("names the task of a mention in a thread and opens that thread", async () => {
     const user = userEvent.setup();
-    renderBell();
-    await act(async () => {});
-    const es = FakeEventSource.latest();
+    await start();
+    await emit(message("@bob which preset?", THREAD));
 
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(await screen.findByText("sprint · Zoom and pan images")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /which preset/ })).toHaveAttribute(
+      "href",
+      "/room/sprint?focus=episode%3At1",
+    );
+  });
+
+  it("names a note whose discussion mentions you, not only a task", async () => {
+    const user = userEvent.setup();
+    await start();
+    await emit(message("@bob thoughts?", NOTE_THREAD));
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    expect(await screen.findByText("sprint · Talking with the chat buddy")).toBeInTheDocument();
+  });
+
+  it("opens a mention when its system notification is clicked", async () => {
+    await start();
     await act(async () => {
-      es.open();
-      es.emitNotification(mention());
+      window.dispatchEvent(new CustomEvent(OPEN_MENTION_EVENT, { detail: "/room/sprint?focus=episode%3At1" }));
     });
-    await user.click(await screen.findByLabelText("1 unread notifications"));
-    expect(await screen.findByText("sprint")).toBeInTheDocument();
+    expect(push).toHaveBeenCalledWith("/room/sprint?focus=episode%3At1");
+  });
+
+  it("marking all read clears the count", async () => {
+    const user = userEvent.setup();
+    await start();
+    await emit(message("hey @bob take a look"));
+
+    await user.click(await screen.findByLabelText("1 unread mention"));
+    const panel = (await screen.findByText("Mentions", { selector: "span" })).closest("[data-slot=popover-content]")!;
+    await user.click(within(panel as HTMLElement).getByLabelText("Mark all read"));
+    expect(screen.getByLabelText("Mentions", { selector: "button" })).toBeInTheDocument();
+  });
+
+  it("dismissing a mention removes it from the list", async () => {
+    const user = userEvent.setup();
+    await start();
+    await emit(message("hey @bob take a look"));
+    await user.click(await screen.findByLabelText("1 unread mention"));
 
     await user.click(screen.getByLabelText("Dismiss"));
     expect(screen.queryByText("hey @bob take a look")).not.toBeInTheDocument();
+  });
+
+  describe("read aloud", () => {
+    function turnOn(more: Record<string, unknown> = {}) {
+      voice.speech = true;
+      window.localStorage.setItem("mycelium.notification-settings", JSON.stringify({ readAloud: true, ...more }));
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    it("reads a mention aloud with its words on the bell, and stops on Esc", async () => {
+      turnOn();
+      const user = userEvent.setup();
+      await start();
+      await emit(message("@bob can you check? It's **slow** today.\n\nMore detail here."));
+
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
+      expect(spoken[0]).toBe("alice, in sprint.");
+      // The message as written, markup aside, and only its start until Read all.
+      expect(within(popover).getByText("@bob can you check?")).toBeInTheDocument();
+      expect(within(popover).getByText("It's slow today.")).toBeInTheDocument();
+      expect(within(popover).getByRole("button", { name: "Read all" })).toBeInTheDocument();
+
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("region", { name: /Reading aloud/ })).not.toBeInTheDocument();
+    });
+
+    it("lights the sentence being said", async () => {
+      turnOn();
+      await start();
+      await emit(message("@bob first. Second."));
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
+      await act(async () => playing.shift()?.());
+      expect(within(popover).getByText("@bob first.")).toHaveAttribute("data-lit", "true");
+      expect(within(popover).getByText("Second.")).not.toHaveAttribute("data-lit");
+    });
+
+    it("says nothing while it's off, or the hub has no speech server", async () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+      voice.speech = true;
+      await start();
+      await emit(message("@bob are you there?"));
+      expect(spoken).toEqual([]);
+      expect(screen.queryByRole("region", { name: /Reading aloud/ })).not.toBeInTheDocument();
+    });
+
+    it("says nothing from a hidden tab", async () => {
+      turnOn();
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+      await start();
+      await emit(message("@bob are you there?"));
+      await act(async () => {});
+      expect(spoken).toEqual([]);
+    });
+
+    it("announces who is being read, not the message the voice is saying", async () => {
+      turnOn();
+      await start();
+      await emit(message("@bob can you check?"));
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
+      const live = within(popover).getByRole("status");
+      expect(live).toHaveTextContent("Reading a mention from alice");
+      expect(live).not.toHaveTextContent("check");
+    });
+
+    it("leaves Esc to an open dialog", async () => {
+      turnOn();
+      const user = userEvent.setup();
+      await start();
+      await emit(message("@bob can you check?"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      const dialog = document.body.appendChild(document.createElement("div"));
+      dialog.setAttribute("role", "dialog");
+      await user.keyboard("{Escape}");
+      expect(screen.getByRole("region", { name: "Reading aloud: alice" })).toBeInTheDocument();
+      dialog.remove();
+    });
+
+    it("doesn't read a mention in the room another focused window shows", async () => {
+      turnOn();
+      // This window is beside the one being worked in, and agrees with the
+      // other windows through Web Locks (which jsdom doesn't have).
+      vi.spyOn(document, "hasFocus").mockReturnValue(false);
+      const held = new Set<string>();
+      vi.stubGlobal("navigator", {
+        ...navigator,
+        locks: {
+          request: async (name: string, _opts: unknown, cb: (lock: unknown) => Promise<unknown>) => {
+            if (held.has(name)) return cb(null);
+            held.add(name);
+            return cb({ name });
+          },
+        },
+      });
+      await start();
+      const other = new BroadcastChannel("mycelium-notifications");
+      other.postMessage({ type: "viewing", screen: { room: "sprint", panes: ["channel"] } });
+      await act(async () => new Promise((r) => setTimeout(r, 20)));
+      await emit(message("@bob in the room you're looking at"));
+      await act(async () => new Promise((r) => setTimeout(r, 400)));
+      expect(spoken).toEqual([]);
+      // Once that window shows something else, this one reads it.
+      other.postMessage({ type: "viewing", screen: null });
+      await act(async () => new Promise((r) => setTimeout(r, 20)));
+      await emit(message("@bob now it's yours"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" }, { timeout: 2000 });
+      other.close();
+    });
+
+    it("tells the other windows what's in front of the focused one, as it changes", async () => {
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      const heard: unknown[] = [];
+      const other = new BroadcastChannel("mycelium-notifications");
+      other.onmessage = (e) => heard.push(e.data);
+      await start();
+      const wait = () => act(async () => new Promise((r) => setTimeout(r, 20)));
+      // The room's dock shows the Channel, then a thread beside it, then the room closes.
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await wait();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel", THREAD] }));
+      await wait();
+      act(() => clearOnScreen("sprint"));
+      await wait();
+      expect(heard).toContainEqual({ type: "viewing", screen: { room: "sprint", panes: ["channel"] } });
+      expect(heard).toContainEqual({ type: "viewing", screen: { room: "sprint", panes: ["channel", THREAD] } });
+      expect(heard.at(-1)).toEqual({ type: "viewing", screen: null });
+      other.close();
+    });
+
+    it("reads a mention in another thread of the room you have open, by default", async () => {
+      turnOn();
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await emit(message("@bob over in the task", THREAD));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("skips a mention in the thread you have open", async () => {
+      turnOn();
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel", THREAD] }));
+      await emit(message("@bob right here", THREAD));
+      await act(async () => new Promise((r) => setTimeout(r, 50)));
+      expect(spoken).toEqual([]);
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("skips the whole room you have open, when that's the person's rule", async () => {
+      turnOn({ readAloudSkip: "room" });
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await emit(message("@bob over in the task", THREAD));
+      await act(async () => new Promise((r) => setTimeout(r, 50)));
+      expect(spoken).toEqual([]);
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("reads even what's in front of you, when the person never skips", async () => {
+      turnOn({ readAloudSkip: "never" });
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel", THREAD] }));
+      await emit(message("@bob right here", THREAD));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("reads everything said in rooms the person picked, and only there", async () => {
+      turnOn({ readAloudReads: "rooms", readAloudRooms: ["sprint"] });
+      await start();
+      await emit({ ...message("a plain message, no mention"), room_name: "lobby" });
+      await act(async () => new Promise((r) => setTimeout(r, 50)));
+      expect(spoken).toEqual([]);
+      await emit(message("a plain message, no mention"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+    });
+
+    it("reads all of a long message when the person chose that", async () => {
+      turnOn({ readAloudLength: "all" });
+      await start();
+      await emit(message("@bob the start.\n\nThe rest."));
+      const popover = await screen.findByRole("region", { name: "Reading aloud: alice" });
+      expect(within(popover).queryByRole("button", { name: "Read all" })).not.toBeInTheDocument();
+    });
+
+    it("asks for the person's own voice and speed", async () => {
+      turnOn({ readAloudVoice: "bm_george", readAloudSpeed: 1.25 });
+      await start();
+      await emit(message("@bob hello"));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      expect(choices[0]).toEqual({ voice: "bm_george", speed: 1.25 });
+    });
+
+    it("pings for a mention in another thread when the ping's rule is the thread", async () => {
+      window.localStorage.setItem("mycelium.notification-settings", JSON.stringify({ pingSkip: "thread" }));
+      vi.spyOn(document, "hasFocus").mockReturnValue(true);
+      await start();
+      act(() => setOnScreen({ room: "sprint", panes: ["channel"] }));
+      await emit(message("@bob over in the task", THREAD));
+      expect(ping).toHaveBeenCalledTimes(1);
+      await emit(message("@bob in the channel"));
+      expect(ping).toHaveBeenCalledTimes(1);
+      act(() => clearOnScreen("sprint"));
+    });
+
+    it("keeps the whole message out of what the bell stores", async () => {
+      turnOn();
+      await start();
+      const long = `@bob ${"word ".repeat(60)}end.`;
+      await emit(message(long));
+      await screen.findByRole("region", { name: "Reading aloud: alice" });
+      const stored = window.localStorage.getItem("mycelium.notifications") ?? "";
+      expect(stored).not.toContain("end.");
+      expect(stored).not.toContain('"text"');
+    });
   });
 });

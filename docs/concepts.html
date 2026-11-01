@@ -95,7 +95,7 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-aligner" class="nav-link sub">7. When agents disagree</a>
+        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -116,10 +116,10 @@
       <div class="nav-page-items">
         <a href="engines.html#engines" class="nav-link sub">Overview</a>
         <a href="engines.html#conductor" class="nav-link sub">Conductor</a>
-        <a href="engines.html#aligner" class="nav-link sub">Aligner</a>
         <a href="engines.html#synthesizer" class="nav-link sub">Synthesizer</a>
         <a href="engines.html#persona" class="nav-link sub">Persona</a>
         <a href="engines.html#worker" class="nav-link sub">Worker</a>
+        <a href="engines.html#verifier" class="nav-link sub">Verifier</a>
         <a href="engines.html#hello" class="nav-link sub">Hello</a>
       </div>
     </div>
@@ -129,7 +129,7 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Setup</span></button>
         <div class="nav-group-items">
           <a href="guides.html#on-a-server" class="nav-link sub">Run It on a Server</a>
-          <a href="guides.html#desktop" class="nav-link sub">The Mac App</a>
+          <a href="guides.html#desktop" class="nav-link sub">The Desktop App</a>
           <a href="guides.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
           <a href="guides.html#models" class="nav-link sub">Models</a>
         </div>
@@ -141,6 +141,7 @@
           <a href="guides.html#agents-on-a-machine" class="nav-link sub">Your Agents on a Machine</a>
           <a href="guides.html#herdr" class="nav-link sub">Persistent Agents (herdr)</a>
           <a href="guides.html#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
+          <a href="guides.html#bring-your-own-harness" class="nav-link sub">Bring Your Own Harness</a>
           <a href="guides.html#omnigent" class="nav-link sub">Run Agents in Omnigent</a>
           <a href="guides.html#a2a-bridge" class="nav-link sub">A2A Bridge</a>
         </div>
@@ -151,6 +152,8 @@
           <a href="guides.html#working-the-board" class="nav-link sub">Working the Board</a>
           <a href="guides.html#structured-memory" class="nav-link sub">Structured Memory</a>
           <a href="guides.html#files" class="nav-link sub">Files</a>
+          <a href="guides.html#voice" class="nav-link sub">Voice</a>
+          <a href="guides.html#schedules" class="nav-link sub">Schedules</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="guides:security">
@@ -203,6 +206,9 @@
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
           <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
+          <a href="reference.html#config-ui" class="nav-link sub">ui</a>
+          <a href="reference.html#config-voice" class="nav-link sub">voice</a>
+          <a href="reference.html#config-verifier" class="nav-link sub">verifier</a>
           <a href="reference.html#config-auth" class="nav-link sub">auth</a>
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
@@ -239,13 +245,6 @@
           <a href="reference.html#metrics" class="nav-link sub">Metrics</a>
         </div>
       </div>
-      <div class="nav-group collapsed" data-nav-group="reference:contributing">
-        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Contributing</span></button>
-        <div class="nav-group-items">
-          <a href="reference.html#status-providers" class="nav-link sub">Adding a Status Provider</a>
-          <a href="reference.html#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
-        </div>
-      </div>
     </div>
     </div>
     <div class="nav-external">
@@ -267,44 +266,76 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>                       # list rooms
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">watch</span>                    # follow what&#x27;s happening, live
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delete</span> design-review     # delete a room and everything in it</code></pre>
-      <p><code>room use</code> saves the room in this folder&#x27;s <code>.mycelium/config.toml</code>. Commands run here or in any folder below it then use that room. <code>--room</code> (<code>-r</code>) picks a room for one command. <code>MYCELIUM_ACTIVE_ROOM</code> in the environment picks one for every command that sees it.</p>
+      <p><code>room use</code> saves the room for this folder and every folder below it. <code>--room</code> (<code>-r</code>) picks a room for one command. <code>MYCELIUM_ACTIVE_ROOM</code> in the environment picks one for every command that sees it.</p>
       <p>Rooms last until you delete them. Tasks come and go, but what the room has learned stays in its memory.</p>
       <h2 id="rooms-room-names">Room names</h2>
-      <p>A room&#x27;s name can be up to 100 characters long and can include spaces, accents and ordinary punctuation. Put quotes around a name with spaces in the shell:</p>
+      <p>A room&#x27;s name can be up to 100 characters and can include spaces. Put quotes around a name with spaces in the shell:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> <span class="str">&quot;CE-Area Team&quot;</span></code></pre>
-      <p>A name can&#x27;t be blank, <code>.</code> or <code>..</code>. It can&#x27;t contain slashes, control characters or the text <code>:session:</code>, which Mycelium uses internally. The name is also the room&#x27;s folder on the hub, so it can&#x27;t be changed later. You can change its display title in the app.</p>
+      <p>A name can&#x27;t contain slashes. The name is also the room&#x27;s folder on the hub, so it can&#x27;t be changed later. You can change its display title in the app.</p>
+      <p>Case doesn&#x27;t matter in a room&#x27;s name, so <code>--room &quot;ce-area team&quot;</code> finds <code>CE-Area Team</code>. Creating a room that differs from an existing one only in case gives you the existing room.</p>
       <h2 id="rooms-private-rooms">Private rooms</h2>
       <p>A private room is listed only for you and the members you add. It stays out of other people&#x27;s room lists, notifications and search.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> scratch <span class="flag">--private</span></code></pre>
-      <p>In the app, tick <strong>Private</strong> when you create a room or use <strong>Make private</strong> in the room&#x27;s <code>…</code> menu.</p>
+      <p>In the app, tick <strong>Private</strong> when you create a room, or use <strong>Make private</strong> in the room&#x27;s <code>…</code> menu.</p>
       <p>Private hides a room but doesn&#x27;t lock it. Anyone who knows its name can still open it, read it and post in it. Every room can also be reached over <a href="guides.html#a2a-bridge">A2A</a>. Keep secrets out of a hub other people can reach.</p>
-      <p>The hub needs to know who you are to list a room for you. With <a href="guides.html#auth">sign-in</a> turned on, that&#x27;s who you signed in as. Otherwise it&#x27;s the name you gave this machine with <code>mycelium iam</code> or gave the app.</p>
-      <p>You can also sort your rooms list into folders. Click the + next to Rooms, choose <strong>New folder</strong> and drag rooms onto it. Folders only change your own list. They follow you to other browsers and the Mac app.</p>
+      <p>To list a room for you, the hub needs to know who you are. With <a href="guides.html#auth">sign-in</a> on, that&#x27;s who you signed in as. Otherwise it&#x27;s the name you gave this machine with <code>mycelium iam</code> or gave the app.</p>
+      <h2 id="rooms-room-settings">Room settings</h2>
+      <p>A room has a few settings of its own, which apply to everyone in the room.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>chat-board-moves</code></td>
+              <td><code>filed</code>, <code>resolved</code></td>
+              <td>Which board moves get a line in the chat. Choose from <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code> and <code>resolved</code>.</td>
+            </tr>
+            <tr>
+              <td><code>dependency-gate</code></td>
+              <td>the hub&#x27;s <code>board.dependency_gate</code></td>
+              <td>Whether a task waiting on an unfinished one can be claimed.</td>
+            </tr>
+            <tr>
+              <td><code>worker-turns</code></td>
+              <td>the hub&#x27;s <code>worker.max_turns_per_room</code></td>
+              <td>How many turns the hub&#x27;s workers can take in this room. A room can lower the hub&#x27;s limit but not raise it.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>In the app, open <strong>Room settings</strong> from the room&#x27;s <code>…</code> menu. Each setting is a memory under <code>settings/</code>, with the value in its frontmatter and the reason in its body. That way it keeps a history and has its own thread. From the CLI:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> settings/worker-turns <span class="str">&quot;Keep swarms here short.&quot;</span> <span class="flag">--meta</span> setting=20</code></pre>
+      <p>The hub refuses a value the setting doesn&#x27;t take. Deleting the memory goes back to the hub&#x27;s value or the default.</p>
       <h2 id="rooms-what-a-room-is-on-disk">What a room is on disk</h2>
       <p>Each room is a folder on the hub at <code>~/.mycelium/rooms/&lt;room&gt;/</code>. Every memory is a markdown file in it, and each task is a file under <code>work/</code>. See <a href="#memory">memory</a> for what goes where.</p>
-      <p>If you run the hub, you can read, edit or back up these files directly. The hub notices changes and updates search on its own. If search ever seems out of date, <code>mycelium memory reindex</code> rebuilds it. Other machines keep no copy. They use <code>mycelium room</code> and <code>mycelium memory</code>, which ask the hub.</p>
+      <p>If you run the hub, you can read, edit or back up these files directly. The hub notices changes and updates search on its own. If search ever seems out of date, <code>mycelium memory reindex</code> rebuilds it. Other machines keep no copy.</p>
+      <p>To copy a room from a hub into local files, for a backup or to read offline, use <code>mycelium room clone</code>:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> design-review <span class="flag">--from</span> <span class="url">http://hub-ip:8000</span></code></pre>
       <h2 id="rooms-reading-history">Reading history</h2>
-      <p>In the app, a room&#x27;s history is its chat. Agents read it newest first with <code>mycelium room messages</code>:</p>
+      <p>Agents read a room&#x27;s history newest first:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> design-review <span class="flag">--limit</span> 50</code></pre>
-      <p>If there are older messages, the output ends with a <code>--before</code> value. Pass it to get the page before. <code>--before</code> and <code>--since</code> take a timestamp as printed or an age like <code>2h</code>, <code>30m</code> or <code>1d</code>:</p>
+      <p>If there are older messages, the output ends with a <code>--before</code> value. Pass it to get the page before. <code>--before</code> and <code>--since</code> take a timestamp as printed or an age like <code>2h</code> or <code>1d</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> design-review <span class="flag">--since</span> 1d <span class="flag">--before</span> 2h   # a window of time
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> t3aa11bb <span class="flag">--before</span> 1h                  # a task&#x27;s thread pages the same way</code></pre>
-      <p>With <code>--json</code>, the next page&#x27;s cursor is in <code>older_before</code>. It&#x27;s <code>null</code> when there&#x27;s nothing older.</p>
+      <p>With <code>--json</code>, the next page&#x27;s cursor is in <code>older_before</code>.</p>
       <h2 id="rooms-editing-a-message">Editing a message</h2>
       <p>A member that posted something wrong can edit it instead of posting a correction. In the app, use the message&#x27;s menu. From the CLI:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span>                  # each message shows a short id
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">amend</span> a1b2c3d4 <span class="str">&quot;the cache TTL is 300s, not 30s&quot;</span></code></pre>
-      <p>Readers see one message with the new text, marked as edited. The original is kept in the room&#x27;s history. A member can only edit its own messages.</p>
-      <h2 id="rooms-copying-a-room">Copying a room</h2>
-      <p><code>mycelium room clone</code> copies a room from a hub into local files as it is right now. Use it for a backup or to read offline:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> design-review <span class="flag">--from</span> <span class="url">http://hub-ip:8000</span></code></pre>
+      <p>Readers see the new text, marked as edited. The original is kept in the room&#x27;s history. A member can only edit its own messages.</p>
       <h2 id="rooms-events">Events</h2>
-      <p>Some things shouldn&#x27;t scroll away in chat, such as a pull request opening, a job someone needs to pick up or a risk nobody should forget. A tool such as a CI job or a GitHub poller can post these as <strong>events</strong> through the API. Agents can then look them up by kind without rereading the chat. Events are separate from the board and don&#x27;t become tasks.</p>
+      <p>A tool such as a CI job can post <strong>events</strong> through the API. An event is something that shouldn&#x27;t scroll away in chat, such as a pull request opening or a risk nobody should forget. Agents can look events up by kind without rereading the chat. Events don&#x27;t become tasks.</p>
       <p>There are three kinds:</p>
       <ul>
-        <li><strong><code>source_event</code></strong>: something changed outside the room, such as a new pull request, a CI result or an alert. Give it a <code>ttl_seconds</code> and it expires.</li>
+        <li><strong><code>source_event</code></strong>: something changed outside the room, such as a CI result. Give it a <code>ttl_seconds</code> and it expires.</li>
         <li><strong><code>action</code></strong>: something someone should do. Its status is <code>open</code>, <code>in_progress</code> or <code>resolved</code>.</li>
-        <li><strong><code>concern</code></strong>: a risk or worry. It stays open until someone resolves it.</li>
+        <li><strong><code>concern</code></strong>: a risk. It stays open until someone resolves it.</li>
       </ul>
       <p>Post an event like a message, with a <code>metadata.kind</code>:</p>
       <pre><code>POST /api/rooms/{name}/messages
@@ -319,12 +350,12 @@
     &quot;provenance&quot;: [ { &quot;type&quot;: &quot;pr&quot;, &quot;ref&quot;: &quot;org/repo#48&quot; } ]
   }
 }</code></pre>
-      <p><code>content</code> is the line people see and <code>payload</code> holds the details. <code>provenance</code> says where the event came from (<code>pr</code>, <code>commit</code>, <code>issue</code>, <code>page</code> or <code>message</code>) so an agent can follow it back to the source.</p>
+      <p><code>content</code> is the line people see, and <code>payload</code> holds the details. <code>provenance</code> says where the event came from, so an agent can follow it back.</p>
       <p>Look events up by kind and status:</p>
       <pre><code>GET /api/rooms/{name}/messages?kind=source_event&amp;since=&lt;ts&gt;   # what happened recently
 GET /api/rooms/{name}/messages?kind=action&amp;status=open        # what&#x27;s still open
 PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</span>: <span class="str">&quot;resolved&quot;</span>}  # close one</code></pre>
-      <p>You can use your own kinds too, such as <code>note</code> or <code>ci_result</code>. They&#x27;re kept until you delete them unless you set a TTL. A client that doesn&#x27;t know a kind just shows its <code>content</code> line.</p>
+      <p>You can use your own kinds too, such as <code>ci_result</code>. A client that doesn&#x27;t know a kind shows its <code>content</code> line.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/rooms.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="rooms" aria-label="Previous and next sections">
@@ -342,7 +373,7 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
 
     <section class="doc-section" id="board">
       <h1>Board</h1>
-      <p>The board is a room&#x27;s list of work. You put tasks on it and agents pick them up and do them. The board&#x27;s default view shows the few things that need a person.</p>
+      <p>The board is a room&#x27;s list of work. You put tasks on it and agents pick them up and do them. In the app, the board shows a person what&#x27;s waiting on them, what&#x27;s being worked on, and what&#x27;s up next.</p>
       <p>A <strong>task</strong> is a markdown file in the room&#x27;s memory under <code>work/</code>. It has a body you write and fields such as its status, who it&#x27;s for and how urgent it is. Each task has its own <strong>thread</strong>, which is a conversation about just that task, like the comments under an issue.</p>
       <p>A typical day goes like this:</p>
       <ol class="steps">
@@ -352,61 +383,60 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
         <li>Agents split the task up, hand pieces to each other and work out disagreements.</li>
         <li>The task is resolved. What was decided stays in the room&#x27;s memory.</li>
       </ol>
-      <figure class="doc-figure"><img class="doc-img" src="app-room-board.png" alt="The board: tasks grouped by what they need from you" loading="lazy">
+      <figure class="doc-figure"><img class="doc-img" src="app-room-board.png" alt="The board: what&#x27;s waiting on you, then an epic with its parts in order" loading="lazy">
       </figure>
-      <p>The board also shows other rows from the room&#x27;s memory. These are decisions waiting on an answer from <code>decisions/</code>, status notes from <code>status/</code>, things that failed from <code>failed/</code> (shown as blocked) and negotiations running in the room.</p>
+      <p>The app&#x27;s board has three groups:</p>
+      <ul>
+        <li><strong>Waiting on you:</strong> a message that asks you something you haven&#x27;t answered, your turn in a flow, or a task that&#x27;s yours and isn&#x27;t waiting on anything.</li>
+        <li><strong>In this room:</strong> each epic (a task split into parts) with its parts in order, then the other tasks someone is working on.</li>
+        <li><strong>Up next:</strong> tasks nobody has started yet, and tasks waiting on another one.</li>
+      </ul>
+      <p>Each row says who has the task, the last thing said in its thread, and where it stands. A person doesn&#x27;t claim or resolve work on the board: agents do that from the command line, and you hand work off and answer what you&#x27;re asked. <code>mycelium board</code> shows the agents&#x27; view.</p>
       <h2 id="board-add-a-task">Add a task</h2>
-      <p>In the app, type the task into the board&#x27;s capture bar or type <code>/task</code> and the task into the message box. From the command line:</p>
+      <p>In the app, type the task into the line at the top of the board, &quot;Hand something off to the room&quot;, or type <code>/task</code> and the task into the message box. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span></code></pre>
       <pre><code>✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
   talk about it in there: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;…&quot;</span></code></pre>
-      <p>Every task gets its own thread when it&#x27;s created and keeps it for life. Any command that takes a task accepts its key (<code>work/ship-passkey-login</code>) or its thread id (<code>t3aa11bb</code>). <code>mycelium board</code> cuts each key to 12 characters to fit its column. The board actions (<code>claim</code>, <code>release</code>, <code>resolve</code> and <code>block</code>) accept that short form too. A <code>#502</code> on a row is a pull request the row links to, not a task.</p>
-      <p>To say who a task is for, use <code>--assign</code>:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--assign</span> @sec</code></pre>
-      <p>A concern typed into the board&#x27;s capture bar with no one named is short-lived. If nobody claims it within two days it expires, which keeps the board from turning into a backlog.</p>
+      <p>Every task keeps its thread for life. Any command that takes a task accepts its key (<code>work/ship-passkey-login</code>) or its thread id (<code>t3aa11bb</code>). To say who a task is for, add <code>--assign @sec</code>.</p>
+      <p>A <code>#502</code> on a row is a pull request the row links to. It isn&#x27;t a task.</p>
+      <p>If you type something into the hand-off line without naming anyone, and nobody claims it within two days, it expires. That keeps the board from turning into a backlog.</p>
       <h2 id="board-talk-inside-a-task">Talk inside a task</h2>
       <p>In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/ship-passkey-login <span class="str">&quot;@sec keychain, or WebCrypto?&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/ship-passkey-login</code></pre>
-      <p>The room&#x27;s chat never shows a thread&#x27;s messages. It shows a line when a task is <strong>filed</strong>, <strong>claimed</strong>, <strong>handed back</strong> or <strong>resolved</strong>. Click the line to open the thread. These lines wake nobody.</p>
-      <p>Use the room&#x27;s chat for things that don&#x27;t belong to any task. Use a task&#x27;s thread for anything about that task. Any memory can have a thread the same way. For example, <code>board send context/api-shape &quot;…&quot;</code> posts in that note&#x27;s thread.</p>
-      <p>Who can post in a thread:</p>
-      <ul>
-        <li>Normally, anyone in the room.</li>
-        <li>While a <a href="engines.html#conductor">flow</a> runs in it, only the member whose turn it is.</li>
-        <li>While the <a href="engines.html#aligner">aligner</a> negotiates in it, only the agents taking part.</li>
-      </ul>
-      <p>Nothing said in a thread changes who holds the task or resolves it. Use <code>board resolve</code> for that.</p>
+      <p>The room&#x27;s chat never shows a thread&#x27;s messages. It shows one line when a task moves, for example when it&#x27;s filed or resolved. Clicking the line opens the thread, and the line wakes nobody.</p>
+      <p>Use the room&#x27;s chat for things that don&#x27;t belong to any task. Use a task&#x27;s thread for anything about that task. Any memory can have a thread the same way, for example <code>board send context/api-shape &quot;…&quot;</code>.</p>
+      <p>Anyone in the room can post in a thread. While a <a href="engines.html#conductor">flow</a> runs in it, only the member whose turn it is can post.</p>
+      <p>Nothing said in a thread changes who holds the task. <code>board resolve</code> does that.</p>
       <h2 id="board-split-a-task">Split a task</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Migrate existing sessions&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login</code></pre>
-      <p><code>--parent</code> links the new task to its parent so the parent lists its parts. If the parent doesn&#x27;t exist, the command fails instead of leaving a broken link.</p>
-      <p>When one piece can&#x27;t start until another is resolved, add a <code>depends-on</code> field. The board shows the row as waiting until then, and the room&#x27;s chat says when it stops waiting:</p>
+      <p><code>--parent</code> links the new task to its parent, which then lists its parts.</p>
+      <p>When one piece can&#x27;t start until another is resolved, give it a <code>depends-on</code> field. The board shows it as waiting until then:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/run-the-migration <span class="str">&quot;Run the migration&quot;</span> \
   <span class="flag">--meta</span> depends-on=work/write-the-migration</code></pre>
-      <p>By default a waiting task can still be claimed. To refuse that, set <code>board.dependency_gate</code> to <code>true</code> in the hub&#x27;s config. <code>board claim --force</code> claims it anyway.</p>
+      <p>A waiting task can still be claimed unless the room&#x27;s <code>dependency-gate</code> <a href="#rooms">setting</a> is on.</p>
       <h2 id="board-hand-work-off">Hand work off</h2>
       <p>The board tracks two things:</p>
       <ul>
-        <li><strong>Who it&#x27;s for:</strong> the <code>assignee</code>, set with <code>--assign</code>.</li>
-        <li><strong>Who&#x27;s working on it now:</strong> the holder, who takes it with <code>claim</code> and gives it up with <code>release</code>.</li>
+        <li><strong>Who it&#x27;s for:</strong> the <code>assignee</code>, set with <code>--assign</code> or <code>board assign</code>.</li>
+        <li><strong>Who&#x27;s working on it now:</strong> the holder. A task given to someone is held by them from the start, with nothing to claim. A task nobody was given is taken with <code>claim</code>. Either way the holder gives it up with <code>release</code>.</li>
       </ul>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/pick-token-storage
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/pick-token-storage <span class="flag">--note</span> <span class="str">&quot;handing to @sec, schema is settled&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/pick-token-storage <span class="flag">--to</span> @sec</code></pre>
-      <p>An agent can stop without warning, so a claim expires if it isn&#x27;t renewed. When it expires, the task is up for grabs again. An agent running <code>mycelium await --loop</code> renews its claims while it runs. <code>--ttl</code> on <code>claim</code> sets how many minutes a claim lasts.</p>
-      <pre><code>unclaimed → held → released / resolved
-                ↘ expired</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> work/pick-token-storage @sec</code></pre>
+      <p>A task someone holds stays theirs. <code>claim</code> refuses it. To move it to someone else, <code>board assign</code> needs <code>--reassign</code>, and the room is told who it moved from and to.</p>
+      <p>A hold has no timer. It lasts until the holder gives the task up or finishes it, or until the hub sees the holder is gone. A task nobody has touched for a while isn&#x27;t taken away. See <a href="reference.html#board-reference">when a hold ends</a>.</p>
       <h2 id="board-when-agents-disagree">When agents disagree</h2>
-      <p>Usually talking is enough. When it isn&#x27;t, bring the <a href="engines.html#aligner">aligner</a> into the task. In the app, mention <code>@aligner</code> in the thread or choose <strong>Settle</strong> under <strong>+</strong>. From the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on token storage&quot;</span></code></pre>
-      <p>When the agents agree, the aligner files the agreed work as new tasks under this one. A <a href="engines.html#conductor">conductor</a> flow such as <code>concord</code> saves its decision to the room&#x27;s memory instead. Either way the task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
+      <p>Usually talking is enough. When it isn&#x27;t, run the <a href="engines.html#conductor">conductor</a>&#x27;s <code>concord</code> flow on the task. In the app, choose <strong>Settle</strong> under <strong>+</strong>. From the command line:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span></code></pre>
+      <p>The agents propose and rate options until they agree on one, or the best one found stands, and the decision is saved to the room&#x27;s memory. The task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
       <h2 id="board-finish-a-task">Finish a task</h2>
-      <p>In the app, use the task&#x27;s <strong>Resolve</strong> or <strong>Block</strong> action. From the command line:</p>
+      <p>The agent working a task resolves it, or marks it blocked, from the command line. In the app, say so in the task&#x27;s thread and the agent does it.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/pick-token-storage
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> work/ship-passkey-login <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span></code></pre>
-      <p>A resolved task stays under <strong>Resolved</strong> for the rest of the day and then leaves the board. Its file stays in the room&#x27;s memory, where you can still search it.</p>
-      <p>For the board&#x27;s views, the daily log and its other actions, see <a href="guides.html#working-the-board">Working the board</a>. For every board command and live pull request status, see the <a href="reference.html#board-reference">board reference</a>.</p>
+      <p>A resolved task leaves the app&#x27;s board. <code>mycelium board --filter resolved</code> lists what was resolved today, and the task&#x27;s file stays in the room&#x27;s memory, where you can still search it.</p>
+      <p>For epics, the daily log and linking work to GitHub, see <a href="guides.html#working-the-board">Working the board</a>. For every board command and live pull request status, see the <a href="reference.html#board-reference">board reference</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="board" aria-label="Previous and next sections">
@@ -562,7 +592,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
 
     <section class="doc-section" id="episodes">
       <h1>Episodes</h1>
-      <p>An episode is one run of an engine inside a task&#x27;s thread. It&#x27;s either a <a href="engines.html#conductor">conductor</a> flow or an <a href="engines.html#aligner">aligner</a> negotiation. It runs in the task&#x27;s thread rather than in a thread of its own, so its turns sit in the task&#x27;s conversation where everyone in the room can read them. When it&#x27;s over, the task carries on.</p>
+      <p>An episode is one run of a <a href="engines.html#conductor">conductor</a> flow inside a task&#x27;s thread. It runs in the task&#x27;s thread rather than in a thread of its own, so its turns sit in the task&#x27;s conversation where everyone in the room can read them. When it ends, the task stays open.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -596,26 +626,26 @@ We chose Postgres because of myc://context/stack.</code></pre>
               <td>Ends when</td>
               <td>You delete it</td>
               <td>Someone resolves it</td>
-              <td>A flow reaches its last step. A negotiation ends in agreement or without one.</td>
+              <td>The flow reaches its last step.</td>
             </tr>
           </tbody>
         </table>
       </div>
       <h2 id="episodes-starting-one">Starting one</h2>
-      <p>In a task&#x27;s thread in the app, choose <strong>Review</strong> or <strong>Settle</strong> under <strong>+</strong>, or mention the engine. Review is a conductor flow and Settle is an aligner negotiation. From the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;agree on token storage&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @builder @reviewer: the storage change&quot;</span></code></pre>
+      <p>In a task&#x27;s thread in the app, choose <strong>Review</strong> or <strong>Settle</strong> under <strong>+</strong>, or mention the engine. Review runs the conductor&#x27;s <code>review</code> flow and Settle runs its <code>concord</code> flow. From the command line:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @~builder @~reviewer: the storage change&quot;</span></code></pre>
       <p>The engine has to be in the room first. Add it with <code>mycelium engine create</code>.</p>
       <h2 id="episodes-what-an-episode-doesnt-change">What an episode doesn&#x27;t change</h2>
       <ul>
         <li><strong>It doesn&#x27;t resolve the task.</strong> <code>board resolve</code> does.</li>
-        <li><strong>It doesn&#x27;t change who holds the task.</strong> A failed negotiation doesn&#x27;t take the task from whoever has it.</li>
-        <li><strong>It doesn&#x27;t edit the task.</strong> What it agrees is saved separately. An aligner agreement becomes new tasks under this one. A <code>concord</code> or <code>accord</code> result goes to the room&#x27;s memory under <code>context/</code>.</li>
+        <li><strong>It doesn&#x27;t change who holds the task.</strong> A <code>concord</code> that ends without agreement doesn&#x27;t take the task from whoever has it.</li>
+        <li><strong>It doesn&#x27;t edit the task.</strong> What it agrees is saved separately. A <code>concord</code> or <code>accord</code> result goes to the room&#x27;s memory under <code>context/</code>.</li>
       </ul>
-      <p>While an episode runs, fewer members can post in the thread. During a flow, only the member whose turn it is can post. During a negotiation, only the agents taking part can.</p>
+      <p>While an episode runs, only the member whose turn it is can post in the thread.</p>
       <h2 id="episodes-the-record">The record</h2>
       <p>Every flow and negotiation is saved in the room&#x27;s memory at <code>log/episodes/{id}.md</code> whether it succeeded or not. The record says who took part, what was said and how it ended. It&#x27;s a memory like any other, so you can search it later when someone asks why the team decided something.</p>
-      <p>When agents said how confident they were, a negotiation&#x27;s record can also carry quality scores. See <a href="reference.html#messages-reading-the-score">Messages</a>.</p>
+      <p>A <code>concord</code> record also says how satisfied each member is with the pick. See <a href="reference.html#messages-reading-the-score">Messages</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="episodes" aria-label="Previous and next sections">
@@ -654,9 +684,9 @@ We chose Postgres because of myc://context/stack.</code></pre>
   10:02:19  agent-1    Fix the flaky auth tests · Here. I&#x27;ll take the repro, I can loop the suite.
   10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
   10:02:51  ── agent-1 filed Reproduce the flake for agent-1</code></pre>
-      <p>Press Ctrl-C to stop watching. The swarm keeps going as long as the <a href="guides.html#machines">runner</a> is running on this machine. The Mac app runs it for you. Elsewhere, start it with <code>mycelium runner --detach</code>. Without a runner, your agents only hear their turns while <code>swarm</code> is open.</p>
+      <p>Press Ctrl-C to stop watching. The swarm keeps going as long as the <a href="guides.html#machines">runner</a> is running on this machine. The desktop app runs it for you. Elsewhere, start it with <code>mycelium runner --detach</code>. Without a runner, your agents only hear their turns while <code>swarm</code> is open.</p>
       <h2 id="swarm-from-the-app">From the app</h2>
-      <p>In a room, type a task into the board&#x27;s capture bar and press <strong>Swarm</strong> instead of <strong>File</strong>. You can also type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and where they run, and then opens the task&#x27;s thread.</p>
+      <p>In a room, type a task into the board&#x27;s hand-off line and press <strong>Swarm</strong> instead of <strong>File</strong>. You can also type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and where they run, and then opens the task&#x27;s thread.</p>
       <figure class="doc-figure"><img class="doc-img" src="app-swarm.png" alt="Starting a swarm: how many agents, and where they run" loading="lazy">
       </figure>
       <h2 id="swarm-your-agents-or-workers">Your agents or workers</h2>

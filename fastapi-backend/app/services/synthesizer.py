@@ -3,8 +3,8 @@
 
 """The synthesizer — a cognition engine that distills a room's talk into memory.
 
-A second engine ``kind`` alongside the aligner. Where the aligner *converges* a
-negotiation, the synthesizer *distills*: on an ``@``-summon it reads the room's
+An engine ``kind`` alongside the conductor. Where the conductor *walks* a
+flow, the synthesizer *distills*: on an ``@``-summon it reads the room's
 **transcript** — the ephemeral half, where a decision gets argued, qualified and
 settled and where nothing indexes it for meaning — and writes what it learned
 into the **durable** half, as a ``knowledge`` memory (``context/synthesis``) that
@@ -16,14 +16,14 @@ into memory (:data:`~app.config.SynthesizerSource` ``memory``, the older
 behavior) is a different feature — a briefing over what is already durable — and
 stays available behind ``SYNTHESIZER_SOURCE``.
 
-Design constraints, shared with the aligner:
+Design constraints, shared with the other engines:
 
 * **Dormant by default (zero idle cost).** Nothing runs until a registered
   ``engine`` of kind ``synthesizer`` is summoned through the persister's summon
   seam — no polling, no held LLM connection.
 * **One-shot Pi cognition.** The summary is one throwaway ``pi`` turn off the
   event loop (:func:`_pi_complete`), the same pattern as
-  :mod:`app.services.task_compiler`. Fail-soft: a Pi outage logs and writes
+  :mod:`app.services.probe_engine`. Fail-soft: a Pi outage logs and writes
   nothing rather than a half-baked summary.
 * **Writes through the canonical memory path.** The summary is upserted via the
   same versioned + indexed write every ``memory set`` uses, so it is searchable,
@@ -41,7 +41,7 @@ Two properties are specific to reading a live transcript:
   registered synthesizer handle is dropped from the corpus before the prompt is
   built.
 
-Unlike the aligner it holds no episode and drives no negotiation — it is a pure
+Unlike the conductor it holds no episode and drives no flow — it is a pure
 read → distill → write consumer.
 """
 
@@ -58,9 +58,12 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 
-# Reuse the aligner's manifest-kind gate and handle-fold implementations.
+# Reuse the engines' shared manifest-kind gate and handle-fold implementations.
 from app.services import message_format
-from app.services.aligner import _norm, _registered_engine_kind
+from app.services.asks import MENTION_ETIQUETTE
+from app.services.engine_kinds import norm as _norm
+from app.services.engine_kinds import registered_engine_kind
+from app.services.engines_model import failed_turn
 
 if TYPE_CHECKING:
     from app.services.in_memory_store import StoredMessage
@@ -77,7 +80,7 @@ _AT_MENTION = re.compile(r"@(?=\w)")
 _FULL_PASS = re.compile(r"(?:^|\s)--(?:all|full)(?=\s|$)")
 
 # The engine kind this class owns. A summon whose manifest kind differs is
-# ignored, so the aligner and the synthesizer can share one summon seam.
+# ignored, so every engine kind can share one summon seam.
 ENGINE_KIND = "synthesizer"
 
 # Where the compiled summary lands. ``context/`` is the room's background surface
@@ -127,7 +130,7 @@ def _own_handles(room: str, senders: set[str], *, me: str) -> set[str]:
     own |= {
         _norm(sender)
         for sender in senders
-        if _norm(sender) not in own and _registered_engine_kind(room, sender) == ENGINE_KIND
+        if _norm(sender) not in own and registered_engine_kind(room, sender) == ENGINE_KIND
     }
     return own
 
@@ -219,7 +222,7 @@ def _build_message_prompt(
             "Distill this conversation into the room's standing briefing: what was "
             "decided, what changed, what is now in flight, and what is still open. "
             "Group related points; do not transcribe the messages back. Preserve "
-            "@handle owners where they matter."
+            "owners as @~handle where they matter."
         )
     carried = (
         "The briefing below is what earlier conversation already distilled to. "
@@ -235,6 +238,7 @@ def _build_message_prompt(
         "with its sender.\n\n"
         f"{task}\n\n"
         "Be faithful — never invent facts not present in what you were given. "
+        f"{MENTION_ETIQUETTE} "
         "Output ONLY the briefing as markdown — no preamble, no code fences.\n\n"
         f"{carried}"
         f"--- NEW MESSAGES ---\n{_transcript_block(messages)}\n--- END NEW MESSAGES ---"
@@ -260,11 +264,13 @@ def _build_prompt(
             "Produce a single concise, well-structured markdown briefing that captures the "
             "room's current state: key decisions, current status, open work, and any notable "
             "context. Group related points; do not just list the memories back. Preserve "
-            "@handle owners where they matter. Be faithful — never invent facts not present below."
+            "owners as @~handle where they matter. Be faithful — never invent facts not "
+            "present below."
         )
     return (
         f"You are the synthesizer for the Mycelium coordination room '{room}'.\n"
         f"Below are the room's memories, each under its namespace key.\n\n{task}\n\n"
+        f"{MENTION_ETIQUETTE} "
         "Output ONLY your response as markdown — no preamble, no code fences.\n\n"
         f"--- ROOM MEMORY ---\n{corpus}\n--- END ROOM MEMORY ---"
     )
@@ -285,7 +291,7 @@ def _pi_complete(prompt: str, timeout_s: float, room: str = "") -> str:
     """One blocking Pi turn producing the raw summary markdown.
 
     A throwaway ``--session`` file keeps it a true one-shot with no memory to
-    carry — the same pattern as :func:`app.services.task_compiler._pi_complete`.
+    carry — the same pattern as :func:`app.services.probe_engine._pi_complete`.
     Isolated so tests can patch it without a live Pi.
     """
     from app.services.pi_session import PiSession
@@ -349,11 +355,11 @@ class SynthesizerEngine:
         ``synthesizer``) is summoned; else ignore.
 
         The persister fires this for every ``@``-mention, so the manifest-kind
-        gate is what keeps an ``@teammate`` (or the aligner's summon) from
+        gate is what keeps an ``@teammate`` (or the conductor's summon) from
         spawning a synthesis. There is no reserved-handle fallback: the
         synthesizer is only ever a registered engine.
         """
-        if _registered_engine_kind(room, handle) != ENGINE_KIND:
+        if registered_engine_kind(room, handle) != ENGINE_KIND:
             return
         # When ENGINE_RUNTIME=host the host daemon owns a registered engine's run.
         if settings.ENGINE_RUNTIME == "host":
@@ -445,7 +451,9 @@ class SynthesizerEngine:
             _synth_ms = (__import__("time").monotonic() - _synth_t0) * 1000.0
         except Exception:
             logger.exception("synthesizer: Pi turn failed for room %s", room)
-            await self._say_if_live(managed, room, me, "Pi turn timed out or errored — try again.")
+            await self._say_if_live(
+                managed, room, me, failed_turn("Pi turn timed out or errored — try again.")
+            )
             return None
 
         response = _strip_fences(raw or "")

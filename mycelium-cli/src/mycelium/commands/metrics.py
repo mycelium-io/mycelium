@@ -25,6 +25,7 @@ from rich.table import Table
 from mycelium.cli_options import emits_json
 from mycelium.collector import _ensure_shared_dir
 from mycelium.commands.traces import app as traces_app
+from mycelium.utils.process import pid_alive
 
 app = typer.Typer(
     help="See the hub's usage and cost, and the traces it has collected.",
@@ -367,29 +368,31 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
     # Source 2: /api/rooms, fills in anything the snapshot missed.
     # ``setdefault`` semantics ensure snapshot wins on conflicts.
     try:
+        from mycelium.client import typed_client
         from mycelium.config import MyceliumConfig
+        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get
+        from mycelium_backend_client.models import RoomRead
 
-        api_url = MyceliumConfig.load().server.api_url
-        if not api_url:
+        config = MyceliumConfig.load()
+        if not config.server.api_url:
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
-        import httpx
 
-        resp = httpx.get(
-            f"{api_url.rstrip('/')}/api/rooms",
-            headers={"Accept": "application/json"},
-            timeout=2.0,
-        )
+        http = typed_client(config, timeout=2.0, raise_on_unexpected_status=False)
+        with http.with_headers({"Accept": "application/json"}) as http:
+            resp = list_rooms_api_rooms_get.sync_detailed(client=http)
         if resp.status_code != 200:
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
-        rooms = resp.json()
+        rooms = resp.parsed
         if not isinstance(rooms, list):
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
         for r in rooms:
-            mas_id = r.get("mas_id")
-            name = r.get("name")
+            if not isinstance(r, RoomRead):
+                continue
+            mas_id = r.mas_id if isinstance(r.mas_id, str) else None
+            name = r.name
             if mas_id and name:
                 mas_to_name.setdefault(str(mas_id), str(name))
                 name_to_mas.setdefault(str(name), str(mas_id))
@@ -436,11 +439,12 @@ def _read_collector_pid() -> int | None:
         return None
     try:
         pid = int(pf.read_text().strip())
-        os.kill(pid, 0)
+    except ValueError:
+        pid = 0
+    if pid_alive(pid):
         return pid
-    except (ValueError, ProcessLookupError, PermissionError):
-        pf.unlink(missing_ok=True)
-        return None
+    pf.unlink(missing_ok=True)
+    return None
 
 
 @app.command("collect")

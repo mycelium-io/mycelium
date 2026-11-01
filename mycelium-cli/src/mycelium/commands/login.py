@@ -6,9 +6,11 @@
 
 The browser flow (Authorization Code + PKCE) is the default; ``--device`` is the
 fallback for a shell whose browser can't reach this machine's loopback address:
-SSH, CI, a container. Both end the same way: the session lands in the ``0600``
-token cache (``mycelium.tokens``) and every subsequent backend call carries it,
-because they all build their client through ``mycelium.client``. A successful
+SSH, CI, a container. Both end the same way: the session, refresh token
+included, is kept in the system keychain (or a ``0600`` file where there's no
+keychain, ``mycelium.session_store``), and every later backend call carries it
+and renews it quietly, because they all build their client through
+``mycelium.client``. An agent's pane can't sign in as a person. A successful
 login also points this machine's ``identity.name`` at the token's own handle,
 since a gated hub refuses a write that claims a different one.
 
@@ -38,15 +40,7 @@ from mycelium.oidc import (
     device_code_login,
     discover,
 )
-from mycelium.tokens import (
-    DEFAULT_LEEWAY_S,
-    StoredToken,
-    clear_token,
-    format_span,
-    load_token,
-    save_token,
-    token_path,
-)
+from mycelium.tokens import DEFAULT_LEEWAY_S, StoredToken, format_span
 
 console = Console()
 
@@ -81,19 +75,15 @@ def _hub_issuers(config: MyceliumConfig) -> tuple[list[str], str | None]:
     issuer up and copy it back in. Returns the issuers and, when the list is
     empty, a reason to print instead of a bare "no issuer configured".
     """
-    import httpx
+    from mycelium.hub_check import health
 
-    url = f"{config.server.api_url.rstrip('/')}/health"
-    try:
-        resp = httpx.get(url, timeout=5)
-        resp.raise_for_status()
-        body = resp.json()
-    except (httpx.HTTPError, ValueError):
-        return [], f"couldn't reach {url} to ask it"
-    auth = body.get("auth") or {} if isinstance(body, dict) else {}
-    if not auth.get("enabled"):
+    said = health(config.server.api_url, timeout=5)
+    if said.read is None:
+        return [], f"couldn't reach {said.url}/health to ask it"
+    auth = said.auth
+    if auth is None or not auth.enabled:
         return [], f"{config.server.api_url} has its gate off, so it needs no login"
-    issuers = [str(i).strip().rstrip("/") for i in auth.get("issuers") or [] if str(i).strip()]
+    issuers = [i.strip().rstrip("/") for i in auth.issuers if i.strip()]
     if not issuers:
         return [], f"{config.server.api_url} is gated but advertises no issuer"
     return issuers, None
@@ -161,6 +151,23 @@ _UNREGISTERED = "unregistered"  # identity.name landed, the hub didn't take the 
 _FAILED = "failed"
 
 
+def _hub_handle(config: MyceliumConfig) -> str | None:
+    """Who the hub says the new token is: the handle its gate enforces.
+
+    The hub reads the handle from its own ``auth.handle_claim``, which this
+    machine's copy of the setting may not match (a UUID ``sub`` here, a
+    ``preferred_username`` there). ``None`` when the hub can't be reached,
+    runs with auth off, or refuses the token, and the local claim is used.
+    """
+    from mycelium.identity import _WHOAMI_CACHE, _hub_whoami
+
+    # Asked earlier in this process, the answer was for the old credential.
+    _WHOAMI_CACHE.pop(config.server.api_url, None)
+    who = _hub_whoami(config)
+    handle = str((who.handle if who else None) or "").strip().lstrip("@").lower()
+    return handle or None
+
+
 def _align_identity(config: MyceliumConfig, handle: str) -> str:
     """Point this machine's identity at the token's own handle.
 
@@ -190,7 +197,10 @@ def _report(
     handle: str | None,
     alignment: str,
     json_output: bool,
+    kept: str,
 ) -> None:
+    from mycelium import session_store
+
     shown = handle or "(unknown)"
     remaining = token.expires_in()
 
@@ -208,6 +218,8 @@ def _report(
                     "refresh_expires_at": token.refresh_expires_at,
                     "renewal_leeway_s": DEFAULT_LEEWAY_S,
                     "identity": config.identity.name,
+                    # Where it's kept: the system keychain, or a 0600 file.
+                    "kept": kept,
                 },
                 indent=2,
             )
@@ -237,7 +249,20 @@ def _report(
             "[dim]No refresh token was issued, so the session ends when this access token "
             "does; add the 'offline_access' scope if you want it renewed automatically.[/dim]"
         )
-    console.print(f"[dim]Session cached at {token_path()} (mode 0600).[/dim]")
+    if kept == session_store.KEYCHAIN:
+        console.print("[dim]Kept in the system keychain.[/dim]")
+    elif kept == session_store.REFUSED:
+        console.print(
+            f"[yellow]Kept in {session_store.where_described(kept)}[/yellow] [dim](mode 0600): "
+            "the system keychain wouldn't keep it. Either its prompt was declined, or the "
+            "entry is too large for it. Run mycelium login again and allow it to use the "
+            "keychain.[/dim]"
+        )
+    else:
+        console.print(
+            f"[yellow]Kept in {session_store.where_described(kept)}[/yellow] [dim](mode 0600): "
+            "there's no system keychain to keep it in here.[/dim]"
+        )
 
     if alignment in (_ALIGNED, _UNREGISTERED):
         console.print(f"[dim]This machine now writes as @{shown} (identity.name).[/dim]")
@@ -292,7 +317,10 @@ def login(
         300.0, "--timeout", "-t", help="Seconds to wait for you to finish signing in."
     ),
 ) -> None:
-    """Obtain an OIDC token for the hub and cache it for subsequent commands.
+    """Obtain an OIDC token for the hub and keep it for later commands.
+
+    It's kept in the system keychain (a ``0600`` file where there's none), and
+    renewed quietly when it runs out. An agent's pane can't sign in as a person.
 
     With neither ``--issuer`` nor ``login.issuer``, the hub named by
     ``server.api_url`` is asked for the issuer it trusts, and a single answer is
@@ -303,8 +331,16 @@ def login(
         mycelium login --issuer https://sso.example.com/realms/mycelium
         mycelium login --device        # headless / SSH / CI
     """
+    from mycelium import caller, session_store
+
     config = MyceliumConfig.load()
     json_output = ctx.obj.get("json", False) if ctx.obj else False
+    if pane := caller.in_agent_pane():
+        console.print(
+            f"[red]Error:[/red] this is @{pane}'s pane. An agent can't sign in as a person; "
+            "run mycelium login in your own terminal."
+        )
+        raise typer.Exit(1)
 
     resolved_issuer = (issuer or config.login.issuer or "").strip().rstrip("/")
     discovered = None
@@ -366,7 +402,7 @@ def login(
         token_endpoint=meta.token_endpoint,
         scope=grant.scope or resolved_scope,
     )
-    save_token(token)
+    kept = session_store.save(config, token)
 
     _persist_login_config(
         config,
@@ -379,9 +415,9 @@ def login(
         json_output=json_output,
     )
 
-    handle = token.handle(config.auth.handle_claim) or token.handle()
+    handle = _hub_handle(config) or token.handle(config.auth.handle_claim) or token.handle()
     alignment = _align_identity(config, handle) if handle else _SKIPPED
-    _report(token, config, handle=handle, alignment=alignment, json_output=json_output)
+    _report(token, config, handle=handle, alignment=alignment, json_output=json_output, kept=kept)
 
 
 @doc_ref(
@@ -390,10 +426,11 @@ def login(
     group="setup",
 )
 def logout(ctx: typer.Context) -> None:
-    """Forget the cached session."""
+    """Forget the session, wherever it was kept."""
+    from mycelium import session_store
+
     json_output = ctx.obj.get("json", False) if ctx.obj else False
-    existed = load_token() is not None
-    clear_token()
+    existed = session_store.clear(MyceliumConfig.load())
 
     if json_output:
         typer.echo(json_module.dumps({"logged_out": existed}))

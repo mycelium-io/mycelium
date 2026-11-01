@@ -130,10 +130,49 @@ async def test_pi_error_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch)
         raise RuntimeError("pi exploded")
 
     monkeypatch.setattr(probe_engine, "_pi_complete", boom)
+    # A hub with a model set, so the failure reads as a failure, not as no model.
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", "sk-ant-test")
     engine, managed = _engine()
 
     assert await engine.greet(_ROOM, engine_handle="hi") is None
     assert "timed out or errored" in _said(managed)[0]
+
+
+def test_the_no_model_reply_is_the_contract_s() -> None:
+    """Doctor says the same thing (``contracts/engines-model.json``)."""
+    import json
+    from pathlib import Path
+
+    from app.services import engines_model
+
+    contract = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "engines-model.json").read_text()
+    )
+    assert contract["set_one"] == engines_model.SET_ONE
+    assert contract["no_model_text"] == engines_model.NO_MODEL_TEXT
+
+
+@pytest.mark.asyncio
+async def test_a_hub_with_no_model_says_so_rather_than_errored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.engines_model import NO_MODEL_TEXT
+
+    def boom(_p: str, _t: float) -> str:
+        raise RuntimeError("pi: no API key")
+
+    monkeypatch.setattr(probe_engine, "_pi_complete", boom)
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", None)
+    monkeypatch.setattr(probe_engine.settings, "LLM_BASE_URL", None)
+    engine, managed = _engine()
+
+    assert await engine.greet(_ROOM, engine_handle="hi") is None
+    assert _said(managed) == [NO_MODEL_TEXT]
+
+    # With a model set, a failed turn is still a failed turn.
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", "sk-ant-test")
+    assert await engine.greet(_ROOM, engine_handle="hi") is None
+    assert "timed out or errored" in _said(managed)[1]
 
 
 @pytest.mark.asyncio
@@ -150,6 +189,7 @@ async def test_pi_timeout_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatc
     managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
     engine = probe_engine.ProbeEngine(FakeManager(managed, []), timeout_s=-5.0)  # type: ignore[arg-type]
     monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "never gets here")
+    monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", "sk-ant-test")
 
     assert await engine.greet(_ROOM, engine_handle="hi") is None
     assert "timed out or errored" in _said(managed)[0]

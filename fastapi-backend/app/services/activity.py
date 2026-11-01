@@ -4,8 +4,8 @@
 """The "is responding…" signal: a participant is generating, right now.
 
 The channel renders discrete events — a reply lands, a tick, a consensus — and
-between them the room is silent even when someone is mid-turn: the aligner
-running a Pi round, a resident agent that just took an ``await`` wake and has
+between them the room is silent even when someone is mid-turn: a persona
+running a Pi turn, a resident agent that just took an ``await`` wake and has
 not yet posted its ``respond``. This is the presence-style signal that fills
 that gap, and it is deliberately **not a message**.
 
@@ -17,12 +17,13 @@ thread it is in, and a TTL — a reader drops a ``responding`` it has heard noth
 about for that long, so a turn that dies mid-generation cannot leave a stuck
 indicator behind. The seams that raise it are the ones that already know the
 window: ``await`` returning a turn and ``reply`` posting one
-(:mod:`app.routes.participate`), and the aligner's own LLM calls
-(:meth:`app.services.aligner.Aligner._open_llm_session`).
+(:mod:`app.routes.participate`), and the persona and worker engines' own
+turns (:mod:`app.services.persona_engine`, :mod:`app.services.worker_engine`).
 """
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -42,9 +43,34 @@ State = Literal["responding", "done"]
 #: frame so the two sides never disagree about it.
 TTL_S = 90
 
+#: Each handle's standing ``responding``, as ``{(room, handle): monotonic time}``,
+#: until its ``done`` or its TTL. Lets a later seam see that a turn already said
+#: where it is going (:func:`is_responding`).
+_standing: dict[tuple[str, str], float] = {}
+
+
+def _key(room: str, handle: str) -> tuple[str, str]:
+    return room, handle.lstrip("@").lower()
+
+
+def reset() -> None:
+    """Forget every standing ``responding``. For tests."""
+    _standing.clear()
+
+
+def is_responding(room: str, handle: str) -> bool:
+    """Whether ``handle`` has a ``responding`` standing in ``room`` (raised within
+    its TTL, with no ``done`` since)."""
+    raised = _standing.get(_key(room, handle))
+    return raised is not None and time.monotonic() - raised < TTL_S
+
 
 def signal(room: str, handle: str, state: State, *, episode: str | None = None) -> dict[str, Any]:
     """Publish one activity frame on the room's bus channel. Returns the frame."""
+    if state == "responding":
+        _standing[_key(room, handle)] = time.monotonic()
+    else:
+        _standing.pop(_key(room, handle), None)
     frame: dict[str, Any] = {
         "type": ACTIVITY_TYPE,
         "message_type": ACTIVITY_TYPE,

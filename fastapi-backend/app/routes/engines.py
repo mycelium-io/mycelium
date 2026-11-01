@@ -3,12 +3,12 @@
 
 """POST /rooms/{room_name}/engines — register a first-party cognition engine.
 
-Engines (``aligner``, ``synthesizer``, ``hello``) are backend-owned: registration is purely
+Engines (``conductor``, ``synthesizer``, ``hello``, …) are backend-owned: registration is purely
 a manifest write with *no* machine-local side effects, so — unlike
 ``claude_code``/``cursor`` agents, which need a resident session and workspace
 assets on the user's box — the web UI can invite one natively. The manifest lands
 at ``agents/<handle>`` with ``adapter: engine``, exactly like the CLI's
-``mycelium engine create``, so the summon seam (``_registered_engine_kind``) and
+``mycelium engine create``, so the summon seam (``registered_engine_kind``) and
 the ``GET .../agents`` listing pick it up like any other room citizen.
 """
 
@@ -18,10 +18,11 @@ import re
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import HANDLE_PATTERN, AgentRead
+from app.schemas import HANDLE_PATTERN, AgentRead, refusals
 from app.services import actor
 from app.services.agent_registry import norm_handle, write_agent_manifest
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
+from app.services.retired_aligner import RETIRED_KIND, RETIRED_TEXT
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ router = APIRouter(prefix="/rooms/{room_name}/engines", tags=["engines"])
 
 # The engine kinds the backend knows how to run. Mirrors the CLI's
 # ``mycelium.protocol.ENGINE_KINDS``; the summon seam self-selects by ``kind``.
-ENGINE_KINDS = frozenset({"aligner", "conductor", "hello", "persona", "synthesizer", "worker"})
+ENGINE_KINDS = frozenset({"conductor", "hello", "persona", "synthesizer", "verifier", "worker"})
 
 _HANDLE_RE = re.compile(HANDLE_PATTERN)
 
@@ -38,7 +39,7 @@ class EngineCreate(BaseModel):
     """Request body to invite an engine into a room."""
 
     handle: str = Field(..., min_length=1, max_length=64)
-    kind: str = Field("aligner", description="Which cognition engine to run.")
+    kind: str = Field(..., description="Which cognition engine to run.")
     description: str = ""
     allow_from: list[str] = Field(
         default_factory=list, description="Sender handles allowed to summon (empty = anyone)."
@@ -50,7 +51,7 @@ class EngineCreate(BaseModel):
     )
 
 
-@router.post("", response_model=AgentRead, status_code=201)
+@router.post("", response_model=AgentRead, status_code=201, responses=refusals(403, 404, 409, 422))
 async def create_engine(room_name: str, payload: EngineCreate, request: Request) -> AgentRead:
     """Register an engine manifest in the room and return its structured view."""
     if not room_exists(room_name):
@@ -62,6 +63,8 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
     registrar = actor.bind_optional_actor(request, payload.created_by, field="created_by")
 
     kind = payload.kind.strip().lower()
+    if kind == RETIRED_KIND:
+        raise HTTPException(status_code=422, detail=RETIRED_TEXT)
     if kind not in ENGINE_KINDS:
         raise HTTPException(
             status_code=422,
@@ -90,7 +93,13 @@ async def create_engine(room_name: str, payload: EngineCreate, request: Request)
         "owner": norm_handle(payload.owner),
         "team": norm_handle(payload.team),
     }
-    await write_agent_manifest(room_name, handle, body, created_by=registrar or "web-ui")
+    await write_agent_manifest(
+        room_name,
+        handle,
+        body,
+        created_by=registrar or "web-ui",
+        principal=actor.principal_handle(request),
+    )
     logger.info("room %s: registered engine @%s (kind=%s)", room_name, handle, kind)
 
     return AgentRead(

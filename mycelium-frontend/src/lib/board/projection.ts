@@ -23,7 +23,6 @@ import type { AgentSummary, EpisodeSummary, Memory } from "@/lib/api";
 import type { PresenceMember } from "@/lib/api";
 import {
   ASSIGNMENT_FIELD,
-  DEFAULT_TTL_MINUTES,
   ASSIGNABLE_NAMESPACES,
   DEPENDENCY_RELATION,
   WAITING_FIELD,
@@ -32,6 +31,12 @@ import {
 } from "./assignment";
 import { fieldAsList, memoryKeyOf } from "./fields";
 import type { LiveItem } from "./item";
+
+/**
+ * How long an agent's presence row stands after it was last seen. Presence is
+ * a lease the runtime renews, unlike a hold on a task, which has no timer.
+ */
+export const PRESENCE_TTL_MINUTES = 30;
 import { memoryHref } from "@/lib/memory-routes";
 import { memoryTitle } from "@/lib/memory-preview";
 
@@ -202,7 +207,7 @@ function agentItem(agent: AgentSummary, presence: PresenceMember, now: string): 
       // Presence is a lease: the row drains unless the runtime keeps renewing it.
       [ASSIGNMENT_FIELD]: "held",
       claimed_at: lastSeen,
-      ttl_minutes: DEFAULT_TTL_MINUTES,
+      ttl_minutes: PRESENCE_TTL_MINUTES,
     },
   };
 }

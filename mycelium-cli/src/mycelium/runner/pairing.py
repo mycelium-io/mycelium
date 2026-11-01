@@ -6,7 +6,7 @@
 A runner needs approval on its machine before it starts anything a hub sent
 (``approvals``), because a hub can't prove who asked. When no one is at the
 machine to approve, a paired device can be used instead: the device (a
-browser, the Mac app) holds a private key that never leaves it, and jobs it
+browser, the desktop app) holds a private key that never leaves it, and jobs it
 signs start without approval, within the limits set when it was paired.
 
 Pairing happens once, at this machine. ``mycelium runner pair`` writes an

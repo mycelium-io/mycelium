@@ -23,6 +23,7 @@ from typer.testing import CliRunner
 
 from mycelium.cli import app
 from mycelium.commands import pattern
+from tests.conftest import install_stand_in_hub
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -71,14 +72,11 @@ class Hub:
             return httpx.Response(self.status, json={"detail": self.detail})
         return httpx.Response(self.status, json=self.body)
 
-    def client(self) -> httpx.Client:
-        return httpx.Client(base_url="http://hub", transport=httpx.MockTransport(self))
-
 
 @pytest.fixture
 def hub(monkeypatch) -> Hub:
     stand_in = Hub()
-    monkeypatch.setattr(pattern, "hub_client", lambda *_a, **_k: stand_in.client())
+    install_stand_in_hub(monkeypatch).answer = stand_in
     return stand_in
 
 
@@ -211,7 +209,7 @@ def test_a_scenario_with_no_flow_says_the_room_is_ready(hub: Hub) -> None:
 
 
 def test_the_hubs_reason_for_refusing_is_shown(hub: Hub) -> None:
-    hub.status, hub.detail = 422, "role 'critic' is bound to 'judge', a aligner"
+    hub.status, hub.detail = 422, "role 'critic' is bound to 'judge', a synthesizer"
     result = run("use", "adversarial-review-agents")
     assert result.exit_code == 1
     assert "could not load adversarial-review-agents" in said(result)
@@ -245,9 +243,13 @@ def test_ls_lists_the_hubs_patterns(hub: Hub) -> None:
         "patterns": [
             {
                 "pattern": "approval-gate-agent",
+                "title": "Approval gate",
                 "summary": "An agent proposes, a person decides.",
                 "flow": "gated",
-                "members": [{"handle": "ops"}, {"handle": "you"}],
+                "members": [
+                    {"handle": "ops", "kind": "persona"},
+                    {"handle": "you", "kind": "human"},
+                ],
             }
         ],
         "skipped": {"broken": "needs notes"},

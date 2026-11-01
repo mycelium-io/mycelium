@@ -8,13 +8,16 @@ import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
+import { layOut } from "@/test/scroll";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),
+  fetchVerifierFlags: vi.fn().mockResolvedValue([]),
   fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
+  fetchRoomSettings: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
 }));
 
@@ -54,6 +57,21 @@ describe("<EventStream /> live message rendering", () => {
     resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
+  it("shows a message exactly as the hub sent it from its right-click menu", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(exchangeMessage("look under the hood", { id: "m-raw" }));
+    });
+
+    await user.pointer({ keys: "[MouseRight]", target: await screen.findByText("look under the hood") });
+    await user.click(await screen.findByText("View raw message"));
+    expect(await screen.findByRole("dialog", { name: "Raw message" })).toHaveTextContent('"message_type": "l9_exchange"');
   });
 
   it("renders an l9_exchange streamed over SSE as a chat message", async () => {
@@ -122,6 +140,69 @@ describe("<EventStream /> live message rendering", () => {
     scrollTo.mockRestore();
   });
 
+  it("keeps the reader at the bottom when a tall reply lands, and holds still when they've scrolled up", async () => {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+    const box = layOut(viewport, "[data-event-id]");
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(exchangeMessage("first", { id: "m1" }));
+      es.emit(exchangeMessage("second", { id: "m2" }));
+    });
+    await screen.findByText("second");
+    expect(box.atBottom()).toBe(true);
+
+    await act(async () => {
+      es.emit(exchangeMessage("a long reply", { id: "m3" }));
+    });
+    await screen.findByText("a long reply");
+    expect(box.atBottom()).toBe(true);
+
+    box.scrollTo(0);
+    await act(async () => {
+      es.emit(exchangeMessage("while you read back", { id: "m4" }));
+    });
+    await screen.findByText("while you read back");
+    expect(box.top()).toBe(0);
+    expect(screen.getByRole("button", { name: "Jump to latest, 1 new" })).toBeInTheDocument();
+  });
+
+  it("stays on the tail when the feed's size changes without a new row", async () => {
+    // "responding" appearing over the composer shortens the viewport, and
+    // nothing scrolls: the feed has to put the reader back on its last line.
+    const observers: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private cb: () => void) {
+          observers.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const viewport = document.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+
+    let top = 0;
+    Object.defineProperty(viewport, "scrollHeight", { configurable: true, value: 900 });
+    Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 300 });
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (v: number) => {
+        top = v;
+      },
+    });
+    act(() => observers.forEach((cb) => cb()));
+    expect(top).toBe(900);
+    vi.unstubAllGlobals();
+  });
+
   it("renders an l9_commit streamed over SSE as a consensus notice, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderWithSWR(<EventStream roomName="sprint" />);
@@ -132,7 +213,7 @@ describe("<EventStream /> live message rendering", () => {
       es.open();
       es.emit({
         message_type: "l9_commit",
-        sender_handle: "aligner",
+        sender_handle: "conductor",
         created_at: CREATED,
         content: JSON.stringify({
           content: "consensus reached",
@@ -149,7 +230,7 @@ describe("<EventStream /> live message rendering", () => {
     });
 
     expect(await screen.findByText("Consensus")).toBeInTheDocument();
-    expect(screen.getByText("· 1 issue agreed", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("1 issue agreed", { exact: false })).toBeInTheDocument();
     expect(screen.getByText("GAR 0.80", { exact: false })).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
@@ -168,10 +249,10 @@ describe("<EventStream /> live message rendering", () => {
         sender_handle: "system",
         created_at: CREATED,
         content: JSON.stringify({
-          content: "plan updated → plan/tasks.md",
+          content: "plan updated → work/plan-the-tasks",
           l9: {
             header: { kind: "knowledge", subkind: "distillation" },
-            payload: { type: "distillation", data: { key: "plan/tasks.md", updated_by: "aligner" } },
+            payload: { type: "distillation", data: { key: "work/plan-the-tasks", updated_by: "conductor" } },
           },
         }),
       });
@@ -180,10 +261,32 @@ describe("<EventStream /> live message rendering", () => {
     // A memory push is the room's state, not its speech: it reaches the rail
     // under the row's own name, once, and never the conversation.
     expect(await screen.findByText("Recently updated")).toBeInTheDocument();
-    expect(screen.getAllByText("plan/tasks.md")).toHaveLength(1);
-    expect(screen.getByText("@aligner")).toBeInTheDocument();
+    expect(screen.getAllByText("work/plan-the-tasks")).toHaveLength(1);
+    expect(screen.getByText("@conductor")).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("keeps a run's saved decision off the rail, where it would read as a task", async () => {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit({
+        message_type: "l9_knowledge",
+        sender_handle: "system",
+        created_at: CREATED,
+        content: JSON.stringify({
+          content: "memory updated → context/decision/make-the-shares-add-up",
+          l9: { payload: { type: "extraction", data: { key: "context/decision/make-the-shares-add-up", updated_by: "conductor" } } },
+        }),
+      });
+    });
+
+    expect(screen.queryByText("Recently updated")).not.toBeInTheDocument();
+    expect(screen.queryByText(/context\/decision/)).not.toBeInTheDocument();
   });
 
   it("opens the episode's thread when a coordination notice's tag is clicked", async () => {
@@ -196,7 +299,7 @@ describe("<EventStream /> live message rendering", () => {
       es.open();
       es.emit({
         message_type: "l9_commit",
-        sender_handle: "aligner",
+        sender_handle: "conductor",
         created_at: CREATED,
         content: JSON.stringify({
           content: "consensus reached",

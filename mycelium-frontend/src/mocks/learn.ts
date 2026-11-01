@@ -20,7 +20,9 @@
 
 import type { EpisodeSummary } from "@/lib/api";
 import type { UpstreamRef } from "@/lib/board/upstream";
-import { Director, once, sleep } from "./director";
+import type { UPSTREAM_CHANGES } from "@/lib/threads";
+import { named } from "@/lib/conductor-line";
+import { Director, once, sleep, titleOf } from "./director";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
 import { publish } from "./live";
 
@@ -36,6 +38,8 @@ export const LEARN_TAKES = [
   "swarm-run",
   "swarm-steer",
   "relay",
+  "agree-accord",
+  "agree-concord",
 ] as const;
 
 export type LearnTake = (typeof LEARN_TAKES)[number];
@@ -462,7 +466,7 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
   const tick = (round: number, who: string, action: string, offer: Record<string, string>) =>
     publish(d.room, {
       id: `tick-${round}-${who}-${action}`,
-      sender_handle: "aligner",
+      sender_handle: "conductor",
       message_type: "coordination_tick",
       episode: thread,
       content: JSON.stringify({ payload: { round, participant_id: who, action, current_offer: offer } }),
@@ -473,13 +477,13 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
     topic: `urn:concept:mycelium:${d.room}`,
     outcome: "open",
     subkind: null,
-    participants: [a, b, "aligner"],
+    participants: [a, b, "conductor"],
     metrics: null,
     assignments: null,
     tasks: [],
     message_count: 0,
     updated_at: new Date().toISOString(),
-    updated_by: "aligner",
+    updated_by: "conductor",
     within: thread,
   };
   d.fx.episodes.push(summary);
@@ -487,9 +491,9 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
     d.join(who, "where carts live", thread);
     await sleep(300);
   }
-  await d.think("aligner", thread, 2600);
+  await d.think("conductor", thread, 2600);
   d.say(
-    "aligner",
+    "conductor",
     "You agree on the goal: a cart that follows the customer for 30 days. @web is worried about a write on every " +
       "tap, @api about losing carts on a restart. So the issue is where a cart is kept, and how often it's written.",
     thread,
@@ -497,20 +501,20 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
   tick(1, a, "propose", { store: "redis" });
   await sleep(800);
   tick(1, b, "counter", { store: "postgres" });
-  await d.think("aligner", thread, 2600);
+  await d.think("conductor", thread, 2600);
   const deal = { store: "postgres", writes: "batched, at most one every 5 seconds per cart" };
   d.say(
-    "aligner",
+    "conductor",
     "Proposal: carts live in Postgres, so they survive a restart for 30 days. The server batches a cart's changes " +
       "and writes at most once every 5 seconds, so a burst of taps is one write. @web?",
     thread,
   );
-  tick(2, "aligner", "propose", deal);
+  tick(2, "conductor", "propose", deal);
   await d.think(a, thread, 2000);
   d.say(a, "Works for me. Batching was the whole worry.", thread);
   tick(2, a, "accept", deal);
-  await d.think("aligner", thread, 800);
-  d.say("aligner", "@api?", thread);
+  await d.think("conductor", thread, 800);
+  d.say("conductor", "@api?", thread);
   await d.think(b, thread, 2000);
   d.say(b, "Yes. Durable, and the write load is fine at one every 5 seconds.", thread);
   tick(2, b, "accept", deal);
@@ -531,7 +535,7 @@ async function negotiate(d: Director, thread: string, a: string, b: string): Pro
     content: JSON.stringify({ plan: "where carts live", assignments, episode: thread, metrics: { gar: 0.9 } }),
   });
   d.say(
-    "aligner",
+    "conductor",
     "✓ Agreed: carts live in Postgres for 30 days, and a cart is written at most once every 5 seconds.",
     thread,
   );
@@ -602,15 +606,26 @@ function githubRoom(): RoomFixture {
   return fx;
 }
 
-/** Point a row at a pull request in a given state, the way the hub's cache would answer. */
-function setPr(d: Director, key: string, id: string, state: UpstreamRef["state"], label: string): void {
+/** Point a row at a pull request in a given state, the way the hub's cache would
+ *  answer, and say what changed with the hub's `upstream` notice: the chat
+ *  shows it opening, merging or going red, and the rail all of it. */
+function setPr(
+  d: Director,
+  key: string,
+  id: string,
+  state: UpstreamRef["state"],
+  label: string,
+  change: (typeof UPSTREAM_CHANGES)[number],
+): void {
   const status = d.fx.status;
   if (!status) return;
   const ref = pr(id, state, label, key, 5);
   status.refs = [...status.refs.filter((r) => r.id !== id), ref];
   status.rows[`memory:${key}`] = [ref.ref];
   const r = d.fx.memories.find((m) => m.key === key);
-  if (r) d.patchRow(key, {}, String(r.updated_by ?? "coder"));
+  if (!r) return;
+  d.patchRow(key, {}, String(r.updated_by ?? "coder"));
+  d.notice({ subkind: "upstream", key, title: titleOf(r), episode: r.episode, change, ref: `#${id.split("#")[1]}`, url: ref.url });
 }
 
 async function githubIssue(d: Director, row: MockMemory, owner: string): Promise<void> {
@@ -629,15 +644,17 @@ async function githubIssue(d: Director, row: MockMemory, owner: string): Promise
   const title = String(row.value).split("\n")[0];
   d.setMemory(row.key, `${title}\n\nPR: ${TAX_PR}`, owner);
   d.patchRow(row.key, { branch: "fix/receipt-tax", pr: "#616", ci: "running" }, owner);
-  setPr(d, row.key, TAX_PR, "pending", "CI running");
-  d.say(owner, `Opened ${TAX_PR} ("Fixes #118"), and put it on this task so the board follows it.`, thread);
+  setPr(d, row.key, TAX_PR, "pending", "CI running", "opened");
+  d.say(owner, `Opened ${TAX_PR} ("Fixes #118"), and put it on this task so the room follows it.`, thread);
   await sleep(4200);
   d.patchRow(row.key, { ci: "green" }, owner);
-  setPr(d, row.key, TAX_PR, "pending", "awaiting review");
+  setPr(d, row.key, TAX_PR, "pending", "CI green", "ci_passed");
+  await sleep(2000);
+  setPr(d, row.key, TAX_PR, "pending", "awaiting review", "review_requested");
   await sleep(3800);
-  setPr(d, row.key, TAX_PR, "ok", "approved");
+  setPr(d, row.key, TAX_PR, "ok", "approved", "approved");
   await sleep(3200);
-  setPr(d, row.key, TAX_PR, "done", "merged");
+  setPr(d, row.key, TAX_PR, "done", "merged", "merged");
   await d.think(owner, thread, 1400);
   d.say(owner, "#616 is merged, and GitHub closed #118 from it. Resolving.", thread);
   d.resolve(row.key, owner);
@@ -922,6 +939,9 @@ async function relay(d: Director, parent: MockMemory): Promise<void> {
   await sleep(1200);
   d.fileRow(EXPIRY.key, EXPIRY.title, { kind: "decision", status: "open", priority: "high", "part-of": SHIP }, "pm", EXPIRY.short);
   d.say("pm", "One thing only you can decide, so I filed it: do gift cards expire? Everything else goes ahead meanwhile.", top);
+  // Asked in the decision's own thread, by name, which is what puts it under
+  // "Waiting on you" on the person's board.
+  d.say("pm", `@${SAM} do gift cards expire? Once you say, the help page and the checkout copy follow.`, d.ep(EXPIRY.short));
   d.present("coder", api.title);
 
   await d.think("coder", d.ep(api.short), 4200);
@@ -999,6 +1019,448 @@ async function relay(d: Director, parent: MockMemory): Promise<void> {
   d.present("pm");
 }
 
+// ── agreeing (course 6): accord and concord ───────────────────────────────────
+
+const TRIO = ["pm", "web", "api"];
+
+/** The conductor and three agents: Sam's PM and screens agent, and Alex's server agent. */
+function agreeRoom(task: MockMemory, opening: MockMessage[]): RoomFixture {
+  const fx = baseRoom();
+  fx.memories.push(
+    engine("conductor", "conductor", "Walks a flow inside a task's thread."),
+    agent("pm", "Holds a task to a list of checks and reviews every piece. Doesn't write code.", `owner: ${SAM}\n`),
+    agent("web", "Builds the shop's screens. Sam's, in ~/code/shop.", `owner: ${SAM}\nteam: web\n`),
+    agent("api", "Owns the shop's server and its database. Alex's, in ~/code/shop-api.", `owner: ${ALEX}\nteam: api\n`),
+    task,
+  );
+  fx.presence = TRIO.map((h) => ({ handle: h, kind: "lease" as const, last_seen: ago(1) }));
+  fx.messages.push(...opening);
+  return fx;
+}
+
+/** A conductor question, its turn line, and the member's reply. */
+async function turn(
+  d: Director,
+  thread: string,
+  protocol: string,
+  step: string,
+  who: string,
+  n: number,
+  cap: number,
+  reply: string,
+  wait = 2400,
+): Promise<void> {
+  d.say("conductor", `${protocol} · ${step} · turn ${n} of ${cap} · ${who}`, thread, {
+    event: "turn",
+    protocol,
+    step,
+    to: who,
+    turn: n,
+    cap,
+  });
+  await d.think(who, thread, wait);
+  d.say(who, reply, thread);
+  await sleep(500);
+}
+
+/** A step put to several members at once, as the conductor does it: every
+ *  member's turn line back to back, then their replies as they come. */
+async function everyone(
+  d: Director,
+  thread: string,
+  protocol: string,
+  step: string,
+  who: string[],
+  n: number,
+  cap: number,
+  replies: Record<string, string>,
+  wait = 2000,
+): Promise<void> {
+  for (const h of who) {
+    d.say("conductor", `${protocol} · ${step} · turn ${n} of ${cap} · ${h}`, thread, {
+      event: "turn",
+      protocol,
+      step,
+      to: h,
+      turn: n,
+      cap,
+    });
+  }
+  for (const h of who) {
+    await d.think(h, thread, wait);
+    d.say(h, replies[h], thread);
+    await sleep(400);
+  }
+}
+
+// Accord: three agents read "schedule a gift" three ways.
+
+const SCHEDULED = "work/scheduled-gifts";
+const SCHEDULED_TITLE = "Let customers schedule a gift delivery";
+const SCHEDULED_THREAD = ep("5d1e7a");
+
+const ACCORD_STEPS = [
+  { id: "terms", to: "all", next: "frame", prompt: "Which words could the team mean different things by?" },
+  { id: "frame", to: "all", next: "added", prompt: "Say what you understand the task to be, one labelled point per line." },
+  { id: "added", kind: "tally", next: { grew: "more", settled: "ground", empty: "nothing" } },
+  { id: "more", to: "all", next: "added", prompt: "Is something important missing?" },
+  { id: "ground", to: "all", next: "words", prompt: "Say what you mean by each key term, with units, and how you'd confirm the points you can." },
+  { id: "words", kind: "tally", next: { contested: "restate", clear: "lock" } },
+  { id: "restate", to: "contested", next: "words", prompt: "Say again what you mean by each term in dispute, with an example." },
+  { id: "lock", kind: "lock", next: { locked: "locked", empty: "nothing" } },
+  { id: "locked", end: "resolved" },
+  { id: "nothing", end: "rejected" },
+];
+
+const FRAMES: Record<string, string> = {
+  pm:
+    "objective: A gift arrives on a day the customer chooses.\n" +
+    "constraint: Ready for gift season, three weeks out.\n" +
+    "deliverable: A delivery date on the order, shown in the confirmation email.",
+  web:
+    "objective: At checkout, the customer picks the day the gift arrives.\n" +
+    "sub_goal: A date picker that only offers days we can ship for.\n" +
+    "out of scope: Changing the date after the order is placed.",
+  api:
+    "objective: A gift can be scheduled to repeat: every 2, 4 or 8 weeks until cancelled.\n" +
+    "sub_goal: A schedule model that creates the next order on its day.\n" +
+    "assumption: Payment is taken again for each delivery.",
+};
+
+const GROUND: Record<string, string> = {
+  pm:
+    "schedule: Choose the one calendar day a delivery arrives.\n" +
+    "check p1, p3: Order a gift for three days out; the email shows that date and it ships that morning.",
+  web:
+    "schedule: Pick one delivery date at checkout, in the recipient's time zone.\n" +
+    "check p4: Try a Sunday and a day inside the next 48 hours; the picker refuses both.",
+  api: "schedule: A delivery that repeats every 2, 4 or 8 weeks until cancelled.",
+};
+
+const RESTATED: Record<string, string> = {
+  pm: "schedule: The one calendar day a delivery arrives. For example, an order on 3 December for the 10th arrives on the 10th, once.",
+  web: "schedule: One delivery date picked at checkout. For example, the 10th, and nothing after it.",
+  api:
+    "schedule: One delivery date picked at checkout, like the others say. For example, the 10th. " +
+    "Repeating deliveries are a separate feature; I'll keep them out of this one.",
+};
+
+const ACCORD_SUMMARY =
+  "# Shared summary: Let customers schedule a gift delivery\n\n" +
+  "**Objective**\n" +
+  "- p1. A gift arrives on a day the customer chooses at checkout. (@pm, @web)\n" +
+  "- p2. A gift can be scheduled to repeat until cancelled. (@api)\n\n" +
+  "**Constraints**\n- p3. Ready for gift season, three weeks out. (@pm)\n\n" +
+  "**Parts of the work**\n" +
+  "- p4. A date picker that only offers days we can ship for. (@web)\n" +
+  "- p5. A schedule model that creates the next order on its day. (@api)\n\n" +
+  "**What's handed over**\n- p6. A delivery date on the order, shown in the confirmation email. (@pm)\n\n" +
+  "**Assumptions**\n- p7. Payment is taken again for each delivery. (@api)\n\n" +
+  "**Out of scope**\n- p8. Changing the date after the order is placed. (@web)\n\n" +
+  "**Words**\n- schedule: the one calendar day a delivery arrives, picked at checkout. (@pm, @web, and @api after restating)\n\n" +
+  "**How done is checked**\n" +
+  "- Order a gift for three days out; the email shows that date and it ships that morning. (@pm; covers p1, p3)\n" +
+  "- Try a Sunday and a day inside the next 48 hours; the picker refuses both. (@web; covers p4)\n\n" +
+  "**Open**\n" +
+  "- p2, p5 and p7, repeating deliveries, were said by @api alone, and conflict with p1.\n" +
+  "- p8 was said by @web alone.\n" +
+  "- p6 was said by @pm alone.";
+
+function accordRoom(): RoomFixture {
+  return agreeRoom(
+    row(SCHEDULED, SCHEDULED_TITLE, { kind: "action", status: "open", assignment: "unclaimed", priority: "high" }, SAM, 40, "5d1e7a"),
+    [
+      msg("a0", SAM, "Gift season is close. Let customers schedule a gift delivery. @pm @web @api, this one's yours.", 30, SCHEDULED_THREAD),
+      msg("a1", "web", "On it: a date picker at checkout, so the gift arrives on the day they choose.", 27, SCHEDULED_THREAD),
+      msg("a2", "api", "Starting the schedule model: deliver every few weeks until cancelled, like a subscription.", 26, SCHEDULED_THREAD),
+    ],
+  );
+}
+
+async function accord(d: Director, thread: string): Promise<void> {
+  const say = (event: string, text: string, line: Record<string, unknown>) =>
+    d.say("conductor", text, thread, { event, ...line });
+  say("open", "Running accord with pm, web, api as members. The key terms: schedule.", {
+    protocol: "accord",
+    description:
+      "Get on the same page. The key terms are fixed first; everyone says what the task is, what each term means with its units, and which checks it owns.",
+    roles: {},
+    members: TRIO,
+    steps: ACCORD_STEPS,
+  });
+  await sleep(900);
+  await everyone(d, thread, "accord", "frame", TRIO, 1, 9, FRAMES, 2200);
+  say("tally", "Round 1: 8 new points, 8 in all", {
+    step: "added",
+    next: "more",
+    tally: { of: "points", round: 1, max_rounds: 2, outcome: "grew", added: 8, points: 8, capped: false },
+  });
+  await sleep(900);
+  await everyone(
+    d,
+    thread,
+    "accord",
+    "more",
+    TRIO,
+    2,
+    9,
+    Object.fromEntries(TRIO.map((h) => [h, "Nothing missing from my side."])),
+    1200,
+  );
+  say("tally", "Nobody added anything new: 8 points", {
+    step: "added",
+    next: "ground",
+    tally: { of: "points", round: 2, max_rounds: 2, outcome: "settled", added: 0, points: 8, capped: false },
+  });
+  await sleep(900);
+  await everyone(d, thread, "accord", "ground", TRIO, 3, 9, GROUND, 1800);
+  say("tally", "Words used in different senses: schedule. Asking pm, web, api again", {
+    step: "words",
+    next: "restate",
+    tally: { of: "terms", round: 1, max_rounds: 2, outcome: "contested", words: 1, contested: ["schedule"], asked: TRIO },
+  });
+  await sleep(1000);
+  await everyone(d, thread, "accord", "restate", TRIO, 4, 9, RESTATED, 1600);
+  say("tally", "No word used in different senses", {
+    step: "words",
+    next: "lock",
+    tally: { of: "terms", round: 2, max_rounds: 2, outcome: "clear", words: 1, contested: [] },
+  });
+  await sleep(800);
+  const memory = "context/summary/scheduled-gifts";
+  d.setMemory(memory, ACCORD_SUMMARY, "conductor", { "relates-to": SCHEDULED });
+  say("lock", "Shared summary: 8 points, 1 stated by more than one person, 2 checks, 3 open items", {
+    step: "lock",
+    next: "locked",
+    lock: { outcome: "locked", memory, saved: true, points: 8, shared: 1, contested: 0, checks: 2, flagged: 3, quiet: [] },
+  });
+  await sleep(700);
+  say("close", "✓ accord done", { protocol: "accord", outcome: "resolved", steps: 4, reason: "reached `locked`", memory });
+}
+
+// Concord: three real ways for a gift order to wait for its payment.
+
+const PAYMENTS = "work/gift-payments";
+const PAYMENTS_TITLE = "Stop gift orders shipping before the payment clears";
+const PAYMENTS_THREAD = ep("7b2f9c");
+
+const CONCORD_STEPS = [
+  { id: "anchor", to: "all", next: "propose", prompt: "Rate the bad and the ideal outcome for your role, with why." },
+  { id: "propose", to: "all", next: "score", prompt: "Propose the one option you think best, and say why." },
+  { id: "score", to: "all", next: "pick", prompt: "Rate each option for your role, each with a reason." },
+  { id: "pick", kind: "select", next: { feasible: "agreed", infeasible: "repair", stuck: "best", nothing: "no_deal" } },
+  { id: "repair", to: "bottleneck", next: "rescore", prompt: "Propose something new that answers the objections." },
+  { id: "rescore", to: "all", next: "pick", prompt: "Rate the new option, with a reason." },
+  { id: "agreed", end: "converged" },
+  { id: "best", end: "resolved" },
+  { id: "no_deal", end: "rejected" },
+];
+
+const ANCHORS: Record<string, string> = {
+  pm: "bad: 0 - gifts keep shipping on cards that fail, all season\nideal: 100 - my pick: safe for us, and most gifts never wait",
+  web: "bad: 0 - nothing changes, and we're still arguing in December\nideal: 100 - my pick: nobody waits for a gift",
+  api: "bad: 0 - unpaid orders keep shipping, money we never get back\nideal: 100 - my pick: no unpaid order ever leaves the warehouse",
+};
+
+const OPTIONS = [
+  {
+    label: "A",
+    who: "api",
+    text: "Hold every gift order until the payment clears, then ship it.",
+    why: "an order that never ships unpaid can't cost us anything",
+  },
+  {
+    label: "B",
+    who: "web",
+    text: "Ship at once, and cancel the delivery if the payment fails.",
+    why: "a gift has a day it has to arrive, and most cards clear",
+  },
+  {
+    label: "C",
+    who: "pm",
+    text: "Ship at once, but only for customers with a past paid order; hold the rest.",
+    why: "most of our gift buyers have bought before, so most orders never wait",
+  },
+];
+const REVISED = {
+  label: "D",
+  who: "web",
+  text: "Hold a gift order until the payment clears, for at most 30 minutes; if it hasn't cleared by then, ship it and cancel if it fails.",
+  why: "it answers api's worry about unpaid orders, and a first-time buyer waits half an hour, not a day",
+};
+
+const FIRST_RATINGS: Record<string, Record<string, [number, string]>> = {
+  pm: {
+    A: [75, "safe, but slow for gift season"],
+    B: [40, "it ships gifts on cards that later fail"],
+    C: [85, "it covers most customers fairly"],
+  },
+  web: {
+    A: [45, "a customer waits with no idea how long"],
+    B: [90, "it's what customers want"],
+    C: [50, "a first-time gift buyer waits a day and misses the date"],
+  },
+  api: {
+    A: [95, "it never ships an unpaid order"],
+    B: [20, "it means chargebacks all December"],
+    C: [72, "fine, though first-time buyers wait"],
+  },
+};
+const SECOND: Record<string, [number, string]> = {
+  pm: [82, "safe and quick enough for gift season"],
+  web: [78, "half an hour is a wait customers won't notice"],
+  api: [80, "a short hold catches nearly every failed card"],
+};
+
+function pick(
+  outcome: "feasible" | "infeasible",
+  options: { label: string; text: string; who: string; why: string }[],
+  rated: Record<string, Record<string, [number, string]>>,
+  chosen: string,
+): Record<string, unknown> {
+  const table = Object.fromEntries(
+    options.map((o) => [o.label, Object.fromEntries(TRIO.map((h) => [h, rated[o.label][h][0]]))]),
+  );
+  const placed = Object.fromEntries(
+    options.map((o) => [o.label, Object.fromEntries(TRIO.map((h) => [h, rated[o.label][h][0] / 100]))]),
+  );
+  const reasons = Object.fromEntries(
+    options.map((o) => [o.label, Object.fromEntries(TRIO.map((h) => [h, rated[o.label][h][1]]))]),
+  );
+  const ratings = table[chosen];
+  const short = TRIO.filter((h) => placed[chosen][h] < 0.6)
+    .sort((a, b) => placed[chosen][a] - placed[chosen][b])
+    .map((h) => ({ member: h, placed: placed[chosen][h], why: reasons[chosen][h] }));
+  return {
+    outcome,
+    pick: chosen,
+    text: options.find((o) => o.label === chosen)?.text ?? "",
+    threshold: 60,
+    options: options.map((o) => ({ label: o.label, text: o.text, authors: [o.who], why: { [o.who]: o.why } })),
+    table,
+    placed,
+    reasons,
+    cast: TRIO,
+    ratings,
+    lowest: Math.min(...Object.values(placed[chosen])),
+    missing: [],
+    least_happy: short[0]?.member ?? null,
+    short,
+  };
+}
+
+/** `{option: {member: [rating, why]}}` from `{member: {option: [rating, why]}}`. */
+function byOption(given: Record<string, Record<string, [number, string]>>): Record<string, Record<string, [number, string]>> {
+  const out: Record<string, Record<string, [number, string]>> = {};
+  for (const [who, row] of Object.entries(given)) {
+    for (const [label, r] of Object.entries(row)) (out[label] ??= {})[who] = r;
+  }
+  return out;
+}
+
+function concordRoom(): RoomFixture {
+  return agreeRoom(
+    row(PAYMENTS, PAYMENTS_TITLE, { kind: "action", status: "open", assignment: "unclaimed", priority: "high" }, SAM, 50, "7b2f9c"),
+    [
+      msg("c1", SAM, "Two gift orders shipped this week before their card was declined. @pm @web @api, we need a rule.", 35, PAYMENTS_THREAD),
+      msg("c2", "api", "Easy fix: hold every order until payment clears.", 33, PAYMENTS_THREAD),
+      msg("c3", "web", "That adds a day to every gift in December. Customers will hate it.", 32, PAYMENTS_THREAD),
+    ],
+  );
+}
+
+async function concord(d: Director, thread: string): Promise<void> {
+  const say = (event: string, text: string, line: Record<string, unknown>) =>
+    d.say("conductor", text, thread, { event, ...line });
+  say(
+    "open",
+    `Running concord with pm, web, api as members. The bar: the option picked has to be at least 60% of the way from no agreement to each member's own pick, for every member. That's the default bar; \`bar=NN\` in the summon sets another. Up to 5 fixes; then the best option found stands, saying who is still short and why.`,
+    {
+      protocol: "concord",
+      description:
+        "Help them agree. Everyone rates two shared reference outcomes, proposes an option and says why, and rates every option with a reason.",
+      roles: {},
+      members: TRIO,
+      steps: CONCORD_STEPS,
+    },
+  );
+  await sleep(900);
+  // The lines a member fills in name each option, as the hub's prompt does.
+  const rated = (label: string, n: number, why: string) => {
+    const o = [...OPTIONS, REVISED].find((x) => x.label === label);
+    return `${o ? named(label, o.text) : label}: ${n} - ${why}`;
+  };
+  await everyone(d, thread, "concord", "anchor", TRIO, 1, 20, ANCHORS, 1500);
+  await everyone(
+    d,
+    thread,
+    "concord",
+    "propose",
+    ["api", "web", "pm"],
+    2,
+    20,
+    Object.fromEntries(OPTIONS.map((o) => [o.who, `${o.text}\nwhy: ${o.why}`])),
+    1800,
+  );
+  await everyone(
+    d,
+    thread,
+    "concord",
+    "score",
+    TRIO,
+    3,
+    20,
+    Object.fromEntries(
+      TRIO.map((h) => [h, Object.entries(FIRST_RATINGS[h]).map(([l, [n, why]]) => rated(l, n, why)).join("\n")]),
+    ),
+    1800,
+  );
+  const first = byOption(FIRST_RATINGS);
+  say("select", "pick: C: web is short of the bar, because a first-time gift buyer waits a day and misses the date", {
+    step: "pick",
+    next: "repair",
+    select: pick("infeasible", OPTIONS, first, "C"),
+  });
+  await sleep(2600);
+  await turn(d, thread, "concord", "repair", "web", 4, 20, `${REVISED.text}\nwhy: ${REVISED.why}`, 2800);
+  await everyone(
+    d,
+    thread,
+    "concord",
+    "rescore",
+    TRIO,
+    5,
+    20,
+    Object.fromEntries(TRIO.map((h) => [h, rated("D", SECOND[h][0], SECOND[h][1])])),
+    1500,
+  );
+  const options = [...OPTIONS, REVISED];
+  say("select", "pick: D: everyone meets the bar", {
+    step: "pick",
+    next: "agreed",
+    select: pick("feasible", options, { ...first, D: SECOND }, "D"),
+  });
+  await sleep(1200);
+  const memory = "context/decision/gift-payments";
+  d.setMemory(
+    memory,
+    `# Decision: ${PAYMENTS_TITLE}\n\nGoing with D: ${REVISED.text}\n\nEveryone meets the bar.\n\n` +
+      "## How each member sees it\n\n" +
+      TRIO.map((h) => `- ${h}: meets the bar, because ${SECOND[h][1]}`).join("\n"),
+    "conductor",
+    { "relates-to": PAYMENTS },
+  );
+  say("close", `✓ Everyone meets the bar: going with D. It answers web's objection: a first-time gift buyer waits a day and misses the date.`, {
+    protocol: "concord",
+    outcome: "converged",
+    steps: 5,
+    reason: "reached `agreed`",
+    pick: "D",
+    text: REVISED.text,
+    memory,
+  });
+}
+
 // ── the scenario ──────────────────────────────────────────────────────────────
 
 /** The `orders` room as the current take starts it, or null outside Learn. */
@@ -1026,6 +1488,10 @@ export function learnRoom(): RoomFixture | null {
       return swarmRoom("split");
     case "relay":
       return relayRoom();
+    case "agree-accord":
+      return accordRoom();
+    case "agree-concord":
+      return concordRoom();
     default:
       return null;
   }
@@ -1107,13 +1573,19 @@ export function learnOnMessage(fx: RoomFixture, room: string, m: MockMessage): v
       if (thread === CART_THREAD && /@api\b/.test(text) && once("learn:ask-api")) void pairingTalk(d);
       break;
     case "pairing-disagree":
-      if (thread === CART_THREAD && /@aligner\b/.test(text) && once("learn:aligner")) void negotiate(d, thread, "web", "api");
+      if (thread === CART_THREAD && /@conductor\s+concord\b/.test(text) && once("learn:carts")) void negotiate(d, thread, "web", "api");
       break;
     case "swarm-steer":
       if (thread === d.ep(PARTS[1].short) && once("learn:steer")) void swarmFinish(d);
       break;
     case "relay":
       if (thread === d.ep(EXPIRY.short)) answered().resolve();
+      break;
+    case "agree-accord":
+      if (thread === SCHEDULED_THREAD && /@conductor\s+accord\b/.test(text) && once("learn:accord")) void accord(d, thread);
+      break;
+    case "agree-concord":
+      if (thread === PAYMENTS_THREAD && /@conductor\s+concord\b/.test(text) && once("learn:concord")) void concord(d, thread);
       break;
     default:
       break;

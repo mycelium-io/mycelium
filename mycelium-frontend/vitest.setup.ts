@@ -2,6 +2,16 @@
 // Copyright 2026 Mycelium Contributors
 
 import "@testing-library/jest-dom/vitest";
+import { afterEach } from "vitest";
+
+// Messages a test sent and the room never showed back live in a module-level
+// store, so one test's send would otherwise still be pending in the next.
+// Imported once the test has run, so the store binds to whatever `@/lib/api`
+// that file mocked rather than loading the real one first.
+afterEach(async () => {
+  const { resetPending } = await import("@/lib/pending-messages");
+  resetPending();
+});
 
 // Node 25 ships an incomplete native `localStorage` stub on `globalThis`
 // (no `clear`, `getItem`, etc.) that shadows jsdom's working Storage because

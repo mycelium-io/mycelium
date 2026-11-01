@@ -10,7 +10,7 @@ Checks:
   3. Runtime config drift: backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
-  6. LLM connectivity (real completion probe via backend)
+  6. Engines' model (real completion probe via backend, or what it means unset)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -157,9 +157,36 @@ def _start_hub() -> str:
     return start_hub()
 
 
+#: The check's name. The app's Settings and the desktop's first run find it by
+#: this name, so it stays as it is while what it says names the engines' model.
+LLM_CHECK = "LLM connectivity"
+#: Who uses that model, in the words of the docs' Models page.
+ENGINES_THAT_THINK = (
+    "Only the engines that think need it: personas, workers, the synthesizer, "
+    "the verifier and hello. Your own agents don't."
+)
+#: Where to set one, as the hub's engines say it in the room
+#: (``app/services/engines_model.py``): Settings, or ``install --force``, which
+#: asks for the model and recreates a Docker hub so it takes effect.
+SET_ONE = (
+    "Set one in Settings → Engines' model, or on a hub you run with Docker, "
+    "with `mycelium install --force`."
+)
+
+
+def _not_set(set_up: str) -> CheckResult:
+    """No model set: fine, and what that means."""
+    return CheckResult(
+        name=LLM_CHECK,
+        status="ok",
+        message="Engines' model not set",
+        details=[ENGINES_THAT_THINK, set_up],
+    )
+
+
 def _check_llm_connectivity(
     *,
-    set_up: str = "Run: mycelium install --force",
+    set_up: str = SET_ONE,
     replace_key: str | None = None,
 ) -> CheckResult:
     """Probe the backend's LLM with a real one-shot ``pi`` turn.
@@ -175,21 +202,16 @@ def _check_llm_connectivity(
 
     ``set_up`` is what to do when no model is set, and ``replace_key`` what to do
     when the provider refuses the key, in the words of wherever this is read:
-    the terminal's ``install``, or the Mac app's Settings.
+    the terminal's ``install``, or the desktop app's Settings.
     """
-    # Skip entirely if the LLM isn't configured at all; _check_llm_config
-    # already reported that and running the probe would be redundant noise.
+    # No model set is a choice, not a fault: say what it means and skip the probe.
     env_path = Path.home() / ".mycelium" / ".env"
     if env_path.exists():
         from dotenv import dotenv_values
 
         vals = dotenv_values(env_path)
         if not vals.get("LLM_MODEL"):
-            return CheckResult(
-                name="LLM connectivity",
-                status="ok",
-                message="Skipped (LLM_MODEL not set)",
-            )
+            return _not_set(set_up)
 
     from mycelium.config import MyceliumConfig
 
@@ -198,47 +220,39 @@ def _check_llm_connectivity(
         api_url = config.server.api_url
     except Exception:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message="Skipped (cannot load config)",
         )
 
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(
-            f"{api_url}/health",
-            params={"check_llm": "true", "llm_probe": "completion"},
-            timeout=30,
-        )
-    except Exception as exc:
+    said = health(api_url, check_llm=True, probe="completion", timeout=30)
+    if not said.answered:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message="Skipped (backend unreachable)",
-            details=[str(exc), f"Start the backend: {_start_hub()}"],
+            details=[said.error or "", f"Start the backend: {_start_hub()}"],
         )
-
-    if resp.status_code >= 500:
+    if said.read is None:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
-            message=f"Backend /health returned HTTP {resp.status_code}",
+            message=f"Backend /health: {said.error}",
         )
-
-    try:
-        llm = resp.json().get("llm", {}) or {}
-    except Exception:
+    llm = said.llm
+    if llm is None:
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
-            message="Backend returned non-JSON response",
+            message="This hub doesn't report its model",
         )
 
-    status = llm.get("status", "unknown")
-    model = llm.get("model", "") or "<unset>"
-    message = llm.get("message", "") or ""
-    remediation = llm.get("remediation") or ""
+    status = llm.status
+    model = llm.model or "<unset>"
+    message = llm.message or ""
+    remediation = llm.remediation or ""
 
     details: list[str] = []
     if message:
@@ -251,55 +265,50 @@ def _check_llm_connectivity(
     # user-fixable without a reinstall).
     if status == "ok":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="ok",
             message=f"{model}: completion probe succeeded",
         )
     if status == "not_configured":
-        return CheckResult(
-            name="LLM connectivity",
-            status="warning",
-            message="Not configured",
-            details=[set_up],
-        )
+        return _not_set(set_up)
     if status == "missing_extras":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="error",
             message=f"{model}: missing provider SDK in backend",
             details=details,
         )
     if status == "bad_model":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="error",
             message=f"{model}: invalid model string",
             details=details,
         )
     if status == "auth_error":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message=f"{model}: authentication failed",
             details=[*details, replace_key] if replace_key else details,
         )
     if status == "unreachable":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="warning",
             message=f"{model}: provider unreachable",
             details=details,
         )
     if status == "unchecked":
         return CheckResult(
-            name="LLM connectivity",
+            name=LLM_CHECK,
             status="ok",
             message=f"{model}: probe unsupported for this provider",
             details=details,
         )
     # error | unknown
     return CheckResult(
-        name="LLM connectivity",
+        name=LLM_CHECK,
         status="error",
         message=f"{model}: {status}",
         details=details,
@@ -378,41 +387,57 @@ def _backend_container_running() -> bool:
     return "mycelium-backend" in r.stdout.split()
 
 
-def _check_mediator_pi_binary() -> CheckResult:
-    """The aligner's SAO mediator runs on Pi; warn if it's unreachable on a
+def _pi_argv(binary: str) -> list[str] | None:
+    """The command that starts Pi for ``binary``, or ``None`` when it can't be found.
+
+    A path to Pi's JavaScript entry point runs on ``node`` directly, the way the
+    hub starts it (on Windows, Pi's npm launcher is a batch file that mangles
+    multi-line prompts).
+    """
+    import shutil
+
+    if binary.endswith((".js", ".mjs", ".cjs")):
+        node = shutil.which("node")
+        return [node, binary] if node and Path(binary).is_file() else None
+    return [binary] if shutil.which(binary) else None
+
+
+def _check_engine_pi_binary() -> CheckResult:
+    """Every engine's model call runs on Pi; warn if it's unreachable on a
     host-run backend.
 
-    Pi is the mediator's *LLM session*; without it on PATH, an ``@aligner`` summon
-    fails (``PiSessionError: pi not found``). The released **backend image already
-    installs Pi**, so the normal ``mycelium up`` path is fine and needs no host
-    binary. The
-    only gap is running the backend *outside Docker* (a contributor doing
+    Without Pi on PATH, a summoned engine that calls a model (a persona, a
+    worker, the synthesizer) can't think. The released **backend image already installs Pi**, so the
+    normal ``mycelium up`` path is fine and needs no host binary. The only gap is
+    running the backend *outside Docker* (a contributor doing
     ``uvicorn app.main:app`` on the host): there Pi must be on the host PATH. So:
-    if the backend container is up, this is satisfied by the image; otherwise check
-    the host.
+    if the backend container is up, this is satisfied by the image; otherwise
+    check the host.
     """
     import os
     import shutil
 
     if _backend_container_running():
         return CheckResult(
-            name="mediator Pi session",
+            name="engine Pi session",
             status="ok",
             message="backend is dockerized (Pi ships in the image)",
         )
 
     binary = os.environ.get("ALIGNER_PI_BINARY") or "pi"
-    resolved = shutil.which(binary)
-    if resolved is not None:
+    argv = _pi_argv(binary)
+    if argv is not None:
+        # A JavaScript entry point shows the node it runs on; a program, where it is.
+        where = " ".join(argv) if len(argv) > 1 else (shutil.which(binary) or binary)
         return CheckResult(
-            name="mediator Pi session",
+            name="engine Pi session",
             status="ok",
-            message=f"pi on PATH ({resolved})",
+            message=f"pi on PATH ({where})",
         )
     return CheckResult(
-        name="mediator Pi session",
+        name="engine Pi session",
         status="warning",
-        message=f"`{binary}` not on PATH; @aligner negotiations will fail on a host-run backend",
+        message=f"`{binary}` not on PATH; summoned engines will fail on a host-run backend",
         details=[
             "the released backend image already ships Pi, so `mycelium up` needs nothing here;",
             "this only bites when you run the backend outside Docker (host uvicorn).",
@@ -437,35 +462,29 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
 
     api_url = config.server.api_url
 
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(f"{api_url}/health", timeout=5)
-        if resp.status_code < 500:
-            data = resp.json()
-            status = data.get("status", "unknown")
-            version = data.get("version", "")
-            label = f"{api_url} ({status})"
-            if version:
-                label += f" v{version}"
-            return CheckResult(
-                name="Backend reachable",
-                status="ok" if status in ("ok", "degraded") else "warning",
-                message=label,
-            )
-        return CheckResult(
-            name="Backend reachable",
-            status="error",
-            message=f"{api_url} returned HTTP {resp.status_code}",
-        )
-    except Exception as exc:
+    said = health(api_url, timeout=5)
+    if not said.answered:
         hint = f"Run: {_start_hub()}" if local_backend else f"Check the remote backend at {api_url}"
         return CheckResult(
             name="Backend reachable",
             status="error",
             message=f"Cannot connect to {api_url}",
-            details=[str(exc), hint],
+            details=[said.error or "", hint],
         )
+    if said.read is None:
+        return CheckResult(
+            name="Backend reachable",
+            status="error",
+            message=f"{api_url}: {said.error}",
+        )
+    label = f"{api_url} ({said.read.status}) v{said.read.version}"
+    return CheckResult(
+        name="Backend reachable",
+        status="ok" if said.read.status in ("ok", "degraded") else "warning",
+        message=label,
+    )
 
 
 def _read_env_master_secret() -> str | None:
@@ -488,19 +507,19 @@ def _check_http_auth_gate(*, api_url: str) -> CheckResult:
     """Warn when the hub HTTP API is reachable but auth is off on a remote URL."""
     host = (urlparse(api_url).hostname or "").lower()
     remote_target = host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(f"{api_url.rstrip('/')}/health", timeout=5)
-        if resp.status_code >= 500:
-            return CheckResult(
-                name="HTTP API auth",
-                status="warning",
-                message="Could not read auth status from /health",
-            )
-        auth = resp.json().get("auth") or {}
-        if auth.get("enabled"):
-            details = [str(w) for w in auth.get("warnings") or []]
+    said = health(api_url, timeout=5)
+    auth = said.auth
+    if auth is None:
+        return CheckResult(
+            name="HTTP API auth",
+            status="warning",
+            message="Could not read auth status from /health",
+        )
+    try:
+        if auth.enabled:
+            details = [str(w) for w in auth.warnings or []]
             status = "warning" if details else "ok"
             return CheckResult(
                 name="HTTP API auth",
@@ -711,39 +730,25 @@ def _check_runtime_config_drift() -> CheckResult:
             message="Skipped (cannot load config)",
         )
 
-    try:
-        import httpx
+    from mycelium.hub_check import health
 
-        resp = httpx.get(
-            f"{api_url}/health",
-            params={"check_llm": "true"},
-            timeout=5,
-        )
-    except Exception:
+    said = health(api_url, check_llm=True, timeout=5)
+    if not said.answered:
         return CheckResult(
             name="Runtime config drift",
             status="ok",
             message="Skipped (backend unreachable)",
         )
-
-    if resp.status_code >= 500:
+    llm = said.llm
+    if llm is None:
         return CheckResult(
             name="Runtime config drift",
             status="ok",
-            message=f"Skipped (backend HTTP {resp.status_code})",
+            message=f"Skipped (backend: {said.error or 'no model reported'})",
         )
 
-    try:
-        llm = resp.json().get("llm") or {}
-    except Exception:
-        return CheckResult(
-            name="Runtime config drift",
-            status="ok",
-            message="Skipped (backend returned non-JSON)",
-        )
-
-    runtime_model = (llm.get("model", "") or "").strip()
-    runtime_key_hint = (llm.get("key_hint", "") or "").strip()
+    runtime_model = (llm.model or "").strip()
+    runtime_key_hint = (llm.key_hint or "").strip()
     runtime_key_tail = runtime_key_hint[-4:] if len(runtime_key_hint) >= 4 else ""
 
     mismatches: list[str] = []
@@ -800,7 +805,7 @@ def doctor(
     exercise all checks. In the optional hub-and-spoke deployment mode
     spoke nodes talk to a remote backend and don't run Docker containers
     locally. When --mode is 'auto' (the default), doctor checks what the
-    Mac app runs if the app is set up on this machine, and otherwise
+    desktop app runs if the app is set up on this machine, and otherwise
     detects spoke mode from server.api_url: if it points to a non-local
     host the Docker, runtime-drift, and port-drift checks are skipped.
 
@@ -826,7 +831,7 @@ def doctor(
         from mycelium.desktop.checks import settings as desktop_settings
 
         if mode == "auto" and desktop_settings() is not None:
-            # The Mac app is set up here: it runs no containers, so check
+            # The desktop app is set up here: it runs no containers, so check
             # what it does run.
             mode = "desktop"
         if mode == "auto":
@@ -868,7 +873,7 @@ def doctor(
                 service_checks.append(psk_check)
         service_checks.append(_check_llm_connectivity())
         if local:
-            service_checks.append(_check_mediator_pi_binary())
+            service_checks.append(_check_engine_pi_binary())
         from mycelium.desktop.checks import pairings
 
         if (paired := pairings()) is not None:
@@ -886,7 +891,8 @@ def doctor(
             sections = desktop_checks()
             if (settings() or {}).get("mode") != "client":
                 in_settings = _check_llm_connectivity(
-                    set_up="Choose a model and add its key in Settings (⌘,)",
+                    # The app's hub has no Docker step: Settings is the whole way.
+                    set_up="Set one in Settings → Engines' model (⌘,).",
                     replace_key="Paste a working key in Settings (⌘,)",
                 )
                 sections.append(("Models", [pi(), in_settings]))

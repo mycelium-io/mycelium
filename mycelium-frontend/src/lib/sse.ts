@@ -14,8 +14,10 @@
  * out (`src/lib/stream-hub.ts`).
  */
 
-/** The feeds carried over the one connection. */
-export const STREAM_CHANNELS = ["room", "app", "notification"] as const;
+/** The feeds carried over the one connection. `themes` is the app's own
+ *  server saying this machine's theme files changed (`lib/theme-files.ts`),
+ *  carried only where the desktop app keeps them. */
+export const STREAM_CHANNELS = ["room", "app", "notification", "themes"] as const;
 
 export type StreamChannel = (typeof STREAM_CHANNELS)[number];
 
@@ -108,10 +110,15 @@ export function createSseDecoder(): (chunk: string) => SseEvent[] {
  * anything. Canceling the reader propagates to the underlying source, so a
  * feed's timers and sockets are released instead of parked on a read that will
  * never resolve.
+ *
+ * With `idleMs`, a body that sends nothing at all (not even a keep-alive
+ * comment) for that long counts as gone: the read is canceled and the
+ * generator ends, so the caller can redial rather than wait on it forever.
  */
 export async function* readSseEvents(
   body: ReadableStream<Uint8Array>,
   signal?: AbortSignal,
+  idleMs?: number,
 ): AsyncGenerator<SseEvent> {
   const reader = body.getReader();
   const cancel = () => void reader.cancel().catch(() => {});
@@ -119,13 +126,22 @@ export async function* readSseEvents(
   signal?.addEventListener("abort", cancel, { once: true });
   const decoder = new TextDecoder();
   const decode = createSseDecoder();
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    if (idleMs === undefined) return;
+    clearTimeout(idle);
+    idle = setTimeout(cancel, idleMs);
+  };
   try {
+    arm();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      arm();
       for (const event of decode(decoder.decode(value, { stream: true }))) yield event;
     }
   } finally {
+    clearTimeout(idle);
     signal?.removeEventListener("abort", cancel);
     // Also covers the caller breaking out of the loop early.
     await reader.cancel().catch(() => {});

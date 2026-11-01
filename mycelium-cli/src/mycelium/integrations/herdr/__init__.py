@@ -23,26 +23,38 @@ from __future__ import annotations
 
 from mycelium.integrations.herdr.bridge import (
     PANES_PER_TAB,
+    AgentExitedError,
+    AgentNotReadyError,
     HerdrBridge,
     HerdrError,
     HerdrPaneMapping,
     HerdrRegistry,
     HerdrUnavailableError,
+    ShellNotReadyError,
     WakeResult,
     build_assigned_prompt,
     build_mention_prompt,
     build_wake_prompt,
+    herdr_name,
+    named_by_mycelium,
+    session_of,
 )
 
 __all__ = [
     "PANES_PER_TAB",
+    "AgentExitedError",
+    "AgentNotReadyError",
     "HerdrBridge",
     "HerdrError",
     "HerdrPaneMapping",
     "HerdrRegistry",
     "HerdrUnavailableError",
+    "ShellNotReadyError",
     "WakeResult",
     "build_assigned_prompt",
     "build_mention_prompt",
     "build_wake_prompt",
+    "herdr_name",
+    "named_by_mycelium",
+    "session_of",
 ]

@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
+from mycelium.client import answered
 from mycelium.client import typed_client as _typed_client
 from mycelium.names import who
 
@@ -48,7 +49,7 @@ def post(
     from mycelium_backend_client.api.messages import (
         send_message_api_rooms_room_name_messages_post as send_api,
     )
-    from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
+    from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType, MessageRead
     from mycelium_backend_client.types import UNSET
 
     with _typed_client(config) as client:
@@ -58,11 +59,12 @@ def post(
             content=content,
             episode=episode or UNSET,
         )
-        result = send_api.sync(room_name=room_name, client=client, body=body)
+        result = answered(
+            send_api.sync_detailed(room_name=room_name, client=client, body=body), MessageRead
+        )
 
-    if json_output and result:
-        msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
-        typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
+    if json_output:
+        typer.echo(json_module.dumps(result.to_dict(), indent=2, default=str))
         return
 
     preview = content[:80] + ("…" if len(content) > 80 else "")
@@ -96,6 +98,121 @@ def parse_stamp(text: str, *, now: datetime | None = None) -> datetime:
     return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 
 
+def _checks(config: MyceliumConfig, room_name: str, *, since: datetime) -> dict[str, list[str]]:
+    """The verifier's lines still shown in ``room_name``, by the message they go
+    under. Empty when the room has none, or the hub has no verifier."""
+    from mycelium_backend_client.api.verifier import (
+        list_flags_api_rooms_room_name_verifier_flags_get as flags_api,
+    )
+
+    try:
+        with _typed_client(config) as client:
+            flags = answered(
+                flags_api.sync_detailed(room_name=room_name, client=client, since=since), list
+            )
+    except Exception:  # noqa: BLE001 - a line under a message is never worth failing the read
+        return {}
+    from mycelium_backend_client.models import VerifierFlagRead
+
+    out: dict[str, list[str]] = {}
+    for flag in flags:
+        if isinstance(flag, VerifierFlagRead) and flag.state == "shown":
+            out.setdefault(flag.message_id, []).append(flag.line)
+    return out
+
+
+def readable(message_type: str, content: str) -> str:
+    """The words a person reads for a message, never a raw protocol record.
+
+    A memory update or the end of a negotiation arrives as its whole envelope
+    (``l9_knowledge``, ``l9_commit``), which printed as a screen of JSON. The
+    line it carries is what's said; one with none is named plainly.
+    """
+    if not message_type.startswith("l9_"):
+        return content
+    try:
+        frame = json_module.loads(content)
+    except ValueError:
+        return content
+    if not isinstance(frame, dict):
+        return content
+    text = frame.get("content")
+    if isinstance(text, str) and text.strip():
+        return text
+    header = (frame.get("l9") or {}).get("header") or {}
+    if message_type == "l9_commit":
+        outcome = header.get("subkind") or "ended"
+        return f"Negotiation {outcome}."
+    if message_type == "l9_knowledge":
+        data = ((frame.get("l9") or {}).get("payload") or {}).get("data") or {}
+        return f"Memory updated: {data.get('key') or 'a memory'}."
+    return f"({message_type.removeprefix('l9_')} record)"
+
+
+def thread_tasks(config: MyceliumConfig, room_name: str) -> dict[str, tuple[str, str]]:
+    """``{thread episode: (row key, title)}`` for every row on the room's board,
+    so a message from a thread can say which task it's in. A namespace the hub
+    can't list contributes nothing rather than failing the read."""
+    from mycelium.board.model import EPISODE_FIELD, LIVE_NAMESPACES
+    from mycelium.board.projection import project_items
+    from mycelium_backend_client.api.memory import (
+        list_memories_api_rooms_room_name_memory_get as list_api,
+    )
+
+    memories: list[dict] = []
+    with _typed_client(config) as client:
+        for namespace in LIVE_NAMESPACES:
+            try:
+                listed = answered(
+                    list_api.sync_detailed(
+                        room_name=room_name, client=client, prefix=f"{namespace}/", limit=1000
+                    ),
+                    list,
+                )
+            except Exception:  # noqa: BLE001 - a label is a nicety, never a failure
+                continue
+            memories += [m.to_dict() for m in listed]
+    rows = project_items(
+        episodes=[], memories=memories, agents=[], members=[], now=datetime.now(UTC)
+    )
+    return {
+        str(row.text(EPISODE_FIELD)): (row.source.label, row.title)
+        for row in rows
+        if row.source.kind == "memory" and row.text(EPISODE_FIELD)
+    }
+
+
+#: Messages somebody said, drawn as boxes; anything else is a one-line record.
+SAID_TYPES = frozenset({"broadcast", "direct", "announce", "delegate"})
+
+
+#: Control characters, C0 and C1, except the tab: an escape in a message
+#: would move the cursor back over the gutter in a terminal.
+_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def plain(text: str) -> str:
+    """``text`` on one line: no control characters, its whitespace (every
+    kind of line break included) run together."""
+    return " ".join(_CONTROL.sub("", text).split())
+
+
+def box(header: str, text: str, footer: str = "") -> list[str]:
+    """``text`` as a box: the header, each line behind a ``│``, then the close.
+
+    The same box the hub's wake draws (``wake_digest.box``): the gutter is on
+    every line, every kind of line break starts a new one (U+2028 too), and
+    control characters are dropped, so nothing a message says can pass for
+    the frame around it, another message's header or a line of the CLI's own.
+    """
+    lines = [f"┌ {plain(header)}"]
+    for line in text.splitlines() or [""]:
+        line = _CONTROL.sub("", line.replace("\t", "    ")).rstrip()
+        lines.append(f"│ {line}" if line.strip() else "│")
+    lines.append(f"└ {plain(footer)}" if footer else "└")
+    return lines
+
+
 def read(
     config: MyceliumConfig,
     room_name: str,
@@ -103,6 +220,7 @@ def read(
     limit: int,
     sender: str | None = None,
     message_type: str | None = None,
+    message_id: str | None = None,
     episode: str | None = None,
     since: datetime | None = None,
     before: datetime | None = None,
@@ -112,6 +230,10 @@ def read(
     json_output: bool = False,
 ) -> None:
     """Print a channel's recent messages, newest first.
+
+    Each message is a box, its text behind a ``│`` gutter, the way the hub's
+    wake draws one; a record nobody said (a memory saved) is one quiet line.
+    ``message_id`` reads one message, by the start of its id.
 
     With ``episode`` this is one thread's transcript and nothing else — the point
     of a thread being that the room stays legible while the argument happens
@@ -128,33 +250,33 @@ def read(
     from mycelium_backend_client.api.messages import (
         list_messages_api_rooms_room_name_messages_get as list_api,
     )
-    from mycelium_backend_client.models import HTTPValidationError
+    from mycelium_backend_client.models import MessageListResponse
     from mycelium_backend_client.types import UNSET
 
     with _typed_client(config) as client:
-        result = list_api.sync(
-            room_name=room_name,
-            client=client,
-            limit=limit,
-            sender=sender or UNSET,
-            message_type=message_type or UNSET,
-            episode=episode or UNSET,
-            since=since or UNSET,
-            before=before or UNSET,
+        listed = answered(
+            list_api.sync_detailed(
+                room_name=room_name,
+                client=client,
+                limit=limit,
+                sender=sender or UNSET,
+                message_type=message_type or UNSET,
+                episode=episode or UNSET,
+                since=since or UNSET,
+                before=before or UNSET,
+                id=message_id or UNSET,
+            ),
+            MessageListResponse,
         )
 
-    msgs = [] if not result or isinstance(result, HTTPValidationError) else result.messages
+    msgs = listed.messages
     # Newest first, so the last line is the oldest shown; ``total`` counts every
     # message the filters matched, so a total past the page means older ones exist.
-    total = getattr(result, "total", len(msgs)) if msgs else 0
+    total = listed.total if msgs else 0
     older_before = msgs[-1].created_at.isoformat() if msgs and total > len(msgs) else None
 
     if json_output:
-        payload: dict[str, Any] = (
-            result.to_dict()
-            if result and not isinstance(result, HTTPValidationError)
-            else {"messages": [], "total": 0}
-        )
+        payload: dict[str, Any] = listed.to_dict()
         payload["older_before"] = older_before
         typer.echo(json_module.dumps(payload, indent=2, default=str))
         return
@@ -166,23 +288,49 @@ def read(
 
     plural = "message" if len(msgs) == 1 else "messages"
     owners = _agent_owner_map(room_name)
+    # Reading the whole room, a message from a thread says which task it's in.
+    from mycelium.slim.message_format import room_episode
+
+    live = room_episode(room_name)
+    threaded = episode is None and any(
+        isinstance(m.episode, str) and m.episode and m.episode != live for m in msgs
+    )
+    tasks = thread_tasks(config, room_name) if threaded else {}
+    checks = _checks(config, room_name, since=msgs[-1].created_at)
     typer.secho(f"\n  {where}  ", fg=typer.colors.CYAN, bold=True, nl=False)
     typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
     for m in msgs:
-        stamp = m.created_at.strftime("%H:%M:%S")
+        stamp = m.created_at.strftime("%H:%M")
+        rid = str(m.id)[:8]
         # Show the full message; this is the read-the-transcript command, so
-        # never truncate. Keep multi-line content readable by indenting any
-        # continuation lines under the first.
-        first, *rest = (m.content or "").split("\n")
+        # never truncate.
+        text = readable(str(m.message_type), m.content or "")
+        if str(m.message_type) not in SAID_TYPES:
+            # A memory saved, a negotiation ended: one quiet line, never a box,
+            # so it can't be taken for something somebody said.
+            first = next((ln for ln in text.splitlines() if ln.strip()), "")
+            typer.secho(f"  · {stamp}  {first}  {rid}\n", fg=typer.colors.BRIGHT_BLACK)
+            continue
         owner = owners.get(m.sender_handle)
-        own = f" owned by @{owner}" if owner else ""
-        edited = " (edited)" if getattr(m, "edited_at", None) else ""
-        typer.echo(
-            f"  {stamp}  {who(m.sender_handle)}{own} [{m.message_type}]"
-            f"  {str(m.id)[:8]}: {first}{edited}"
-        )
-        for line in rest:
-            typer.echo(f"              {line}")
+        name = who(m.sender_handle)
+        header = name if name != m.sender_handle else f"@{m.sender_handle}"
+        if owner:
+            header += f" (owned by @{owner})"
+        if m.recipient_handle:
+            header += f" → @{m.recipient_handle}"
+        if threaded and isinstance(m.episode, str) and m.episode and m.episode != live:
+            task = tasks.get(m.episode)
+            header += (
+                f' · in "{task[1]}"' if task else f" · in thread {m.episode.rsplit(':', 1)[-1]}"
+            )
+        header += f" · {stamp} · {rid}"
+        if getattr(m, "edited_at", None):
+            header += " · edited"
+        lines = box(header, text)
+        typer.echo("\n".join(f"  {line}" for line in lines))
+        for line in checks.get(str(m.id), []):
+            typer.secho(f"    ⚠ verifier: {line}", fg=typer.colors.YELLOW)
+        typer.echo()
     if older_before and older_with:
         remaining = total - len(msgs)
         typer.secho(

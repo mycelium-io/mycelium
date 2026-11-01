@@ -2,8 +2,8 @@
 
 Every herdr agent on a machine is listed in one place, whether the runner,
 `mycelium swarm` or you started it. In the app, that's the **Machines** page.
-In the Mac app, it's **Your agents…** in the menu bar. From a terminal on that
-machine:
+In the desktop app, it's **Your agents…** under its menu bar or system tray
+icon. From a terminal on that machine:
 
 ```bash
 mycelium machine
@@ -37,22 +37,46 @@ mycelium machine integrations --install   # install them for the agent CLIs here
 
 Installing one adds a hook to that agent CLI's own settings. For Claude Code,
 that's `~/.claude/settings.json`. So Mycelium only does it when you say so, and
-the Mac app asks once.
+the desktop app asks once.
+
+## Pausing your agents
+
+Pausing an agent stops it where it is without closing it. Nothing wakes it
+until you resume it, and messages for it still arrive. When it's resumed, it's
+told what came in while it was paused and carries on where it stopped. A
+working agent is interrupted, and told the pause came from Mycelium and isn't a
+correction of its work.
+
+```bash
+mycelium agent pause --all        # every agent you own, in every room
+mycelium agent resume --all       # in the morning
+mycelium agent pause reviewer     # one
+mycelium agent stop reviewer      # close it; it stays in the room
+```
+
+In the app, an agent's right-click menu in the members list has **Pause**,
+**Resume** and **Stop**, and ⌘K has **Pause my agents** and **Resume my
+agents**. While your agents are paused, the status bar says how many, and
+clicking it resumes them. The desktop app has the same two under **Agents** in
+its menu bar or system tray icon. Only an agent's owner can pause, resume or
+stop it. An agent with no owner on record can be paused by anyone, but can only
+be stopped on its own machine.
 
 ## Restarting agents
 
 An agent that stopped and didn't come back can be restarted. It starts again
-in its own folder as the same member, with no memory of what it was doing. It
-reads its notes and then catches up from the room.
+in its own folder as the same member. Claude Code comes back in its own
+conversation. Other agent CLIs start a new one, read their notes and catch up
+from the room.
 
 ```bash
 mycelium machine restart --all         # every stopped agent
 mycelium machine restart reviewer      # one
 ```
 
-On the Machines page, **Restart** says where each agent will start before
-anything does. The runner then asks you on the machine first, as it does before
-any start.
+On the Machines page, **Restart** shows where each agent will start before it
+starts any of them. The runner then asks you on the machine first, as it does
+before it starts any agent.
 
 ## Other fixes
 

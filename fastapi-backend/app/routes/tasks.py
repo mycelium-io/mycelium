@@ -23,7 +23,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import MemoryRead
+from app.schemas import MemoryRead, refusals
 from app.services import actor, tasks
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
 
@@ -40,6 +40,14 @@ PARENT_RELATION = "part-of"
 
 class TaskCreate(BaseModel):
     title: str = Field(..., description="What the task is — the row's title")
+    content: str | None = Field(
+        None,
+        description=(
+            "The task's description, in markdown: written into the row under its "
+            "title, so the row and its memory page show it, search indexes it and "
+            "its links are edges. The thread is for talking about the task."
+        ),
+    )
     handle: str = Field(..., description="Who is creating it — recorded as the row's author")
     key: str | None = Field(
         None, description="Memory key to write (default: work/<slug of the title>)"
@@ -60,7 +68,7 @@ class TaskCreate(BaseModel):
     )
 
 
-@router.post("", response_model=MemoryRead, status_code=201)
+@router.post("", response_model=MemoryRead, status_code=201, responses=refusals(403, 404, 409, 422))
 async def create_task(room_name: str, body: TaskCreate, request: Request) -> MemoryRead:
     """Create a task with its thread already minted."""
     if not room_exists(room_name):
@@ -82,5 +90,5 @@ async def create_task(room_name: str, body: TaskCreate, request: Request) -> Mem
         meta[PARENT_RELATION] = body.parent
 
     return await tasks.create_task(
-        room_name, body.title, created_by=handle, key=body.key, meta=meta
+        room_name, body.title, content=body.content, created_by=handle, key=body.key, meta=meta
     )

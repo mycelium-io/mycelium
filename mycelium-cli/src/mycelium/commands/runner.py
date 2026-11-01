@@ -23,6 +23,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from mycelium.cli_options import emits_json
@@ -54,7 +55,7 @@ def _out_path() -> Path:
 
 
 def running_pid() -> int | None:
-    """The pid of this machine's runner, when one is running, the Mac app's included."""
+    """The pid of this machine's runner, when one is running, the desktop app's included."""
     from mycelium.runner.daemon import registered
 
     found = registered()
@@ -62,11 +63,23 @@ def running_pid() -> int | None:
 
 
 def runs_in_app() -> bool:
-    """Whether this machine's runner is the one inside the Mac app."""
+    """Whether this machine's runner is the one inside the desktop app."""
     from mycelium.runner.daemon import APP, registered
 
     found = registered()
     return found is not None and found[1] == APP
+
+
+def _signed_out_hub() -> str | None:
+    """The hub that refused the running runner's sign-in, from what it last
+    wrote about itself; ``None`` when it's connected or says nothing."""
+    from mycelium.runner.daemon import read_sync
+
+    hub = (read_sync() or {}).get("hub")
+    if not isinstance(hub, dict) or not hub.get("signed_out"):
+        return None
+    url = hub.get("url")
+    return url if isinstance(url, str) and url else MyceliumConfig.load().server.api_url
 
 
 def _scan_table(found: list, *, herdr: bool) -> Table:
@@ -128,11 +141,19 @@ def runner(
 
     roots = [p.expanduser().resolve() for p in (root or [Path.cwd()])]
     if (pid := running_pid()) is not None and pid != os.getpid():
-        whose = "the Mycelium app's" if runs_in_app() else "one"
+        in_app = runs_in_app()
+        whose = "the Mycelium app's" if in_app else "one"
         console.print(
             f"[yellow]A runner is already running here[/yellow]: {whose} (pid {pid}). "
             "One machine runs one runner. See it with: mycelium runner status"
         )
+        # The usual reason someone runs this with one already going: the
+        # machine isn't showing up, because the hub refused its sign-in.
+        if (signed_out := _signed_out_hub()) is not None:
+            from mycelium.runner.daemon import signed_out_message
+
+            restart = "quit and reopen Mycelium" if in_app else "restart that runner"
+            console.print(f"It isn't connected: {signed_out_message(signed_out)} Then {restart}.")
         raise typer.Exit(1)
 
     if detach:
@@ -189,51 +210,154 @@ def runner(
 
 
 @doc_ref(
-    usage="mycelium runner status",
+    usage="mycelium runner status [--hub]",
     desc="Show whether this machine's runner is running and connected to the hub.",
     group="agent",
 )
 @app.command("status")
 @emits_json("as_json")
-def runner_status(as_json: bool = False) -> None:
-    """Whether this machine's runner is running, and what the hub sees of it."""
+def runner_status(
+    as_json: bool = False,
+    hub: bool = typer.Option(False, "--hub", help="Also ask the hub what it sees of this runner."),
+) -> None:
+    """Whether this machine's runner is running, and whether its heartbeats get
+    through, its last sync pass and any error, as the runner itself wrote them.
+
+    The runner is what sends the heartbeats, so its word is the answer. The
+    hub is asked only with ``--hub``, or when no running runner has written
+    anything here.
+    """
     import httpx
 
-    from mycelium.client import hub_client
-    from mycelium.runner.daemon import runner_id
+    from mycelium.client import typed_client
+    from mycelium.runner.daemon import read_sync, runner_id
+    from mycelium_backend_client.api.runners import get_runner_api_runners_runner_id_get
+    from mycelium_backend_client.models import RunnerRead
 
     pid = running_pid()
     rid = runner_id()
-    state: dict = {"runner": rid, "running": pid is not None, "pid": pid, "hub": None}
+    local = _local_facts(read_sync()) if pid else None
+    state: dict = {
+        "runner": rid,
+        "running": pid is not None,
+        "pid": pid,
+        "local": local,
+        "hub": None,
+    }
     if not as_json:
         console.print(
             f"runner [cyan]{rid}[/cyan]: " + (f"running (pid {pid})" if pid else "not running")
         )
-    try:
-        with hub_client(MyceliumConfig.load(), timeout=5) as client:
-            resp = client.get(f"/api/runners/{rid}")
-    except httpx.HTTPError as e:
+        for line in _local_lines(local):
+            console.print(f"  {line}")
+    if local is not None and not hub:
         if as_json:
-            state["hub_error"] = str(e)
+            typer.echo(json.dumps(state, indent=2, default=str))
+        return
+    try:
+        with typed_client(
+            MyceliumConfig.load(), timeout=5, raise_on_unexpected_status=False
+        ) as client:
+            resp = get_runner_api_runners_runner_id_get.sync_detailed(rid, client=client)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
+        # Not reached, or reached something that didn't answer as the hub does
+        # (a proxy's page on a status the route declares).
+        reached = not isinstance(e, httpx.HTTPError)
+        said = "the hub's answer couldn't be read" if reached else f"hub unreachable: {e}"
+        if as_json:
+            state["hub_error"] = said if reached else str(e)
             typer.echo(json.dumps(state, indent=2, default=str))
         else:
-            console.print(f"[yellow]hub unreachable:[/yellow] {e}")
+            console.print(f"[yellow]{escape(said)}[/yellow]")
         raise typer.Exit(1) from None
-    if resp.status_code == 404:
+    if resp.status_code == 404:  # noqa: PLR2004
+        # The hub answers 404 for a runner it never heard from, and for one
+        # the caller doesn't own (it shows a runner only to its owner).
+        said = "The hub has no runner by that id that this terminal's credential can see."
+        if local is None:
+            said = "The hub hasn't heard from it."
         if as_json:
+            state["hub_note"] = said
             typer.echo(json.dumps(state, indent=2, default=str))
             return
-        console.print("[dim]The hub hasn't heard from it.[/dim]")
+        console.print(f"[dim]{escape(said)}[/dim]")
         return
-    seen = resp.json()
+    seen = resp.parsed
+    if not isinstance(seen, RunnerRead):
+        # What the hub answered, not a reading of it: a refusal or a proxy's
+        # error page says nothing about whether the runner is connected.
+        # Asked from an agent's pane, a 401 is the pane's credential, not the
+        # runner's, so it points at whoami rather than at signing in.
+        said = f"The hub answered {resp.status_code}, so this can't say whether the runner is connected."
+        if resp.status_code == 401:
+            said += (
+                " It refused the credential this terminal uses."
+                " Run `mycelium whoami --sources` to see which credential that is."
+            )
+        if as_json:
+            state["hub_error"] = said
+            typer.echo(json.dumps(state, indent=2, default=str))
+        else:
+            console.print(f"[yellow]{escape(said)}[/yellow]")
+        raise typer.Exit(1)
     if as_json:
-        state["hub"] = seen
+        state["hub"] = seen.to_dict()
         typer.echo(json.dumps(state, indent=2, default=str))
         return
-    connected = "[green]connected[/]" if seen.get("connected") else "[yellow]not connected[/]"
-    console.print(f"hub: {connected} · herdr {'yes' if seen.get('herdr') else 'no'}")
-    for a in seen.get("agents") or []:
-        console.print(f"  @{a['handle']} in {a['room']} · {a['framework']} · {a['status']}")
+    connected = "[green]connected[/]" if seen.connected else "[yellow]not connected[/]"
+    console.print(f"hub: {connected} · herdr {'yes' if seen.herdr else 'no'}")
+    for a in seen.agents or []:
+        console.print(f"  @{a.handle} in {a.room} · {a.framework} · {a.status}")
+
+
+def _local_facts(sync: dict | None) -> dict | None:
+    """What the running runner last wrote about itself (``read_sync``), or ``None``."""
+    if sync is None:
+        return None
+    hub = sync.get("hub") or {}
+    return {
+        "connected": hub.get("connected"),
+        "signed_out": hub.get("signed_out"),
+        "last_heartbeat_at": hub.get("last_heartbeat_at"),
+        "last_pass_at": sync.get("last_pass_at"),
+        "last_pass_ms": sync.get("last_pass_ms"),
+        "sync_error": sync.get("error"),
+    }
+
+
+def _ago(at: str | None) -> str | None:
+    from datetime import UTC, datetime
+
+    if not at:
+        return None
+    try:
+        seconds = (datetime.now(UTC) - datetime.fromisoformat(at)).total_seconds()
+    except ValueError:
+        return None
+    return f"{max(0, round(seconds))}s ago" if seconds < 120 else f"{round(seconds / 60)}m ago"
+
+
+def _local_lines(local: dict | None) -> list[str]:
+    """The runner's own facts, one per line, for ``runner status``."""
+    if local is None:
+        return []
+    beat = _ago(local.get("last_heartbeat_at"))
+    if local.get("connected"):
+        hub = "[green]connected[/] to the hub" + (f", last heartbeat {beat}" if beat else "")
+    elif local.get("signed_out"):
+        hub = "[yellow]not connected[/]: the hub refused this computer's sign-in"
+    else:
+        hub = "[yellow]not connected[/] to the hub" + (
+            f" (last heartbeat that got through: {beat})" if beat else ""
+        )
+    lines = [hub]
+    ran = _ago(local.get("last_pass_at"))
+    if ran:
+        took = local.get("last_pass_ms")
+        lines.append(f"last sync pass {ran}" + (f", took {took}ms" if took is not None else ""))
+    if local.get("sync_error"):
+        lines.append(f"[yellow]sync error:[/yellow] {escape(str(local['sync_error']))}")
+    return lines
 
 
 @doc_ref(

@@ -5,11 +5,15 @@
 Mycelium CLI: Multi-agent coordination + persistent memory.
 """
 
+import os
+import sys
+
 import typer
 
-from mycelium import __version__
+from mycelium import __version__, proxy_env
 from mycelium.commands import (
     agent,
+    ask,
     board,
     config,
     demo,
@@ -33,20 +37,42 @@ from mycelium.commands import (
     pattern,
     room,
     runner,
+    schedule,
     skill,
+    subscribe,
     swarm,
+    theme,
     ui,
     user,
     version,
+    waiting,
     wire,
 )
 from mycelium.commands import (
     login as login_cmd,
 )
 
+#: The top of `mycelium --help`. Coding agents often start a new tool by
+#: reading its help, so the first thing it tells them is where the skill is.
+HELP = (
+    "[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory\n\n"
+    "[bold]AI coding agents: run [cyan]mycelium skill print[/cyan] before anything else.[/bold] "
+    "It explains how to take part in a room: check the board for your tasks, work each one "
+    "in its thread, and reply where you were asked. [cyan]mycelium whoami[/cyan] shows "
+    "your handle and the room you're in."
+)
+
+# A PyInstaller build tells what it starts where it unpacked itself, so that a
+# one-file `mycelium` started under it reuses that temporary folder instead of
+# unpacking its own. What a long-running `mycelium` starts (herdr, and the
+# shells agents run in) lives on after it, so that folder goes away under them
+# (#1269). Everything started from here starts afresh instead.
+if getattr(sys, "frozen", False):
+    os.environ["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+
 app = typer.Typer(
     name="mycelium",
-    help="[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory",
+    help=HELP,
     add_completion=True,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
@@ -76,7 +102,9 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
 ) -> None:
-    """[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory."""
+    # Before any command opens a connection (a bracketed IPv6 entry stops
+    # httpx building a client at all).
+    proxy_env.repair()
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
@@ -111,6 +139,8 @@ app.command(name="connect")(hub.connect)
 # Participation primitives: join a room's SLIM channel and reply, no daemon.
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
+app.command(name="waiting")(waiting.waiting)
+app.command(name="ask")(ask.ask)
 
 # A team on one task: the quickest way to watch agents coordinate.
 app.command(name="swarm")(swarm.swarm)
@@ -123,6 +153,9 @@ app.add_typer(board.app, name="board")
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")
+app.add_typer(schedule.app, name="schedule")
+app.add_typer(subscribe.app, name="subscribe")
+app.add_typer(theme.app, name="theme")
 app.add_typer(file.app, name="file")
 app.add_typer(config.app, name="config")
 app.add_typer(docs.app, name="docs")

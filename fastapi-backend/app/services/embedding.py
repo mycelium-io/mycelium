@@ -62,6 +62,20 @@ def _stub_vector(seed: str) -> list[float]:
     return v
 
 
+def model_name() -> str:
+    """The embedding model in use. Anything trained on its vectors is tied to it."""
+    return _FASTEMBED_MODEL
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Embeddings for several texts in one model call, in the order given."""
+    if not texts:
+        return []
+    if _STUB:
+        return [_stub_vector(t) for t in texts]
+    return [v.tolist() for v in _get_model().embed(texts)]
+
+
 def embed_text(text: str) -> list[float]:
     """Generate embedding for a single text string."""
     import time as _time

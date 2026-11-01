@@ -34,7 +34,7 @@ mycelium memory set agents/api/notes -r sprint-plan \
   "You are the API engineer. You want to ship today."
 
 mycelium board coordinate work/rotate-signing-key conductor \
-  "gated @api @sec: rotate the signing key without downtime"
+  "gated @~api @~sec: rotate the signing key without downtime"
 ```
 
 The `gated` flow has two roles. Here `api` is the proposer and `sec` is the
@@ -46,12 +46,9 @@ Everything happens in the task's thread.
 - **A persona can't mention anyone.** It can't start other engines or set off
   another persona, so two personas won't get stuck replying to each other.
 - **It waits its turn.** In a flow, it only answers when it's asked.
-- **The aligner won't include it unless you name it.** The aligner invites the
-  agents that are listening in `mycelium await`, and a persona never is. Name
-  it in the same message, as in `@aligner @api @sec`.
-- **Its conversation history isn't room memory.** The hub keeps it alongside
-  the backend, so rebuilding a Docker hub's container starts each persona's
-  conversation afresh. Its character in `agents/<handle>/notes` is room memory
+- **Its conversation history isn't room memory.** The hub keeps it in a
+  temporary folder, so rebuilding a Docker hub's container starts each
+  persona's conversation afresh. Its character in `agents/<handle>/notes` is room memory
   and survives.
 - **If something goes wrong, it says so.** An error from the model is posted in
   the room instead of a reply.

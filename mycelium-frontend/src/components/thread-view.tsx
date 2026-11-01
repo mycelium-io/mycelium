@@ -9,11 +9,15 @@ import { Eye, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
 import { memoryHref } from "@/lib/memory-routes";
 import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
+import { Findable } from "@/components/findable";
 import { FlowPanel } from "@/components/flow-panel";
+import { RunResult } from "@/components/task/run-result";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { TaskConversation } from "@/components/task/task-conversation";
+import { JumpToLatest } from "@/components/jump-to-latest";
+import { useConversationFollow } from "@/components/messages/use-follow-latest";
 import { useCurrentUser } from "@/components/current-user";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -40,8 +44,13 @@ interface Props {
   roomName: string;
   target: ThreadTarget;
   onClose: () => void;
+  /** Whether the pane draws its own close button and closes on Esc. Off where
+   *  something else closes it, like a tab with its ×. */
+  showClose?: boolean;
   /** A `[[wikilink]]` in a thread message opens the memory, same as in chat. */
   onOpenMemory?: (key: string) => void;
+  /** Bumped by the room's ⌘F while this thread is in front. */
+  findRequest?: number;
 }
 
 /**
@@ -59,12 +68,12 @@ interface Props {
  * this episode. The read is the conversation's own SWR entry, so opening this
  * never replaces the room's feed with a filtered slice of itself.
  */
-export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
+export function ThreadView({ roomName, target, onClose, showClose = true, onOpenMemory, findRequest = 0 }: Props) {
   // The task this thread is of, resolved by its episode — the row is the thread,
   // so the pane opens with the task itself (its body and fields) above the
   // conversation about it, the way an issue shows its description over its
   // comments. Absent for a negotiation thread bound to no row.
-  const { memories } = useRoomMemories(roomName);
+  const { memories, loading: memoriesLoading } = useRoomMemories(roomName);
   const task = memories.find(m => m.episode === target.episode) ?? null;
   // A run the conductor walked in this thread left a record carrying its
   // flow: the latest one is drawn at the top of the pane, the earlier ones are
@@ -90,9 +99,20 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   }, []);
   const refresh = useCallback(() => refreshRef.current?.(), []);
 
+  // The pane's one scroll scrolls the conversation the way every message list
+  // scrolls. It opens on the task, with its thread below; a thread that is no
+  // task's is all conversation, so it opens on the newest reply. Until the
+  // room's memories have said which, it is taken to be a task's.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const latest = useConversationFollow(scroller, {
+    startAt: task || memoriesLoading ? "start" : "end",
+    resetKey: target.episode,
+  });
+
   // Esc closes: the pane is transient, so leaving it must be as cheap as
   // opening it was.
   useEffect(() => {
+    if (!showClose) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       const el = e.target as HTMLElement | null;
@@ -101,7 +121,51 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, showClose]);
+
+  // Edit the task in place, and open it as a tab of its own, only where the
+  // pane is a task (a negotiation thread is no memory to edit or open).
+  const taskActions = task && (
+    <>
+      {/* A plain toggle with a revalidate on save: the pane is narrow and
+          transient, so it keeps less chrome than the full page does. */}
+      <Tooltip content={isEditing ? "View task" : "Edit task"}>
+        <button
+          type="button"
+          onClick={() => setIsEditing(v => !v)}
+          aria-label={isEditing ? "View task" : "Edit task"}
+          className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+        >
+          {isEditing ? <Eye className="size-3.5" strokeWidth={1.9} /> : <Pencil className="size-3.5" strokeWidth={1.9} />}
+        </button>
+      </Tooltip>
+      {/* Room to work: open the task as a tab of the room, where the rest of
+          its memories open. */}
+      <Tooltip content="Open the task">
+        {onOpenMemory ? (
+          <button
+            type="button"
+            onClick={() => {
+              onOpenMemory(task.key);
+              onClose();
+            }}
+            aria-label="Open the task"
+            className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+          >
+            <Maximize2 className="size-3.5" strokeWidth={1.9} />
+          </button>
+        ) : (
+          <Link
+            href={memoryHref(roomName, task.key)}
+            aria-label="Open task full screen"
+            className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+          >
+            <Maximize2 className="size-3.5" strokeWidth={1.9} />
+          </Link>
+        )}
+      </Tooltip>
+    </>
+  );
 
   return (
     <section
@@ -113,69 +177,32 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
       // long metadata value pushes the whole section past its right edge.
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg"
     >
-      <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
-        <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
-        {/* The title gets the width; the thread's id is its tooltip, for the
-            rare reader who needs it. */}
-        <span className="min-w-0 truncate text-label text-text" title={target.title ? `${target.title} · ${shortId}` : undefined}>
-          {target.title || `Thread ${shortId}`}
-        </span>
-        <span className="ml-auto flex items-center gap-2">
-          {/* Edit the task in place, only where the pane is a task. A plain
-              toggle with a revalidate on save: the pane is narrow and transient,
-              so it keeps less chrome than the full page does. */}
-          {task && (
-            <Tooltip content={isEditing ? "View task" : "Edit task"}>
+      {/* A pane on its own names itself. In a tab, the tab already does, and a
+          second icon and title under it read as the same element twice: the
+          task's actions join its version line instead. */}
+      {showClose && (
+        <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border bg-surface px-3">
+          <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
+          {/* The title gets the width; the thread's id is its tooltip, for the
+              rare reader who needs it. */}
+          <span className="min-w-0 truncate text-label text-text" title={target.title ? `${target.title} · ${shortId}` : undefined}>
+            {target.title || `Thread ${shortId}`}
+          </span>
+          <span className="ml-auto flex items-center gap-2">
+            {taskActions}
+            <Tooltip content="Close (Esc)">
               <button
                 type="button"
-                onClick={() => setIsEditing(v => !v)}
-                aria-label={isEditing ? "View task" : "Edit task"}
+                onClick={onClose}
+                aria-label="Close thread"
                 className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
               >
-                {isEditing ? <Eye className="size-3.5" strokeWidth={1.9} /> : <Pencil className="size-3.5" strokeWidth={1.9} />}
+                <X className="size-3.5" strokeWidth={1.9} />
               </button>
             </Tooltip>
-          )}
-          {/* Room to work: leave the split and open the task as a tab of the
-              room, where the rest of its memories open. Only where the pane is
-              a task (a negotiation thread is no memory to open). */}
-          {task && (
-            <Tooltip content="Open as a tab">
-              {onOpenMemory ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenMemory(task.key);
-                    onClose();
-                  }}
-                  aria-label="Open task as a tab"
-                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                >
-                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
-                </button>
-              ) : (
-                <Link
-                  href={memoryHref(roomName, task.key)}
-                  aria-label="Open task full screen"
-                  className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                >
-                  <Maximize2 className="size-3.5" strokeWidth={1.9} />
-                </Link>
-              )}
-            </Tooltip>
-          )}
-          <Tooltip content="Close (Esc)">
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close thread"
-              className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-            >
-              <X className="size-3.5" strokeWidth={1.9} />
-            </button>
-          </Tooltip>
-        </span>
-      </header>
+          </span>
+        </header>
+      )}
 
       {task && isEditing ? (
         // The editor owns its own scroll; it replaces the body and stands in
@@ -186,6 +213,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
             memory={task}
             roomName={roomName}
             actor={principal}
+            named
             onSaved={() => {
               revalidate();
               setIsEditing(false);
@@ -199,30 +227,53 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
         // instead of taking a scrollbar of its own, so the wheel does one thing
         // everywhere in the pane. A negotiation thread bound to no row is all
         // conversation.
-        <ScrollArea className="min-h-0 flex-1">
-          {run && (
-            <div className="border-b border-border">
-              <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
-            </div>
-          )}
-          {task && (
-            <div className="border-b border-border">
-              <MemoryDetail
-                memory={task}
-                roomName={roomName}
-                variant="rail"
-                onNavigate={onOpenMemory}
-                collapseBodyAt={BODY_CLAMP_PX}
-              />
-            </div>
-          )}
-          <TaskConversation
-            roomName={roomName}
-            episode={target.episode}
-            onOpenMemory={onOpenMemory}
-            onReady={onReady}
-          />
-        </ScrollArea>
+        // ⌘F finds in the task and its conversation as drawn; History searches
+        // every message said in this thread, and a hit scrolls to its reply.
+        <Findable
+          request={findRequest}
+          label="Find in this thread"
+          history={{
+            kind: "messages",
+            room: roomName,
+            scope: `thread:${target.episode}`,
+            about: "Every match in this thread",
+            onOpenHit: hit =>
+              scroller
+                ?.querySelector(`[data-event-id="${CSS.escape(hit.message.id)}"]`)
+                ?.scrollIntoView({ block: "center", behavior: "smooth" }),
+          }}
+          className="min-h-0 flex-1"
+          contentClassName="relative flex flex-col"
+        >
+          <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
+            <RunResult roomName={roomName} episode={target.episode} onOpenMemory={onOpenMemory} />
+            {run && (
+              <div className="border-b border-border">
+                <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
+              </div>
+            )}
+            {task && (
+              <div className="border-b border-border">
+                <MemoryDetail
+                  memory={task}
+                  roomName={roomName}
+                  variant="rail"
+                  onNavigate={onOpenMemory}
+                  collapseBodyAt={BODY_CLAMP_PX}
+                  actions={showClose ? undefined : taskActions}
+                />
+              </div>
+            )}
+            <TaskConversation
+              roomName={roomName}
+              episode={target.episode}
+              onOpenMemory={onOpenMemory}
+              onReady={onReady}
+              onRows={latest.onRows}
+            />
+          </ScrollArea>
+          {!latest.atBottom && latest.hasRows && <JumpToLatest unread={latest.unread} onClick={latest.jump} />}
+        </Findable>
       )}
 
       <RoomChatBox

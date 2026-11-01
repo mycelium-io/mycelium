@@ -22,6 +22,6 @@ reached it. Work through these:
 2. Check the model. `mycelium doctor` makes a real model call and says what's
    wrong. See [Models](#models).
 3. Read the hub's logs. For a Docker hub, run `mycelium logs mycelium-backend`.
-   For the Mac app, open `~/.mycelium/logs/desktop.log`.
+   For the desktop app, open `~/.mycelium/logs/desktop.log`.
 
 Hello answers each message on its own and doesn't remember earlier ones.

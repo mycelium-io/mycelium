@@ -1,0 +1,7 @@
+{
+  "description": "Signed in as @operator, so the app doesn't open on \"What should we call you?\"",
+  "storage": {
+    "mycelium.principal": "operator",
+    "mycelium.name-asked": "1"
+  }
+}

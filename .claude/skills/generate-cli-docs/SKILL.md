@@ -37,19 +37,19 @@ Groups: setup, room, memory, message, config, other
 Each pydantic field on a sub-model of `MyceliumConfig` becomes a row in the Configuration section of the docs. The only requirement is a non-empty `description=`:
 
 ```python
-class NegotiationConfig(BaseModel):
-    """Tunables for the CFN-mediated negotiation flow."""
+class ConductorConfig(BaseModel):
+    """Tunables for the conductor's flows."""
 
-    n_steps: int = Field(
-        default=20,
+    step_timeout_s: float = Field(
+        default=300.0,
         description=(
-            "Maximum SAO rounds per session. Set to 0 to fall through to "
-            "CFN's auto-computed budget."
+            "Seconds each member gets to answer a step before the conductor "
+            "moves on without them."
         ),
     )
 ```
 
-Whatever shows up in `description=` is what users will read. Spell it out — assume the reader doesn't know what SAO or CFN is. To add a brand new namespace:
+Whatever shows up in `description=` is what users will read. Spell it out — assume the reader doesn't know the internal names. To add a brand new namespace:
 
 1. Add a `<NewName>Config(BaseModel)` class with `Field(..., description=...)` on every field.
 2. Wire it onto `MyceliumConfig` (e.g. `new_name: NewNameConfig = Field(default_factory=NewNameConfig)`).

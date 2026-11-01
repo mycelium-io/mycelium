@@ -7,6 +7,7 @@ import {
   liveEpisodeUrn,
   noticeLabel,
   noticeOf,
+  upstreamInChat,
   pingOf,
   threadShortId,
 } from "@/lib/threads";
@@ -86,19 +87,57 @@ describe("reading a notice", () => {
     // notice can open the same thread the row's own chip does. `for` (who a
     // filing is for) reads back as `assignee`.
     const notice = noticeOf(
-      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action", for: "@growth" }),
+      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "conductor", kind: "action", for: "@growth" }),
     );
     expect(notice).toEqual({
       subkind: "filed",
       key: "work/flip",
       title: "flip reads",
       episode: THREAD,
-      by: "aligner",
+      by: "conductor",
       kind: "action",
       assignee: "@growth",
+      from: null,
+      why: null,
       speakers: [],
       released: false,
+      change: null,
+      ref: null,
+      url: null,
+      who: [],
     });
+  });
+
+  it("reads what happened to a row's pull request off an upstream notice", () => {
+    const notice = noticeOf(
+      noticeFrame({
+        subkind: "upstream",
+        key: "work/apple-pay",
+        title: "Turn on Apple Pay",
+        episode: THREAD,
+        change: "review_requested",
+        ref: "acme/shop#12",
+        url: "https://github.com/acme/shop/pull/12",
+        who: "ana,core-team",
+      }),
+    );
+    expect(notice).toMatchObject({
+      subkind: "upstream",
+      by: null,
+      change: "review_requested",
+      ref: "acme/shop#12",
+      url: "https://github.com/acme/shop/pull/12",
+      who: ["ana", "core-team"],
+    });
+    expect(noticeLabel("upstream", null, "ci_failed")).toBe("CI went red");
+    expect(noticeLabel("upstream", null, "merged")).toBe("Merged");
+    expect(noticeLabel("upstream", null, "opened")).toBe("Pull request opened");
+    // Its opening, its merge and CI breaking are the room's news; the rest
+    // stays with the task.
+    expect(upstreamInChat("opened")).toBe(true);
+    expect(upstreamInChat("merged")).toBe(true);
+    expect(upstreamInChat("ci_failed")).toBe(true);
+    expect(upstreamInChat("review_requested")).toBe(false);
   });
 
   it("reads whose turn it is off a floor notice", () => {

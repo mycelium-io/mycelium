@@ -110,13 +110,13 @@ _ABORT_EPISODE = message_format.episode_urn(_ABORT_ROOM, "abort-run")
 
 
 async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> MyceliumMessage:
-    """Prove episode-abort-on-membership-change end-to-end.
+    """Prove a negotiation ends end-to-end when one of its parties leaves.
 
     The backend (via :class:`RoomChannelManager`) provisions a channel, invites
-    ``agent-a``, and opens an episode over that membership. Inviting ``agent-b``
-    mid-episode is a membership change: the manager aborts the episode and
+    ``agent-a`` and ``agent-b``, and opens a negotiation between them. Removing
+    ``agent-b`` mid-negotiation is a party leaving: the manager aborts it and
     publishes a ``commit:rejected``. ``agent-a`` receives it. Returns that
-    envelope.
+    envelope. (A join no longer aborts anything.)
     """
     manager = RoomChannelManager(endpoint=endpoint, default_workspace=_WORKSPACE)
     await manager.provision(_ABORT_ROOM)
@@ -131,13 +131,15 @@ async def run_episode_abort(endpoint: str = DEFAULT_NODE_ENDPOINT) -> MyceliumMe
         a_session = await a_listen
         a_channel = MessageChannel(agent_a, a_session)
 
-        # Open an episode frozen over {agent-a}; then agent-b joins mid-episode.
-        manager.open_episode(_ABORT_ROOM, _ABORT_EPISODE)
         b_listen = asyncio.create_task(agent_b.listen_for_session())
         await manager.invite(_ABORT_ROOM, "agent-b")
         await b_listen  # ensure b is fully in the group
 
-        # The membership change published a commit:rejected onto the channel.
+        # A negotiation between them; then agent-b is removed from the room.
+        manager.open_episode(_ABORT_ROOM, _ABORT_EPISODE, parties=["agent-a", "agent-b"])
+        await manager.remove(_ABORT_ROOM, "agent-b")
+
+        # The party leaving published a commit:rejected onto the channel.
         received: list[MyceliumMessage] = []
         while not received:
             received.extend(await a_channel.receive(timeout_s=15.0))

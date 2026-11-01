@@ -6,7 +6,7 @@
 import { useMemo } from "react";
 import { BookOpen } from "lucide-react";
 import { useCommands } from "@/components/keymap-provider";
-import { Tooltip } from "@/components/ui/tooltip";
+import { IconLink } from "@/components/ui/icon-button";
 import { DOCS_URL } from "@/lib/install";
 import type { PaletteCommand } from "@/lib/commands";
 
@@ -30,16 +30,8 @@ export function DocsLink() {
   useCommands(commands);
 
   return (
-    <Tooltip content="Documentation" side="bottom">
-      <a
-        href={DOCS_URL}
-        target="_blank"
-        rel="noreferrer"
-        aria-label="Documentation"
-        className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-      >
-        <BookOpen className="size-4" />
-      </a>
-    </Tooltip>
+    <IconLink label="Documentation" size="md" side="bottom" href={DOCS_URL} target="_blank" rel="noreferrer">
+      <BookOpen />
+    </IconLink>
   );
 }

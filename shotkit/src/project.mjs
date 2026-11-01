@@ -20,8 +20,11 @@
  *       "mockScript": "dev:mock",           // package.json script --mock runs
  *       "mockEnv": { "UI_MOCK": "1" },      // extra env for it
  *       "mockHeader": "x-mock",             // response header proving a server is the mock one
- *       "mockProbe": "/api/health"          // a route that carries it (default "/")
+ *       "mockProbe": "/api/health",         // a route that carries it (default "/")
+ *       "storage": { "onboarded": "1" }     // localStorage every app capture starts with
  *     },
+ *     "flows": "shotkit/flows",              // committed flows, *.json (default shotkit/flows)
+ *     "setup": "signed-in",                  // a flow every app capture runs first
  *     "backdrop": {
  *       "canvas": "scripts/canvas.js",      // script that paints --backdrop canvas
  *       "size": "1920x1080",                // the page it paints on (default 1920x1080)
@@ -84,6 +87,12 @@ export const MOCK_ENV = config.app?.mockEnv ?? {};
 /** @type {string | null} */
 export const MOCK_HEADER = config.app?.mockHeader ?? null;
 export const MOCK_PROBE = config.app?.mockProbe ?? "/";
+/** @type {Record<string, string>} localStorage every app capture starts with; --storage wins */
+export const APP_STORAGE = config.app?.storage ?? {};
+/** Where the project keeps its committed flows (see flows.mjs). */
+export const FLOWS_DIR = resolve(PROJECT_ROOT, config.flows ?? "shotkit/flows");
+/** @type {string | null} a flow every app capture runs first */
+export const SETUP_FLOW = config.setup ?? null;
 /** @type {string | null} absolute path, or null when the project names none */
 export const CANVAS_PATH = config.backdrop?.canvas ? resolve(PROJECT_ROOT, config.backdrop.canvas) : null;
 export const CANVAS_PIXELATED = config.backdrop?.pixelated === true;

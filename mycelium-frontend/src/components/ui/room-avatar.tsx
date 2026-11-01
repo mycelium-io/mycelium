@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { cn } from "@/lib/utils";
-import { avatarTint, initials } from "@/lib/avatar-color";
+import { avatarTint, initials, softAvatar } from "@/lib/avatar-color";
 
 interface Props {
   name: string;
@@ -11,7 +11,7 @@ interface Props {
   children?: React.ReactNode;
 }
 
-/** A room's tile: its monogram over a solid fill in the room's own stable color.
+/** A room's tile: its monogram over a soft wash of the room's own stable color.
  *
  *  Rooms are the thing you navigate between all day, so the tile is what you
  *  aim at — a column of identical gray squares makes you read every name first.
@@ -24,22 +24,15 @@ interface Props {
  *  Decorative: the room name is always spelled beside or beneath it, so the
  *  tile is `aria-hidden` and adds nothing for a screen reader to re-read. */
 export function RoomAvatar({ name, className, children }: Props) {
-  const tint = avatarTint(name);
   return (
     <span
       aria-hidden
       className={cn(
-        "relative flex size-9 flex-shrink-0 items-center justify-center rounded-lg border",
-        "font-mono text-micro font-semibold",
+        "relative flex size-9 flex-shrink-0 items-center justify-center rounded-lg",
+        "font-sans text-micro font-semibold",
         className,
       )}
-      // Opaque fill keeps the tile's color stable over a hover or selection
-      // highlight.
-      style={{
-        background: tint,
-        borderColor: `color-mix(in srgb, ${tint} 70%, #000)`,
-        color: "#fff",
-      }}
+      style={softAvatar(avatarTint(name))}
     >
       {initials(name)}
       {children}

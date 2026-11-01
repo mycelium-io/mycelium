@@ -6,6 +6,10 @@
 import { useEffect, useRef } from "react";
 import { startRoomTour, type TourDeps, type TourHandle } from "@/lib/tour";
 
+/** What has to be on the page before the tour starts, and how long to wait for it. */
+const ROOM_READY = '[data-tour="composer"]';
+const READY_WAIT_MS = 4000;
+
 interface Props extends TourDeps {
   /** Start the tour when this flips true (e.g. `?tour=1`). */
   active: boolean;
@@ -17,8 +21,17 @@ export function RoomTour({ active, setEditorView, setInspectorTab, onExit }: Pro
 
   useEffect(() => {
     if (!active) return;
-    handleRef.current = startRoomTour({ setEditorView, setInspectorTab, onExit });
+    // The tour leaves out stops it can't see, and the room's center (the
+    // composer, the Board tab) mounts after the page does, so it waits for
+    // that, briefly, rather than starting on half a room.
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (!document.querySelector(ROOM_READY) && Date.now() - started < READY_WAIT_MS) return;
+      clearInterval(timer);
+      handleRef.current = startRoomTour({ setEditorView, setInspectorTab, onExit });
+    }, 100);
     return () => {
+      clearInterval(timer);
       handleRef.current?.destroy();
       handleRef.current = null;
     };

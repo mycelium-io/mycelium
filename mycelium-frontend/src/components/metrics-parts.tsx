@@ -8,6 +8,7 @@
  */
 
 import type { ReactNode } from "react";
+import { EmptyNote } from "@/components/empty-state";
 
 /** A small sentence-case label, as the rest of the app draws one. */
 export function Label({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -44,9 +45,9 @@ export function Panel({
 }
 
 /** The line a panel shows instead of a grid of dashes: what is missing, and the
- *  thing that would fill it. */
+ *  thing that would fill it. The app's `EmptyNote`, at a panel's inset. */
 export function Nothing({ children }: { children: ReactNode }) {
-  return <p className="px-4 py-3 text-label leading-relaxed text-muted-foreground">{children}</p>;
+  return <EmptyNote className="px-4 py-3">{children}</EmptyNote>;
 }
 
 /** One labeled figure inside a panel's grid. */

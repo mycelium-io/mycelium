@@ -35,6 +35,32 @@ def test_env_override_legacy_host_coerces(monkeypatch: pytest.MonkeyPatch) -> No
     assert MyceliumConfig.load().engine.runtime == "backend"
 
 
+def test_a_config_from_before_the_aligner_was_retired_still_loads(tmp_path) -> None:
+    """``[aligner]`` once held negotiation settings the hub no longer has; a
+    config.toml that still sets them loads, keeping the ones that remain, and
+    saving it drops the rest."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        "[aligner]\n"
+        'handle = "mediator"\n'
+        "term_check = false\n"
+        "round_timeout_s = 45.0\n"
+        "max_steps = 12\n"
+        "pi_timeout_s = 90.0\n",
+        encoding="utf-8",
+    )
+
+    cfg = MyceliumConfig.load(config_path=path)
+    assert cfg.aligner.handle == "mediator"
+    assert cfg.aligner.pi_timeout_s == 90.0
+
+    cfg._global_config_path = path
+    cfg.save()
+    saved = path.read_text(encoding="utf-8")
+    assert "term_check" not in saved
+    assert 'handle = "mediator"' in saved
+
+
 def test_save_roundtrips_engine_even_with_project_config(tmp_path) -> None:
     """Regression: ``save()`` filters to an allowlist of sections when a project
     config exists — ``engine`` must be in it, or ``config set engine.*`` is

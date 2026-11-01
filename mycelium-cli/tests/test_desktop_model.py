@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium desktop model``: the hub's model settings, as the Mac app reads and writes them."""
+"""``mycelium desktop model``: the hub's model settings, as the desktop app reads and writes them."""
 
 from __future__ import annotations
 

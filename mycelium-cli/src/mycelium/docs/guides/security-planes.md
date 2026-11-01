@@ -20,9 +20,9 @@ With the default setup:
 - **[Workers](#worker) can reach anything the hub can**, including every room's
   files and the model's API key.
 - **Anything that can reach the hub can ask a runner to start an agent.** The
-  runner asks on its machine before starting anything. The exception is the Mac
-  app's own hub, which only its own Mac can reach. There, any program on the
-  Mac can start agents without a question. See
+  runner asks on its machine before starting anything. The exception is the
+  desktop app's own hub, which only its own computer can reach. There, any
+  program on that computer can start agents without a question. See
   [You say yes on the machine](#machines-you-say-yes-on-the-machine).
 
 ## What to do about it
@@ -34,8 +34,8 @@ With the default setup:
 2. **Serve it over HTTPS** behind a reverse proxy. See
    [Hub & Spoke](#hub-and-spoke-behind-an-https-proxy).
 3. **Keep workers to replies only** with `worker.tools = false`, or don't add
-   them. The exception is when everyone who can start one should be able to run
-   commands on the hub.
+   them. Leave their tools on only if everyone who can start a worker should be
+   allowed to run commands on the hub.
 4. **Keep secrets out of rooms.** The hub and everyone in the room can read
    anything posted there.
 
@@ -83,6 +83,6 @@ effect on the API. Set up sign-in for that.
 
 | Setup | HTTP API | SLIM |
 |---------|----------|------------|
-| **Just you, one machine** (the Mac app, or Docker on a laptop) | Open; only this machine can reach it | Shared secret |
+| **Just you, one machine** (the desktop app, or Docker on a laptop) | Open; only this machine can reach it | Shared secret |
 | **A team on a LAN or VPN** | Sign-in on | The hub's generated secret |
 | **Reached over the internet** | Sign-in on, behind HTTPS | A private secret; per-member identity if you need members told apart on the channel |

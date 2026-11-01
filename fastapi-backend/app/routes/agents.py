@@ -5,16 +5,27 @@
 
 POST /rooms/{room_name}/agents/draft-notes — a member's notes, drafted by the
 hub's Pi from the line a person typed about it, for the Add member dialog.
+
+POST /rooms/{room_name}/agents/{handle}/rename — a new handle for an agent.
+
+POST /rooms/{room_name}/agents/{handle}/pause|resume|stop — for its owner.
 """
 
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.schemas import AgentRead
-from app.services import notes_draft
+from app.schemas import (
+    AgentControl,
+    AgentControlRead,
+    AgentRead,
+    AgentRename,
+    AgentRenameRead,
+    refusals,
+)
+from app.services import actor, agent_control, agent_rename, notes_draft
 from app.services.agent_registry import norm_handle, room_agents
 from app.services.filesystem import read_room_meta, room_exists
 
@@ -23,7 +34,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rooms/{room_name}/agents", tags=["agents"])
 
 
-@router.get("", response_model=list[AgentRead])
+@router.get("", response_model=list[AgentRead], responses=refusals(404))
 async def list_agents(room_name: str) -> list[AgentRead]:
     """Return every agent registered in the room as structured JSON."""
     if not room_exists(room_name):
@@ -43,7 +54,7 @@ class NotesDraftRead(BaseModel):
     notes: str
 
 
-@router.post("/draft-notes", response_model=NotesDraftRead)
+@router.post("/draft-notes", response_model=NotesDraftRead, responses=refusals(400, 404, 422, 502))
 async def draft_notes(room_name: str, payload: NotesDraftRequest) -> NotesDraftRead:
     """Expand a short brief into a member's notes. Writes nothing to the room."""
     meta = read_room_meta(room_name)
@@ -73,3 +84,98 @@ async def draft_notes(room_name: str, payload: NotesDraftRequest) -> NotesDraftR
     if not notes:
         raise HTTPException(status_code=502, detail="The hub's model returned an empty draft.")
     return NotesDraftRead(notes=notes)
+
+
+@router.post(
+    "/{handle}/rename", response_model=AgentRenameRead, responses=refusals(400, 403, 404, 409, 422)
+)
+async def rename_agent(
+    room_name: str, handle: str, payload: AgentRename, request: Request
+) -> AgentRenameRead:
+    """Give an agent a new handle; for one a machine is running, once that machine says yes.
+
+    Its manifest and notes, the open rows it's meant for or holding, the
+    schedules it owns, its presence and read positions move to the new handle
+    (``agent_rename``), nothing keeps the old one, and whoever renamed it says
+    so in the room. A running agent can't take a new name from its
+    environment, so when a connected machine has it in a herdr pane, this only
+    checks the rename and queues a ``rename`` job there, writing nothing: the
+    person at the machine is asked first, and the hub applies the rename when
+    the runner, after the yes, reports the job running (``routes/runners``).
+    Declined or failed, nothing changed. An agent no connected machine has is
+    renamed at once. Under a verified token, only someone who may act as the
+    agent (its owner) may rename it.
+    """
+    old = norm_handle(handle) or ""
+    new = norm_handle(payload.to) or ""
+    actor.authorize_handle(request, room_name, old, field="handle")
+    by = norm_handle(actor.bind_optional_actor(request, payload.by, field="by"))
+    if not by:
+        raise HTTPException(status_code=422, detail="Say who is renaming it (`by`).")
+    try:
+        agent_rename.check(room_name, old, new)
+        target = agent_rename.restart_target(room_name, old)
+        if target is None:
+            memories, rows = await agent_rename.apply(room_name, old, new, by=by)
+            return AgentRenameRead(handle=new, was=old, memories=memories, rows=rows)
+    except agent_rename.RenameError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+    from app.services.runners import registry
+
+    spec = {"room": room_name, "handle": old, "to": new, "by": by}
+    job = registry.enqueue(target, "rename", spec, created_by=by)
+    logger.info("room %s: rename @%s to @%s waits for a yes on %s", room_name, old, new, target)
+    return AgentRenameRead(
+        handle=new, was=old, pending=True, restart_runner=target, restart_job=job.id
+    )
+
+
+def _controlled(
+    room_name: str, handle: str, payload: AgentControl, request: Request, verb: str = "pause"
+):
+    """``(handle, by)`` once ``by`` is shown to own the agent, else the refusal."""
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    target = norm_handle(handle) or ""
+    by = norm_handle(actor.bind_optional_actor(request, payload.by, field="by"))
+    if not by:
+        raise HTTPException(status_code=422, detail="Say who is asking (`by`).")
+    try:
+        agent_control.check(room_name, target, by, verb)
+    except agent_control.ControlError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return target, by
+
+
+@router.post("/{handle}/pause", response_model=AgentControlRead, responses=refusals(403, 404, 422))
+async def pause_agent(
+    room_name: str, handle: str, payload: AgentControl, request: Request
+) -> AgentControlRead:
+    """Pause an agent: stop its turn, tell it it's a pause, and hold its wakes."""
+    target, by = _controlled(room_name, handle, payload, request)
+    return agent_control.pause(room_name, target, by)
+
+
+@router.post("/{handle}/resume", response_model=AgentControlRead, responses=refusals(403, 404, 422))
+async def resume_agent(
+    room_name: str, handle: str, payload: AgentControl, request: Request
+) -> AgentControlRead:
+    """Resume a paused agent with a wake listing what arrived while it was paused."""
+    target, by = _controlled(room_name, handle, payload, request)
+    return agent_control.resume(room_name, target, by)
+
+
+@router.post(
+    "/{handle}/stop", response_model=AgentControlRead, responses=refusals(403, 404, 409, 422)
+)
+async def stop_agent(
+    room_name: str, handle: str, payload: AgentControl, request: Request
+) -> AgentControlRead:
+    """Stop an agent and close its pane, on the machine running it. Its owner only;
+    one with no owner on record can't be stopped from here."""
+    target, by = _controlled(room_name, handle, payload, request, "stop")
+    try:
+        return agent_control.stop(room_name, target, by)
+    except agent_control.ControlError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc

@@ -46,10 +46,16 @@ from app.schemas import (
     MessageCreate,
     MessageType,
     RoomCreate,
+    refusals,
 )
 from app.services import actor, patterns, protocols
 from app.services.agent_registry import norm_handle
-from app.services.filesystem import get_data_dir, read_room_meta, write_room_meta
+from app.services.filesystem import (
+    canonical_room_name,
+    get_data_dir,
+    read_room_meta,
+    write_room_meta,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +154,7 @@ async def list_patterns() -> PatternList:
     return PatternList(patterns=[_summary(item) for item in loaded], skipped=skipped)
 
 
-@router.get("/{name}", response_model=PatternRead)
+@router.get("/{name}", response_model=PatternRead, responses=refusals(404, 422))
 async def get_pattern(name: str) -> PatternRead:
     """One scenario in full."""
     try:
@@ -169,7 +175,12 @@ async def get_pattern(name: str) -> PatternRead:
     )
 
 
-@router.post("/load", response_model=PatternLoaded, status_code=201)
+#: Loading makes a room and its members, so it refuses as those writes do,
+#: passed through from them.
+_LOAD_REFUSALS = refusals(400, 403, 404, 409, 422)
+
+
+@router.post("/load", response_model=PatternLoaded, status_code=201, responses=_LOAD_REFUSALS)
 async def load_inline(payload: PatternLoadInline, request: Request) -> PatternLoaded:
     """Load a scenario the request carries, as a new room."""
     if not settings.PATTERNS_ALLOW_INLINE:
@@ -183,7 +194,9 @@ async def load_inline(payload: PatternLoadInline, request: Request) -> PatternLo
     return await _load(loaded, payload, request)
 
 
-@router.post("/{name}/load", response_model=PatternLoaded, status_code=201)
+@router.post(
+    "/{name}/load", response_model=PatternLoaded, status_code=201, responses=_LOAD_REFUSALS
+)
 async def load_pattern(name: str, payload: PatternLoad, request: Request) -> PatternLoaded:
     """Load a pattern from the hub's pack as a new room."""
     try:
@@ -207,6 +220,10 @@ def _claim_room(wanted: str, *, exact: bool) -> str:
     for n in range(1, MAX_NAME_ATTEMPTS + 1):
         name = wanted if n == 1 else f"{wanted}-{n}"
         try:
+            # A name a room has under another spelling is taken too, on a
+            # disk that keeps case apart as well as one that doesn't.
+            if canonical_room_name(name) != name:
+                raise FileExistsError(name)
             (rooms / name).mkdir()
         except FileExistsError:
             if exact:

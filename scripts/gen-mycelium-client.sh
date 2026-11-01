@@ -9,6 +9,12 @@
 # The generated client is NOT committed (see #613); it's a build artifact. CI,
 # the wheel/binary builds, and dev setup all run this to materialize it.
 #
+# The CLI uses one private part of what this generates: each route module's
+# `_get_kwargs`, through `mycelium.client.sent_unparsed`, so the runner's loops
+# can send a route's own request without parsing the answer. Upgrading
+# openapi-python-client can rename it; mycelium-cli/tests/test_sent_unparsed.py
+# fails if it does.
+#
 # Usage:
 #   SPEC_FILE=openapi.json scripts/gen-mycelium-client.sh
 #       Generate from the committed spec — no backend needed (CI / build / dev).

@@ -14,9 +14,11 @@ different credentials, and revoking one client leaves the other untouched.
 
 Three sources, most specific first:
 
-* **A pre-minted token** (``MYCELIUM_AGENT_AUTH_TOKEN``). The seam for a
-  credential this CLI didn't obtain: a token from CI, or one a sidecar wrote
-  out. Nothing here mints or renews it; the writer owns its lifetime.
+* **A pre-minted token** (``MYCELIUM_AGENT_AUTH_TOKEN``, or the file named by
+  ``MYCELIUM_AGENT_AUTH_TOKEN_FILE``). The seam for a credential this CLI
+  didn't obtain: a token from CI, one a sidecar wrote out, or the member token
+  the runner gets for each agent it starts (:func:`issue_member_token`).
+  Nothing here mints or renews it; the writer owns its lifetime.
 * **The environment** (``MYCELIUM_AGENT_AUTH_CLIENT_ID`` / ``…_CLIENT_SECRET``),
   for a container that runs exactly one agent and has no config file.
 * **The credential store**, ``~/.mycelium/agent-credentials.json``, written by
@@ -47,6 +49,7 @@ from rich.console import Console
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
+    from mycelium_backend_client.types import Response
 
 #: Overrides the credential store location (tests, CI runners with a shared home).
 CREDENTIAL_STORE_ENV = "MYCELIUM_AGENT_CREDENTIALS_FILE"
@@ -56,6 +59,10 @@ CREDENTIAL_STORE_ENV = "MYCELIUM_AGENT_CREDENTIALS_FILE"
 AGENT_HANDLE_ENV = "MYCELIUM_AGENT_HANDLE"
 
 STATIC_TOKEN_ENV = "MYCELIUM_AGENT_AUTH_TOKEN"
+#: A file holding the agent's token, read on every call: how the runner hands
+#: an agent its own token without putting the token itself where a pane's
+#: screen or a typed command would show it (:func:`issue_member_token`).
+STATIC_TOKEN_FILE_ENV = "MYCELIUM_AGENT_AUTH_TOKEN_FILE"
 CLIENT_ID_ENV = "MYCELIUM_AGENT_AUTH_CLIENT_ID"
 CLIENT_SECRET_ENV = "MYCELIUM_AGENT_AUTH_CLIENT_SECRET"
 
@@ -93,8 +100,15 @@ def store_path() -> Path:
 
 
 def token_cache_path(handle: str) -> Path:
+    """Where a minted token is cached: beside a store named by the environment,
+    else in the agent-state folder, which an agent can write from a sandbox."""
     safe = _UNSAFE.sub("-", handle) or "agent"
-    return store_path().parent / "agent-tokens" / f"{safe}.json"
+    if os.environ.get(CREDENTIAL_STORE_ENV, "").strip():
+        return store_path().parent / "agent-tokens" / f"{safe}.json"
+
+    from mycelium.config import MyceliumConfig
+
+    return MyceliumConfig.get_agent_state_dir() / "agent-tokens" / f"{safe}.json"
 
 
 @dataclass(frozen=True)
@@ -203,6 +217,151 @@ def list_credentials() -> dict[str, AgentCredential]:
     }
 
 
+def env_static_token() -> str | None:
+    """A pre-minted token from the environment: given directly, or in the file
+    the environment names. ``None`` when neither gives one."""
+    token = os.environ.get(STATIC_TOKEN_ENV, "").strip()
+    if token:
+        return token
+    path = os.environ.get(STATIC_TOKEN_FILE_ENV, "").strip()
+    if not path:
+        return None
+    try:
+        return Path(path).expanduser().read_text().strip() or None
+    except OSError:
+        return None
+
+
+def member_token_path(room: str, handle: str) -> Path:
+    """Where the runner keeps the member token it got for ``@handle`` in ``room``.
+
+    Beside the config rather than in the agent-state folder: an agent only
+    reads its token, and a sandboxed agent (Codex) can write the agent-state
+    folder, so one agent there could replace another's."""
+    from mycelium.config import MyceliumConfig
+
+    safe_room = _UNSAFE.sub("-", room.lower()) or "room"
+    safe_handle = _UNSAFE.sub("-", normalize_handle(handle) or "agent") or "agent"
+    folder = MyceliumConfig.get_global_config_dir() / "member-tokens" / safe_room
+    return folder / f"{safe_handle}.token"
+
+
+class MemberTokenRefused(Exception):
+    """The hub has sign-in on and won't give this agent a token for this
+    machine: it isn't signed in (401), or whoever it's signed in as doesn't
+    own the agent (403). Started anyway, the agent could do nothing, so
+    whoever starts it says why instead."""
+
+    def __init__(self, handle: str, hub: str, status: int, detail: str) -> None:
+        self.handle, self.hub, self.status, self.detail = handle, hub, status, detail
+        super().__init__(self.reason())
+
+    @property
+    def signed_out(self) -> bool:
+        return self.status == 401
+
+    def reason(self) -> str:
+        if self.signed_out:
+            return (
+                f"This computer isn't signed in to {self.hub}, so @{self.handle} can't get "
+                "its own credential there. Run `mycelium login` in a terminal here, then "
+                "start it again."
+            )
+        return (
+            f"{self.hub} won't give @{self.handle} a credential for whoever this computer "
+            f"is signed in as: {self.detail} Sign in here as its owner, or start it from "
+            "its owner's computer."
+        )
+
+
+def _hub_detail(resp: Response[Any]) -> str:
+    from mycelium.client import hub_error_detail
+
+    return hub_error_detail(resp.content)[:200]
+
+
+def redeem_join_code(hub_url: str, code: str) -> Response[Any]:
+    """Redeem a join code at ``hub_url``: the membership it names, or the hub's refusal.
+
+    No credential on this call: the code is the credential, and a hub pointed
+    somewhere unexpected is never sent this machine's login. So it goes on a
+    bare generated client rather than ``typed_client``.
+    """
+    import httpx
+
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.api.joins import redeem_join_api_joins_redeem_post as redeem_api
+    from mycelium_backend_client.models import JoinRedeem
+
+    with Client(
+        base_url=hub_url, timeout=httpx.Timeout(15.0), raise_on_unexpected_status=False
+    ) as client:
+        return redeem_api.sync_detailed(client=client, body=JoinRedeem(code=code))
+
+
+def issue_member_token(config: MyceliumConfig, room: str, handle: str) -> Path | None:
+    """Get ``@handle`` its own token for ``room`` and keep it in a file; the file's path.
+
+    Asks the hub for a join code for the agent, as whoever this machine is
+    signed in as (an agent is started by its owner), and redeems it: on a hub
+    with auth on, that gives a token the hub signed for the agent itself. The
+    token is written to :func:`member_token_path` (``0600``) and the pane is
+    given the path in :data:`STATIC_TOKEN_FILE_ENV`, so the token is never in
+    its environment listing, a typed command or its screen. ``None`` with auth
+    off (no token to keep), or when the hub can't be asked; the agent then
+    starts as before. Raises :class:`MemberTokenRefused` when the hub has
+    sign-in on and refuses this machine, since the agent would start unable
+    to do anything.
+    """
+    import httpx
+
+    from mycelium.client import answered, typed_client
+    from mycelium_backend_client.api.joins import (
+        create_join_api_rooms_room_name_joins_post as joins_api,
+    )
+    from mycelium_backend_client.errors import UnexpectedStatus
+    from mycelium_backend_client.models import JoinCreate, JoinRead, MembershipRead
+
+    name = normalize_handle(handle) or handle
+    try:
+        with typed_client(config, timeout=15, raise_on_unexpected_status=False) as client:
+            made = joins_api.sync_detailed(room, client=client, body=JoinCreate(handle=name))
+        if made.status_code in (401, 403):
+            raise MemberTokenRefused(
+                name, config.server.api_url.rstrip("/"), made.status_code, _hub_detail(made)
+            )
+        if not isinstance(made.parsed, JoinRead):
+            said = made.content.decode(errors="replace")[:200]
+            _warn_once(name, f"[yellow]No token for @{name}:[/yellow] the hub said {said}")
+            return None
+        redeemed = redeem_join_code(config.server.api_url.rstrip("/"), made.parsed.code)
+        token = answered(redeemed, MembershipRead).token or None
+    except (httpx.HTTPError, UnexpectedStatus, KeyError, ValueError, TypeError) as e:
+        _warn_once(name, f"[yellow]No token for @{name}:[/yellow] {e}")
+        return None
+    if not token:
+        return None
+    path = member_token_path(room, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Written beside it and moved into place: a renewal replaces the file a
+    # running agent reads, which must never see it half written.
+    fresh = path.with_name(f".{path.name}.{os.getpid()}")
+    fd = os.open(fresh, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(token)
+    fresh.chmod(0o600)
+    fresh.replace(path)
+    return path
+
+
+def agent_token_env(config: MyceliumConfig, room: str, handle: str) -> dict[str, str]:
+    """The environment that gives an agent's pane its own token: the file's
+    path, or nothing when there's no token to give (auth off). Raises
+    :class:`MemberTokenRefused` when the hub refuses this machine."""
+    path = issue_member_token(config, room, handle)
+    return {STATIC_TOKEN_FILE_ENV: str(path)} if path is not None else {}
+
+
 def resolve(config: MyceliumConfig, handle: str | None = None) -> AgentCredential | None:
     """The credential an agent should present, or ``None`` when it has none.
 
@@ -214,7 +373,7 @@ def resolve(config: MyceliumConfig, handle: str | None = None) -> AgentCredentia
         return None
 
     stored = list_credentials().get(resolved_handle)
-    env_token = os.environ.get(STATIC_TOKEN_ENV, "").strip() or None
+    env_token = env_static_token()
     env_client_id = os.environ.get(CLIENT_ID_ENV, "").strip() or None
     env_secret = os.environ.get(CLIENT_SECRET_ENV, "").strip() or None
 

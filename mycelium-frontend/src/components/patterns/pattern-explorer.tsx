@@ -20,6 +20,7 @@
  */
 
 import Link from "next/link";
+import { EmptyNote } from "@/components/empty-state";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronsLeft, ChevronsRight, CircleHelp, ExternalLink, Play, RotateCcw } from "lucide-react";
@@ -177,7 +178,7 @@ function PatternRail({
       <div className={cn("flex-1 overflow-y-auto py-2", collapsed ? "flex flex-col items-center gap-1" : "px-2")}>
         {error && !collapsed && <p className="px-2 py-1 text-xs text-red">Couldn&apos;t read the patterns: {error.message}</p>}
         {patterns.length === 0 && !error && !collapsed && (
-          <p className="px-2 py-1 text-xs text-faint">This hub has no pattern pack. Set patterns.dir to a pack folder.</p>
+          <EmptyNote className="px-2 py-1">This hub has no pattern pack. Set patterns.dir to a pack folder.</EmptyNote>
         )}
         {patterns.map((p) => {
           const ran = latestRoomOf(rooms, p.pattern) !== null;
@@ -358,7 +359,7 @@ function Attendants({
             <Tooltip key={m.handle} content={card} side="right" align="start" className="max-w-72 p-3">
               <div className={cn("flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5", up && "bg-surface")}>
                 <span className={cn("relative rounded-full", up && "ring-2 ring-offset-2 ring-offset-bg", up && (human ? "ring-yellow" : "ring-accent"))}>
-                  <Monogram handle={handle} className="size-7" color={human ? "var(--muted-foreground)" : undefined} />
+                  <Monogram handle={handle} className="size-7" color={human ? "var(--muted-foreground)" : undefined} kind={human ? "person" : "agent"} />
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-[13.5px] font-medium leading-tight">{human ? "you" : m.handle}</span>
@@ -378,7 +379,7 @@ function Attendants({
             className="max-w-72 p-3 text-[12.5px] text-muted-foreground"
           >
             <div className="mt-1 flex cursor-default items-center gap-2.5 rounded-md px-2 py-1.5 opacity-70">
-              <Monogram handle="conductor" className="size-7" color="var(--faint)" />
+              <Monogram handle="conductor" className="size-7" color="var(--faint)" kind="engine" />
               <span className="min-w-0">
                 <span className="block text-[13.5px] font-medium leading-tight">conductor</span>
                 <span className="block text-[11.5px] leading-tight text-faint">runs the flow</span>

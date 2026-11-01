@@ -39,6 +39,26 @@ export function avatarTint(name: string): string {
   return `var(--avatar-${(hash(name.toLowerCase()) % SLOTS) + 1})`;
 }
 
+/** How much of the tint the background and the initials take. The test in
+ *  `avatar-color.test.ts` holds every palette color at 4.5:1 or better in
+ *  every theme with these. */
+export const AVATAR_FILL = 45;
+export const AVATAR_INK = 25;
+
+/** The fill and glyph colors of an avatar in `tint`: a soft wash of it with the
+ *  initials in a shade of it. The wash is mixed into the surface rather than
+ *  made see-through, so avatars stacked in a facepile don't blend into each
+ *  other and the color holds steady over a hover highlight. The initials are
+ *  mixed with `--avatar-ink`, the theme's text color unless the theme says
+ *  otherwise, so they're a dark shade of the tint on a light theme's pale wash
+ *  and a light one on a dark theme's deep wash. */
+export function softAvatar(tint: string): { background: string; color: string } {
+  return {
+    background: `color-mix(in srgb, ${tint} ${AVATAR_FILL}%, var(--surface))`,
+    color: `color-mix(in srgb, ${tint} ${AVATAR_INK}%, var(--avatar-ink))`,
+  };
+}
+
 /** Two-letter monogram: "backend-lead" → BL, "oc-test2" → OT, "main" → MA.
  *  Splits on non-alphanumerics, else takes the first two characters. */
 export function initials(name: string): string {

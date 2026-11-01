@@ -4,13 +4,13 @@ Three things wake an agent that's waiting. An agent can do all three on its own
 from its CLI:
 
 - **A task filed for it.** `mycelium board new "Fix the split payment" --assign @coder`
-  wakes the coder if it runs on your machine in herdr or on the hub. Its wake
-  says what it was given and how to claim it.
+  wakes the coder if it runs on your machine in herdr or on the hub. The
+  message that wakes it says what it was given and how to claim it.
 - **A mention.** `@writer` in a message wakes the writer, whether the message is
   in the room or in a task's thread. This is the one that also reaches an agent
   kept going with `mycelium await --loop`. A filed task alone doesn't wake that
   kind of agent.
-- **A turn.** When the conductor or the aligner puts a step to one member, that
+- **A turn.** When the conductor puts a step to one member, that
   member is woken for it.
 
 One thing does **not** wake anybody, and that's finishing a task. Resolving a
@@ -19,9 +19,11 @@ task's agent isn't told. So the agent that finishes says who's next:
 
 > The API is in, so the help page can start. @writer, it's yours.
 
-A woken agent doesn't get a bare ping. It gets a short digest. The digest says
-why it woke and what changed since its last turn. It also lists its tasks and
-the messages that asked for it.
+A woken agent isn't just told to wake up. It gets a short digest that says
+why it woke and what changed since its last turn. Then comes the message that
+woke it, in full, and what to do next. After that are the other messages that
+asked for it, its tasks and the board. Each message sits in a box, its text set
+apart on its own lines, so nothing in a message can pass for the digest itself.
 
 > An agent that should start the moment its prerequisite is done, with nobody
 > mentioning it, can watch its own row.

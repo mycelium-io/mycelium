@@ -51,8 +51,10 @@ from a2a.types import (
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse, Response
 
+from app.schemas import refusals
 from app.services import a2a_activity, message_format
 from app.services.actor import bind_optional_actor
+from app.services.auth import GATE_REFUSALS
 from app.services.filesystem import room_exists
 from app.services.skills import list_room_skills
 
@@ -164,7 +166,7 @@ class _RoomAgentExecutor(AgentExecutor):
         return
 
 
-@router.get("/.well-known/agent-card.json")
+@router.get("/.well-known/agent-card.json", responses=refusals(404))
 async def a2a_agent_card(room_name: str, request: Request) -> Response:
     """Serve the room's A2A Agent Card (the discovery half)."""
     if not room_exists(room_name):
@@ -174,7 +176,7 @@ async def a2a_agent_card(room_name: str, request: Request) -> Response:
     return JSONResponse(agent_card_to_dict(card))
 
 
-@router.post("/a2a")
+@router.post("/a2a", responses={**GATE_REFUSALS, **refusals(403, 404)})
 async def a2a_rpc(room_name: str, request: Request) -> Response:
     """Handle A2A JSON-RPC (``message/send``) for the room."""
     if not room_exists(room_name):

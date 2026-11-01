@@ -4,7 +4,7 @@
 """What the runner did, in ``runner.log``: timestamped, rotated, wherever it runs.
 
 The runner writes here whether it runs from ``mycelium runner`` or inside the
-Mac app, so the file is the one place to read what it did: each wake, each
+desktop app, so the file is the one place to read what it did: each wake, each
 job, each question asked, and each herdr or hub call that failed or was slow.
 Successful calls are left out.
 

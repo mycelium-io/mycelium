@@ -31,16 +31,29 @@ export function subscribe(room: string, fn: Listener): () => void {
   return () => set.delete(fn);
 }
 
+/** Listens to every room, the way the hub's notification stream does. */
+const EVERY_ROOM = "*";
+
+/** Listen to every room's frames, each tagged with its `room_name`; returns
+ *  the unsubscribe. The mock's notification feed. */
+export function subscribeAll(fn: Listener): () => void {
+  return subscribe(EVERY_ROOM, fn);
+}
+
 /** Put a frame on a room's stream, stamped now unless it carries a time. */
 export function publish(room: string, frame: Record<string, unknown>): void {
   const stamped = { created_at: new Date().toISOString(), ...frame };
-  for (const fn of state.listeners.get(room) ?? []) {
-    try {
-      fn(stamped);
-    } catch {
-      /* a closed stream; its cancel unsubscribes it */
+  const deliver = (set: Set<Listener> | undefined, f: Record<string, unknown>) => {
+    for (const fn of set ?? []) {
+      try {
+        fn(f);
+      } catch {
+        /* a closed stream; its cancel unsubscribes it */
+      }
     }
-  }
+  };
+  deliver(state.listeners.get(room), stamped);
+  deliver(state.listeners.get(EVERY_ROOM), { room_name: room, ...stamped });
 }
 
 /** The room's live channel URN, where room-level notices ride. */
@@ -59,6 +72,8 @@ export function noticeFrame(
     for?: string;
     speakers?: string;
     released?: string;
+    /** Any other flat field a subkind carries, such as a `check` notice's. */
+    [field: string]: string | null | undefined;
   },
 ): Record<string, unknown> {
   const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined && v !== null && v !== ""));

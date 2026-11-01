@@ -536,27 +536,24 @@ class A2aConfig(BaseModel):
 
 
 class AlignerConfig(BaseModel):
-    """How the hub's aligner engine negotiates. Defaults match the backend's."""
+    """Hub settings still filed under ``[aligner]``, the engine that introduced them.
+
+    The aligner itself was retired (negotiation is the conductor's ``concord``
+    and ``accord`` flows). The section keeps its name so an existing
+    ``config.toml`` keeps working, and keys it no longer has (``term_check``,
+    ``round_timeout_s``, ``max_steps``) are ignored when it loads.
+    """
 
     handle: str = Field(
         default="aligner",
-        description="The handle the hub's built-in aligner answers to when no aligner is registered.",
-    )
-    term_check: bool = Field(
-        default=True,
-        description="Check whether agents use a word in different senses before negotiating.",
-    )
-    round_timeout_s: float = Field(
-        default=30.0,
-        description="Seconds an agent has to answer a round before the aligner moves on without it.",
-    )
-    max_steps: int = Field(
-        default=20,
-        description="The most rounds one negotiation can run. Most finish well before this.",
+        description=(
+            "A mention of this handle, in a room where no member has it, is answered "
+            "with what to run now that the aligner is retired."
+        ),
     )
     pi_timeout_s: float = Field(
         default=120.0,
-        description="Seconds one model call by the aligner can take.",
+        description="Seconds one model call by an engine can take.",
     )
 
 
@@ -592,6 +589,27 @@ class WorkerConfig(BaseModel):
     )
 
 
+class VerifierConfig(BaseModel):
+    """The verifier: checks what agents say about approvals and merges against the
+    room's records, and adds a line under a message when a claim doesn't hold up."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Turn the verifier on for this hub. It then reads only the rooms that add it "
+            "(`/engine verifier`, or Add member). Off, nothing is checked."
+        ),
+    )
+    confirm: bool = Field(
+        default=True,
+        description=(
+            "Have the hub's model read the thread before a line is shown, so a claim the "
+            "records got wrong is dropped. It runs on a few messages in a hundred. Off, the "
+            "records alone decide: cheaper, and noisier."
+        ),
+    )
+
+
 class BoardConfig(BaseModel):
     """Board rules the hub enforces."""
 
@@ -602,6 +620,81 @@ class BoardConfig(BaseModel):
             "(depends-on). `board claim --force` claims it anyway."
         ),
     )
+
+
+class UiConfig(BaseModel):
+    """The web app (the UI server in front of the hub)."""
+
+    public_host: str = Field(
+        default="",
+        description=(
+            "The name the app is reached by besides this machine and its IP addresses, "
+            "such as mycelium.example.com behind a proxy. The app refuses any other name, "
+            "so a page that points its own name at this machine can't reach it."
+        ),
+    )
+
+
+class VoiceConfig(BaseModel):
+    """The message box's mic, transcribed on the hub, and notifications read aloud."""
+
+    enabled: bool = Field(
+        default=False,
+        description=(
+            "Let people talk into the message box. The hub transcribes on its own CPU, "
+            "with a speech model of about 150 MB on disk, in a separate process that uses "
+            "about 500 MB of memory while anyone is talking and exits a few minutes after. "
+            "Off, the mic isn't offered and nothing is downloaded."
+        ),
+    )
+    model: Literal["fast", "accurate"] = Field(
+        default="fast",
+        description=(
+            "The speech model. fast is Moonshine: about 150 MB on disk and 500 MB of memory. "
+            "accurate is Parakeet: about half the mistakes, at about 630 MB on disk (a 480 MB "
+            "download, made the first time a mic is turned on) and 1.4 GB of memory. Both "
+            "are English only. The hub reads it when it starts."
+        ),
+    )
+    download: bool = Field(
+        default=True,
+        description=(
+            "Let the hub download the speech model when voice is on and the model isn't "
+            "there. Off, put the files in the hub's data folder under models/voice yourself."
+        ),
+    )
+    speech_url: str = Field(
+        default="",
+        description=(
+            "A speech server for reading notifications aloud: an OpenAI-style text-to-speech "
+            "endpoint you run, such as http://127.0.0.1:8880/v1 (/audio/speech is added unless "
+            "the address ends with it). The app asks the hub, and the hub asks this server, so "
+            "it works from any page. Empty, the app doesn't offer to read notifications aloud. "
+            "Mycelium ships no speech model. Independent of enabled, which is the mic."
+        ),
+    )
+    speech_model: str = Field(
+        default="",
+        description="The model name the speech server expects. Empty sends none.",
+    )
+    speech_voice: str = Field(
+        default="",
+        description="The voice the speech server reads with. Empty sends none.",
+    )
+    speech_api_key: str = Field(
+        default="",
+        description="A key the speech server asks for, sent as a bearer token. Empty sends none.",
+    )
+
+    @field_validator("speech_url")
+    @classmethod
+    def validate_speech_url(cls, v: str) -> str:
+        """An http(s) address or nothing, without a trailing slash."""
+        v = v.strip().rstrip("/")
+        if v and not v.lower().startswith(("http://", "https://")):
+            msg = "voice.speech_url is an http:// or https:// address"
+            raise ValueError(msg)
+        return v
 
 
 class PatternsConfig(BaseModel):
@@ -645,14 +738,14 @@ class TelemetryConfig(BaseModel):
 
     ``enabled`` activates the OpenTelemetry SDK in the backend: traces and
     metrics are exported over OTLP on every coordinated path (HTTP RED,
-    aligner rounds, SLIM channel timing, await long-poll). Off by default;
+    engine runs, SLIM channel timing, await long-poll). Off by default;
     never required for coordination or storage to work.
 
     ``send_product_analytics`` shares the hub's usage events. The hub records
     them either way (tasks filed and resolved, flows and negotiations finished,
     agents joined, the hub starting) and the app's Metrics page reads them;
     this sends the same events to ``analytics_destination``. Off by default,
-    asked at interactive install and on the Mac app's first-run screen. No
+    asked at interactive install and on the desktop app's first-run screen. No
     names, handles, rooms, task text, prompts or replies are ever included.
     """
 
@@ -669,8 +762,8 @@ class TelemetryConfig(BaseModel):
             "OTLP HTTP endpoint the backend pushes spans and metrics to. "
             "When unset and telemetry.enabled is true, defaults to "
             "http://mycelium-collector:4318, the collector's address in the Docker stack. "
-            "The Mac app runs no collector, so set this there (for example "
-            "http://127.0.0.1:4318 for a collector on the same Mac)."
+            "The desktop app runs no collector, so set this there (for example "
+            "http://127.0.0.1:4318 for a collector on the same machine)."
         ),
     )
     otlp_headers: str | None = Field(
@@ -693,7 +786,7 @@ class TelemetryConfig(BaseModel):
         description=(
             "Share the hub's anonymous usage events (tasks filed and resolved, flows and "
             "negotiations finished, agents joined) with the analytics destination. The hub "
-            "records them either way. Off by default; the Mac app's own setting wins there."
+            "records them either way. Off by default; the desktop app's own setting wins there."
         ),
     )
     analytics_destination: str | None = Field(
@@ -777,6 +870,9 @@ class MyceliumConfig(BaseModel):
     synthesizer: SynthesizerConfig = Field(default_factory=SynthesizerConfig)
     worker: WorkerConfig = Field(default_factory=WorkerConfig)
     board: BoardConfig = Field(default_factory=BoardConfig)
+    ui: UiConfig = Field(default_factory=UiConfig)
+    voice: VoiceConfig = Field(default_factory=VoiceConfig)
+    verifier: VerifierConfig = Field(default_factory=VerifierConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     login: LoginConfig = Field(default_factory=LoginConfig)
     agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)
@@ -811,6 +907,17 @@ class MyceliumConfig(BaseModel):
     @classmethod
     def get_global_config_dir(cls) -> Path:
         return Path.home() / ".mycelium"
+
+    @classmethod
+    def get_agent_state_dir(cls) -> Path:
+        """What the CLI writes when an agent runs it: ``await``'s pending
+        confirmations and minted agent tokens, and nothing else.
+
+        Kept apart from the rest of ``~/.mycelium`` so a sandboxed agent (Codex)
+        can be given this folder alone, never the config, the herdr registry or
+        the runner's approval files beside it.
+        """
+        return cls.get_global_config_dir() / "agent-state"
 
     @classmethod
     def get_global_config_path(cls) -> Path:
@@ -888,9 +995,11 @@ class MyceliumConfig(BaseModel):
 
             # A folder that joined a room (`mycelium join`) names its hub and
             # room; that beats this machine's files and loses to the environment.
+            # With no membership, the desktop app's client-mode hub stands in
+            # when the files name no hub of their own.
             from mycelium import caller
 
-            overlay = caller.config_overlay()
+            overlay = caller.config_overlay(config_dict.get("server", {}).get("api_url"))
             replaced = {
                 (section, key): (config_dict.get(section, {}).get(key), value)
                 for section, keys in overlay.items()

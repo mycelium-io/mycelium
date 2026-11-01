@@ -4,7 +4,22 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AtSign, Check, FileText, Plus, UserMinus, UserPlus, Users } from "lucide-react";
+import {
+  AtSign,
+  Check,
+  Clock,
+  Eye,
+  FileText,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Square,
+  SquareTerminal,
+  UserMinus,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -14,19 +29,35 @@ import {
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
 import { inviteLink } from "@/lib/desktop";
-import { type PresenceMember, type RoomFloor } from "@/lib/api";
+import {
+  controlAgent,
+  logFetchError,
+  removeRoomPerson,
+  type AgentControlVerb,
+  type AgentPause,
+  type PresenceMember,
+  type RoomFloor,
+  type RoomSubscription,
+  type RoomOther,
+} from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
-import { useRoomRoster } from "@/lib/room-data";
+import { useRoom, useRoomRoster, useScheduledHandles } from "@/lib/room-data";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
+import { RenameAgentDialog } from "@/components/rename-agent-dialog";
+import { AgentScreenPeek } from "@/components/agent-screen-peek";
+import { useAgentOpener } from "@/components/agent-opener";
 import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
-import { HerdrRam } from "@/components/ui/herdr-ram";
+import { AgentCardHover } from "@/components/agent-card";
 import { EmptyState } from "@/components/empty-state";
+import { FadeScroll } from "@/components/ui/fade-scroll";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
+import { usePrincipal } from "@/components/current-user";
+import { useHubAddress } from "@/lib/hub-address";
 
 interface Props {
   roomName: string;
@@ -43,22 +74,43 @@ interface Props {
 }
 
 /**
- * A member's right-click menu. It wraps the row's tooltip in an element that
- * draws no box (`contents`), since the tooltip already owns the row as its
+ * A member's right-click menu. It wraps the row's card in an element that
+ * draws no box (`contents`), since the card already owns the row as its
  * trigger; a right-click on the row still bubbles here.
  */
 function MemberMenu({
   handle,
   agent,
   onOpenMemory,
+  onWatch,
+  onRename,
+  onControl,
+  canStop = false,
+  paused = false,
   onUnregister,
+  onRemove,
+  removeLabel = "Remove from room",
   children,
 }: {
   handle: string;
   agent: boolean;
   onOpenMemory?: (key: string) => void;
+  /** Agents that run in a terminal: opens it, live and read-only. */
+  onWatch?: () => void;
+  /** Agents an engine isn't: opens the form for `agent rename`. */
+  onRename?: () => void;
+  /** Your own agents, or one nobody owns: pause or resume it. */
+  onControl?: (verb: AgentControlVerb) => void;
+  /** Your own agents only: stop it too. */
+  canStop?: boolean;
+  /** It's paused now, so the menu offers Resume rather than Pause. */
+  paused?: boolean;
   /** Agents only: opens the confirmation for `agent rm`. */
   onUnregister?: () => void;
+  /** People only: takes them out of the room until they join again. */
+  onRemove?: () => void;
+  /** What the remove item says: in a shared room, posting rejoins them. */
+  removeLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -72,9 +124,38 @@ function MemberMenu({
             Open profile
           </ContextMenuItem>
         )}
+        {agent && onWatch && (
+          <ContextMenuItem icon={SquareTerminal} onClick={onWatch}>
+            Watch terminal
+          </ContextMenuItem>
+        )}
         <ContextMenuItem icon={AtSign} onClick={() => void copyText(`@${handle}`)}>
           Copy @{handle}
         </ContextMenuItem>
+        {agent && onRename && (
+          <ContextMenuItem icon={Pencil} onClick={onRename}>
+            Rename…
+          </ContextMenuItem>
+        )}
+        {agent && onControl && (
+          <>
+            <ContextMenuSeparator />
+            {paused ? (
+              <ContextMenuItem icon={Play} onClick={() => onControl("resume")}>
+                Resume
+              </ContextMenuItem>
+            ) : (
+              <ContextMenuItem icon={Pause} onClick={() => onControl("pause")}>
+                Pause
+              </ContextMenuItem>
+            )}
+            {canStop && (
+              <ContextMenuItem icon={Square} onClick={() => onControl("stop")}>
+                Stop…
+              </ContextMenuItem>
+            )}
+          </>
+        )}
         {agent && onUnregister && (
           <>
             <ContextMenuSeparator />
@@ -83,47 +164,25 @@ function MemberMenu({
             </ContextMenuItem>
           </>
         )}
+        {!agent && onRemove && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem icon={UserMinus} destructive onClick={onRemove}>
+              {removeLabel}
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
-  );
-}
-
-/** Minute-granular relative age; null under a minute (an actively-polling lease
- *  reads plainly as "awaiting" rather than churning a seconds counter). */
-function relativeTime(iso: string): string | null {
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (mins < 1) return null;
-  if (mins < 60) return `${mins}m ago`;
-  return `${Math.floor(mins / 60)}h ago`;
-}
-
-/** One label/value line in a member card. Rendered only when it has a value. */
-function DetailRow({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value?: React.ReactNode;
-  color?: string;
-}) {
-  if (value == null || value === "") return null;
-  return (
-    <div className="flex gap-2 text-micro leading-relaxed">
-      <span className="w-16 shrink-0 whitespace-nowrap text-faint">{label}</span>
-      <span className="min-w-0 flex-1 break-words" style={color ? { color } : undefined}>
-        {value}
-      </span>
-    </div>
   );
 }
 
 /** Per-herdr-state accent for the roster's activity line, so the palette isn't
  *  uniformly cold: working reads warm, blocked hot, done green, idle muted. */
 const HERDR_STATE_COLOR: Record<string, string> = {
-  working: "var(--warning, #d19a45)",
-  blocked: "var(--destructive, #d1495b)",
-  done: "var(--success, #4c9a6a)",
+  working: "var(--yellow)",
+  blocked: "var(--red)",
+  done: "var(--green)",
   idle: "var(--muted-foreground)",
 };
 
@@ -133,84 +192,16 @@ function isHerdr(member: PresenceMember): boolean {
   return member.kind === "herdr" || (!!member.status && member.status in HERDR_STATE_COLOR);
 }
 
-/** How a member is hosted, in words — the honest expansion of the presence kind. */
-function hostingLabel(member: PresenceMember): string {
-  if (isHerdr(member)) return "herdr pane (not joined)";
-  return member.kind === "slim" ? "SLIM socket" : "server-held await lease";
-}
-
-/** The presence half of a member card: how it's hosted, its live state and
- *  current task, any queued wake, and when it was last seen — the detail behind
- *  the compact row's halo. */
-function presenceDetail(member?: PresenceMember): React.ReactNode {
-  if (!member) return null;
-  const age = member.last_seen ? relativeTime(member.last_seen) : null;
-  const stateColor = HERDR_STATE_COLOR[member.status ?? ""];
-  return (
-    <>
-      <DetailRow label="hosting" value={hostingLabel(member)} />
-      <DetailRow label="state" value={member.status ?? undefined} color={stateColor} />
-      <DetailRow label="task" value={member.title?.trim() || undefined} />
-      <DetailRow
-        label="wake"
-        value={member.wake_pending ? "queued, held until idle" : undefined}
-        color="var(--accent)"
-      />
-      <DetailRow
-        label="last seen"
-        value={member.kind === "slim" ? "now (live socket)" : (age ?? "awaiting")}
-      />
-    </>
-  );
-}
-
-/** The hover card shown for any roster row: a monogram header plus a detail list
- *  (identity rows the caller passes + the shared presence rows). */
-function MemberTooltipCard({
-  handle,
-  color,
-  presence,
-  children,
-}: {
-  handle: string;
-  color?: string;
-  presence?: PresenceMember;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Monogram
-          handle={handle}
-          color={color}
-          className="size-6"
-          presence={presence?.kind}
-          status={presence?.status}
-          wakePending={presence?.wake_pending}
-          mutePresence
-        />
-        <span className="font-mono text-label font-semibold text-text">@{handle}</span>
-        {presence && isHerdr(presence) && (
-          <HerdrRam className="size-3 opacity-70" style={{ color: "var(--accent)" }} />
-        )}
-      </div>
-      <div className="flex flex-col gap-0.5">
-        {children}
-        {presenceDetail(presence)}
-      </div>
-    </div>
-  );
-}
-
 /**
- * Roster of who's in a room: the **people** (agent owners + anyone who's posted,
- * plus the handle you're acting as) and the **agents** (`agents/<handle>`
- * manifests). Pairs with the chat box (@-mention to invoke) and the event stream
+ * Roster of who's in a room: the **people** (recorded by the hub when they
+ * joined: made the room, were added, or posted as a person), the **agents**
+ * (`agents/<handle>` manifests) and, quietly, **others**: handles that hold a
+ * task or are present but are neither. Pairs with the chat box (@-mention to invoke) and the event stream
  * (replies are badged) to make the whole register → list → invoke → reply loop
  * visible. Humans and agents share the monogram avatar, told apart by tint
  * (muted for people, accent for agents).
  *
- * Engines (aligner / synthesizer / hello) are backend-owned, so their separate
+ * Engines (conductor / synthesizer / hello) are backend-owned, so their separate
  * invitation action is a pure manifest write. A coding agent needs something on
  * the user's machine to start it: with a runner connected (`mycelium runner`)
  * the app queues that start through the hub; without one, the setup is copied
@@ -227,11 +218,47 @@ export function AgentsPanel({
   const [addOpen, setAddOpen] = useState(false);
   const [addKind, setAddKind] = useState<MemberKind>("machine");
   const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  // The agent whose terminal is open, with the machine its manifest names. In
+  // a room the room's opener shows it, so an @ tag and Members share one peek;
+  // anywhere else this panel shows its own.
+  const opener = useAgentOpener();
+  const [watching, setWatching] = useState<{ handle: string; runner: string | null } | null>(null);
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
-  // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
-  // presence entry for whoever holds a SLIM socket or an `await` lease.
-  const { agents, people, presence, floors, loading, refresh } = useRoomRoster(roomName);
+  // manifests, people from the hub's record of who joined, others who hold a
+  // task or are present, and a presence entry for whoever holds a SLIM socket
+  // or an `await` lease.
+  const { agents, people, others, presence, floors, subscriptions, paused, loading, refresh } =
+    useRoomRoster(roomName);
+  const { room } = useRoom(roomName);
+  const me = usePrincipal();
+  // Pause, resume and stop are the owner's alone (the hub refuses anyone
+  // else). One with no owner on record ("unknown" says the same) can be
+  // paused by anyone, but stopped by nobody: a stop closes a pane on someone's
+  // machine.
+  const ownerOf = (a: AgentSummary) => {
+    const owner = (a.owner ?? "").replace(/^@/, "").toLowerCase();
+    return owner && owner !== "unknown" ? owner : null;
+  };
+  const controls = (a: AgentSummary): AgentControlVerb[] | null => {
+    if (a.adapter === "engine" || !me) return null;
+    const owner = ownerOf(a);
+    if (owner === me) return ["pause", "resume", "stop"];
+    return owner ? null : ["pause", "resume"];
+  };
+  const control = (handle: string, verb: AgentControlVerb) => {
+    if (verb === "stop" && !window.confirm(`Stop @${handle} and close its pane? It stays in the room.`)) return;
+    controlAgent(roomName, handle, verb, me)
+      .catch(logFetchError(`controlAgent(${roomName}, ${handle}, ${verb})`))
+      .finally(refresh);
+  };
+  const removePerson = (handle: string) => {
+    removeRoomPerson(roomName, handle)
+      .catch(logFetchError(`removeRoomPerson(${roomName}, ${handle})`))
+      .finally(refresh);
+  };
+  const scheduled = useScheduledHandles(roomName);
   const { runners } = useRunners();
   const runnersById = useMemo(() => new Map(runners.map((r) => [r.id, r])), [runners]);
 
@@ -278,7 +305,7 @@ export function AgentsPanel({
   }, [refresh]);
 
   // Agents by where they are in their life, not who owns them (a room's swarm is
-  // nearly all one owner): **Engines** are the backend capabilities (aligner,
+  // nearly all one owner): **Engines** are the backend capabilities (conductor,
   // synthesizer), kept apart because they persist; every other agent — coding
   // agents and bridged A2A ones alike — is **Active** when it holds a live socket
   // or an await lease and **Idle** otherwise. Idle folds by default so the handful
@@ -302,7 +329,7 @@ export function AgentsPanel({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3">
-        <span className="text-micro tabular text-muted-foreground">
+        <span className="text-micro tabular text-faint">
           {people.length + agents.length} {people.length + agents.length === 1 ? "member" : "members"}
         </span>
         <InviteButton roomName={roomName} />
@@ -329,9 +356,24 @@ export function AgentsPanel({
           onClose={() => setUnregistering(null)}
           onUnregistered={refresh}
         />
+        <RenameAgentDialog
+          roomName={roomName}
+          handle={renaming}
+          onClose={() => setRenaming(null)}
+          onRenamed={refresh}
+        />
+        {watching && (
+          <AgentScreenPeek
+            key={watching.handle}
+            onClose={() => setWatching(null)}
+            room={roomName}
+            handle={watching.handle}
+            runner={watching.runner}
+          />
+        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <FadeScroll className="flex-1">
         {loading &&
           ["w-20", "w-28", "w-16"].map((w, i) => (
             <div key={i} className="flex items-center gap-2.5 px-3 py-2.5">
@@ -342,12 +384,12 @@ export function AgentsPanel({
               </div>
             </div>
           ))}
-        {!loading && agents.length === 0 && people.length === 0 && (
+        {!loading && agents.length === 0 && people.length === 0 && others.length === 0 && (
           <EmptyState
             size="sm"
             icon={Users}
             title="No members yet"
-            description="Start an agent on your machine from Invite, or register one from the CLI. People appear once they own an agent or post."
+            description="Start an agent on your machine from Add, or register one from the CLI. People are listed once they make the room, post in it or are added."
             action={
               <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
                 mycelium agent create
@@ -364,7 +406,15 @@ export function AgentsPanel({
             {people.map((p) => {
               const marked = highlight === p.handle;
               return (
-                <MemberMenu key={`person-${p.handle}`} handle={p.handle} agent={false}>
+                <MemberMenu
+                  key={`person-${p.handle}`}
+                  handle={p.handle}
+                  agent={false}
+                  onRemove={() => removePerson(p.handle)}
+                  removeLabel={
+                    room?.is_public === false ? "Remove from room" : "Remove (they rejoin if they post)"
+                  }
+                >
                   <PersonRow
                     person={p}
                     memberPresence={presence.get(p.handle)}
@@ -397,12 +447,24 @@ export function AgentsPanel({
                     a.runner && runnersById.has(a.runner)
                       ? runnerName(runnersById.get(a.runner), a.runner)
                       : null;
+                  // Engines and A2A members answer from the hub, with no terminal to watch.
+                  const watch =
+                    a.adapter === "engine" || a.adapter === "a2a"
+                      ? undefined
+                      : opener
+                        ? () => opener.open(a.handle)
+                        : () => setWatching({ handle: a.handle, runner: a.runner ?? null });
                   return (
                     <MemberMenu
                       key={`agent-${a.handle}`}
                       handle={a.handle}
                       agent
                       onOpenMemory={onOpenMemory}
+                      onWatch={watch}
+                      onRename={a.adapter === "engine" ? undefined : () => setRenaming(a.handle)}
+                      onControl={controls(a) ? (verb) => control(a.handle, verb) : undefined}
+                      canStop={controls(a)?.includes("stop") ?? false}
+                      paused={paused.has(a.handle.toLowerCase())}
                       onUnregister={() =>
                         setUnregistering({
                           handle: a.handle,
@@ -416,8 +478,12 @@ export function AgentsPanel({
                       machine={machine}
                       memberPresence={presence.get(a.handle.toLowerCase())}
                       floor={floors.get(a.handle.toLowerCase())}
+                      subscriptions={subscriptions.get(a.handle.toLowerCase())}
+                      paused={paused.get(a.handle.toLowerCase())}
+                      schedules={scheduled.get(a.handle.toLowerCase()) ?? 0}
                       marked={marked}
                       rowRef={marked ? highlightRow : undefined}
+                      onOpen={watch}
                     />
                     </MemberMenu>
                   );
@@ -425,7 +491,26 @@ export function AgentsPanel({
             </div>
           );
         })}
-      </div>
+
+        {/* Neither a person nor an agent here, but holding a task or present:
+            an agent with no manifest in this room, say. Listed quietly so it
+            isn't lost, never as a person. */}
+        {others.length > 0 && (
+          <div className="opacity-60">
+            <SectionLabel count={others.length}>Others</SectionLabel>
+            {others.map((o) => (
+              <MemberMenu key={`other-${o.handle}`} handle={o.handle} agent={false}>
+                <OtherRow
+                  other={o}
+                  memberPresence={presence.get(o.handle.toLowerCase())}
+                  marked={highlight === o.handle}
+                  rowRef={highlight === o.handle ? highlightRow : undefined}
+                />
+              </MemberMenu>
+            ))}
+          </div>
+        )}
+      </FadeScroll>
     </div>
   );
 }
@@ -434,9 +519,10 @@ export function AgentsPanel({
  *  when they have it, and offers the download or the browser when they don't. */
 function InviteButton({ roomName }: { roomName: string }) {
   const [copied, setCopied] = useState(false);
+  const hub = useHubAddress();
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(inviteLink(window.location.origin, roomName));
+      await navigator.clipboard.writeText(inviteLink(hub, roomName));
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -470,7 +556,7 @@ function SectionLabel({
       <span className="flex-shrink-0 whitespace-nowrap">{children}</span>
       {count !== undefined && <span className="flex-shrink-0 font-normal tabular">{count}</span>}
       {hint && (
-        <span className="ml-auto min-w-0 truncate font-mono text-micro font-normal text-faint">
+        <span className="ml-auto min-w-0 truncate text-micro font-normal text-faint">
           {hint}
         </span>
       )}
@@ -478,11 +564,51 @@ function SectionLabel({
   );
 }
 
+/** Every row's name, in a column of one width: what is said about each member
+ *  then starts at the same place down the whole list. A longer name is cut,
+ *  and the row's tooltip has it whole. */
+const NAME_COLUMN = "flex w-32 flex-shrink-0 items-center gap-1.5 min-w-0";
+/** What is said about the member, after the name column. */
+const META_COLUMN = "min-w-0 flex-1 truncate text-micro text-faint";
+
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];
 
-/** One person, one line, at the agent rows' density. Owns/posted/teams live in
- *  the hover tooltip. */
+/** One handle in Others: present or holding a task, but neither a person nor an
+ *  agent in this room. Quieter than a member row, and nothing to manage. */
+function OtherRow({
+  other: o,
+  memberPresence,
+  marked,
+  rowRef,
+}: {
+  other: RoomOther;
+  memberPresence?: PresenceMember;
+  marked: boolean;
+  rowRef?: React.Ref<HTMLDivElement>;
+}) {
+  const why = [o.present && "here now", o.holds_task && "holds a task"].filter(Boolean).join(" · ");
+  return (
+    <AgentCardHover handle={o.handle} side="left">
+      <div
+        tabIndex={0}
+        ref={rowRef}
+        className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
+          marked ? "bg-accent/15" : ""
+        }`}
+      >
+        <Monogram handle={o.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} mutePresence />
+        <span className={NAME_COLUMN}>
+          <span className="truncate text-label text-text">@{o.handle}</span>
+        </span>
+        <span className={META_COLUMN}>{why}</span>
+      </div>
+    </AgentCardHover>
+  );
+}
+
+/** One person, one line, at the agent rows' density. More about them is in
+ *  their card (`AgentCardHover`). */
 function PersonRow({
   person: p,
   memberPresence,
@@ -509,46 +635,32 @@ function PersonRow({
           ? "awaiting"
           : null;
   return (
-    <Tooltip
-      side="left"
-      className="w-72 max-w-72 p-3"
-      content={
-        <MemberTooltipCard handle={p.handle} color="var(--avatar-neutral)" presence={memberPresence}>
-          <DetailRow label="floor" value={floor ? floorLabel(p.handle, floor) : undefined} color="var(--accent)" />
-          <DetailRow label="role" value={p.owns ? "owner" : "posted here"} />
-          <DetailRow label="teams" value={p.teams.length > 0 ? p.teams.join(", ") : undefined} />
-          {p.you && <DetailRow label="you" value="acting as this handle" color="var(--accent)" />}
-        </MemberTooltipCard>
-      }
-    >
+    <AgentCardHover handle={p.handle} side="left">
       <div
+        tabIndex={0}
         ref={rowRef}
         className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
           marked ? "bg-accent/15" : ""
         }`}
       >
         <Monogram handle={p.handle} color="var(--avatar-neutral)" className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        {/* Their name when they gave one, the handle quieter beside it. */}
-        {name ? (
-          <span className="flex min-w-0 shrink items-baseline gap-1.5">
-            <span className="truncate text-label text-text">{name}</span>
-            <span className="shrink-0 font-mono text-micro text-faint">@{p.handle}</span>
-          </span>
-        ) : (
-          <span className="shrink-0 font-mono text-label text-text">@{p.handle}</span>
-        )}
-        {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
+        {/* Their name when they gave one (the handle is in the card), and
+            whether it's you, in the name column. */}
+        <span className={NAME_COLUMN}>
+          <span className="truncate text-label text-text">{name ?? `@${p.handle}`}</span>
+          {p.you && <span className="flex-shrink-0 text-micro font-medium text-accent">you</span>}
+        </span>
         {/* The floor's label names a task, which can be long: it is what gives
-            way, never the handle it is about (the tooltip carries it whole). */}
-        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
+            way, never the name (the card carries it whole). */}
+        {meta && <span className={META_COLUMN}>{meta}</span>}
       </div>
-    </Tooltip>
+    </AgentCardHover>
   );
 }
 
 /** The one terse thing to show at the end of a compact row: what an engine is,
  *  or how present a worker is. The avatar halo already carries live/awaiting, so
- *  this stays short — the full story is in the row's hover tooltip. */
+ *  this stays short — the full story is in the row's card. */
 function rowMeta(
   a: AgentSummary,
   presence?: PresenceMember,
@@ -560,7 +672,9 @@ function rowMeta(
   if (floor) return floorLabel(a.handle, floor);
   if (a.adapter === "engine") return a.kind ?? "engine";
   if (a.adapter === "a2a") return null; // the a2a badge already labels it
-  if (presence && isHerdr(presence)) return presence.status ?? "alive";
+  // An agent that can't reply needs a person, whatever else it's doing; its card says why.
+  if (presence?.can_reply === false) return "can't reply";
+  if (presence && isHerdr(presence)) return presence.status === "blocked" ? "waiting for input" : (presence.status ?? "alive");
   if (presence?.kind === "slim") return "live";
   if (presence?.kind === "lease") return "awaiting";
   if (machine) return `on ${machine}`;
@@ -569,74 +683,93 @@ function rowMeta(
 
 /**
  * One agent, one line. The dense roster reads as a scannable column of handles,
- * not a stack of cards: a small avatar, the handle, and a terse right-aligned
- * status. The owner is hoisted to the group header (nearly every agent in a room
+ * not a stack of cards: a small avatar, the handle, and a terse status in a
+ * column that starts at the same place on every row. The owner is hoisted to the group header (nearly every agent in a room
  * shares one), so a row only tags an owner when it breaks from the group's; the
- * description and full owner/team live in the hover tooltip rather than on every
- * row.
+ * description and full owner live in its card rather than on every row.
  */
 function AgentRow({
   agent: a,
   groupOwner,
   memberPresence,
   floor,
+  subscriptions,
+  paused,
+  schedules = 0,
   marked,
   rowRef,
   machine = null,
+  onOpen,
 }: {
   agent: AgentSummary;
   /** The owner shared by the row's group, if any — omitted from the row itself. */
   groupOwner: string | null;
   memberPresence?: PresenceMember;
   floor?: RoomFloor;
+  /** What it subscribed to: woken when these happen, without anyone asking it. */
+  subscriptions?: RoomSubscription[];
+  /** Its pause, while it's paused: nothing wakes it until it's resumed. */
+  paused?: AgentPause;
+  /** How many live schedules wake this agent; a clock shows when there is one. */
+  schedules?: number;
   marked: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
   /** The machine the app started this agent on, by name. */
   machine?: string | null;
+  /** Opens its terminal, for an agent that runs in one. */
+  onOpen?: () => void;
 }) {
-  const meta = rowMeta(a, memberPresence, floor, machine);
+  // A pause says why it isn't answering, which beats what it was doing.
+  const meta = paused ? "paused" : rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
-  const adapter = a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter;
-  const cli = a.adapter === "engine" || a.adapter === "a2a" ? undefined : (a.framework ?? undefined);
   return (
-    <Tooltip
-      side="left"
-      className="w-72 max-w-72 p-3"
-      content={
-        <MemberTooltipCard handle={a.handle} presence={memberPresence}>
-          <DetailRow label="floor" value={floor ? floorLabel(a.handle, floor) : undefined} color="var(--accent)" />
-          <DetailRow label="owner" value={a.owner ? `@${a.owner}` : undefined} />
-          <DetailRow label="team" value={a.team ?? undefined} />
-          <DetailRow label="runs" value={cli} />
-          <DetailRow label="adapter" value={adapter} />
-          <DetailRow label="machine" value={machine ?? undefined} />
-          <DetailRow
-            label="skills"
-            value={a.adapter === "a2a" && a.a2a_skills?.length ? a.a2a_skills.join(", ") : undefined}
-          />
-          <DetailRow label="about" value={a.description} />
-        </MemberTooltipCard>
-      }
-    >
+    <AgentCardHover handle={a.handle} side="left">
       <div
         ref={rowRef}
+        role={onOpen ? "button" : undefined}
+        // Focusable either way: focus opens its card.
+        tabIndex={0}
+        aria-label={onOpen ? `Watch @${a.handle}'s terminal` : undefined}
+        onClick={onOpen}
+        onKeyDown={onOpen ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen()) : undefined}
         className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
-          marked ? "bg-accent/15" : ""
-        }`}
+          onOpen ? "cursor-pointer" : ""
+        } ${marked ? "bg-accent/15" : ""}`}
       >
-        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence />
-        <span className="shrink-0 font-mono text-label text-text">{a.handle}</span>
-        {a.adapter === "a2a" && (
-          <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
-            a2a
-          </span>
+        <Monogram handle={a.handle} className="size-5 text-[9px]" presence={memberPresence?.kind} status={memberPresence?.status} wakePending={memberPresence?.wake_pending} mutePresence kind={a.adapter === "engine" ? "engine" : "agent"} />
+        <span className={NAME_COLUMN}>
+          <span className="truncate text-label text-text">{a.handle}</span>
+          {schedules > 0 && (
+            <Clock
+              aria-label={`${schedules} schedule${schedules === 1 ? "" : "s"}`}
+              className="size-3 shrink-0 text-faint"
+              strokeWidth={2}
+            />
+          )}
+          {/* Subscribed to something: woken when it happens, without being
+              asked. What it subscribed to is in the icon's tooltip. */}
+          {subscriptions?.length ? (
+            <Tooltip content={subscriptions.map((s) => s.describe).join("\n")} className="whitespace-pre-line">
+              <Eye
+                aria-label={`subscribed to ${subscriptions.length} thing${subscriptions.length === 1 ? "" : "s"}`}
+                className="size-3 shrink-0 text-faint"
+                strokeWidth={2}
+              />
+            </Tooltip>
+          ) : null}
+          {a.adapter === "a2a" && (
+            <span className="inline-flex flex-shrink-0 items-center rounded border border-accent/30 bg-accent-soft/40 px-1 text-[9px] font-medium leading-tight text-accent">
+              a2a
+            </span>
+          )}
+        </span>
+        {/* Whose it is (when not the group's), then what it's doing, both
+            starting where every row's do. */}
+        {(oddOwner || meta) && (
+          <span className={META_COLUMN}>{[oddOwner && `@${oddOwner}`, meta].filter(Boolean).join(" · ")}</span>
         )}
-        {oddOwner && (
-          <span className="truncate font-mono text-micro text-faint">@{oddOwner}</span>
-        )}
-        {meta && <span className="ml-auto min-w-0 truncate text-micro text-faint">{meta}</span>}
       </div>
-    </Tooltip>
+    </AgentCardHover>
   );
 }
 
