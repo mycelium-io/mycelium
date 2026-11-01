@@ -1393,14 +1393,14 @@ done</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">procedures</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;why did we pick FastAPI&quot;</span></code></pre>
       <h2 id="structured-memory-key-rules">Key rules</h2>
-      <p>For keys under <code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code> and <code>procedures/</code>, <code>memory set</code> checks the name after the prefix and records when it was written. That name can use lowercase letters, numbers, hyphens, dots and underscores. Capitals are lowercased for you. It must start with a letter or number, and it can&#x27;t contain another <code>/</code>:</p>
+      <p><code>memory set</code> takes any key the hub takes, the same as a write from the app, and stores it as typed. The hub refuses a key that would reach outside the room, such as one with <code>..</code> in it.</p>
+      <p>One rule is the CLI&#x27;s own. Every key under <code>work/</code>, <code>decisions/</code>, <code>status/</code> and <code>failed/</code> is a row on the board, so a key there takes one name:</p>
       <ul>
         <li><code>decisions/auth</code> works</li>
-        <li><code>status/v2.deploy</code> works</li>
-        <li><code>decisions/Why We Chose X</code> is rejected (spaces)</li>
-        <li><code>context/api/shape</code> is rejected (a second <code>/</code>)</li>
+        <li><code>context/api/shape</code> works (folders are fine outside the board)</li>
+        <li><code>work/api/auth</code> is refused; use <code>work/api-auth</code>, or file it as a part of a task with <code>mycelium board new &quot;Auth&quot; --parent work/api</code></li>
       </ul>
-      <p>The check runs in the CLI before anything is sent to the hub. Keys under any other prefix aren&#x27;t checked, such as <code>failed/</code> or <code>research/</code>. Engines write deeper keys such as <code>context/summary/&lt;task&gt;</code> through the hub. You can read those with <code>memory get</code> but can&#x27;t write them with <code>memory set</code>.</p>
+      <p>For keys under <code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code> and <code>procedures/</code>, <code>memory set</code> also records when the value was written.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/structured-memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="structured-memory" aria-label="Previous and next sections">

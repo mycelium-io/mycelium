@@ -886,7 +886,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="arg">&lt;key&gt;</span> [<span class="arg">&lt;value&gt;</span>] [<span class="flag">--body</span> <span class="arg">&lt;markdown&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin): exactly one of them. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
+        <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin): exactly one of them. A key is stored as typed; a key under a board namespace (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>failed/</code>) takes one name. Always upserts; the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">

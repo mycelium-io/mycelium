@@ -16,12 +16,12 @@ from typing import Any
 
 import httpx
 import typer
-from pydantic import ValidationError
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
 from mycelium import identity
+from mycelium.board.model import LIVE_NAMESPACES
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged, room_or_exit
 from mycelium.client import answered, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
@@ -31,7 +31,7 @@ from mycelium.filesystem import (
     serialize_memory,
     write_hub_memories,
 )
-from mycelium.protocol import MEMORY_CATEGORIES, MemoryLogEntry
+from mycelium.protocol import MEMORY_CATEGORIES
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 from mycelium_backend_client.models import (
@@ -149,7 +149,7 @@ def _echo_json(data: Any) -> None:
 
 @doc_ref(
     usage="mycelium memory set <key> [<value>] [--body <markdown>] [--file <path>] [--handle <handle>]",
-    desc="Write a memory (upsert). The value comes from the positional argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin): exactly one of them. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.",
+    desc="Write a memory (upsert). The value comes from the positional argument, <code>--body</code>, or <code>--file</code> (<code>-</code> reads stdin): exactly one of them. A key is stored as typed; a key under a board namespace (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>failed/</code>) takes one name. Always upserts; the backend handles versioning.",
     group="memory",
 )
 @app.command(name="set")
@@ -178,11 +178,11 @@ def memory_set(
     The value comes from the positional argument, --body, or --file; exactly
     one of them.
 
-    Keys with a known category prefix (work/, decisions/, context/, status/,
-    procedures/) are checked: each part is lowercase letters, digits, `-`, `_`
-    and `.`. Under context/ and procedures/ a key can have folders of its own
-    (context/api/latency); work/, decisions/ and status/ keys are board rows and
-    take one name. Other keys pass through freely.
+    A key is stored as typed, and the hub decides what it accepts, the same
+    as for a write from the app. Every key under work/, decisions/, status/ and
+    failed/ is a row on the board, so one there takes one name, without
+    folders. Under work/, decisions/, context/, status/ and procedures/ the
+    value is recorded with when it was written.
 
     Always upserts; the backend handles versioning.
 
@@ -209,40 +209,40 @@ def memory_set(
     room_name = _get_active_room(room)
     handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
 
-    # Validate structured keys when category prefix is recognized
-    entry: MemoryLogEntry | None = None
-    if "/" in key:
-        category = key.split("/", 1)[0]
-        if category in MEMORY_CATEGORIES:
-            slug = key.split("/", 1)[1]
-            try:
-                entry = MemoryLogEntry(category=category, slug=slug, content=value)  # ty: ignore[invalid-argument-type]
-            except ValidationError as exc:
-                slug_error = next((e for e in exc.errors() if e["loc"] == ("slug",)), None)
-                if slug_error is not None:
-                    why = (slug_error.get("ctx") or {}).get("error") or slug_error["msg"]
-                    console.print(f"[red]Error:[/red] {escape(key)} {escape(str(why))}")
-                else:
-                    console.print(f"[red]Error:[/red] {exc}")
-                raise typer.Exit(1) from exc
+    # The hub's path safety is the one rule on a key, and a key is stored as
+    # typed. The exception: every key under a board namespace is a row, so a
+    # nested one there would file a row nobody asked for.
+    category, _, name = key.partition("/")
+    if category in LIVE_NAMESPACES and "/" in name:
+        joined = "-".join(p for p in name.split("/") if p)
+        console.print(
+            f"[red]Error:[/red] {escape(key)} can't have folders: every {category}/ key is a "
+            f"row on the board, so it takes one name. Try {category}/{escape(joined)}."
+            + (
+                " For a part of a task, use `mycelium board new <title> --parent <row>`."
+                if category == "work"
+                else ""
+            )
+        )
+        raise typer.Exit(1)
 
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    if entry is not None:
+    if name and category in MEMORY_CATEGORIES:
         # Structured category key: auto-timestamp and structured value
         from mycelium_backend_client.models import MemoryCreateValueType0
 
         timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         structured_value = MemoryCreateValueType0()
-        structured_value["text"] = entry.content
+        structured_value["text"] = value
         structured_value["logged_at"] = timestamp
-        structured_value["category"] = entry.category
+        structured_value["category"] = category
         item = MemoryCreate(
-            key=entry.key,
+            key=key,
             value=structured_value,
             created_by=handle,
             embed=not no_embed,
-            content_text=f"[{timestamp}] {entry.content}",
+            content_text=f"[{timestamp}] {value}",
             tags=tag_list,
         )
     else:

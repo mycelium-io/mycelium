@@ -174,20 +174,54 @@ def test_memory_set_writes_a_nested_context_key(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.parametrize(
-    ("key", "said"),
+    "key",
     [
-        ("context/foo//bar", "Error: context/foo//bar has an empty or invalid part."),
-        ("context/foo/../bar", "Error: context/foo/../bar has an empty or invalid part."),
-        ("work/foo/bar", "Error: work/foo/bar can't have folders: a work/ key is a row"),
+        "context/API Notes/Q3",
+        "decisions/Why We Chose X",
+        "procedures/deploy/Blue-Green",
+        "status/v2.deploy",
+        "research/a/b/c",
+        "failed/@ops-was-here",
     ],
 )
-def test_memory_set_says_why_it_refuses_a_key(
-    monkeypatch: pytest.MonkeyPatch, key: str, said: str
-) -> None:
+def test_memory_set_sends_a_key_as_typed(monkeypatch: pytest.MonkeyPatch, key: str) -> None:
+    """The CLI takes what the hub takes: capitals, spaces and folders reach it
+    unchanged, and the hub decides."""
+    captured = _stub_create(monkeypatch)
+    result = runner.invoke(memory_cmd.app, ["set", key, "hello", "--room", "demo"])
+    assert result.exit_code == 0, result.output
+    assert captured[0].items[0].key == key
+
+
+def test_a_category_key_keeps_its_value_wrapping(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = _stub_create(monkeypatch)
+    result = runner.invoke(memory_cmd.app, ["set", "context/API/Q3", "hello", "--room", "demo"])
+    assert result.exit_code == 0, result.output
+    value = captured[0].items[0].value
+    assert (value["text"], value["category"]) == ("hello", "context")
+    assert value["logged_at"]
+
+
+@pytest.mark.parametrize("category", ["work", "decisions", "status", "failed"])
+def test_a_board_rows_key_stays_one_name(monkeypatch: pytest.MonkeyPatch, category: str) -> None:
+    """Every key under a board namespace is a row, so a nested one would file
+    a row nobody asked for."""
+    captured = _stub_create(monkeypatch)
+    result = runner.invoke(memory_cmd.app, ["set", f"{category}/foo/bar", "hi", "--room", "demo"])
+    said = " ".join(result.output.split())
+    assert result.exit_code == 1
+    assert f"Error: {category}/foo/bar can't have folders" in said
+    assert f"Try {category}/foo-bar." in said
+    assert ("board new" in said) == (category == "work")
+    assert captured == []
+
+
+@pytest.mark.parametrize("key", ["", "  ", "context\\notes", "context/"])
+def test_memory_set_refuses_what_isnt_a_key(monkeypatch: pytest.MonkeyPatch, key: str) -> None:
     captured = _stub_create(monkeypatch)
     result = runner.invoke(memory_cmd.app, ["set", key, "hello", "--room", "demo"])
     assert result.exit_code == 1
-    assert said in " ".join(result.output.split())
+    assert "isn't a memory key" in " ".join(result.output.split())
     assert captured == []
 
 

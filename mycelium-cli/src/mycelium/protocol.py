@@ -16,25 +16,22 @@ Memory protocol shapes (agent → memory API, structured key conventions):
     key = "status/deploy"         → current state of something
     key = "procedures/url-monitor" → reusable how-to steps
 
-    The MemoryLogEntry model validates the category/slug convention.
+    A key is stored as typed: the hub's path safety is the one rule on it.
 """
 
 from __future__ import annotations
 
-import re
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
-# Two shape rules. A *handle* is an identity and can be minted by a real IdP, so it
-# allows the `@` a corporate SSO `preferred_username` carries (e.g.
-# `user@example.com`). A *slug* is a filename / composer trigger token (memory keys,
-# skill names) and stays clean. Keep this copy in agreement with the backend
-# (`app/schemas.py`, `app/routes/engines.py`) and the frontend
-# (`acting-as-picker.tsx`); the thin CLI can't import the backend.
+# A *handle* is an identity and can be minted by a real IdP, so it allows the `@`
+# a corporate SSO `preferred_username` carries (e.g. `user@example.com`). Keep
+# this copy in agreement with the backend (`app/schemas.py`,
+# `app/routes/engines.py`) and the frontend (`acting-as-picker.tsx`); the thin
+# CLI can't import the backend.
 HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
-SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
 
 # Engines run backend-side only. ``host`` coerces to ``backend`` for legacy config.
 EngineRuntime = Literal["backend"]
@@ -68,68 +65,6 @@ STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
     "context": "Background & Preferences",
     "status": "Current Status",
 }
-
-
-#: Categories whose keys may have folders of their own. The others' keys are
-#: board rows, one name each.
-NESTED_CATEGORIES: frozenset[str] = frozenset({"context", "procedures"})
-
-
-class MemoryLogEntry(BaseModel):
-    """Typed payload for structured memory writes.
-
-    Validates that a memory write follows the category/slug convention before
-    hitting the API.
-
-    Slugs are auto-lowercased so agents can write naturally (e.g. "API-latency"
-    becomes "api-latency"). Under ``context/`` and ``procedures/`` a slug can
-    have folders of its own (``context/api/latency``), each part a slug. Under
-    ``work/``, ``decisions/`` and ``status/`` it's one name: every key there is
-    a row on the board.
-
-    Examples:
-        MemoryLogEntry(category="work", slug="cron-setup", content="Created crontab ...")
-        MemoryLogEntry(category="status", slug="deploy", content="ACTIVE")
-        MemoryLogEntry(category="decisions", slug="db-choice", content="Chose AgensGraph ...")
-        MemoryLogEntry(category="context", slug="api/latency", content="p99 under 200ms")
-    """
-
-    category: Literal["work", "decisions", "context", "status", "procedures"]
-    slug: str = Field(..., min_length=1)
-    content: str = Field(..., min_length=1)
-    tags: list[str] | None = None
-
-    @model_validator(mode="before")
-    @classmethod
-    def lowercase_slug(cls, data: dict) -> dict:
-        if isinstance(data, dict) and "slug" in data:
-            data["slug"] = data["slug"].lower()
-        return data
-
-    @field_validator("slug")
-    @classmethod
-    def slug_parts(cls, slug: str, info: ValidationInfo) -> str:
-        parts = slug.split("/")
-        category = info.data.get("category")
-        # Each message follows the key in the CLI's error, and leads with what to do.
-        if len(parts) > 1 and category not in NESTED_CATEGORIES:
-            msg = (
-                f"can't have folders: a {category}/ key is a row on the board, so it takes "
-                f"one name. Try {category}/{'-'.join(p for p in parts if p)}."
-            )
-            raise ValueError(msg)
-        if not all(re.fullmatch(SLUG_PATTERN, p) for p in parts):
-            msg = (
-                "has an empty or invalid part. Each part between slashes starts with a "
-                "lowercase letter or digit and uses only a-z, 0-9, -, _ and ."
-            )
-            raise ValueError(msg)
-        return slug
-
-    @property
-    def key(self) -> str:
-        """Full memory key: category/slug."""
-        return f"{self.category}/{self.slug}"
 
 
 # ── Agent primitive ──────────────────────────────────────────────────────────
