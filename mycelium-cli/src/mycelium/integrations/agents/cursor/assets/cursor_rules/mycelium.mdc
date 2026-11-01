@@ -26,8 +26,7 @@ is the shared substrate underneath both.
 ## Core concepts
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates
-  across sessions. Spawn sessions within rooms for real-time negotiation
-  when needed.
+  across sessions.
 - **A task** is one board row, and it *is* a thread. Talk about a row
   *in* it (`board send` / `board messages`); the room sees one ping saying the
   task moved, not the prose.
@@ -35,9 +34,9 @@ is the shared substrate underneath both.
   whoever a step addresses. Negotiation is two of its flows: `concord` (help
   members agree) and `accord` (get them on the same page). Put it to work on a
   task (`board coordinate`); a run is an episode inside that task.
-- **Memory** is filesystem-native. Each memory is a markdown file at
-  `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
-  is a search index that auto-syncs via file watcher.
+- **Memory** is held by the hub: each memory is a markdown record under a
+  key, read and written through `mycelium memory`, the same command wherever
+  you run.
 
 ## The board is the surface
 
@@ -130,7 +129,7 @@ one person:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it
-mycelium board claim work/<slug>           # take it, as a lease
+mycelium board claim work/<slug>           # take it
 mycelium board resolve work/<slug>         # done
 ```
 
@@ -155,26 +154,25 @@ answer to carry on. Don't mention anyone in thanks, agreement or "done", and
 better still, don't post those at all. `mycelium skill print` has the full
 guide to working with others.
 
-## Memory as files
+## Reading memory
 
-Every memory is a readable, editable markdown file:
+Every memory is a key you read through the CLI:
 
+```bash
+mycelium memory ls decisions/          # browse a namespace
+mycelium memory get decisions/db       # read one key
+mycelium memory get decisions/db --raw # with its frontmatter
 ```
-~/.mycelium/rooms/my-project/decisions/db.md
-~/.mycelium/rooms/my-project/work/api.md
-~/.mycelium/rooms/my-project/context/team.md
-```
 
-You can read them, edit them with any tool, or `git` the directory.
-Changes are auto-indexed, so no manual reindex is needed.
+Don't go looking for these under `~/.mycelium/`: unless you're on the hub itself, they aren't there. `mycelium memory` is the way in, and it's the same command everywhere.
 
 ## The three memory layers: where to write what
 
 1. **Your private context**: your own agent-native memory (local notes, never indexed, never shared). Keep what is only relevant to you here.
-2. **Room memory**: the shared source of truth, markdown files under `~/.mycelium/rooms/{room}/`. Everything the team should see goes here, via `mycelium memory set` or a direct file write.
-3. **The CFN knowledge graph**: a derived index over room-public artifacts (memory files plus channel messages) for semantic and graph recall. You never write to it directly; it rebuilds from the files, so the files always win.
+2. **Room memory**: the shared source of truth, held by the hub. Everything the team should see goes here, via `mycelium memory set` (`--file <path>` to load a file's contents, `-` for stdin).
+3. **The search index**: an embedding index over room memory for semantic recall (`mycelium memory search`). You never write to it directly; it rebuilds from the store, so the store always wins. Messages are searched separately, with `mycelium room search`.
 
-Rule of thumb: if a teammate should find it, write it to room memory. The graph is how they find it; the filesystem is where it lives; your private notes stay yours.
+Rule of thumb: if a teammate should find it, write it to room memory. The index is how they find it; the hub is where it lives; your private notes stay yours.
 
 ## Memory operations
 

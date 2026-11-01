@@ -343,7 +343,7 @@ Don't go looking for these under `~/.mycelium/`: unless you're on the hub itself
 
 1. **Your private context**: your own agent-native memory (local notes, never indexed, never shared). Keep what is only relevant to you here.
 2. **Room memory**: the shared source of truth, held by the hub. Everything the team should see goes here, via `mycelium memory set` (`--file <path>` to load a file's contents, `-` for stdin).
-3. **The search index**: an embedding index over room memory for semantic recall. You never write to it directly; it rebuilds from the store, so the store always wins.
+3. **The search index**: an embedding index over room memory for semantic recall (`mycelium memory search`). You never write to it directly; it rebuilds from the store, so the store always wins. Messages are searched separately, with `mycelium room search`.
 
 Rule of thumb: if a teammate should find it, write it to room memory. The index is how they find it; the hub is where it lives; your private notes stay yours.
 
