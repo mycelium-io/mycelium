@@ -112,7 +112,7 @@ class AgentManifest(BaseModel):
     - ``claude_code``: a resident Claude Code session (kept woken with
       ``mycelium await --loop``). Optional ``cwd`` (the session's working dir).
     - ``cursor``: a resident Cursor session. Optional ``cwd`` (Cursor's workspace
-      root; also where workspace assets drop when set).
+      root).
     - ``engine``: a first-party cognition engine (e.g. ``conductor``), run by the
       backend. Requires ``kind``.
 
@@ -135,7 +135,7 @@ class AgentManifest(BaseModel):
         default=None,
         description=(
             "claude_code / cursor: optional working dir for the resident session. "
-            "Cursor treats it as the workspace root (and asset drop site) when set."
+            "Cursor treats it as the workspace root when set."
         ),
     )
     description: str = Field(default="", description="One-paragraph purpose statement.")
@@ -209,7 +209,7 @@ class AgentManifest(BaseModel):
     @model_validator(mode="after")
     def check_adapter_requirements(self) -> AgentManifest:
         # cwd is optional: it's the resident session's working dir / cursor's
-        # workspace root (used for asset drops when set), not a launch requirement.
+        # workspace root, not a launch requirement.
         # A cognition engine must name which CE it runs; unknown kinds are a typo
         # guard (the backend routes on this). A retired kind still loads, so a
         # room's old manifest can be listed and removed.

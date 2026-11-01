@@ -579,7 +579,7 @@ def _prompt_for_credential(config: MyceliumConfig, manifest: AgentManifest) -> N
 #: help stay in sync.
 _CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
     "claude_code": "Working directory for the agent's session (optional):",
-    "cursor": "Workspace directory for the Cursor session (also drop site for .cursor/rules/mycelium.mdc + AGENTS.md):",
+    "cursor": "Workspace directory for the Cursor session (optional):",
 }
 
 
@@ -621,8 +621,6 @@ def _create_wizard(
         "[dim]This will:[/dim]\n"
         "[dim]  · ask for the agent's handle, adapter, and details[/dim]\n"
         "[dim]  · register it as a Mycelium agent manifest in a room[/dim]\n"
-        "[dim]  · cursor: drop .cursor/rules/mycelium.mdc + AGENTS.md into the "
-        "workspace[/dim]\n"
     )
 
     handle = questionary.text("Agent handle (lowercase slug, e.g. release-agent):").ask()
@@ -767,11 +765,7 @@ def agent_create(
     cwd: str | None = typer.Option(
         None,
         "--cwd",
-        help=(
-            "claude_code / cursor: optional working dir for the agent's session. "
-            "For cursor it's also where .cursor/rules/mycelium.mdc + AGENTS.md "
-            "(mycelium section) are dropped."
-        ),
+        help=("claude_code / cursor: optional working dir for the agent's session."),
     ),
     card: str | None = typer.Option(
         None,
@@ -823,7 +817,7 @@ def agent_create(
         # claude_code (a resident session kept woken with `await --loop`)
         mycelium agent create release-agent --cwd ~/repos/mycelium
 
-        # cursor (resident Cursor session; drops workspace rules)
+        # cursor (a resident Cursor session)
         mycelium agent create design-agent --adapter cursor \\
             --cwd ~/repos/my-frontend \\
             --description "Owns the design system; pings @avery on ambiguity"

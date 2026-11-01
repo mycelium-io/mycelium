@@ -7,13 +7,13 @@ Pins the dispatch-facet contract for the cursor family:
 
 - ``build_manifest`` produces a valid ``AgentManifest(adapter="cursor")``
   with the cwd threaded through from the integration constructor.
-- ``register`` drops the workspace-local assets (``.cursor/rules/mycelium.mdc``
-  + the mycelium section of ``AGENTS.md``) so a resident Cursor session knows how
-  to coordinate. No runtime is started — cursor is a resident adapter.
+- ``register`` writes nothing into the workspace: a Cursor agent learns how
+  to take part from ``mycelium skill print``, like every other agent.
 - ``destroy(full=False)`` leaves the workspace alone (the operator may be
   re-creating with a different cwd, or doesn't want their committed ``AGENTS.md``
   mutated by an unregister).
-- ``destroy(full=True)`` removes the workspace assets (symmetric with install).
+- ``destroy(full=True)`` clears the rule and AGENTS.md section an older
+  ``register`` dropped.
 - ``describe`` returns the next-steps block the wizard prints.
 """
 
@@ -24,6 +24,7 @@ from pathlib import Path
 from mycelium.config import MyceliumConfig
 from mycelium.integrations.agents.cursor import CursorIntegration
 from mycelium.integrations.agents.cursor.workspace import (
+    _AGENTS_SECTION_END,
     _AGENTS_SECTION_START,
     _CURSOR_RULE_FILENAME,
 )
@@ -38,6 +39,17 @@ def _manifest(handle: str, cwd: str) -> AgentManifest:
         cwd=cwd,
         description="design system agent",
     )
+
+
+def _old_install(cwd: Path) -> Path:
+    """What an earlier ``register`` left in *cwd*: the rule, and AGENTS.md."""
+    rule = cwd / ".cursor" / "rules" / _CURSOR_RULE_FILENAME
+    rule.parent.mkdir(parents=True)
+    rule.write_text("# Mycelium\n", encoding="utf-8")
+    (cwd / "AGENTS.md").write_text(
+        f"{_AGENTS_SECTION_START}\n# Mycelium Agent\n{_AGENTS_SECTION_END}\n", encoding="utf-8"
+    )
+    return rule
 
 
 # ── build_manifest ───────────────────────────────────────────────────────────
@@ -58,8 +70,7 @@ def test_build_manifest_returns_cursor_adapter_with_cwd(tmp_path: Path) -> None:
 
 
 def test_build_manifest_allows_no_cwd_for_cursor() -> None:
-    """cwd is optional now — a cursor agent validates without one (it just
-    won't drop workspace assets on register)."""
+    """cwd is optional — a cursor agent validates without one."""
     integ = CursorIntegration(cwd=None)
     manifest = integ.build_manifest(
         handle="x",
@@ -71,53 +82,41 @@ def test_build_manifest_allows_no_cwd_for_cursor() -> None:
     assert manifest.cwd is None
 
 
-# ── register: workspace assets ───────────────────────────────────────────────
+# ── register: writes nothing ─────────────────────────────────────────────────
 
 
-def test_register_drops_workspace_assets(tmp_path: Path) -> None:
+def test_register_writes_nothing_into_the_workspace(tmp_path: Path) -> None:
     integ = CursorIntegration(cwd=str(tmp_path))
     manifest = _manifest("design-agent", str(tmp_path))
     integ.register(manifest=manifest, config=MyceliumConfig(), opts=AddOptions(room="r"))
 
-    assert (tmp_path / ".cursor" / "rules" / _CURSOR_RULE_FILENAME).exists()
-    agents_text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-    assert _AGENTS_SECTION_START in agents_text
-
-
-def test_register_is_idempotent(tmp_path: Path) -> None:
-    """Two register calls in a row leave identical workspace assets."""
-    integ = CursorIntegration(cwd=str(tmp_path))
-    manifest = _manifest("design-agent", str(tmp_path))
-    integ.register(manifest=manifest, config=MyceliumConfig(), opts=AddOptions(room="r"))
-    first = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
-    integ.register(manifest=manifest, config=MyceliumConfig(), opts=AddOptions(room="r"))
-    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == first
+    assert list(tmp_path.iterdir()) == []
 
 
 # ── destroy: full=False vs full=True ─────────────────────────────────────────
 
 
-def test_destroy_full_false_keeps_assets(tmp_path: Path) -> None:
+def test_destroy_full_false_keeps_an_older_install(tmp_path: Path) -> None:
     integ = CursorIntegration(cwd=str(tmp_path))
     manifest = _manifest("design-agent", str(tmp_path))
-    integ.register(manifest=manifest, config=MyceliumConfig(), opts=AddOptions(room="r"))
+    rule = _old_install(tmp_path)
 
     integ.destroy(manifest=manifest, config=MyceliumConfig(), room="r", full=False)
 
-    # Assets preserved — operator's AGENTS.md / committed rule untouched.
-    assert (tmp_path / ".cursor" / "rules" / _CURSOR_RULE_FILENAME).exists()
+    # Untouched — the operator's AGENTS.md / committed rule stay.
+    assert rule.exists()
     assert (tmp_path / "AGENTS.md").exists()
 
 
-def test_destroy_full_true_removes_assets(tmp_path: Path) -> None:
+def test_destroy_full_true_clears_an_older_install(tmp_path: Path) -> None:
     integ = CursorIntegration(cwd=str(tmp_path))
     manifest = _manifest("design-agent", str(tmp_path))
-    integ.register(manifest=manifest, config=MyceliumConfig(), opts=AddOptions(room="r"))
+    rule = _old_install(tmp_path)
 
     integ.destroy(manifest=manifest, config=MyceliumConfig(), room="r", full=True)
 
     # Rule removed; AGENTS.md was only our section so the file itself is gone.
-    assert not (tmp_path / ".cursor" / "rules" / _CURSOR_RULE_FILENAME).exists()
+    assert not rule.exists()
     assert not (tmp_path / "AGENTS.md").exists()
 
 
