@@ -65,7 +65,7 @@ import { Clock, FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-
 import { NewScheduleDialog } from "@/components/schedules/new-schedule-dialog";
 import type { View } from "@/lib/room-dock";
 import { PendingAttachments, usePendingUploads } from "@/components/uploads/composer-attachments";
-import { acceptAttribute } from "@/lib/uploads";
+import { acceptAttribute, pastedTextFile } from "@/lib/uploads";
 import { MicToggle } from "@/components/voice/mic-toggle";
 import { useVoiceInput } from "@/components/voice/use-voice-input";
 import { appendHeard } from "@/lib/voice";
@@ -341,6 +341,7 @@ export function RoomChatBox({
   // back to "user" so the room still has a sender to attribute the message to.
   const { principal } = useCurrentUser();
   const [sendKey] = useClientSetting("general.send");
+  const [longPaste] = useClientSetting("general.long-paste");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A send that would wake many agents, held until the writer says how. It
@@ -398,6 +399,10 @@ export function RoomChatBox({
   const attachments = usePendingUploads(roomName, principal.trim() || "user");
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
+  // A long paste that went in as a file. Its Undo shows while the file is
+  // still attached, so removing the file or sending the message ends it too.
+  const [pastedAs, setPasted] = useState<{ id: string; text: string } | null>(null);
+  const pasted = pastedAs && attachments.items.some((p) => p.id === pastedAs.id) ? pastedAs : null;
   // The mic: on until it's turned off, adding what's said to the draft.
   const mic = useVoiceInput(
     useCallback((text: string) => setContent((draft) => appendHeard(draft, text)), []),
@@ -993,6 +998,31 @@ export function RoomChatBox({
   const attachFrom = (list: FileList | null | undefined) => {
     if (list?.length) attachments.add(Array.from(list));
   };
+  /** A long paste goes in as a text file. The selection it would have
+   *  replaced stays, so Undo can put the text there as the paste would have. */
+  const attachPaste = (text: string) => {
+    const taken = attachments.items.map((p) => p.file.name);
+    const [id] = attachments.add([pastedTextFile(text, new Date(), taken)]);
+    if (id) setPasted({ id, text });
+  };
+  const undoPaste = () => {
+    if (!pasted) return;
+    attachments.remove(pasted.id);
+    const node = inputRef.current;
+    const start = node?.selectionStart ?? content.length;
+    const end = node?.selectionEnd ?? start;
+    const next = content.slice(0, start) + pasted.text + content.slice(end);
+    const at = start + pasted.text.length;
+    setContent(next);
+    setCursor(at);
+    setPasted(null);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el || el.value !== next) return;
+      el.focus();
+      el.setSelectionRange(at, at);
+    });
+  };
   const carriesFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
   // Where this lands is the one thing the composer must never be coy about: the
@@ -1131,6 +1161,18 @@ export function RoomChatBox({
   const status = error ? (
     <StatusLine tone="error" onDismiss={() => setError(null)}>
       {error}
+    </StatusLine>
+  ) : pasted ? (
+    <StatusLine onDismiss={() => setPasted(null)}>
+      Pasted as a file.{" "}
+      <button
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={undoPaste}
+        className="text-accent hover:underline"
+      >
+        Undo
+      </button>
     </StatusLine>
   ) : launch ? (
     <LaunchStatus launch={launch} roomName={roomName} onDismiss={dismissLaunch} />
@@ -1286,10 +1328,17 @@ export function RoomChatBox({
               }}
               onKeyDown={handleKeyDown}
               onPaste={(e) => {
-                // A pasted screenshot or copied file attaches; pasted text stays text.
+                // A pasted screenshot or copied file attaches, and so does a
+                // very long text; shorter text stays text.
                 if (e.clipboardData.files.length) {
                   e.preventDefault();
                   attachFrom(e.clipboardData.files);
+                  return;
+                }
+                const text = e.clipboardData.getData("text/plain");
+                if (longPaste > 0 && text.length > longPaste) {
+                  e.preventDefault();
+                  attachPaste(text);
                 }
               }}
               onSelect={(e) => setCursor(e.currentTarget.selectionStart ?? 0)}

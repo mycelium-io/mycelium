@@ -93,7 +93,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchSkills: vi.fn().mockResolvedValue([
     { name: "summarize-room", description: "condense decisions", body: "", version: 1, created_by: "julia", created_at: "", updated_at: "" },
   ]),
-  fetchUploads: async () => ({ uploads: [], total: 0, accepted: ["png", "pdf", "md"], max_bytes: 1024 }),
+  fetchUploads: async () => ({ uploads: [], total: 0, accepted: ["png", "pdf", "md", "txt"], max_bytes: 1024 * 1024 }),
   uploadFile: (room: string, file: File) => uploadFile(room, file),
   fetchMentionGroups: (room: string, episode: string | null) => fetchMentionGroups(room, episode),
 }));
@@ -158,6 +158,7 @@ vi.mock("@/lib/emoji", async (importOriginal) => {
 import { RoomChatBox } from "@/components/room-chat-box";
 import { recordMentions } from "@/lib/recent-mentions";
 import { insertIntoComposer, quoteText, replyText } from "@/lib/message-actions";
+import { __resetClientSettingsCache } from "@/lib/client-settings";
 
 // A draft outlives its composer, which is the point, so each case starts
 // with none rather than inheriting the last one's typing.
@@ -217,11 +218,65 @@ describe("<RoomChatBox /> attachments", () => {
   it("says why a file won't go before sending it, and sends the rest", async () => {
     const user = userEvent.setup({ applyAccept: false });
     const { container } = renderWithSWR(<RoomChatBox roomName="demo" />);
-    await waitFor(() => expect(picker(container).accept).toBe(".png,.pdf,.md"));
+    await waitFor(() => expect(picker(container).accept).toBe(".png,.pdf,.md,.txt"));
     await user.upload(picker(container), [new File(["MZ"], "tool.exe"), png("ok.png")]);
     expect(await screen.findByText(/\.exe files can't be previewed/)).toBeInTheDocument();
     await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
     expect(uploadFile.mock.calls[0][1]).toMatchObject({ name: "ok.png" });
+  });
+
+  it("attaches a very long paste as a text file, and Undo puts the text back", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await user.type(box, "see: ");
+    const log = "error at line 1\n".repeat(700);
+    expect(log.length).toBeGreaterThan(10_000);
+
+    await user.paste(log);
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+    expect(uploadFile.mock.calls[0][1].name).toMatch(/^pasted-text-\d{4}\.txt$/);
+    expect(await uploadFile.mock.calls[0][1].text()).toBe(log);
+    expect(box).toHaveValue("see: ");
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(box).toHaveValue(`see: ${log}`);
+    expect(screen.queryByRole("list", { name: "Attached files" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a paste under the limit as text", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await user.click(box);
+    await user.paste("a short note");
+    expect(box).toHaveValue("a short note");
+    expect(uploadFile).not.toHaveBeenCalled();
+  });
+
+  it("follows this browser's paste setting, and Never keeps any paste as text", async () => {
+    window.localStorage.setItem("mycelium.settings", JSON.stringify({ "general.long-paste": 0 }));
+    __resetClientSettingsCache();
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await user.click(box);
+    await user.paste("z".repeat(20_000));
+    expect(box).toHaveValue("z".repeat(20_000));
+    expect(uploadFile).not.toHaveBeenCalled();
+    __resetClientSettingsCache();
+  });
+
+  it("drops the Undo once the pasted file is removed", async () => {
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    await user.click(await textarea());
+    await user.paste("y".repeat(10_001));
+    const remove = await screen.findByLabelText(/^Remove pasted-text-/);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    await user.click(remove);
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
   });
 
   it("waits for a file still uploading", async () => {

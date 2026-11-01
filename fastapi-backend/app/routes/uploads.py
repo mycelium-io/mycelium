@@ -165,7 +165,7 @@ async def create_upload(
         key, existing = uploads.choose_key(room_name, uploads.safe_name(filename), sha)
         if existing:
             return _find_read(room_name, key)
-        body = uploads.describe(filename, cleaned.type, len(cleaned.data), cleaned.text)
+        body = uploads.describe(key, filename, cleaned.type, len(cleaned.data), cleaned.text)
         item = MemoryCreate(
             key=key,
             value={"text": body},

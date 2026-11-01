@@ -16,6 +16,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { sanitizeCustomThemes, type CustomTheme } from "@/lib/custom-themes";
 import { isDesktop } from "@/lib/desktop";
 import { setDesktopApp, setKeyOverrides } from "@/lib/keymap";
+import { LONG_PASTE_CHARS } from "@/lib/uploads";
 
 const STORAGE_KEY = "mycelium.settings";
 
@@ -31,6 +32,8 @@ export type AgentAvatars = "creatures" | "initials";
 export interface ClientSettings {
   /** Which key sends a message; the other one starts a new line. */
   "general.send": SendKey;
+  /** A paste longer than this many characters attaches as a text file; 0 never does. */
+  "general.long-paste": number;
   /** Whether agents appear as their creature or their initials. People always
    *  keep their initials. */
   "general.agent-avatars": AgentAvatars;
@@ -48,6 +51,7 @@ export type ClientSettingId = keyof ClientSettings;
 
 export const CLIENT_DEFAULTS: ClientSettings = {
   "general.send": "enter",
+  "general.long-paste": LONG_PASTE_CHARS,
   "general.agent-avatars": "creatures",
   "general.time-zone": "",
   "keys.overrides": {},
@@ -58,6 +62,7 @@ export const CLIENT_DEFAULTS: ClientSettings = {
 /** The settings page each client setting is on, for `settingHref`. */
 const PAGE_OF: Record<ClientSettingId, SettingsPage> = {
   "general.send": "general",
+  "general.long-paste": "general",
   "general.agent-avatars": "general",
   "general.time-zone": "general",
   "keys.overrides": "keys",
@@ -134,6 +139,10 @@ function sanitize(stored: Partial<ClientSettings>): ClientSettings {
   const out: ClientSettings = { ...CLIENT_DEFAULTS, "keys.overrides": {}, "appearance.custom-themes": [] };
   if (stored["general.send"] === "enter" || stored["general.send"] === "mod-enter") {
     out["general.send"] = stored["general.send"];
+  }
+  const longPaste = stored["general.long-paste"];
+  if (typeof longPaste === "number" && Number.isInteger(longPaste) && longPaste >= 0) {
+    out["general.long-paste"] = longPaste;
   }
   if (stored["general.agent-avatars"] === "creatures" || stored["general.agent-avatars"] === "initials") {
     out["general.agent-avatars"] = stored["general.agent-avatars"];

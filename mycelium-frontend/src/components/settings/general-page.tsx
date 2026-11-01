@@ -25,6 +25,12 @@ import { SYSTEM, THEMES } from "@/lib/themes";
 import { CUSTOM_THEME } from "@/lib/custom-themes";
 import { useCustomThemes } from "@/components/custom-theme";
 import { CustomThemesRow } from "./custom-themes-row";
+import { LONG_PASTE_CHARS, LONG_PASTE_CHOICES } from "@/lib/uploads";
+
+/** A paste limit as Settings says it: "Over 10,000 characters", or "Never". */
+function pasteLimitLabel(chars: number): string {
+  return chars > 0 ? `Over ${chars.toLocaleString("en-US")} characters` : "Never";
+}
 import { Note, Row, Section, Segmented, SettingsPage } from "./settings-ui";
 
 /** How an imported theme is told apart from a built-in one in the dropdown. */
@@ -46,6 +52,7 @@ export function GeneralPage() {
   const mounted = useIsClient();
   const desktop = useIsDesktop();
   const [send, setSend] = useClientSetting("general.send");
+  const [longPaste, setLongPaste] = useClientSetting("general.long-paste");
   const [agentAvatars, setAgentAvatars] = useClientSetting("general.agent-avatars");
   const [zone, setZone] = useClientSetting("general.time-zone");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -184,6 +191,22 @@ export function GeneralPage() {
             ]}
             onChange={setSend}
           />
+        </Row>
+        <Row
+          id="general.long-paste"
+          label="Paste as a file"
+          help="A longer paste attaches as a text file, with Undo to put it back as text."
+          changed={longPaste !== LONG_PASTE_CHARS}
+          onReset={() => resetClientSetting("general.long-paste")}
+          defaultLabel={pasteLimitLabel(LONG_PASTE_CHARS)}
+        >
+          <Select aria-label="Paste as a file" value={String(longPaste)} onChange={(e) => setLongPaste(Number(e.target.value))}>
+            {[...new Set<number>([...LONG_PASTE_CHOICES, longPaste])].map((n) => (
+              <option key={n} value={n}>
+                {pasteLimitLabel(n)}
+              </option>
+            ))}
+          </Select>
         </Row>
       </Section>
 

@@ -55,6 +55,15 @@ describe("client settings", () => {
     expect(getClientSetting("keys.overrides")).toEqual({ "rail.memory": ["alt+y"] });
   });
 
+  it("keeps a paste limit only when it's a whole number, 0 meaning never", () => {
+    expect(getClientSetting("general.long-paste")).toBe(10_000);
+    for (const [stored, read] of [[0, 0], [5_000, 5_000], [-1, 10_000], [2.5, 10_000], ["5000", 10_000]] as const) {
+      window.localStorage.setItem("mycelium.settings", JSON.stringify({ "general.long-paste": stored }));
+      __resetClientSettingsCache();
+      expect(getClientSetting("general.long-paste")).toBe(read);
+    }
+  });
+
   it("applies changed shortcuts to the keymap", () => {
     expect(chordFor("rail.memory")).toBe("alt+m");
     setClientSetting("keys.overrides", { "rail.memory": ["alt+y"] });
