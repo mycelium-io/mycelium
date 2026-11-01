@@ -3,7 +3,7 @@
 # Copyright 2026 Mycelium Contributors
 """Contract checks over .github/workflows — the CI that checks CI.
 
-Three properties, each of which has a way of eroding quietly:
+Four properties, each of which has a way of eroding quietly:
 
   1. Every `uses:` is pinned to a full commit SHA. A moving tag is a supply
      chain hole: the tag can be repointed at new code that runs with our
@@ -14,6 +14,10 @@ Three properties, each of which has a way of eroding quietly:
   3. Every job in ci.yml has a duration budget in .github/ci-budgets.json, and
      every budget names a real job. The budgets are only useful if they can't
      drift away from the jobs they describe.
+  4. Every `astral-sh/setup-uv` step names a `version:`, the same one in every
+     workflow. Without one, setup-uv looks up the latest uv over the network
+     at run time (the repo root has no pyproject.toml to read it from), and a
+     slow answer has failed a release's binary builds.
 
 Pure stdlib and line-oriented so it needs no install step: it reads the
 workflow files as text rather than parsing YAML.
@@ -37,6 +41,52 @@ SHA_PINNED = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
 TOP_LEVEL_KEY = re.compile(r"^(?P<key>[a-zA-Z_][a-zA-Z0-9_-]*):")
 JOB_KEY = re.compile(r"^  (?P<job>[a-zA-Z_][a-zA-Z0-9_-]*):\s*$")
 JOB_NAME = re.compile(r"^    name:\s*(?P<name>.+?)\s*$")
+SETUP_UV = "astral-sh/setup-uv@"
+STEP_START = re.compile(r"^\s*-\s")
+UV_VERSION = re.compile(r"^\s*version:\s*[\"']?(?P<version>[^\"'\s#]+)")
+
+
+def uv_versions_in(path: Path) -> list[tuple[int, str | None]]:
+    """Each `setup-uv` step in a workflow: its line, and the `version:` it names."""
+    lines = path.read_text().splitlines()
+    steps: list[tuple[int, str | None]] = []
+    for index, line in enumerate(lines):
+        match = USES.match(line)
+        if not match or not match.group("ref").startswith(SETUP_UV):
+            continue
+        version = None
+        # The step's own lines run until the next step (or job) starts.
+        for following in lines[index + 1 :]:
+            if STEP_START.match(following) or JOB_KEY.match(following):
+                break
+            found = UV_VERSION.match(following)
+            if found:
+                version = found.group("version")
+                break
+        steps.append((index + 1, version))
+    return steps
+
+
+def uv_version_problems(paths: list[Path]) -> list[str]:
+    """Every setup-uv step pins uv, and they all pin the same version."""
+    found: list[str] = []
+    pinned: dict[str, list[str]] = {}
+    for path in paths:
+        for lineno, version in uv_versions_in(path):
+            where = f"{path.name}:{lineno}"
+            if version is None:
+                found.append(
+                    f"{where}: `setup-uv` names no `version:`, so it looks up the latest "
+                    f"uv over the network on every run — pin the one the others use",
+                )
+            else:
+                pinned.setdefault(version, []).append(where)
+    if len(pinned) > 1:
+        found.append(
+            "setup-uv steps pin different uv versions: "
+            + "; ".join(f"{v} at {', '.join(at)}" for v, at in sorted(pinned.items())),
+        )
+    return found
 
 
 def problems_in(path: Path) -> list[str]:
@@ -123,8 +173,10 @@ def budget_problems() -> list[str]:
 
 
 def main() -> int:
-    problems = [p for path in sorted(WORKFLOW_DIR.glob("*.yml")) for p in problems_in(path)]
+    workflows = sorted(WORKFLOW_DIR.glob("*.yml"))
+    problems = [p for path in workflows for p in problems_in(path)]
     problems += budget_problems()
+    problems += uv_version_problems(workflows)
 
     for problem in problems:
         # `::error` renders as an annotation under Actions, plain text locally.
@@ -135,7 +187,10 @@ def main() -> int:
         return 1
 
     checked = len(list(WORKFLOW_DIR.glob("*.yml")))
-    print(f"{checked} workflow(s): actions SHA-pinned, permissions declared, budgets aligned.")
+    print(
+        f"{checked} workflow(s): actions SHA-pinned, permissions declared, budgets aligned, "
+        f"uv pinned.",
+    )
     return 0
 
 
