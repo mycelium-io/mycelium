@@ -1251,7 +1251,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#structured-memory-key-rules",
     "t": "Key rules",
     "s": "Work › Structured Memory",
-    "x": "For keys under work/, decisions/, status/, context/ and procedures/, memory set checks the name after the prefix and records when it was written. That name can use lowercase letters, numbers, hyphens, dots and underscores. Capitals are lowercased for you. It must start with a letter or number, and it can't contain another /: decisions/auth works status/v2.deploy works decisions/Why We Chose X is rejected (spaces) con",
+    "x": "memory set takes any key the hub takes, the same as a write from the app, and stores it as typed. The hub refuses a key that would reach outside the room, such as one with .. in it. One rule is the CLI's own. Every key under work/, decisions/, status/ and failed/ is a row on the board, so a key there takes one name: decisions/auth works context/api/shape works (folders are fine outside the board) work/api/auth is ref",
     "p": "Guides"
   },
   {
@@ -2309,7 +2309,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-memory",
     "t": "mycelium memory set <key> [<value>] [--body <markdown>] [--file <path>] [--handle <handle>]",
     "s": "CLI Reference",
-    "x": "Write a memory (upsert). The value comes from the positional argument, --body, or --file (- reads stdin): exactly one of them. Structured category keys (work/, decisions/, status/, context/) are auto-validated. Always upserts; the backend handles versioning.",
+    "x": "Write a memory (upsert). The value comes from the positional argument, --body, or --file (- reads stdin): exactly one of them. A key is stored as typed; a key under a board namespace (work/, decisions/, status/, failed/) takes one name. Always upserts; the backend handles versioning.",
     "k": "cmd",
     "p": "Reference"
   },

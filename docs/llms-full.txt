@@ -3434,21 +3434,20 @@ mycelium memory search "why did we pick FastAPI"
 
 ## Key rules
 
-For keys under `work/`, `decisions/`, `status/`, `context/` and `procedures/`,
-`memory set` checks the name after the prefix and records when it was written.
-That name can use lowercase letters, numbers, hyphens, dots and underscores.
-Capitals are lowercased for you. It must start with a letter or number, and it
-can't contain another `/`:
+`memory set` takes any key the hub takes, the same as a write from the app,
+and stores it as typed. The hub refuses a key that would reach outside the room,
+such as one with `..` in it.
+
+One rule is the CLI's own. Every key under `work/`, `decisions/`, `status/` and
+`failed/` is a row on the board, so a key there takes one name:
 
 - `decisions/auth` works
-- `status/v2.deploy` works
-- `decisions/Why We Chose X` is rejected (spaces)
-- `context/api/shape` is rejected (a second `/`)
+- `context/api/shape` works (folders are fine outside the board)
+- `work/api/auth` is refused; use `work/api-auth`, or file it as a part of a
+  task with `mycelium board new "Auth" --parent work/api`
 
-The check runs in the CLI before anything is sent to the hub. Keys under any
-other prefix aren't checked, such as `failed/` or `research/`. Engines write
-deeper keys such as `context/summary/<task>` through the hub. You can read
-those with `memory get` but can't write them with `memory set`.
+For keys under `work/`, `decisions/`, `status/`, `context/` and `procedures/`,
+`memory set` also records when the value was written.
 
 
 ---
