@@ -20,7 +20,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { EmptyNote } from "@/components/empty-state";
-import { KeyRound, Laptop, Loader2, Plus, Square, SquareTerminal } from "lucide-react";
+import { KeyRound, Laptop, Plus, Square, SquareTerminal } from "lucide-react";
 import { stopRunnerAgent, type Runner, type RunnerAgent, type RunnerPairing } from "@/lib/api";
 import { fingerprint, pairingWith, useDeviceKeyId } from "@/lib/device-key";
 import { desktopMachine, terminalLink, useIsDesktop } from "@/lib/desktop";
@@ -75,27 +75,11 @@ export function MachinesScreen() {
 
         <div className="mt-4 space-y-6">
           {loading && runners.length === 0 && <Skeleton className="h-40 w-full rounded-xl" />}
-          {!loading && runners.length === 0 && (desktop ? <ThisMacConnecting /> : <ConnectMachine />)}
+          {!loading && runners.length === 0 && <ConnectMachine />}
           {runners.map((r) => (
             <MachineCard key={r.id} runner={r} keyId={keyId} />
           ))}
         </div>
-      </div>
-    </div>
-  );
-}
-
-/** In the desktop app before its runner has checked in: it is on its way, not missing. */
-function ThisMacConnecting() {
-  return (
-    <div className="flex items-center gap-3 px-1 py-2">
-      <Loader2 className="size-4 animate-spin text-muted-foreground" />
-      <div>
-        <p className="text-label font-medium text-text">This {desktopMachine()} is connecting</p>
-        <p className="text-micro text-muted-foreground">
-          Mycelium starts this {desktopMachine()}&apos;s runner for you. It appears here in a few seconds. If
-          it doesn&apos;t, open Health check in {desktopMachine() === "Mac" ? "the menu bar" : "Mycelium's tray menu"}.
-        </p>
       </div>
     </div>
   );
