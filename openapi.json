@@ -3948,6 +3948,121 @@
         }
       }
     },
+    "/api/rooms/{room_name}/board/closed": {
+      "get": {
+        "tags": [
+          "board"
+        ],
+        "summary": "Read Closed",
+        "description": "The room's closed tasks, newest closed first, found by their words and paged by time.",
+        "operationId": "read_closed_api_rooms__room_name__board_closed_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Words that must all be in the title or the latest line",
+              "default": "",
+              "title": "Q"
+            },
+            "description": "Words that must all be in the title or the latest line"
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only tasks closed strictly before this ISO time",
+              "title": "Before"
+            },
+            "description": "Only tasks closed strictly before this ISO time"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosedPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/board/{key}": {
       "get": {
         "tags": [
@@ -15452,6 +15567,166 @@
           "handle"
         ],
         "title": "ClaimBody"
+      },
+      "ClosedPage": {
+        "properties": {
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ClosedTask"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "more": {
+            "type": "boolean",
+            "title": "More",
+            "description": "Older matches past this page; ask again with before"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Every closed task matching q, not only this page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tasks",
+          "more",
+          "total"
+        ],
+        "title": "ClosedPage"
+      },
+      "ClosedTask": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "done",
+              "blocked",
+              "waiting",
+              "working",
+              "open"
+            ],
+            "title": "State"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
+          },
+          "waiting_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Waiting On"
+          },
+          "blocked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked By"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestLine"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest message in its thread"
+          },
+          "parts": {
+            "type": "integer",
+            "title": "Parts",
+            "description": "How many rows are part of this one",
+            "default": 0
+          },
+          "parts_done": {
+            "type": "integer",
+            "title": "Parts Done",
+            "default": 0
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "closed_at": {
+            "type": "string",
+            "title": "Closed At",
+            "description": "When it settled: its last write, which a resolve is"
+          },
+          "closed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed By",
+            "description": "Who resolved it, else who held it"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "state",
+          "closed_at"
+        ],
+        "title": "ClosedTask"
       },
       "ConfirmBody": {
         "properties": {
