@@ -46,7 +46,8 @@ import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { RenameAgentDialog } from "@/components/rename-agent-dialog";
-import { AgentScreenDrawer } from "@/components/agent-screen";
+import { AgentScreenPeek } from "@/components/agent-screen-peek";
+import { useAgentOpener } from "@/components/agent-opener";
 import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
 import { AgentCardHover } from "@/components/agent-card";
@@ -218,7 +219,10 @@ export function AgentsPanel({
   const [addKind, setAddKind] = useState<MemberKind>("machine");
   const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  // The agent whose terminal is open in the drawer, with the machine its manifest names.
+  // The agent whose terminal is open, with the machine its manifest names. In
+  // a room the room's opener shows it, so an @ tag and Members share one peek;
+  // anywhere else this panel shows its own.
+  const opener = useAgentOpener();
   const [watching, setWatching] = useState<{ handle: string; runner: string | null } | null>(null);
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
@@ -359,8 +363,8 @@ export function AgentsPanel({
           onRenamed={refresh}
         />
         {watching && (
-          <AgentScreenDrawer
-            open
+          <AgentScreenPeek
+            key={watching.handle}
             onClose={() => setWatching(null)}
             room={roomName}
             handle={watching.handle}
@@ -447,7 +451,9 @@ export function AgentsPanel({
                   const watch =
                     a.adapter === "engine" || a.adapter === "a2a"
                       ? undefined
-                      : () => setWatching({ handle: a.handle, runner: a.runner ?? null });
+                      : opener
+                        ? () => opener.open(a.handle)
+                        : () => setWatching({ handle: a.handle, runner: a.runner ?? null });
                   return (
                     <MemberMenu
                       key={`agent-${a.handle}`}

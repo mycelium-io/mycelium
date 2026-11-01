@@ -11,7 +11,8 @@
  * Typing stays in the app's agents terminal (Open its terminal).
  *
  *   <AgentScreen room handle />        the view, or where the agent runs instead
- *   <AgentScreenDrawer … />            the same, in a drawer
+ *
+ * `AgentScreenPeek` (agent-screen-peek.tsx) is where it's opened.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -21,13 +22,11 @@ import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
 import { buttonVariants } from "@/components/ui/button";
-import { DetailDrawer } from "@/components/detail-drawer";
-import { Monogram } from "@/components/ui/monogram";
 
 /** The footer's promise, which the code keeps: the runner sends the hub no screen. */
 export const STREAMED_LOCALLY = "Streamed from this machine. Nothing is sent to the hub.";
 
-interface Props {
+export interface AgentScreenProps {
   room: string;
   handle: string;
   /** The machine its manifest names, when the caller knows it. */
@@ -37,7 +36,7 @@ interface Props {
   openLink?: boolean;
 }
 
-export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }: Props) {
+export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }: AgentScreenProps) {
   const desktop = useIsDesktop();
   const thisMachine = useThisMachine();
   const { runners } = useRunners();
@@ -260,28 +259,5 @@ function Updated({ at }: { at: number | null }) {
       <span aria-hidden className="size-1.5 rounded-full bg-green motion-safe:animate-pulse" />
       live
     </span>
-  );
-}
-
-export function AgentScreenDrawer({ open, onClose, ...props }: Props & { open: boolean; onClose: () => void }) {
-  return (
-    <DetailDrawer
-      open={open}
-      onClose={onClose}
-      wide
-      // The agent as Members draws it, in the app's own type rather than mono.
-      title={
-        <span className="flex items-center gap-2 font-sans">
-          <Monogram handle={props.handle} kind="agent" className="size-5 text-[9px]" />
-          <span className="truncate">@{props.handle}</span>
-        </span>
-      }
-      // Under the name, past the avatar's width and gap.
-      subtitle={<span className="block pl-7">Live terminal · {props.room}</span>}
-    >
-      <div className="flex h-full flex-col">
-        <AgentScreen {...props} />
-      </div>
-    </DetailDrawer>
   );
 }

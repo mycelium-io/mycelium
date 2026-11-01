@@ -17,9 +17,9 @@ vi.mock("@/lib/room-data", () => ({
     ],
   }),
 }));
-vi.mock("@/components/agent-screen", () => ({
-  AgentScreenDrawer: ({ handle, runner }: { handle: string; runner: string | null }) => (
-    <div data-testid="drawer">
+vi.mock("@/components/agent-screen-peek", () => ({
+  AgentScreenPeek: ({ handle, runner }: { handle: string; runner: string | null }) => (
+    <div data-testid="peek">
       {handle} on {runner}
     </div>
   ),
@@ -43,10 +43,10 @@ function inRoom(ui: React.ReactNode) {
 }
 
 describe("an agent's @ tag", () => {
-  it("opens the agent in the drawer Members opens", () => {
+  it("opens the agent in the peek Members opens", () => {
     inRoom(<AgentTag handle="builder" />);
     fireEvent.click(screen.getByRole("button", { name: "Open @builder" }));
-    expect(screen.getByTestId("drawer").textContent).toBe("builder on studio-mini");
+    expect(screen.getByTestId("peek").textContent).toBe("builder on studio-mini");
   });
 
   it("stays plain for an engine, an A2A member and a person", () => {
@@ -103,6 +103,6 @@ describe("who is responding", () => {
     line(at("builder", "conductor"));
     expect(screen.getAllByRole("button")).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Open @builder" }));
-    expect(screen.getByTestId("drawer").textContent).toBe("builder on studio-mini");
+    expect(screen.getByTestId("peek").textContent).toBe("builder on studio-mini");
   });
 });

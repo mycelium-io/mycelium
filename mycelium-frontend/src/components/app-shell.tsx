@@ -38,6 +38,7 @@ import {
 } from "@/lib/panel-layout";
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 import { useSheetLayout } from "@/lib/use-viewport";
+import { PEEK_LAYER_ID } from "@/lib/terminal-window";
 import { RailSheet } from "@/components/rail-sheet";
 import { useKeyAction } from "@/components/keymap-provider";
 import type { RoomViewsNav } from "@/components/room-views-nav";
@@ -290,7 +291,12 @@ export function AppShell({
                 minSize={WORKSPACE_PANEL.min}
                 className="flex min-w-0 flex-col"
               >
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+                <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                  {children}
+                  {/* Where an agent's terminal peeks in, over the workspace's
+                      right side and under nothing else (`AgentScreenPeek`). */}
+                  <div id={PEEK_LAYER_ID} className="pointer-events-none absolute inset-0 z-30" />
+                </div>
               </ResizablePanel>
             </ResizablePanelGroup>
           </div>

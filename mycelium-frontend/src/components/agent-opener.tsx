@@ -6,8 +6,10 @@
 /**
  * Opening an agent from its @ tag on the "is responding" line, in the channel
  * and in a task's thread; @ tags in messages stay plain text. It opens the
- * agent the way a click in Members does, in the drawer that shows its terminal,
+ * agent the way a click in Members does, in the peek that shows its terminal,
  * live, when it runs on this machine and says where it runs when it doesn't.
+ * The room has one opener, so Members opens through it too, and only one
+ * agent's terminal peeks at a time.
  *
  * Only agents that run in a terminal open. Engines and A2A members answer from
  * the hub and have no terminal, and a person has nothing to open yet, so their
@@ -21,7 +23,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { Responding } from "@/lib/activity";
 import { useRoomRoster } from "@/lib/room-data";
-import { AgentScreenDrawer } from "@/components/agent-screen";
+import { AgentScreenPeek } from "@/components/agent-screen-peek";
 import { AgentCardHover } from "@/components/agent-card";
 
 export interface AgentOpener {
@@ -72,8 +74,9 @@ export function AgentOpenerProvider({ roomName, children }: { roomName: string; 
     <OpenerContext.Provider value={value}>
       {children}
       {opened && (
-        <AgentScreenDrawer
-          open
+        <AgentScreenPeek
+          // One per agent, so a window popped out for one doesn't move to the next.
+          key={opened.handle}
           onClose={() => setOpened(null)}
           room={roomName}
           handle={opened.handle}
