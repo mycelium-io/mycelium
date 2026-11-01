@@ -34,7 +34,14 @@ def _store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the store at a throwaway file, off the developer's real home."""
     path = tmp_path / "status-credentials.json"
     monkeypatch.setenv(status_credentials.STORE_ENV, str(path))
+    # No hub answers unless a test sets one up, so nothing here reaches a real
+    # hub on this machine's port.
+    install_stand_in_hub(monkeypatch).answer = _unreachable
     return path
+
+
+def _unreachable(request: httpx.Request):
+    raise httpx.ConnectError("no route", request=request)
 
 
 # ── the module ────────────────────────────────────────────────────────────────
@@ -129,9 +136,9 @@ def test_ls_json_after_the_command_lists_names_never_values() -> None:
 REMOTE = "https://hub.example.com"
 
 
-def _remote_hub(monkeypatch: pytest.MonkeyPatch, store: str | None) -> None:
-    """Point the CLI at a hub elsewhere, reporting ``store`` as its store id."""
-    monkeypatch.setenv("MYCELIUM_API_URL", REMOTE)
+def _remote_hub(monkeypatch: pytest.MonkeyPatch, store: str | None, url: str = REMOTE) -> None:
+    """Point the CLI at a hub at ``url``, reporting ``store`` as its store id."""
+    monkeypatch.setenv("MYCELIUM_API_URL", url)
     storage = {"status": "ok", "message": "ok", **({"id": store} if store else {})}
     health = {
         "status": "ok",
@@ -144,12 +151,32 @@ def _remote_hub(monkeypatch: pytest.MonkeyPatch, store: str | None) -> None:
     )
 
 
-def test_a_hub_on_this_machine_reads_the_file_and_nothing_is_said() -> None:
+def test_a_hub_on_this_machine_reads_the_file_and_nothing_is_said(
+    monkeypatch: pytest.MonkeyPatch, _store: Path
+) -> None:
+    (_store.parent / ".store-id").write_text("this-store")
+    _remote_hub(monkeypatch, store="this-store", url="http://localhost:8000")
     result = runner.invoke(
         app, ["board", "credential", "set", "GITHUB_TOKEN", "--stdin"], input="ghp_secret"
     )
     assert result.exit_code == 0, result.output
     assert "another machine" not in result.output
+
+
+def test_a_second_hub_on_this_machine_with_its_own_store_doesn_t_read_it(
+    monkeypatch: pytest.MonkeyPatch, _store: Path
+) -> None:
+    """The desktop app's hub beside a Docker one: same address family, two stores."""
+    (_store.parent / ".store-id").write_text("this-store")
+    _remote_hub(monkeypatch, store="the-other-hub-s", url="http://127.0.0.1:8001")
+    result = runner.invoke(
+        app, ["board", "credential", "set", "GITHUB_TOKEN", "--stdin"], input="ghp_secret"
+    )
+    assert "won't read this file" in " ".join(result.output.split())
+
+
+def test_a_local_hub_that_can_t_be_asked_is_taken_as_this_machine_s() -> None:
+    """Nothing answers (the fixture's default), so the address decides."""
     assert status_credentials.hub_reads_here("http://localhost:8000") is True
 
 
@@ -202,12 +229,6 @@ def test_a_hub_that_can_t_be_asked_is_taken_as_elsewhere(
     monkeypatch: pytest.MonkeyPatch, _store: Path
 ) -> None:
     (_store.parent / ".store-id").write_text("this-store")
-    monkeypatch.setenv("MYCELIUM_API_URL", REMOTE)
-
-    def unreachable(request):
-        raise httpx.ConnectError("no route", request=request)
-
-    install_stand_in_hub(monkeypatch).answer = unreachable
     assert status_credentials.hub_reads_here(REMOTE) is False
 
 

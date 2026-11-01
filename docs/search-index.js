@@ -2143,7 +2143,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-board",
     "t": "mycelium board credential ls",
     "s": "CLI Reference",
-    "x": "List the status-provider credential names the hub has, and whether each is set. Never the values.",
+    "x": "List the status-provider credential names stored on this machine, and whether each is set. Never the values. Says so when the hub runs on another machine.",
     "k": "cmd",
     "p": "Reference"
   },

@@ -1604,7 +1604,10 @@ def credential_set(
 
 @doc_ref(
     usage="mycelium board credential ls",
-    desc="List the status-provider credential names the hub has, and whether each is set. Never the values.",
+    desc=(
+        "List the status-provider credential names stored on this machine, and whether "
+        "each is set. Never the values. Says so when the hub runs on another machine."
+    ),
     group="board",
 )
 @credential_app.command("ls")
