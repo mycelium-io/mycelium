@@ -1,10 +1,10 @@
 # One way every workflow installs uv: a pinned version, tried twice.
 #
-# setup-uv looks the version up in astral-sh/versions' uv.ndjson on
-# raw.githubusercontent.com before it downloads, even when the version is
-# pinned, with a 5-second timeout and no retry of its own. A slow answer
-# failed both of 3.0.74's binary builds, and a rerun passed. So the install
-# runs once more when the first try fails. The version lives here, once;
+# setup-uv fetches a version manifest before it downloads, even when the
+# version is pinned: from Astral's mirror, then GitHub if that fails, each with
+# a 5-second timeout. A slow answer (from GitHub, before setup-uv used the
+# mirror) failed both of 3.0.74's binary builds, and a rerun passed. So the
+# install runs once more when the first try fails. The version lives here, once;
 # scripts/check_workflows.py keeps workflows from calling setup-uv directly.
 name: Set up uv
 description: Install the pinned uv, trying a second time if the first try fails.
