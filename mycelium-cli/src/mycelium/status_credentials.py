@@ -133,3 +133,32 @@ def list_names() -> dict[str, bool]:
     without ever surfacing the secret.
     """
     return {name: bool(value) for name, value in sorted(_read().items())}
+
+
+#: Hosts that are this machine.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def hub_reads_here(api_url: str) -> bool:
+    """Whether the hub at ``api_url`` reads this machine's store.
+
+    It does when it runs here (the address is this machine), or when it reports
+    this machine's data folder as its own: ``/health`` gives the store id the
+    folder's ``.store-id`` holds (:mod:`mycelium.hubs`), which is how a hub
+    reached by name on the local network is still recognized. A hub that can't
+    be asked, or whose store isn't this one, reads a file somewhere else.
+    """
+    from urllib.parse import urlparse
+
+    host = (urlparse(api_url).hostname or "").lower()
+    if host in _LOCAL_HOSTS:
+        return True
+    from mycelium.hub_check import health
+    from mycelium.hubs import store_id
+
+    own = store_id(store_path().parent, create=False)
+    if not own:
+        return False
+    storage = health(api_url, timeout=3.0).storage
+    theirs = storage.id if storage is not None else None
+    return isinstance(theirs, str) and theirs == own

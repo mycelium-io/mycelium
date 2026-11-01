@@ -1495,6 +1495,23 @@ def board_log(
 # Providers run hub-side, so these are hub-operator commands: run them where the
 # backend runs. Nothing here can print a value.
 
+
+def _credential_hub() -> tuple[str, bool]:
+    """The hub the CLI points at, and whether it reads this machine's credentials."""
+    from mycelium import status_credentials
+
+    hub = MyceliumConfig.load().server.api_url
+    return hub, status_credentials.hub_reads_here(hub)
+
+
+def _elsewhere(hub: str, command: str) -> str:
+    """The warning for a store the hub won't read."""
+    return (
+        f"[yellow]The hub at {hub} runs on another machine and won't read this file.[/yellow] "
+        f"Run `{command}` on the hub's machine instead."
+    )
+
+
 credential_app = typer.Typer(
     help=(
         "Give the hub the credentials its status providers need to keep board "
@@ -1551,14 +1568,28 @@ def credential_set(
             )
             raise typer.Exit(1)
 
+        # Stored either way: someone may be setting it up here before moving it.
         path = status_credentials.set_credential(name, value)
+        hub, reads = _credential_hub()
 
         if json_output:
-            typer.echo(json.dumps({"name": name, "stored": str(path), "empty": not value}))
+            typer.echo(
+                json.dumps(
+                    {
+                        "name": name,
+                        "stored": str(path),
+                        "empty": not value,
+                        "hub": hub,
+                        "hub_reads_it": reads,
+                    }
+                )
+            )
             return
 
         console.print(f"[green]Stored[/green] [cyan]{name}[/cyan] [dim](value not shown)[/dim].")
         console.print(f"[dim]Saved to {path} (mode 0600).[/dim]")
+        if not reads:
+            console.print(_elsewhere(hub, f"mycelium board credential set {name}"))
         if not value:
             console.print(
                 "[yellow]The value is empty[/yellow]; the hub will report it as set-but-empty "
@@ -1585,13 +1616,18 @@ def credential_ls(ctx: typer.Context) -> None:
     try:
         names = status_credentials.list_names()
         json_output = ctx.obj.get("json", False) if ctx.obj else False
+        hub, reads = _credential_hub()
 
         if json_output:
-            typer.echo(json.dumps(names, indent=2, sort_keys=True))
+            payload = {"credentials": names, "hub": hub, "hub_reads_it": reads}
+            typer.echo(json.dumps(payload, indent=2, sort_keys=True))
             return
 
+        if not reads:
+            console.print(_elsewhere(hub, "mycelium board credential ls"))
         if not names:
-            console.print("[dim]No status-provider credentials on this hub.[/dim]")
+            where = "on this hub" if reads else "on this machine"
+            console.print(f"[dim]No status-provider credentials {where}.[/dim]")
             return
 
         table = Table(title="Status-provider credentials")
