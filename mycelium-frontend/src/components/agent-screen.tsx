@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Lock, SquareTerminal, X } from "lucide-react";
+import { Lock, PanelRight, PictureInPicture2, SquareTerminal, X } from "lucide-react";
 import { parseAnsi, readable, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
@@ -279,24 +279,57 @@ export function AgentTerminalPane({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+  // Popped out, the peek is a window of its own: dragged by its header,
+  // resized from its corner, and docked back with the same button.
+  const [floating, setFloating] = useState<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const popOut = () =>
+    setFloating({ x: Math.max(16, window.innerWidth - 640 - 48), y: Math.max(16, Math.round(window.innerHeight * 0.12)) });
+  const className =
+    mode === "side"
+      ? "flex w-[min(680px,46vw)] flex-none flex-col border-l border-border bg-bg"
+      : floating
+        ? "fixed z-50 flex h-[min(680px,72vh)] w-[min(640px,90vw)] min-h-60 min-w-80 resize flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl"
+        : "absolute inset-y-2 right-2 z-30 flex w-[min(600px,44vw)] flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl motion-safe:animate-in motion-safe:slide-in-from-right-4 motion-safe:fade-in-0";
   return (
     <section
       aria-label={`@${props.handle}'s terminal`}
-      className={
-        mode === "side"
-          ? "flex w-[min(680px,46vw)] flex-none flex-col border-l border-border bg-bg"
-          : "absolute inset-y-2 right-2 z-30 flex w-[min(680px,52vw)] flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl motion-safe:animate-in motion-safe:slide-in-from-right-4 motion-safe:fade-in-0"
-      }
+      className={className}
+      style={floating ? { left: floating.x, top: floating.y } : undefined}
     >
-      <header className="flex h-10 flex-none items-center gap-2 border-b border-border px-3">
+      <header
+        className={`flex h-10 flex-none items-center gap-2 border-b border-border px-3 ${floating ? "cursor-grab select-none active:cursor-grabbing" : ""}`}
+        onPointerDown={(e) => {
+          if (!floating || (e.target as HTMLElement).closest("button")) return;
+          drag.current = { dx: e.clientX - floating.x, dy: e.clientY - floating.y };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (!drag.current) return;
+          setFloating({ x: e.clientX - drag.current.dx, y: Math.max(0, e.clientY - drag.current.dy) });
+        }}
+        onPointerUp={() => {
+          drag.current = null;
+        }}
+      >
         <Monogram handle={props.handle} kind="agent" className="size-5 text-[9px]" />
         <span className="truncate text-label font-medium text-text">@{props.handle}</span>
         <span className="text-micro text-faint">{props.room}</span>
+        {mode === "peek" && (
+          <button
+            type="button"
+            aria-label={floating ? "Dock its terminal" : "Pop out its terminal"}
+            onClick={() => (floating ? setFloating(null) : popOut())}
+            className="ml-auto grid size-6 place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text"
+          >
+            {floating ? <PanelRight className="size-3.5" /> : <PictureInPicture2 className="size-3.5" />}
+          </button>
+        )}
         <button
           type="button"
           aria-label="Close its terminal"
           onClick={onClose}
-          className="ml-auto grid size-6 place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text"
+          className={`${mode === "peek" ? "" : "ml-auto "}grid size-6 place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text`}
         >
           <X className="size-3.5" />
         </button>
