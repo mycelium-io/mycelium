@@ -14,7 +14,7 @@ import type { PaletteCommand } from "@/lib/commands";
  *  to find it by, so ⌘K → "time zone" lands on General. */
 const PAGES: { page: SettingsPage; title: string; keywords: string[] }[] = [
   { page: "profile", title: "Profile", keywords: ["name", "handle", "who am i", "identity", "agents i own"] },
-  { page: "general", title: "General", keywords: ["theme", "dark", "light", "send", "enter", "time zone", "export", "import"] },
+  { page: "general", title: "General", keywords: ["theme", "dark", "light", "send", "enter", "paste", "time zone", "export", "import"] },
   { page: "notifications", title: "Notifications", keywords: ["bell", "sound", "banner", "do not disturb", "mute"] },
   { page: "read-aloud", title: "Read aloud", keywords: ["speech", "speak", "voice", "tts", "kokoro", "listen"] },
   { page: "keys", title: "Keyboard shortcuts", keywords: ["keybindings", "keys", "hotkeys", "rebind"] },

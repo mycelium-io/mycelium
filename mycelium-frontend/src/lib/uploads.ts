@@ -42,10 +42,14 @@ export function extensionOf(filename: string): string {
   return dot > 0 || (dot === 0 && filename.length > 1) ? filename.slice(dot + 1).toLowerCase() : "";
 }
 
-/** A paste longer than this attaches as a text file rather than filling the
- *  composer: a log or a settings page reads better as a file, and an agent
- *  reads it whole with `mycelium memory get uploads/<name>`. */
+/** By default, a paste longer than this attaches as a text file rather than
+ *  filling the composer: a log or a settings page reads better as a file, and
+ *  an agent reads it whole with `mycelium memory get uploads/<name>`. Each
+ *  person can change it (`general.long-paste`). */
 export const LONG_PASTE_CHARS = 10_000;
+
+/** The limits Settings offers, in characters; 0 is "never". */
+export const LONG_PASTE_CHOICES = [2_000, 5_000, 10_000, 50_000, 0] as const;
 
 /** The file a long paste attaches as, named for when it was pasted:
  *  `pasted-text-1042.txt`, with seconds added only when two land in a minute. */

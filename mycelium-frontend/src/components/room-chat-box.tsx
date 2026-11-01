@@ -65,7 +65,7 @@ import { Clock, FileText, ListTodo, Paperclip, Plus, UserPlus, X } from "lucide-
 import { NewScheduleDialog } from "@/components/schedules/new-schedule-dialog";
 import type { View } from "@/lib/room-dock";
 import { PendingAttachments, usePendingUploads } from "@/components/uploads/composer-attachments";
-import { LONG_PASTE_CHARS, acceptAttribute, pastedTextFile } from "@/lib/uploads";
+import { acceptAttribute, pastedTextFile } from "@/lib/uploads";
 import { MicToggle } from "@/components/voice/mic-toggle";
 import { useVoiceInput } from "@/components/voice/use-voice-input";
 import { appendHeard } from "@/lib/voice";
@@ -341,6 +341,7 @@ export function RoomChatBox({
   // back to "user" so the room still has a sender to attribute the message to.
   const { principal } = useCurrentUser();
   const [sendKey] = useClientSetting("general.send");
+  const [longPaste] = useClientSetting("general.long-paste");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // A send that would wake many agents, held until the writer says how. It
@@ -1335,7 +1336,7 @@ export function RoomChatBox({
                   return;
                 }
                 const text = e.clipboardData.getData("text/plain");
-                if (text.length > LONG_PASTE_CHARS) {
+                if (longPaste > 0 && text.length > longPaste) {
                   e.preventDefault();
                   attachPaste(text);
                 }

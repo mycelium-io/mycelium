@@ -158,6 +158,7 @@ vi.mock("@/lib/emoji", async (importOriginal) => {
 import { RoomChatBox } from "@/components/room-chat-box";
 import { recordMentions } from "@/lib/recent-mentions";
 import { insertIntoComposer, quoteText, replyText } from "@/lib/message-actions";
+import { __resetClientSettingsCache } from "@/lib/client-settings";
 
 // A draft outlives its composer, which is the point, so each case starts
 // with none rather than inheriting the last one's typing.
@@ -252,6 +253,19 @@ describe("<RoomChatBox /> attachments", () => {
     await user.paste("a short note");
     expect(box).toHaveValue("a short note");
     expect(uploadFile).not.toHaveBeenCalled();
+  });
+
+  it("follows this browser's paste setting, and Never keeps any paste as text", async () => {
+    window.localStorage.setItem("mycelium.settings", JSON.stringify({ "general.long-paste": 0 }));
+    __resetClientSettingsCache();
+    const user = userEvent.setup();
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await user.click(box);
+    await user.paste("z".repeat(20_000));
+    expect(box).toHaveValue("z".repeat(20_000));
+    expect(uploadFile).not.toHaveBeenCalled();
+    __resetClientSettingsCache();
   });
 
   it("drops the Undo once the pasted file is removed", async () => {
