@@ -63,6 +63,7 @@ from app.services import message_format
 from app.services.asks import MENTION_ETIQUETTE
 from app.services.engine_kinds import norm as _norm
 from app.services.engine_kinds import registered_engine_kind
+from app.services.engines_model import failed_turn
 
 if TYPE_CHECKING:
     from app.services.in_memory_store import StoredMessage
@@ -450,7 +451,9 @@ class SynthesizerEngine:
             _synth_ms = (__import__("time").monotonic() - _synth_t0) * 1000.0
         except Exception:
             logger.exception("synthesizer: Pi turn failed for room %s", room)
-            await self._say_if_live(managed, room, me, "Pi turn timed out or errored — try again.")
+            await self._say_if_live(
+                managed, room, me, failed_turn("Pi turn timed out or errored — try again.")
+            )
             return None
 
         response = _strip_fences(raw or "")

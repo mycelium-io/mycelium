@@ -46,6 +46,7 @@ from app.config import settings
 from app.services import message_format
 from app.services.engine_kinds import norm as _norm
 from app.services.engine_kinds import registered_engine_kind
+from app.services.engines_model import failed_turn
 from app.services.message_slim import serialize_content
 from app.services.synthesizer import _strip_fences
 
@@ -206,7 +207,9 @@ class ProbeEngine:
             )
         except Exception:
             logger.exception("hello: Pi turn failed for room %s", room)
-            await self._say(managed, room, me, "Pi turn timed out or errored — try again.")
+            await self._say(
+                managed, room, me, failed_turn("Pi turn timed out or errored — try again.")
+            )
             return None
 
         reply = _strip_fences(raw or "")

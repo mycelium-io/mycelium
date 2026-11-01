@@ -810,7 +810,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#models-set-it",
     "t": "Set it",
     "s": "Setup › Models",
-    "x": "In the desktop app, the first run asks for it. You can change it any time in Settings → Model (⌘, on a Mac). Pick a provider, paste a key and save. The model name is filled in for you. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"<your key>\" mycelium config apply llm.base_url sets the address for a provider the hub can't find on its own, like Olla",
+    "x": "In the desktop app, the first run offers it, and you can skip it. You can change it any time in Settings → Engines' model (⌘, on a Mac). Pick a provider, paste a key and save. The model name is filled in for you. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"<your key>\" mycelium config apply llm.base_url sets the address for a provider the hub can'",
     "p": "Guides"
   },
   {
@@ -831,7 +831,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#models-check-it",
     "t": "Check it",
     "s": "Setup › Models",
-    "x": "In the desktop app, Settings → Model says whether the model answered. Health check… shows it under Models. From the command line, mycelium doctor asks the model for a real reply. If it can't get one, it says what went wrong, such as a missing key, a key the provider refuses or a model name it doesn't know.",
+    "x": "In the desktop app, Settings → Engines' model says whether the model answered. Health check… shows it under Models. From the command line, mycelium doctor asks the model for a real reply. If it can't get one, it says what went wrong, such as a missing key, a key the provider refuses or a model name it doesn't know.",
     "p": "Guides"
   },
   {
@@ -1636,7 +1636,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-no-model-configured",
     "t": "No model configured",
     "s": "Help › Troubleshooting",
-    "x": "You see: mycelium doctor says the model check is not configured or auth failed. Or engines like a persona don't answer. In the desktop app, set it in Settings → Model. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up mycelium doctor makes a real model call. Besides a missing key, it catches a wrong model n",
+    "x": "You see: mycelium doctor says the model check is not configured or auth failed. Or engines like a persona don't answer. In the desktop app, set it in Settings → Engines' model. From the command line: mycelium config set llm.model \"anthropic/claude-sonnet-4-6\" mycelium config set llm.api_key \"sk-ant-...\" mycelium config apply mycelium up mycelium doctor makes a real model call. Besides a missing key, it catches a wron",
     "p": "Guides"
   },
   {

@@ -62,6 +62,7 @@ from app.services import activity, markers, message_format, room_settings
 from app.services.agreed import for_prompt as agreed_for_prompt
 from app.services.engine_kinds import norm as _norm
 from app.services.engine_kinds import registered_engine_kind
+from app.services.engines_model import failed_turn
 from app.services.message_models import Kind
 from app.services.synthesizer import _strip_fences
 
@@ -703,7 +704,9 @@ class WorkerEngine:
             )
         except Exception:
             logger.exception("worker @%s: Pi turn failed in room %s", handle, room)
-            await self._say(managed, episode, handle, "Pi turn timed out or errored; ask me again.")
+            await self._say(
+                managed, episode, handle, failed_turn("Pi turn timed out or errored; ask me again.")
+            )
             return None
         finally:
             activity.signal(room, handle, "done", episode=episode)

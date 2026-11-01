@@ -12,4 +12,4 @@ because Review and Settle call the engine by that name.
 Engines do nothing until a task asks for them. The conductor never needs a
 model, since the agents taking part do the thinking. Other engines, such as
 personas and the synthesizer, do. If you skipped the model in step 1, add it in
-**Settings → Model**. See [Models](#models).
+**Settings → Engines' model**. See [Models](#models).

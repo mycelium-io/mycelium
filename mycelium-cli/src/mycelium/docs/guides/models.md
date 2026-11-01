@@ -21,8 +21,8 @@ They sign in with their own accounts the same way they do outside Mycelium.
 
 ## Set it
 
-**In the desktop app**, the first run asks for it. You can change it any time
-in **Settings → Model** (⌘, on a Mac). Pick a provider, paste a key and save. The model
+**In the desktop app**, the first run offers it, and you can skip it. You can
+change it any time in **Settings → Engines' model** (⌘, on a Mac). Pick a provider, paste a key and save. The model
 name is filled in for you.
 
 **From the command line**:
@@ -64,7 +64,7 @@ provider and model name with their context limits and prices.
 
 ## Check it
 
-In the desktop app, **Settings → Model** says whether the model answered.
+In the desktop app, **Settings → Engines' model** says whether the model answered.
 **Health check…** shows it under **Models**. From the command line,
 `mycelium doctor` asks the model for a real reply. If it can't get one, it says
 what went wrong, such as a missing key, a key the provider refuses or a model

@@ -227,7 +227,7 @@ mycelium down && mycelium up
 **You see:** `mycelium doctor` says the model check is *not configured* or
 *auth failed*. Or engines like a [persona](#persona) don't answer.
 
-In the desktop app, set it in **Settings → Model**. From the command line:
+In the desktop app, set it in **Settings → Engines' model**. From the command line:
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
