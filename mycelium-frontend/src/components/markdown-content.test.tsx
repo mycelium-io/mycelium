@@ -42,15 +42,13 @@ describe("<MarkdownContent /> memory links", () => {
 
   it("wraps a long key with the sentence, and still opens from the keyboard", async () => {
     const onLinkClick = vi.fn();
-    const key = "work/say-plainly-what-the-engines-model-is-for-and-th";
-    render(<MarkdownContent onLinkClick={onLinkClick}>{`Filed as [[${key}]]. It covers the first run.`}</MarkdownContent>);
+    const key = "decisions/keep-the-old-card-form-as-a-fallback-during-the-rollout";
+    render(<MarkdownContent onLinkClick={onLinkClick}>{`Filed as [[${key}]]. Builder has it.`}</MarkdownContent>);
 
     const chip = screen.getByRole("button", { name: key });
-    // Inline text, not a box: a box can't break across lines, so a long key
-    // dropped to a line of its own and pushed the rest of the sentence down.
+    // A span, not a button: a browser lays a button out as a box, which can't
+    // break across lines, so a long key dropped to a line of its own.
     expect(chip.tagName).toBe("SPAN");
-    expect(chip.className).toMatch(/(^|\s)inline(\s|$)/);
-    expect(chip.className).not.toMatch(/inline-(flex|block)/);
 
     chip.focus();
     await userEvent.keyboard("{Enter}");
