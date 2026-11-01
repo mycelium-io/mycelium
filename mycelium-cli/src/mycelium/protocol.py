@@ -177,7 +177,7 @@ class AgentManifest(BaseModel):
     - ``claude_code``: a resident Claude Code session (kept woken with
       ``mycelium await --loop``). Optional ``cwd`` (the session's working dir).
     - ``cursor``: a resident Cursor session. Optional ``cwd`` (Cursor's workspace
-      root; also where workspace assets drop when set).
+      root).
     - ``engine``: a first-party cognition engine (e.g. ``conductor``), run by the
       backend. Requires ``kind``.
 

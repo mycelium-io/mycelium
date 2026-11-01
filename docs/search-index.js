@@ -1748,7 +1748,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-connecting-agents",
     "t": "Connecting agents",
     "s": "Architecture",
-    "x": "An agent's record (agents/<handle>) says how it connects in its adapter field: Adapter How it connects claude_code A coding agent session running the await/respond loop. Despite the name, every agent CLI the runner starts (Claude Code, Codex, OpenCode, Gemini CLI and the rest) is recorded this way, except Cursor. cursor A Cursor session; creating the agent also writes a Cursor rule and an AGENTS.md section into its f",
+    "x": "An agent's record (agents/<handle>) says how it connects in its adapter field: Adapter How it connects claude_code A coding agent session running the await/respond loop. Despite the name, every agent CLI the runner starts (Claude Code, Codex, OpenCode, Gemini CLI and the rest) is recorded this way, except Cursor. cursor A Cursor session running the same loop. engine One of the hub's engines. a2a A remote Agent2Agent ",
     "p": "Reference"
   },
   {

@@ -85,7 +85,6 @@ mycelium = [
     "data/*.json",
     "docs/**/*.md",
     "skills/**/*",
-    "integrations/agents/cursor/assets/**/*",
     "daemon/service/*",
     "docker/*",
     "docker/env.defaults",

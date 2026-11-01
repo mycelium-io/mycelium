@@ -4690,7 +4690,7 @@ field:
 | Adapter | How it connects |
 |---------|--------|
 | `claude_code` | A coding agent session running the `await`/`respond` loop. Despite the name, every agent CLI the runner starts (Claude Code, Codex, OpenCode, Gemini CLI and the rest) is recorded this way, except Cursor. |
-| `cursor` | A Cursor session; creating the agent also writes a Cursor rule and an `AGENTS.md` section into its folder. |
+| `cursor` | A Cursor session running the same loop. |
 | `engine` | One of the hub's [engines](#engines). |
 | `a2a` | A remote Agent2Agent endpoint that the hub calls; see the [A2A bridge](#a2a-bridge). |
 
