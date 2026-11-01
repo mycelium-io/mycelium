@@ -78,6 +78,24 @@ async def test_upload_lists_reads_and_serves_the_file(client):
 
 
 @pytest.mark.asyncio
+async def test_a_long_text_upload_is_read_whole_or_says_how_to_read_the_rest(client):
+    """An agent reads a pasted log with `memory get`: all of it, or the command for the rest."""
+    await _make_room(client)
+    await _upload(client, "short.txt", b"line one\nline two")
+    short = (await client.get("/api/rooms/demo/memory/uploads/short.txt")).json()
+    assert short["value"]["text"] == "line one\nline two"
+
+    long_text = "x" * (uploads.TEXT_BODY_LIMIT + 10)
+    await _upload(client, "pasted.txt", long_text.encode())
+    body = (await client.get("/api/rooms/demo/memory/uploads/pasted.txt")).json()["value"]["text"]
+    assert body.startswith("x" * uploads.TEXT_BODY_LIMIT)
+    assert "`mycelium file download uploads/pasted.txt -o -`" in body
+
+    raw = await client.get("/api/rooms/demo/uploads/pasted.txt/raw")
+    assert raw.text == long_text
+
+
+@pytest.mark.asyncio
 async def test_an_upload_is_a_memory_whose_record_a_write_cannot_repoint(client):
     await _make_room(client)
     up = (await _upload(client, "notes.txt", b"ship on friday\n")).json()

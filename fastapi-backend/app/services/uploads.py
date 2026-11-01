@@ -395,11 +395,19 @@ def choose_key(room_name: str, name: str, sha256: str) -> tuple[str, bool]:
     return key, False
 
 
-def describe(filename: str, file_type: FileType, size: int, text: str | None) -> str:
-    """The memory body for an upload: a text file's own text, else a line about it."""
+def describe(key: str, filename: str, file_type: FileType, size: int, text: str | None) -> str:
+    """The memory body for an upload: a text file's own text, else a line about it.
+
+    A text file past the limit is cut, and the cut names the command that
+    prints all of it, since an agent reading it with `memory get` needs the rest.
+    """
     if text is not None:
         if len(text) > TEXT_BODY_LIMIT:
-            return text[:TEXT_BODY_LIMIT] + "\n\n[The rest of this file is in the upload.]"
+            return (
+                text[:TEXT_BODY_LIMIT]
+                + f"\n\n[That's the first {TEXT_BODY_LIMIT:,} characters."
+                + f" All of it: `mycelium file download {key} -o -`]"
+            )
         return text
     return f"{file_type.kind.capitalize()} file `{filename}`, {human_size(size)}."
 

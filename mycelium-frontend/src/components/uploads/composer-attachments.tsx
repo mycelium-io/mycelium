@@ -46,8 +46,9 @@ export function usePendingUploads(roomName: string, handle: string) {
     if (p.thumb) URL.revokeObjectURL(p.thumb);
   }, []);
 
+  /** Adds the files and returns their ids, so a caller can take one back. */
   const add = useCallback(
-    (files: Iterable<File>) => {
+    (files: Iterable<File>): string[] => {
       const added: Pending[] = [];
       for (const file of files) {
         const refused = refusalFor(file, accepted, max_bytes);
@@ -73,6 +74,7 @@ export function usePendingUploads(roomName: string, handle: string) {
           .finally(() => controllers.current.delete(id));
       }
       if (added.length) setItems((all) => [...all, ...added]);
+      return added.map((p) => p.id);
     },
     [accepted, max_bytes, roomName, handle, patch, refresh],
   );

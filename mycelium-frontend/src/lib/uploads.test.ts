@@ -7,6 +7,7 @@ import {
   extensionOf,
   formatBytes,
   parseDelimited,
+  pastedTextFile,
   refusalFor,
   textViewFor,
   uploadKeysIn,
@@ -99,5 +100,20 @@ describe("helpers", () => {
       ["x, y", 'say "hi"'],
       ["3", "4"],
     ]);
+  });
+});
+
+describe("pastedTextFile", () => {
+  const at = new Date(2026, 9, 31, 10, 42, 7);
+
+  it("names a long paste for when it was pasted, as plain text", async () => {
+    const file = pastedTextFile("the log", at);
+    expect(file.name).toBe("pasted-text-1042.txt");
+    expect(file.type).toBe("text/plain");
+    expect(await file.text()).toBe("the log");
+  });
+
+  it("adds the seconds when another paste in the same minute took the name", () => {
+    expect(pastedTextFile("more", at, ["pasted-text-1042.txt"]).name).toBe("pasted-text-104207.txt");
   });
 });

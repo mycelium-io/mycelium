@@ -42,6 +42,20 @@ export function extensionOf(filename: string): string {
   return dot > 0 || (dot === 0 && filename.length > 1) ? filename.slice(dot + 1).toLowerCase() : "";
 }
 
+/** A paste longer than this attaches as a text file rather than filling the
+ *  composer: a log or a settings page reads better as a file, and an agent
+ *  reads it whole with `mycelium memory get uploads/<name>`. */
+export const LONG_PASTE_CHARS = 10_000;
+
+/** The file a long paste attaches as, named for when it was pasted:
+ *  `pasted-text-1042.txt`, with seconds added only when two land in a minute. */
+export function pastedTextFile(text: string, at: Date, taken: readonly string[] = []): File {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  let name = `pasted-text-${pad(at.getHours())}${pad(at.getMinutes())}.txt`;
+  if (taken.includes(name)) name = name.replace(".txt", `${pad(at.getSeconds())}.txt`);
+  return new File([text], name, { type: "text/plain" });
+}
+
 /** Why the hub would refuse this file, said before sending it, or null when
  *  it should take it. The hub checks again: this only saves a round trip. */
 export function refusalFor(
