@@ -70,6 +70,18 @@ def runs_in_app() -> bool:
     return found is not None and found[1] == APP
 
 
+def _signed_out_hub() -> str | None:
+    """The hub that refused the running runner's sign-in, from what it last
+    wrote about itself; ``None`` when it's connected or says nothing."""
+    from mycelium.runner.daemon import read_sync
+
+    hub = (read_sync() or {}).get("hub")
+    if not isinstance(hub, dict) or not hub.get("signed_out"):
+        return None
+    url = hub.get("url")
+    return url if isinstance(url, str) and url else MyceliumConfig.load().server.api_url
+
+
 def _scan_table(found: list, *, herdr: bool) -> Table:
     table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
     table.add_column("Agent CLI")
@@ -129,11 +141,19 @@ def runner(
 
     roots = [p.expanduser().resolve() for p in (root or [Path.cwd()])]
     if (pid := running_pid()) is not None and pid != os.getpid():
-        whose = "the Mycelium app's" if runs_in_app() else "one"
+        in_app = runs_in_app()
+        whose = "the Mycelium app's" if in_app else "one"
         console.print(
             f"[yellow]A runner is already running here[/yellow]: {whose} (pid {pid}). "
             "One machine runs one runner. See it with: mycelium runner status"
         )
+        # The usual reason someone runs this with one already going: the
+        # machine isn't showing up, because the hub refused its sign-in.
+        if (signed_out := _signed_out_hub()) is not None:
+            from mycelium.runner.daemon import signed_out_message
+
+            restart = "quit and reopen Mycelium" if in_app else "restart that runner"
+            console.print(f"It isn't connected: {signed_out_message(signed_out)} Then {restart}.")
         raise typer.Exit(1)
 
     if detach:

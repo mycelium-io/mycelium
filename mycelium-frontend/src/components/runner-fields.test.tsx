@@ -31,11 +31,15 @@ describe("<ConnectMachine />", () => {
     expect(screen.getByText(/Or run this in a terminal/)).toBeInTheDocument();
   });
 
-  it("leaves the app out inside the app", () => {
+  it("inside the app, says this computer is connecting rather than to run a runner", () => {
+    // The app runs this computer's runner, so `mycelium runner` there would
+    // only say one is already running.
     env.desktop = true;
     render(<ConnectMachine />);
     expect(screen.queryByRole("link", { name: /Get Mycelium for/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/^Run this in a terminal/)).toBeInTheDocument();
+    expect(screen.queryByText(/Run this in a terminal/)).not.toBeInTheDocument();
+    expect(screen.getByText(/is connecting$/)).toBeInTheDocument();
+    expect(screen.getByText("mycelium login")).toBeInTheDocument();
   });
 
   it("leaves the app out on a system it doesn't run on", () => {

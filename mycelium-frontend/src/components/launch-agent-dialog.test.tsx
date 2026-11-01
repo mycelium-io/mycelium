@@ -85,6 +85,18 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByDisplayValue("mycelium runner")).toBeInTheDocument();
   });
 
+  it("in the app, says this computer is connecting and to sign in, not to run a runner", () => {
+    // The app runs this computer's runner itself, so `mycelium runner` there
+    // only says one is already running. A runner that never shows up is
+    // usually a hub with sign-in on that this computer isn't signed in to.
+    desktop = true;
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    expect(screen.getByText(/is connecting$/)).toBeInTheDocument();
+    expect(screen.getByText("mycelium login")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("mycelium runner")).not.toBeInTheDocument();
+    expect(screen.queryByText(/enter the code/)).not.toBeInTheDocument();
+  });
+
   it("offers only the agent CLIs the machine can start", async () => {
     connected = [runner()];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);

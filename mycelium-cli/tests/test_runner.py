@@ -596,6 +596,36 @@ def test_the_apps_runner_counts_as_running_and_isnt_stopped_from_a_terminal(
     started = CliRunner().invoke(cmd.app, [])
     assert started.exit_code == 1
     assert "already running" in started.output
+    assert "isn't connected" not in started.output
+
+
+def test_a_runner_already_running_but_signed_out_says_to_sign_in(isolated_home: Path):
+    """Someone runs `mycelium runner` because their machine isn't showing up:
+    the app's runner is going, but the hub refused its sign-in."""
+    import os
+    from datetime import UTC, datetime
+
+    from typer.testing import CliRunner
+
+    from mycelium.commands import runner as cmd
+
+    folder = daemon.runner_dir()
+    (folder / "runner.started-by").write_text(f"{daemon.APP}\n")
+    (folder / "runner.pid").write_text(f"{os.getppid()}\n")
+    (folder / "sync.json").write_text(
+        json.dumps(
+            {
+                "pid": os.getppid(),
+                "at": datetime.now(UTC).isoformat(),
+                "hub": {"url": "https://hub.example.com", "connected": False, "signed_out": True},
+            }
+        )
+    )
+    started = CliRunner().invoke(cmd.app, [])
+    assert started.exit_code == 1
+    said = " ".join(started.output.split())
+    assert "This computer isn't signed in to https://hub.example.com." in said
+    assert "Run `mycelium login` in a terminal here. Then quit and reopen Mycelium." in said
 
 
 def test_a_runner_id_is_made_once_and_kept(tmp_path: Path):

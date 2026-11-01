@@ -5,8 +5,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, Download, Laptop, RefreshCw } from "lucide-react";
-import { useAppDownload, useIsDesktop } from "@/lib/desktop";
+import { Check, Download, Laptop, Loader2, RefreshCw } from "lucide-react";
+import { desktopMachine, useAppDownload, useIsDesktop } from "@/lib/desktop";
 import { rescanRunner, type Framework, type Runner } from "@/lib/api";
 import {
   hostMissing,
@@ -25,9 +25,37 @@ import { Select } from "@/components/ui/select";
 export const CONNECT_COMMAND = "mycelium runner";
 
 /**
+ * In the desktop app, which starts this computer's runner itself: say it's
+ * connecting, and what to do when it never does. `mycelium runner` there only
+ * says one is already running, so it's never the advice here. The usual reason
+ * it doesn't connect is a hub with sign-in on that this computer isn't signed
+ * in to.
+ */
+export function ThisComputerConnecting() {
+  const machine = desktopMachine();
+  return (
+    <div className="flex items-start gap-3 px-1 py-2">
+      <Loader2 className="mt-0.5 size-4 animate-spin text-muted-foreground" />
+      <div className="space-y-1">
+        <p className="text-label font-medium text-text">This {machine} is connecting</p>
+        <p className="text-micro leading-relaxed text-muted-foreground">
+          Mycelium starts this {machine}&apos;s runner for you, and it appears here in a few seconds.
+        </p>
+        <p className="text-micro leading-relaxed text-muted-foreground">
+          If it doesn&apos;t and this hub asks you to sign in, run{" "}
+          <code className="font-mono text-text">mycelium login</code> in a terminal, then quit and reopen Mycelium.
+          Health check in {machine === "Mac" ? "the menu bar" : "Mycelium's tray menu"} says what&apos;s wrong.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
  * What to do when none of your machines is connected: run one command, then
  * add the machine to this browser with the code it prints. Only machines
  * added here are listed, so nobody sees anyone else's (`my-machines.ts`).
+ * In the desktop app, which connects this computer itself, it says so instead.
  */
 export function ConnectMachine({ compact = false }: { compact?: boolean }) {
   // In a browser on a computer the app runs on, the app is the short way: it
@@ -36,6 +64,7 @@ export function ConnectMachine({ compact = false }: { compact?: boolean }) {
   const download = useAppDownload();
   const desktop = useIsDesktop();
   const offerApp = download !== null && !desktop;
+  if (desktop) return <ThisComputerConnecting />;
   return (
     <div className={`rounded-lg border border-dashed border-border ${compact ? "p-3" : "p-5"}`}>
       <div className="flex items-center gap-2">
