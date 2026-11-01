@@ -23,7 +23,7 @@ classifiers = [
 
 dependencies = [
     "typer>=0.27.1",
-    "rich>=13.7.0",
+    "rich>=15.0.0",
     "httpx>=0.28.1",
     "pydantic[email]>=2.13.4",
     "pydantic-settings>=2.14.2",
