@@ -121,7 +121,12 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
   }, []);
   const loaded = useCallback(() => {
     measureImage();
-    void imgRef.current?.decode?.().then(measureImage, () => undefined);
+    // An image that failed before this mounted fired its error already: its
+    // decode is refused and it has no size, so it's a failure too.
+    const img = imgRef.current;
+    void img?.decode?.().then(measureImage, () => {
+      if (img.complete && !img.naturalWidth) setFailed(true);
+    });
   }, [measureImage]);
   // Retrying asks again, past whatever the browser kept from the failure.
   const shownSrc = attempt ? `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}` : src;
@@ -297,7 +302,7 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
         )}
         {!fit && shown && (
           <Minimap
-            src={src}
+            src={shownSrc}
             view={view}
             stage={stage}
             awake={awake || dragging}

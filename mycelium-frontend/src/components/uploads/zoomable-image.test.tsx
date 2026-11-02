@@ -63,6 +63,13 @@ describe("an opened image", () => {
     expect(measured()).toBe(true);
   });
 
+  it("says so when it had already failed before the preview opened", async () => {
+    natural = { width: 0, height: 0, complete: true };
+    stub(HTMLImageElement.prototype, "decode", () => () => Promise.reject(new Error("broken")));
+    render(<ZoomableImage src="/api/rooms/demo/uploads/shot.png/raw" alt="Checkout on a phone" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("This image didn't load.");
+  });
+
   it("says when it didn't load, and tries again past the failure", () => {
     render(<ZoomableImage src="/api/rooms/demo/uploads/shot.png/raw?mycelium-media=1.ab" alt="Checkout on a phone" />);
     fireEvent.error(image());
