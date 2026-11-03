@@ -82,7 +82,8 @@ fn answer(value: Value, otherwise: &str) -> Result<Value, String> {
 /// What the `mycelium` program is run with for an earlier page, once
 /// everything the page sent is checked: an agent of this machine's, an entry
 /// id that can only be an id, and a limit in range. Each value is joined to
-/// its flag with `=`, so none can be read as an option.
+/// its flag with `=`, and the handle comes after `--`, so none can be read as
+/// an option.
 fn page_args(
     mycelium: &Path,
     room: &str,
@@ -104,10 +105,11 @@ fn page_args(
         "machine".into(),
         "session".into(),
         format!("--room={room}"),
-        format!("--handle={handle}"),
         format!("--before={before}"),
         format!("--limit={limit}"),
         "--json".into(),
+        "--".into(),
+        handle.into(),
     ])
 }
 
@@ -200,10 +202,11 @@ mod tests {
                 "machine",
                 "session",
                 "--room=checkout",
-                "--handle=builder",
                 &format!("--before={id}"),
                 "--limit=200",
                 "--json",
+                "--",
+                "builder",
             ]
         );
         // Not this machine's agent: nothing runs.
