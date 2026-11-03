@@ -19,6 +19,7 @@ first lines of a result, and the JSON a call was written as, never a whole file.
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -294,17 +295,99 @@ def _user(
         _prompt(line, content, entries)
 
 
+#: A paste, as the terminal wraps one; herdr pastes each wake.
+_PASTED = re.compile(r"\A\s*<pasted_content\b[^>]*>\s*(.*?)\s*</pasted_content\b[^>]*>\s*\Z", re.S)
+#: Claude Code's own line when someone stops a turn; the call it stopped says so.
+_INTERRUPTED = re.compile(r"\A\s*\[Request interrupted by user[^\]]*\]\s*\Z")
+#: How Claude Code writes a ``!`` command the person ran, and its output.
+_BASH_INPUT = re.compile(r"<bash-input>(.*?)</bash-input>", re.S)
+_BASH_OUT = re.compile(r"<bash-(stdout|stderr)>(.*?)</bash-\1>", re.S)
+#: How it writes a slash command, and the output of one it runs itself.
+_COMMAND_NAME = re.compile(r"<command-name>(.*?)</command-name>", re.S)
+_COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.S)
+_COMMAND_OUT = re.compile(r"\A\s*<local-command-std(?:out|err)>", re.S)
+
+
 def _prompt(line: dict[str, Any], text: str, entries: list[dict[str, Any]]) -> None:
     """A prompt someone or something typed; what the CLI adds on its own is left out."""
     said = line.get("origin")
     origin: dict[str, Any] = said if isinstance(said, dict) else {}
     if line.get("isMeta") or origin.get("kind") not in (None, "human") or not text.strip():
         return
+    if _INTERRUPTED.match(text):
+        # Not a prompt of its own, but what it stopped was stopped.
+        for entry in entries:
+            if entry["sessionUpdate"] == "tool_call" and entry["status"] == "pending":
+                entry["status"] = "failed"
+                entry["_meta"]["interrupted"] = True
+        return
+    if _COMMAND_OUT.match(text):
+        return
     meta = _meta(line, str(line.get("uuid") or line.get("promptId") or len(entries)))
+    if (ran := _BASH_INPUT.search(text)) or _BASH_OUT.search(text):
+        _person_command(line, text, ran, meta, entries)
+        return
+    if named := _COMMAND_NAME.search(text):
+        name = named.group(1).strip()
+        args = _COMMAND_ARGS.search(text)
+        text = " ".join(
+            p for p in (("/" + name.lstrip("/")), (args.group(1).strip() if args else "")) if p
+        )
+    elif pasted := _PASTED.match(text):
+        text = pasted.group(1)
     meta["from"] = "wake" if text.lstrip().startswith(WAKE_START) else "person"
     if line.get("promptSource") == "queued":
         meta["queued"] = True
     entries.append({"sessionUpdate": "user_message", "content": [_text(text)], "_meta": meta})
+
+
+def _person_command(
+    line: dict[str, Any],
+    text: str,
+    ran: re.Match[str] | None,
+    meta: dict[str, Any],
+    entries: list[dict[str, Any]],
+) -> None:
+    """A ``!`` command the person ran in the terminal, as a call they made.
+
+    Claude Code writes the command on one line and its output on the next, so
+    output with no command of its own goes to the latest such call.
+    """
+    if ran is not None:
+        command = html.unescape(ran.group(1)).strip()
+        meta["from"] = "person"
+        entries.append(
+            {
+                "sessionUpdate": "tool_call",
+                "toolCallId": meta["id"],
+                "title": command.splitlines()[0] if command else "!",
+                "name": "bash",
+                "kind": "execute",
+                # Settled by its output, or by what's asked after it, like any call.
+                "status": "pending",
+                "rawInput": _cut_raw({"command": command}),
+                "_meta": meta,
+            }
+        )
+    output = {kind: html.unescape(body) for kind, body in _BASH_OUT.findall(text)}
+    if not output:
+        return
+    call = next(
+        (
+            e
+            for e in reversed(entries)
+            if e["sessionUpdate"] == "tool_call" and e["_meta"].get("from") == "person"
+        ),
+        None,
+    )
+    if call is None:
+        return
+    shown = "\n".join(part for part in (output.get("stdout", ""), output.get("stderr", "")) if part)
+    call["status"] = "completed"
+    call["_meta"]["endedAt"] = str(line.get("timestamp") or "") or None
+    if shown.strip():
+        call["content"] = [{"type": "content", "content": _text(_cut(shown))}]
+    call["rawOutput"] = _cut_raw(output)
 
 
 def _result(call: dict[str, Any], block: dict[str, Any], line: dict[str, Any]) -> None:

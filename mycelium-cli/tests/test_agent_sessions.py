@@ -186,6 +186,56 @@ class TestClaudeConverter:
             {"content": "Refund", "priority": "medium", "status": "in_progress"}
         ]
 
+    def test_a_wake_herdr_pasted_is_a_wake_with_the_paste_unwrapped(self):
+        pasted = '<pasted_content id="ab12">\nmycelium wake for @builder in checkout\nWhy: …\n</pasted_content id="ab12">'
+        entries, _ = claude_session.convert([_user(1, pasted, origin={"kind": "human"})])
+        [wake] = entries
+        assert wake["_meta"]["from"] == "wake"
+        assert wake["content"][0]["text"].startswith("mycelium wake for @builder")
+
+    def test_an_interruption_marks_what_it_stopped_and_isn_t_a_prompt(self):
+        entries, _ = claude_session.convert(
+            [
+                _use(1, "m1", "c1", "Bash", {"command": "make deploy"}),
+                _user(2, "[Request interrupted by user for tool use]"),
+                _assistant(3, "m2", {"type": "text", "text": "Stopped."}),
+            ]
+        )
+        assert [e["sessionUpdate"] for e in entries] == ["tool_call", "agent_message"]
+        assert (entries[0]["status"], entries[0]["_meta"]["interrupted"]) == ("failed", True)
+
+    def test_a_command_the_person_ran_is_their_call_with_its_output(self):
+        long = "\n".join(f"row {i} &lt;ok&gt;" for i in range(100))
+        entries, _ = claude_session.convert(
+            [
+                _user(1, "<bash-input>git status --short</bash-input>"),
+                _user(2, f"<bash-stdout>{long}</bash-stdout><bash-stderr></bash-stderr>"),
+            ]
+        )
+        [call] = entries
+        assert (call["kind"], call["title"], call["status"]) == (
+            "execute",
+            "git status --short",
+            "completed",
+        )
+        assert call["_meta"]["from"] == "person"
+        shown = call["content"][0]["content"]["text"]
+        assert shown.startswith("row 0 <ok>") and shown.endswith("…") and "row 99" not in shown
+
+    def test_a_slash_command_reads_as_typed_and_its_output_is_left_out(self):
+        entries, _ = claude_session.convert(
+            [
+                _user(
+                    1,
+                    "<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>1534</command-args>",
+                ),
+                _user(2, "<local-command-stdout>Reviewed.</local-command-stdout>"),
+            ]
+        )
+        [command] = entries
+        assert command["content"][0]["text"] == "/review 1534"
+        assert command["_meta"]["from"] == "person"
+
     def test_a_sub_agent_s_work_comes_from_its_own_file(self, tmp_path: Path):
         folder = tmp_path / "subagents"
         folder.mkdir()
