@@ -99,6 +99,19 @@ describe("AgentSessionView", () => {
     expect(onShowTerminal).toHaveBeenCalled();
   });
 
+  it("shows a long prompt's first lines until it's opened", () => {
+    const text = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
+    render(
+      <AgentSessionView
+        session={session([{ sessionUpdate: "user_message", content: [{ type: "text", text }], _meta: { ...meta(), from: "person" } }])}
+        onShowTerminal={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText(/line 30/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 30 lines" }));
+    expect(screen.getByText(/line 30/)).toBeTruthy();
+  });
+
   it("claims nothing about a pane whose state it can't read", () => {
     render(<AgentSessionView session={session([], { state: "unknown" })} onShowTerminal={vi.fn()} />);
     expect(screen.queryByText("Working")).toBeNull();

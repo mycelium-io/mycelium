@@ -146,10 +146,7 @@ function RowView({ row, nested = false }: { row: Row; nested?: boolean }) {
       return row._meta.from === "wake" ? (
         <Fold icon={Bell} label="Woken by the room" detail={textOf(row.content)} mono />
       ) : (
-        <div className={cn("rounded-lg bg-hairline px-3 py-2 text-label text-text", nested && "bg-transparent px-0 py-0")}>
-          {row._meta.queued && <span className="mr-2 text-micro text-faint">queued</span>}
-          <span className="whitespace-pre-wrap">{textOf(row.content)}</span>
-        </div>
+        <Prompt text={textOf(row.content)} queued={row._meta.queued} nested={nested} />
       );
     case "agent_message":
       return (
@@ -168,6 +165,31 @@ function RowView({ row, nested = false }: { row: Row; nested?: boolean }) {
         </p>
       );
   }
+}
+
+/** How many lines of a prompt show before "Show all": a pasted file shouldn't fill the window. */
+const PROMPT_LINES = 8;
+
+function Prompt({ text, queued, nested }: { text: string; queued?: boolean; nested: boolean }) {
+  const [all, setAll] = useState(false);
+  const lines = text.split("\n");
+  const long = lines.length > PROMPT_LINES || text.length > PROMPT_LINES * 120;
+  const shown = long && !all ? lines.slice(0, PROMPT_LINES).join("\n").slice(0, PROMPT_LINES * 120) : text;
+  return (
+    <div className={cn("rounded-lg bg-hairline px-3 py-2 text-label text-text", nested && "bg-transparent px-0 py-0")}>
+      {queued && <span className="mr-2 text-micro text-faint">queued</span>}
+      <span className="break-words whitespace-pre-wrap">{shown}</span>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setAll((a) => !a)}
+          className="mt-1 block text-micro text-muted-foreground hover:text-text"
+        >
+          {all ? "Show less" : `Show all ${lines.length} lines`}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** A quiet line that opens to more. */
@@ -276,6 +298,12 @@ function Status({ call }: { call: ToolCall }) {
   );
 }
 
+/** A title that's a path, a pattern or the command itself, drawn as code; a sentence about it isn't. */
+function codeLike(call: ToolCall): boolean {
+  const command = (call.rawInput as { command?: unknown } | undefined)?.command;
+  return !/\s/.test(call.title) || call.title === command || (call.locations ?? []).some((l) => call.title.includes(l.path));
+}
+
 function ToolRow({ call }: { call: ToolCall }) {
   const [open, setOpen] = useState(false);
   const [json, setJson] = useState(false);
@@ -302,8 +330,10 @@ function ToolRow({ call }: { call: ToolCall }) {
         <Icon className={cn("size-3.5 flex-shrink-0", failed ? "text-red" : "text-muted-foreground")} aria-hidden />
         {sub ? (
           <span className="min-w-0 flex-1 truncate text-label text-text">{sub.description}</span>
-        ) : (
+        ) : codeLike(call) ? (
           <span className="min-w-0 flex-1 truncate font-mono text-micro text-text/90">{call.title}</span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-label text-text/90">{call.title}</span>
         )}
         {diffs.length > 0 && (
           <span className="flex-shrink-0 font-mono text-micro tabular">
