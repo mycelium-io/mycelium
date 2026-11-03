@@ -290,6 +290,52 @@ class TestFindingAndReading:
         assert read["entries"][-1]["content"][0]["text"] == "reply 399"
         assert read["sessionId"] == "s"
 
+    @pytest.fixture
+    def long_file(self, projects: Path) -> Path:
+        path = projects / "-work-checkout" / "s.jsonl"
+        path.parent.mkdir(parents=True)
+        lines = [
+            _assistant(i % 60, f"m{i}", {"type": "text", "text": f"reply {i}"}) for i in range(700)
+        ]
+        path.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
+        return path
+
+    def test_the_live_read_reads_back_to_its_entries_past_the_first_span(
+        self, long_file: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(claude_session, "TAIL_BYTES", 20_000)
+        read = claude_session.read(long_file)
+        assert len(read["entries"]) == claude_session.MAX_ENTRIES
+        assert read["entries"][-1]["content"][0]["text"] == "reply 699"
+        assert read["earlier"] is True
+
+    def test_a_page_is_the_entries_before_one_with_the_live_read_s_ids(
+        self, long_file: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(claude_session, "TAIL_BYTES", 20_000)
+        live = claude_session.read(long_file)["entries"]
+        page = claude_session.read_page(long_file, live[0]["_meta"]["id"], 200)
+        assert page is not None
+        texts = [e["content"][0]["text"] for e in page["entries"]]
+        assert texts == [f"reply {i}" for i in range(200, 400)]
+        assert page["earlier"] is True
+        first = claude_session.read_page(long_file, page["entries"][0]["_meta"]["id"], 200)
+        assert first is not None
+        assert [e["content"][0]["text"] for e in first["entries"]][0] == "reply 0"
+        assert first["earlier"] is False
+        assert claude_session.read_page(long_file, "not-an-entry", 200) is None
+
+    def test_a_page_says_why_when_it_can_t_be_read(self, long_file: Path):
+        from mycelium.runner.sessions import page
+
+        live = claude_session.read(long_file)["entries"]
+        assert page("kiro", CWD, "s", "x", 10) == {"unavailable": "no_converter"}
+        assert page("claude", CWD, "gone", "x", 10) == {"unavailable": "no_session"}
+        assert page("claude", CWD, None, "x", 10) == {"unavailable": "no_session"}
+        assert page("claude", CWD, "s", "x", 10) == {"unavailable": "no_entry"}
+        found = page("claude", CWD, "s", live[-1]["_meta"]["id"], 10)
+        assert len(found["entries"]) == 10
+
 
 # ── the runner writes each agent's session where the app reads it ────────────
 

@@ -26,10 +26,20 @@ import re
 from pathlib import Path
 from typing import Any
 
-#: The oldest part of a long file is skipped: the view shows the latest entries.
+#: A file is read from its end, this much first, then twice as much each time
+#: until it holds enough entries: the view shows the latest ones, a page at a time.
 TAIL_BYTES = 4 * 1024 * 1024
-#: Entries sent at most, the latest ones; a sub-agent's at most.
+#: How far back the live read and an earlier page may read, at most.
+LIVE_MAX_BYTES = 32 * 1024 * 1024
+PAGE_MAX_BYTES = 256 * 1024 * 1024
+#: Entries read past what's sent, so the first one sent isn't one cut in half
+#: where the read began (a reply missing its first blocks, a call its result).
+MARGIN = 20
+#: Entries sent at most, the latest ones; a page's by default; a sub-agent's at most.
 MAX_ENTRIES = 300
+PAGE_ENTRIES = 200
+#: The span each file's live read last needed, by path.
+_SPANS: dict[str, int] = {}
 MAX_SUBAGENT_ENTRIES = 120
 #: How much of a result or a raw value is kept.
 RESULT_LINES = 40
@@ -87,25 +97,70 @@ def session_file(folder: str | None, session: str) -> Path | None:
 
 
 def read(path: Path) -> dict[str, Any]:
-    """The session in ``path`` as the rendered view's fields, less ``state``."""
-    lines, cut = _tail(path)
-    entries, title = convert(lines, subagents=path.with_suffix("") / "subagents")
-    earlier = cut or len(entries) > MAX_ENTRIES
+    """The session in ``path`` as the rendered view's fields, less ``state``:
+    its latest :data:`MAX_ENTRIES` entries, read back as far as that takes."""
+    entries, earlier, title = _back(path, want=MAX_ENTRIES, max_bytes=LIVE_MAX_BYTES)
     return {
         "version": 1,
         "sessionId": path.stem,
         "title": title,
-        "entries": entries[-MAX_ENTRIES:],
+        "entries": entries or [],
         "earlier": earlier,
     }
 
 
-def _tail(path: Path) -> tuple[list[dict[str, Any]], bool]:
-    """The file's last :data:`TAIL_BYTES` as parsed lines, and whether any was left out."""
+def read_page(path: Path, before: str, limit: int = PAGE_ENTRIES) -> dict[str, Any] | None:
+    """The ``limit`` entries just before the entry ``before``, oldest first, and
+    whether there are more; ``None`` when that entry isn't in the session.
+
+    The ids are the ones :func:`read` gives, so a page joins the live view.
+    """
+    entries, earlier, _title = _back(path, want=limit, max_bytes=PAGE_MAX_BYTES, before=before)
+    if entries is None:
+        return None
+    return {"entries": entries, "earlier": earlier}
+
+
+def _back(
+    path: Path, *, want: int, max_bytes: int, before: str | None = None
+) -> tuple[list[dict[str, Any]] | None, bool, str | None]:
+    """The last ``want`` entries (before the entry ``before``, when given),
+    whether there are earlier ones, and the session's title.
+
+    The file is read from its end, more each time, until it holds ``want``
+    entries and :data:`MARGIN` more, it's read whole, or ``max_bytes`` is
+    reached. ``None`` for the entries when ``before`` isn't found.
+    """
+    subagents = path.with_suffix("") / "subagents"
+    # The live read starts from the span it needed last time: a session whose
+    # results are large needs more than the first read every time it changes.
+    remembered = _SPANS.get(str(path), TAIL_BYTES) if before is None else TAIL_BYTES
+    size, span = path.stat().st_size, min(remembered, max_bytes)
+    while True:
+        lines, cut = _tail(path, span)
+        entries, title = convert(lines, subagents=subagents)
+        if before is not None:
+            at = next((i for i, e in enumerate(entries) if e["_meta"]["id"] == before), None)
+            found = entries[:at] if at is not None else None
+        else:
+            found = entries
+        enough = found is not None and len(found) >= want + MARGIN
+        if not cut or enough or span >= max_bytes or span >= size:
+            break
+        span = min(span * 2, max_bytes)
+    if before is None:
+        _SPANS[str(path)] = span
+    if found is None:
+        return None, False, title
+    return found[-want:], cut or len(found) > want, title
+
+
+def _tail(path: Path, span: int = TAIL_BYTES) -> tuple[list[dict[str, Any]], bool]:
+    """The file's last ``span`` bytes as parsed lines, and whether any was left out."""
     size = path.stat().st_size
     with path.open("rb") as f:
-        if size > TAIL_BYTES:
-            f.seek(size - TAIL_BYTES)
+        if size > span:
+            f.seek(size - span)
             f.readline()  # the rest of a line cut in half
         raw = f.read()
     lines = []
@@ -116,7 +171,7 @@ def _tail(path: Path) -> tuple[list[dict[str, Any]], bool]:
             continue  # a line still being written
         if isinstance(parsed, dict):
             lines.append(parsed)
-    return lines, size > TAIL_BYTES
+    return lines, size > span
 
 
 def convert(

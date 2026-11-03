@@ -139,6 +139,22 @@ class Follower:
             (self.base / key[0] / f"{key[1]}.json").unlink()
 
 
+def page(
+    kind_name: str | None, folder: str | None, session: str | None, before: str, limit: int
+) -> dict[str, Any]:
+    """``{entries, earlier}``: the ``limit`` entries just before ``before`` in an
+    agent's session, for the rendered view's earlier pages; or ``{"unavailable":
+    "no_converter" | "no_session" | "no_entry"}``. Read here, never sent to the hub."""
+    kind = of_kind(kind_name)
+    if not kind.renders:
+        return {"unavailable": "no_converter"}
+    path = kind.session_path(folder, session) if session else None
+    if path is None:
+        return {"unavailable": "no_session"}
+    found = kind.read_session_page(path, before, limit)
+    return found if found is not None else {"unavailable": "no_entry"}
+
+
 def _stamp(path: Path) -> tuple[int, int]:
     try:
         st = path.stat()

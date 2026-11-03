@@ -74,6 +74,11 @@ class AgentKind:
         ``waitingOn``. Read on this machine only, never sent to the hub."""
         raise NotImplementedError(f"No rendered view for {self.name}")
 
+    def read_session_page(self, path: Path, before: str, limit: int) -> dict[str, Any] | None:  # noqa: ARG002 - a CLI with a converter reads it
+        """``{entries, earlier}``: the ``limit`` entries just before the entry
+        ``before`` in ``path``, oldest first; ``None`` when it isn't there."""
+        raise NotImplementedError(f"No rendered view for {self.name}")
+
     def launch_args(self) -> list[str]:
         """Arguments every agent of this kind starts with."""
         return []
