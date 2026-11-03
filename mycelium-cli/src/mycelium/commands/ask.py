@@ -118,7 +118,8 @@ def ask(
     The person sees a card where you asked, and under Waiting on you. Anyone in
     the room may answer it, and every answer can carry a note. The answer wakes
     you: ``await`` gives ``answer.decision`` (approved or declined) on an
-    approve, ``answer.choices`` and ``answer.chosen`` on a choose, and
+    approve, ``answer.choices`` and ``answer.chosen`` on a choose (both empty
+    when the person picked none of the options), and
     ``answer.text`` (the answer to a question, or the note), with
     ``answer.question`` and who answered (``by``) and who you asked (``for``).
     If someone other than whom you asked answers, take it as input, and ask
