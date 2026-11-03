@@ -31,7 +31,7 @@ const viewport = () => ({ width: window.innerWidth, height: window.innerHeight }
 
 const VIEWS = [
   { view: "rendered", label: "What it's doing", Icon: LayoutList },
-  { view: "terminal", label: "Its terminal", Icon: SquareTerminal },
+  { view: "terminal", label: "Terminal", Icon: SquareTerminal },
 ] as const;
 
 /** The view last picked, for every agent's window. Rendered until one is. */
