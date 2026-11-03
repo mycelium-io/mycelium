@@ -336,6 +336,25 @@ class TestFindingAndReading:
         found = page("claude", CWD, "s", live[-1]["_meta"]["id"], 10)
         assert len(found["entries"]) == 10
 
+    def test_the_desktop_app_s_arguments_read_a_page(
+        self, long_file: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        from typer.testing import CliRunner
+
+        from mycelium.cli import app
+        from mycelium.commands import machine
+        from mycelium.machine import Agent
+
+        agent = Agent("builder", "checkout", "w1:p1", "idle", "claude", CWD, session="s")
+        monkeypatch.setattr(machine, "_find", lambda handle, room: agent)
+        live = claude_session.read(long_file)["entries"]
+        before = live[0]["_meta"]["id"]
+        # As mycelium-desktop/src-tauri/src/session.rs `page_args` builds them.
+        args = ["machine", "session", "--room=checkout", f"--before={before}"]
+        result = CliRunner().invoke(app, [*args, "--limit=5", "--json", "--", "builder"])
+        assert result.exit_code == 0, result.output
+        assert len(json.loads(result.output)["entries"]) == 5
+
 
 # ── the runner writes each agent's session where the app reads it ────────────
 
