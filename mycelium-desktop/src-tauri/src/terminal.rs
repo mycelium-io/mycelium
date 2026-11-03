@@ -248,7 +248,7 @@ pub struct Screen {
 /// The pane the registry at `registry` (`{"room/handle": {"pane": …}}`, written
 /// by the runner and `mycelium herdr`) maps @`handle` of `room` to, if it's a
 /// well-formed one.
-fn agent_pane(registry: &std::path::Path, room: &str, handle: &str) -> Option<String> {
+pub(crate) fn agent_pane(registry: &std::path::Path, room: &str, handle: &str) -> Option<String> {
     if room.is_empty() || handle.is_empty() || room.contains('/') || handle.contains('/') {
         return None;
     }

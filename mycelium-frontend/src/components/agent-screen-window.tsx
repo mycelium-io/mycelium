@@ -18,12 +18,38 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
-import { AgentScreen, type AgentScreenProps } from "@/components/agent-screen";
+import { LayoutList, SquareTerminal, X } from "lucide-react";
+import { AgentScreen, type AgentScreenProps, type ScreenView } from "@/components/agent-screen";
 import { Monogram } from "@/components/ui/monogram";
+import { Tooltip } from "@/components/ui/tooltip";
+import { useAgentSession } from "@/lib/agent-session";
+import { useIsDesktop } from "@/lib/desktop";
 import { MIN_WINDOW, clampRect, defaultRect, saveRect, savedRect, type WindowRect } from "@/lib/terminal-window";
+import { cn } from "@/lib/utils";
 
 const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
+
+const VIEWS = [
+  { view: "rendered", label: "What it's doing", Icon: LayoutList },
+  { view: "terminal", label: "Terminal", Icon: SquareTerminal },
+] as const;
+
+/** The view last picked, for every agent's window. Rendered until one is. */
+const VIEW_KEY = "mycelium.terminal-view";
+
+function savedView(): ScreenView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "terminal" ? "terminal" : "rendered";
+  } catch {
+    return "rendered";
+  }
+}
+
+function saveView(view: ScreenView): void {
+  try {
+    localStorage.setItem(VIEW_KEY, view);
+  } catch {}
+}
 
 export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { onClose: () => void }) {
   const { handle } = props;
@@ -31,6 +57,21 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
   const [rect, setRect] = useState<WindowRect>(() => clampRect(savedRect(handle) ?? defaultRect(viewport()), viewport()));
   const section = useRef<HTMLElement | null>(null);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
+  // The toggle shows once the app has answered for the agent, with its session
+  // or why it has none. With none, the window opens on the terminal, whatever
+  // was picked last; picking Rendered here then says why.
+  const desktop = useIsDesktop();
+  const read = useAgentSession(desktop ? { room: props.room, handle } : null);
+  const rendered = read.session !== null || read.unavailable !== null;
+  const [view, setView] = useState<ScreenView>(savedView);
+  const [pickedHere, setPickedHere] = useState(false);
+  const shown: ScreenView = read.unavailable && !pickedHere ? "terminal" : view;
+  const choose = (v: ScreenView) => {
+    setView(v);
+    setPickedHere(true);
+    // A pick made for an agent with nothing to draw doesn't change the others.
+    if (!read.unavailable) saveView(v);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -99,16 +140,40 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
         <Monogram handle={handle} kind="agent" className="size-5 text-[9px]" />
         <span className="truncate text-label font-medium text-text">@{handle}</span>
         <span className="truncate text-micro text-faint">{props.room}</span>
+        {rendered && (
+          <div role="radiogroup" aria-label="Show" className="ml-auto flex flex-none rounded-md border border-border p-0.5">
+            {VIEWS.map(({ view: v, label, Icon }) => (
+              <Tooltip key={v} content={label}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={shown === v}
+                  aria-label={label}
+                  onClick={() => choose(v)}
+                  className={cn(
+                    "grid size-6 place-items-center rounded text-muted-foreground hover:text-text",
+                    shown === v && "bg-hairline text-text",
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                </button>
+              </Tooltip>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           aria-label={`Close @${handle}'s terminal`}
           onClick={onClose}
-          className="ml-auto grid size-6 flex-none place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text"
+          className={cn(
+            "grid size-6 flex-none place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text",
+            !rendered && "ml-auto",
+          )}
         >
           <X className="size-3.5" />
         </button>
       </header>
-      <AgentScreen {...props} />
+      <AgentScreen {...props} view={rendered ? shown : "terminal"} onView={choose} />
     </section>,
     document.body,
   );

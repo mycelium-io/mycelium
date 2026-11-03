@@ -8,6 +8,8 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, ClassVar
 
 from mycelium.integrations.agents.base import AgentKind, FirstRun
 
@@ -104,6 +106,28 @@ class Claude(AgentKind):
     def resume_args(self, session: str) -> list[str] | None:
         # The id herdr records for the pane through its Claude integration.
         return ["--resume", session]
+
+    renders: ClassVar[bool] = True
+
+    def session_path(self, folder: str | None, session: str) -> Path | None:
+        from mycelium.integrations.agents import claude_session
+
+        return claude_session.session_file(folder, session)
+
+    def session_files(self, path: Path) -> list[Path]:
+        # Its sub-agents write files of their own while the session waits on them.
+        subagents = path.with_suffix("") / "subagents"
+        return [path, *sorted(subagents.glob("agent-*.jsonl"))] if subagents.is_dir() else [path]
+
+    def read_session(self, path: Path) -> dict[str, Any]:
+        from mycelium.integrations.agents import claude_session
+
+        return claude_session.read(path)
+
+    def read_session_page(self, path: Path, before: str, limit: int) -> dict[str, Any] | None:
+        from mycelium.integrations.agents import claude_session
+
+        return claude_session.read_page(path, before, limit)
 
     def blocked_hint(self) -> str | None:
         # Nothing says which prompt is on screen (herdr has no rule for the
