@@ -590,6 +590,28 @@ def test_a_taken_ui_port_is_said_and_the_ui_goes_on_another(monkeypatch: pytest.
     assert (sup.ui_port, ui.running_detail) == (port, None)
 
 
+def test_the_ui_s_port_is_written_down_for_doctor(tmp_path: Path):
+    """Whichever port the UI went on, `mycelium doctor` reads it from the file
+    of what the app started."""
+    started = tmp_path / "started.json"
+    events = Events()
+    first, ui = comp("hub", SLEEP), comp("ui", SLEEP)
+    sup = hub(events, [first, ui], started_path=started)
+    sup.ui_port = 55329
+    seen: list[dict] = []
+
+    def written() -> bool:
+        if ui.state == "running":
+            seen.append(json.loads(started.read_text()))
+        return bool(seen)
+
+    run_until(sup, written)
+    assert seen[0]["ui"]["port"] == 55329
+    assert "port" not in seen[0]["hub"]
+    # Stopped cleanly, the app leaves nothing written down: doctor checks UI_PORT.
+    assert sv.started_ui_port(started) is None
+
+
 def test_the_ui_counts_as_up_only_once_it_proves_it_holds_the_token(
     monkeypatch: pytest.MonkeyPatch,
 ):
