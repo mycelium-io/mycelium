@@ -112,6 +112,19 @@ describe("AgentSessionView", () => {
     expect(screen.getByText(/line 30/)).toBeTruthy();
   });
 
+  it("draws an image in the agent's reply as a link, never loading it", () => {
+    render(
+      <AgentSessionView
+        session={session([
+          { sessionUpdate: "agent_message", content: [{ type: "text", text: "See ![the chart](https://example.com/c.png)" }], _meta: meta() },
+        ])}
+        onShowTerminal={vi.fn()}
+      />,
+    );
+    expect(document.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "the chart" })).toHaveAttribute("href", "https://example.com/c.png");
+  });
+
   it("claims nothing about a pane whose state it can't read", () => {
     render(<AgentSessionView session={session([], { state: "unknown" })} onShowTerminal={vi.fn()} />);
     expect(screen.queryByText("Working")).toBeNull();

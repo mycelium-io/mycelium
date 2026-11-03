@@ -216,6 +216,10 @@ interface Props {
   threads?: ReadonlyMap<string, ThreadTarget>;
   /** Opens a thread; without it, thread ids stay text. */
   onOpenThread?: (episode: string) => void;
+  /** Draws an image as a link to it rather than loading it: for text an
+   *  agent wrote on this machine, which shouldn't make the page fetch
+   *  whatever it names. */
+  imagesAsLinks?: boolean;
 }
 
 /** A thread id that names a task: the id exactly as written, then a small
@@ -266,6 +270,7 @@ export function MarkdownContent({
   highlight,
   threads,
   onOpenThread,
+  imagesAsLinks,
 }: Props) {
   const marked = useHighlighter(highlight);
 
@@ -441,6 +446,18 @@ export function MarkdownContent({
           h4: ({ children }) => <h4>{processNode(children)}</h4>,
           h5: ({ children }) => <h5>{processNode(children)}</h5>,
           h6: ({ children }) => <h6>{processNode(children)}</h6>,
+          ...(imagesAsLinks
+            ? {
+                img: ({ src, alt }) =>
+                  typeof src === "string" && src ? (
+                    <a href={src} target="_blank" rel="noreferrer">
+                      {alt || src}
+                    </a>
+                  ) : (
+                    <>{alt}</>
+                  ),
+              }
+            : {}),
         }}
       >
         {children}

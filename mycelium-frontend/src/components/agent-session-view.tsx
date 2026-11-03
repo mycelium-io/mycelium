@@ -287,7 +287,7 @@ function RowView({ row, nested = false }: { row: Row; nested?: boolean }) {
     case "agent_message":
       return (
         <div className="text-label leading-relaxed text-text [&_p]:my-1">
-          <MarkdownContent>{textOf(row.content)}</MarkdownContent>
+          <MarkdownContent imagesAsLinks>{textOf(row.content)}</MarkdownContent>
         </div>
       );
     case "agent_thought": {
