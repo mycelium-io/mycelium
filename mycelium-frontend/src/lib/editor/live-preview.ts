@@ -426,10 +426,14 @@ const inlinePreview = ViewPlugin.fromClass(
       // what was showing before it.
       if (pressed && !this.held) this.held = activeLines(u.view);
       if (!pressed) this.held = null;
-      const moved = u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || released(u);
+      // The parser works in the background, so a long note's tree can arrive
+      // after it was first drawn: what it parsed since is drawn then too.
+      const reparsed = syntaxTree(u.startState) !== syntaxTree(u.state);
+      const moved =
+        u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || released(u) || reparsed;
       if (!moved) return;
-      // Pressed, only an edit or a scroll redraws, and with the lines it started with.
-      if (pressed && !u.docChanged && !u.viewportChanged) return;
+      // Pressed, only an edit, a scroll or a parse redraws, and with the lines it started with.
+      if (pressed && !u.docChanged && !u.viewportChanged && !reparsed) return;
       this.decorations = build(u.view, pressed ? (this.held ?? undefined) : undefined);
     }
   },
@@ -526,9 +530,11 @@ const tableField = StateField.define<{ focused: boolean; decorations: Decoration
     const pressed = tr.state.field(pressedField);
     const releasedNow = tr.startState.field(pressedField) && !pressed;
     // A table doesn't swap between drawn and source under a held button (see `pressedField`).
-    const moved = tr.docChanged || releasedNow || (!pressed && (told || tr.selection));
+    // A table the parser reached since the last draw is drawn too.
+    const reparsed = syntaxTree(tr.startState) !== syntaxTree(tr.state);
+    const moved = tr.docChanged || reparsed || releasedNow || (!pressed && (told || tr.selection));
     if (!moved) return told ? { ...value, focused } : value;
-    if (!tr.docChanged && pressed) return { ...value, focused };
+    if (!tr.docChanged && !reparsed && pressed) return { ...value, focused };
     return { focused, decorations: tables(tr.state, focused) };
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),

@@ -32,6 +32,14 @@ import { NotificationsProvider } from "@/components/notifications-provider";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { createRoom, deleteRoom, fetchRoomFolders, fetchRooms, saveRoomFolders } from "@/lib/api";
 
+// Each test starts from no signed-in name and no folders. The folders tests
+// set both, and left in place they reorder the rooms and fill a new room's
+// owner for whichever test runs after them.
+beforeEach(() => {
+  window.localStorage.clear();
+  vi.mocked(fetchRoomFolders).mockReset().mockResolvedValue({ folders: [] });
+});
+
 type RoomArg = string | { name: string; is_public?: boolean; last_activity?: string };
 
 function rooms(...names: RoomArg[]) {
