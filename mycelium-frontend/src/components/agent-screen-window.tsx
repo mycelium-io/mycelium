@@ -22,7 +22,7 @@ import { LayoutList, SquareTerminal, X } from "lucide-react";
 import { AgentScreen, type AgentScreenProps, type ScreenView } from "@/components/agent-screen";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useAgentActivity } from "@/lib/agent-activity";
+import { useAgentSession } from "@/lib/agent-session";
 import { useIsDesktop } from "@/lib/desktop";
 import { MIN_WINDOW, clampRect, defaultRect, saveRect, savedRect, type WindowRect } from "@/lib/terminal-window";
 import { cn } from "@/lib/utils";
@@ -57,14 +57,20 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
   const [rect, setRect] = useState<WindowRect>(() => clampRect(savedRect(handle) ?? defaultRect(viewport()), viewport()));
   const section = useRef<HTMLElement | null>(null);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
-  // The toggle shows only for an agent whose CLI the app can draw.
+  // The toggle shows once the app has answered for the agent, with its session
+  // or why it has none. With none, the window opens on the terminal, whatever
+  // was picked last; picking Rendered here then says why.
   const desktop = useIsDesktop();
-  const { activity } = useAgentActivity(desktop ? { room: props.room, handle } : null);
-  const rendered = activity !== null;
+  const read = useAgentSession(desktop ? { room: props.room, handle } : null);
+  const rendered = read.session !== null || read.unavailable !== null;
   const [view, setView] = useState<ScreenView>(savedView);
+  const [pickedHere, setPickedHere] = useState(false);
+  const shown: ScreenView = read.unavailable && !pickedHere ? "terminal" : view;
   const choose = (v: ScreenView) => {
     setView(v);
-    saveView(v);
+    setPickedHere(true);
+    // A pick made for an agent with nothing to draw doesn't change the others.
+    if (!read.unavailable) saveView(v);
   };
 
   useEffect(() => {
@@ -141,12 +147,12 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
                 <button
                   type="button"
                   role="radio"
-                  aria-checked={view === v}
+                  aria-checked={shown === v}
                   aria-label={label}
                   onClick={() => choose(v)}
                   className={cn(
                     "grid size-6 place-items-center rounded text-muted-foreground hover:text-text",
-                    view === v && "bg-hairline text-text",
+                    shown === v && "bg-hairline text-text",
                   )}
                 >
                   <Icon className="size-3.5" />
@@ -167,7 +173,7 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
           <X className="size-3.5" />
         </button>
       </header>
-      <AgentScreen {...props} view={rendered ? view : "terminal"} onView={choose} />
+      <AgentScreen {...props} view={rendered ? shown : "terminal"} onView={choose} />
     </section>,
     document.body,
   );
