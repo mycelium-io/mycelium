@@ -2037,6 +2037,18 @@ class Runner:
             except OSError as e:
                 failing(log, "sync.json", f"couldn't write {self._sync_path}: {e}")
 
+    def _sessions_loop(self) -> None:
+        """Keep each agent's session where the desktop app reads it, on this
+        machine only (:mod:`mycelium.runner.sessions`)."""
+        from mycelium.runner.sessions import SESSIONS_S, Follower
+
+        follower = Follower(self.bridge)
+        while not self._stop.wait(SESSIONS_S):
+            try:
+                follower.tick()
+            except Exception as e:  # noqa: BLE001 - the rendered view must never stop the runner
+                failing(log, "sessions", f"couldn't follow the agents' sessions: {e}")
+
     def run(self) -> None:
         """Run until :meth:`stop`, registered as this machine's runner the whole time.
 
@@ -2067,6 +2079,11 @@ class Runner:
         # Writing down how it's doing starts now, so a runner still trying to
         # reach the hub says so to `runner status` and doctor.
         threading.Thread(target=self._watch_loop, name="runner-watchdog", daemon=True).start()
+        # The rendered view reads these files on this machine, hub or no hub.
+        if self.host.name == "herdr":
+            threading.Thread(
+                target=self._sessions_loop, name="runner-sessions", daemon=True
+            ).start()
         while not self.hello():
             self.log.print(
                 f"[dim]hub not reachable at {self.config.server.api_url}; retrying…[/dim]"

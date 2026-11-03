@@ -18,7 +18,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from mycelium.integrations.base import AddOptions, Integration
 from mycelium.protocol import AgentManifest
@@ -54,6 +54,25 @@ class AgentKind:
 
     #: The manifest family its agents are recorded under (``AgentManifest.adapter``).
     adapter: ClassVar[str] = "claude_code"
+    #: Whether Mycelium can read this CLI's session file for the rendered view
+    #: (a converter in this package); a CLI without one shows its terminal only.
+    renders: ClassVar[bool] = False
+
+    def session_path(self, folder: str | None, session: str) -> Path | None:  # noqa: ARG002 - a CLI with a converter finds it
+        """The file this CLI keeps ``session`` in, begun in ``folder``; ``None``
+        when it can't be found, or the CLI has no converter."""
+        return None
+
+    def session_files(self, path: Path) -> list[Path]:
+        """Every file :meth:`read_session` reads for ``path``, so a reader can
+        tell whether anything changed without converting it again."""
+        return [path]
+
+    def read_session(self, path: Path) -> dict[str, Any]:  # noqa: ARG002 - a CLI with a converter reads it
+        """The session in ``path`` as the rendered view's fields
+        (``mycelium-frontend/src/lib/agent-session.ts``) less ``state`` and
+        ``waitingOn``. Read on this machine only, never sent to the hub."""
+        raise NotImplementedError(f"No rendered view for {self.name}")
 
     def launch_args(self) -> list[str]:
         """Arguments every agent of this kind starts with."""
