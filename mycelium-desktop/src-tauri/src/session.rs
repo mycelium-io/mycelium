@@ -92,8 +92,11 @@ fn page_args(
     limit: u32,
 ) -> Result<Vec<String>, String> {
     own_agent(mycelium, room, handle)?;
+    // A line's uuid, or a CLI's own id for a call or a reply (`toolu_01…`).
     let id = |s: &str| {
-        !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        !s.is_empty()
+            && s.len() <= 64
+            && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     };
     if !id(before) || before.starts_with('-') {
         return Err(NO_ENTRY.into());
@@ -209,6 +212,10 @@ mod tests {
                 "builder",
             ]
         );
+        // A call's or a reply's own id pages back as well as a line's uuid.
+        for ok in ["toolu_01AbC", "msg_01XyZ"] {
+            assert!(page_args(&home.0, "checkout", "builder", ok, 200).is_ok(), "{ok}");
+        }
         // Not this machine's agent: nothing runs.
         assert_eq!(page_args(&home.0, "storefront", "builder", id, 200).unwrap_err(), terminal::NOT_HERE);
         // An entry id can't carry an option, a path or anything else.
