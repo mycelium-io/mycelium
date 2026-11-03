@@ -10,6 +10,10 @@ updates:
       # (CLAUDE.md: same minor version, 2.1 today).
       - dependency-name: slim-bindings
         versions: [">=2.2"]
+    groups:
+      # sherpa-onnx requires its core at the same version, so one PR moves both.
+      sherpa-onnx:
+        patterns: ["sherpa-onnx", "sherpa-onnx-core"]
 
   - package-ecosystem: pip
     directory: /mycelium-cli
