@@ -14,6 +14,7 @@ const COMMANDS: &[&str] = &[
     "choose_agent_folder",
     "agent_screen",
     "agent_session",
+    "agent_session_page",
     "run_doctor",
     "herdr_integrations",
     "get_model",

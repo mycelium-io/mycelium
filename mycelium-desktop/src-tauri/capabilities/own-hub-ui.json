@@ -11,6 +11,7 @@
     "allow-choose-agent-folder",
     "allow-agent-screen",
     "allow-agent-session",
+    "allow-agent-session-page",
     "allow-get-state",
     "allow-start",
     "allow-get-autostart",

@@ -1321,6 +1321,24 @@ async fn agent_session(
         .map_err(|e| e.to_string())?
 }
 
+/// The `limit` entries of an agent's session before the entry `before`, for
+/// the rendered view's scroll-up, converted on this machine by the local
+/// `mycelium` program. The same rule as `agent_session`.
+#[tauri::command]
+async fn agent_session_page(
+    app: AppHandle,
+    webview: Webview,
+    room: String,
+    handle: String,
+    before: String,
+    limit: u32,
+) -> Result<Value, String> {
+    own_ui_only(&app, &webview)?;
+    tauri::async_runtime::spawn_blocking(move || session::page(&room, &handle, &before, limit))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// This machine's runner id, for the app's own hub UI: the machine `choose_agent_folder`
 /// picks on, so the page offers the dialog only for an agent starting here.
 #[tauri::command]
@@ -1654,6 +1672,7 @@ pub fn run() {
             choose_agent_folder,
             agent_screen,
             agent_session,
+            agent_session_page,
             run_doctor,
             herdr_integrations,
             get_model,

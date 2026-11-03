@@ -21,29 +21,106 @@ pub const NO_CONVERTER: &str = "No rendered view for this agent's CLI.";
 /// What `session` refuses with when the runner found no session file for the
 /// agent, or hasn't written one yet; the page matches it too.
 pub const NO_SESSION: &str = "Can't find this agent's session.";
+/// What `page` refuses with when the entry it reads back from isn't in the
+/// agent's session (the page matches it).
+pub const NO_ENTRY: &str = "That entry isn't in this session.";
+/// The most entries one earlier page may ask for.
+const PAGE_MAX: u32 = 500;
 
 /// @`handle`'s session in `room`, as the runner last wrote it.
 pub fn session(room: &str, handle: &str) -> Result<Value, String> {
     read(&paths::home().join(".mycelium"), room, handle)
 }
 
+/// The `limit` entries of @`handle`'s session before the entry `before`, for
+/// the view to show on scroll-up: `{entries, earlier}`. The runner writes only
+/// the latest entries, so an earlier page is converted on demand by the
+/// `mycelium` program on this machine, which reads the agent CLI's own file.
+pub fn page(room: &str, handle: &str, before: &str, limit: u32) -> Result<Value, String> {
+    let args = page_args(&paths::home().join(".mycelium"), room, handle, before, limit)?;
+    let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
+    let out = paths::command(bin)
+        .args(args)
+        .env("PATH", paths::shell_path())
+        .output()
+        .map_err(|e| e.to_string())?;
+    page_answer(&out.stdout)
+}
+
 /// The page names an agent, never a file: only an agent Mycelium runs in a
 /// terminal here (in its herdr registry, the rule `agent_screen` keeps) has
 /// a session to read, so no other file under the folder can be named.
-fn read(mycelium: &Path, room: &str, handle: &str) -> Result<Value, String> {
+fn own_agent(mycelium: &Path, room: &str, handle: &str) -> Result<(), String> {
     let registry = mycelium.join("herdr").join("registry.json");
     terminal::agent_pane(&registry, room, handle).ok_or(terminal::NOT_HERE)?;
-    if [room, handle].iter().any(|s| s.starts_with('.') || s.contains('\\')) {
+    if [room, handle].iter().any(|s| s.starts_with(['.', '-']) || s.contains('\\')) {
         return Err(terminal::NOT_HERE.into());
     }
+    Ok(())
+}
+
+fn read(mycelium: &Path, room: &str, handle: &str) -> Result<Value, String> {
+    own_agent(mycelium, room, handle)?;
     let file = mycelium.join("runner").join("sessions").join(room).join(format!("{handle}.json"));
     let Ok(raw) = std::fs::read_to_string(file) else { return Err(NO_SESSION.into()) };
     let Ok(value) = serde_json::from_str::<Value>(&raw) else { return Err(NO_SESSION.into()) };
+    answer(value, NO_SESSION)
+}
+
+/// The value itself, or the refusal for why there's none: `unavailable`'s
+/// reason, else `otherwise` when it isn't a session or a page at all.
+fn answer(value: Value, otherwise: &str) -> Result<Value, String> {
     match value.get("unavailable").and_then(Value::as_str) {
         Some("no_converter") => Err(NO_CONVERTER.into()),
+        Some("no_entry") => Err(NO_ENTRY.into()),
         Some(_) => Err(NO_SESSION.into()),
         None if value.is_object() => Ok(value),
-        None => Err(NO_SESSION.into()),
+        None => Err(otherwise.into()),
+    }
+}
+
+/// What the `mycelium` program is run with for an earlier page, once
+/// everything the page sent is checked: an agent of this machine's, an entry
+/// id that can only be an id, and a limit in range. Each value is joined to
+/// its flag with `=`, so none can be read as an option.
+fn page_args(
+    mycelium: &Path,
+    room: &str,
+    handle: &str,
+    before: &str,
+    limit: u32,
+) -> Result<Vec<String>, String> {
+    own_agent(mycelium, room, handle)?;
+    let id = |s: &str| {
+        !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    };
+    if !id(before) || before.starts_with('-') {
+        return Err(NO_ENTRY.into());
+    }
+    if !(1..=PAGE_MAX).contains(&limit) {
+        return Err(format!("A page holds 1 to {PAGE_MAX} entries."));
+    }
+    Ok(vec![
+        "machine".into(),
+        "session".into(),
+        format!("--room={room}"),
+        format!("--handle={handle}"),
+        format!("--before={before}"),
+        format!("--limit={limit}"),
+        "--json".into(),
+    ])
+}
+
+/// What the program printed: a page, a refusal, or (nothing parseable) an
+/// error that says the page couldn't be read.
+fn page_answer(stdout: &[u8]) -> Result<Value, String> {
+    const UNREAD: &str = "Couldn't read that part of the session.";
+    let value = serde_json::from_slice::<Value>(stdout).map_err(|_| UNREAD.to_string())?;
+    let page = answer(value, UNREAD)?;
+    if page.get("entries").is_some_and(Value::is_array) {
+        Ok(page)
+    } else {
+        Err(UNREAD.into())
     }
 }
 
@@ -111,5 +188,44 @@ mod tests {
         // A name that would climb out of the folder, even one in the registry.
         assert_eq!(read(&home.0, "checkout", "..").unwrap_err(), terminal::NOT_HERE);
         assert_eq!(read(&home.0, "checkout/builder", "").unwrap_err(), terminal::NOT_HERE);
+    }
+
+    #[test]
+    fn an_earlier_page_runs_the_program_only_with_what_was_checked() {
+        let home = Home::new("page-args");
+        let id = "3f2a9c1e-7b44-4d0a-9e1f-2c8b5a6d7e90";
+        assert_eq!(
+            page_args(&home.0, "checkout", "builder", id, 200).unwrap(),
+            [
+                "machine",
+                "session",
+                "--room=checkout",
+                "--handle=builder",
+                &format!("--before={id}"),
+                "--limit=200",
+                "--json",
+            ]
+        );
+        // Not this machine's agent: nothing runs.
+        assert_eq!(page_args(&home.0, "storefront", "builder", id, 200).unwrap_err(), terminal::NOT_HERE);
+        // An entry id can't carry an option, a path or anything else.
+        for bad in ["", "--help", "-x", "a b", "a;b", "../x", &"a".repeat(65)] {
+            assert_eq!(page_args(&home.0, "checkout", "builder", bad, 200).unwrap_err(), NO_ENTRY, "{bad}");
+        }
+        assert!(page_args(&home.0, "checkout", "builder", id, 0).is_err());
+        assert!(page_args(&home.0, "checkout", "builder", id, PAGE_MAX + 1).is_err());
+    }
+
+    #[test]
+    fn an_earlier_page_is_the_program_s_answer_or_why_not() {
+        let page = page_answer(br#"{"entries": [{"sessionUpdate": "plan"}], "earlier": true}"#).unwrap();
+        assert_eq!(page["earlier"], true);
+        assert_eq!(page_answer(br#"{"unavailable": "no_entry"}"#).unwrap_err(), NO_ENTRY);
+        assert_eq!(page_answer(br#"{"unavailable": "no_converter"}"#).unwrap_err(), NO_CONVERTER);
+        assert_eq!(page_answer(br#"{"unavailable": "no_session"}"#).unwrap_err(), NO_SESSION);
+        // A crash, or JSON that isn't a page.
+        for bad in [&b""[..], b"Traceback (most recent call last):", b"{}", br#"{"entries": 3}"#] {
+            assert_eq!(page_answer(bad).unwrap_err(), "Couldn't read that part of the session.");
+        }
     }
 }
