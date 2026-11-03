@@ -194,7 +194,7 @@ def test_a_steps_stance_is_the_strictest_answer():
 
 @pytest.mark.asyncio
 async def test_gated_loops_on_a_block_and_ends_on_an_approval():
-    engine, manager, channel = _engine(
+    engine, _manager, channel = _engine(
         {
             "api": [("rotate the key in place", None), ("rotate with a rollback window", None)],
             "sec": [("no rollback plan", "reject"), ("fine with the window", "accept")],
@@ -384,7 +384,7 @@ async def test_swarm_checks_everyone_in_then_the_lead_splits_the_task(
 
     monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
     row = await tasks.create_task(ROOM, "Fix the flaky auth tests", created_by="julia")
-    engine, manager, channel = _engine(
+    engine, _manager, channel = _engine(
         {
             "agent-1": [("I'll take the repro.", None), ("Split: repro, cause, fix.", None)],
             "agent-2": [("Root cause is mine.", None)],
