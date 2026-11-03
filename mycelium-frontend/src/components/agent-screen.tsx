@@ -21,6 +21,8 @@ import { parseAnsi, readable, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
+import { useAgentActivity } from "@/lib/agent-activity";
+import { AgentActivityView } from "@/components/agent-activity-view";
 import { buttonVariants } from "@/components/ui/button";
 
 /** The footer's promise, which the code keeps: the runner sends the hub no screen. */
@@ -34,15 +36,30 @@ export interface AgentScreenProps {
   /** Whether the footer offers Open its terminal. Off where the caller puts
    *  that button somewhere more prominent of its own. */
   openLink?: boolean;
+  /** Its session drawn as what it did, when its CLI has a converter, or its
+   *  terminal. The terminal when unset. */
+  view?: ScreenView;
+  /** Asked to switch, from inside the rendered view. */
+  onView?: (view: ScreenView) => void;
 }
 
-export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }: AgentScreenProps) {
+export type ScreenView = "rendered" | "terminal";
+
+export function AgentScreen({
+  room,
+  handle,
+  runner: runnerOf,
+  openLink = true,
+  view = "terminal",
+  onView,
+}: AgentScreenProps) {
   const desktop = useIsDesktop();
   const thisMachine = useThisMachine();
   const { runners } = useRunners();
   // The app is asked first: whether the agent has a terminal here is its
   // answer, from its own registry of agents, not a guess from the hub's list.
   const screen = useAgentScreen(desktop ? { room, handle } : null);
+  const { activity } = useAgentActivity(desktop && view === "rendered" ? { room, handle } : null);
 
   if (!desktop) {
     return <Note>An agent&apos;s terminal shows in the desktop app, for agents on that computer.</Note>;
@@ -80,7 +97,11 @@ export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }:
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Screen text={screen.text} error={screen.error} />
+      {view === "rendered" && activity ? (
+        <AgentActivityView activity={activity} onShowTerminal={() => onView?.("terminal")} />
+      ) : (
+        <Screen text={screen.text} error={screen.error} />
+      )}
       {/* One quiet line, padded like the header: where the screen comes from,
           how fresh it is, and the way to type to it. */}
       <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-2 text-micro text-faint">
