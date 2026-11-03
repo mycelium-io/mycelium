@@ -26,6 +26,9 @@ export interface AgentSession {
   /** Bumped when a field's meaning changes, so an older app can say it's too old. */
   version: 1;
   sessionId: string;
+  /** Changes whenever the entries do (the runner's write count, say), so a
+   *  reader can tell a new answer from the same one without comparing it. */
+  rev?: string;
   /** The CLI's own short title for the session, when it writes one (ACP's `session_info_update`). */
   title: string | null;
   /**
@@ -166,11 +169,24 @@ export function useAgentSession(agent: { room: string; handle: string } | null):
       shouldRetryOnError: false,
       dedupingInterval: SCREEN_EVERY_MS / 2,
       keepPreviousData: true,
+      // A long session is most of a megabyte, asked for every second: comparing
+      // it deeply each time blocked the page for 100 ms a second. Its revision
+      // says whether anything changed.
+      compare: (a, b) => (a && b ? revOf(a) === revOf(b) : a === b),
     },
   );
   const said = error ? String(error instanceof Error ? error.message : error) : null;
   const unavailable = said ? (UNAVAILABLE[said] ?? null) : null;
   return { session: data ?? null, unavailable, error: unavailable ? null : said };
+}
+
+/** What changes whenever anything in a session the view draws does. */
+export function revOf(s: AgentSession): string {
+  if (s.rev) return `${s.rev}|${s.state}|${s.waitingOn ?? ""}`;
+  // Before the runner writes a revision: the last entry, and how it stands.
+  const last = s.entries.at(-1);
+  const status = last?.sessionUpdate === "tool_call" ? last.status : "";
+  return `${s.entries.length}|${last?._meta.id ?? ""}|${status}|${s.state}|${s.waitingOn ?? ""}`;
 }
 
 /** The text of a message's or thought's blocks. */

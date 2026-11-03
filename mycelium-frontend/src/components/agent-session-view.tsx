@@ -19,7 +19,7 @@
  * session to draw: no converter for the CLI, or no session file found.
  */
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRightLeft,
   Bell,
@@ -123,17 +123,48 @@ export function AgentSessionView({ session, onShowTerminal }: { session: AgentSe
         {session.earlier && (
           <p className="mb-2 text-center text-micro text-faint">Earlier in this session is in its terminal.</p>
         )}
-        {rows.map((row, i) => (
-          // Tool calls in a row sit close together; anything else gets room.
-          <div key={row._meta.id} className={i === 0 ? "" : isTool(row) && isTool(rows[i - 1]) ? "mt-0.5" : "mt-2.5"}>
-            <RowView row={row} />
-          </div>
-        ))}
+        <Rows rows={rows} />
       </div>
       <Now session={session} onShowTerminal={onShowTerminal} />
     </div>
   );
 }
+
+/**
+ * The entries, drawn again only when they change. The window around them
+ * redraws every second (its terminal read, its "updated 2s ago"), and a long
+ * session's markdown parsed again each time blocked the page for 90 ms.
+ */
+const Rows = memo(function Rows({ rows }: { rows: Row[] }) {
+  return rows.map((row, i) => (
+    // Tool calls in a row sit close together; anything else gets room.
+    <div key={row._meta.id} className={i === 0 ? "" : isTool(row) && isTool(rows[i - 1]) ? "mt-0.5" : "mt-2.5"}>
+      <SameRow row={row} />
+    </div>
+  ));
+});
+
+/** What about a row can change once it's written: a call's status and result, a sub-agent's steps, a plan's. */
+function rowRev(row: Row): string {
+  switch (row.sessionUpdate) {
+    case "reads":
+      return row.calls.map(rowRev).join(",");
+    case "tool_call":
+      return `${row.status}|${row._meta.endedAt ?? ""}|${row.content?.length ?? 0}|${row._meta.subagent?.entries.length ?? 0}`;
+    case "plan":
+      return row.entries.map((e) => e.status).join(",");
+    default:
+      return "";
+  }
+}
+
+/** Each answer is a fresh copy, so a row is drawn again only when it changed. */
+const SameRow = memo(
+  function SameRow({ row }: { row: Row }) {
+    return <RowView row={row} />;
+  },
+  (a, b) => a.row._meta.id === b.row._meta.id && rowRev(a.row) === rowRev(b.row),
+);
 
 function RowView({ row, nested = false }: { row: Row; nested?: boolean }) {
   switch (row.sessionUpdate) {
