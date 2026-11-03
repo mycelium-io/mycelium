@@ -119,6 +119,50 @@ describe("AgentSessionView", () => {
   });
 });
 
+describe("AgentSessionView's earlier entries", () => {
+  const reply = (id: string): SessionEntry => ({
+    sessionUpdate: "agent_message",
+    content: [{ type: "text", text: `reply ${id}` }],
+    _meta: { id, at: "2026-11-03T12:00:00Z" },
+  });
+
+  // jsdom lays nothing out, so the list never fills its box and asks for the page before at once.
+  it("asks for the entries before the first, and puts them above", async () => {
+    const loadEarlier = vi.fn().mockResolvedValue({ entries: [reply("a"), reply("b")], earlier: false });
+    render(
+      <AgentSessionView session={session([reply("c")], { earlier: true })} onShowTerminal={vi.fn()} loadEarlier={loadEarlier} />,
+    );
+    expect(await screen.findByText("reply a")).toBeTruthy();
+    expect(loadEarlier).toHaveBeenCalledWith("c");
+    expect(loadEarlier).toHaveBeenCalledTimes(1);
+    const order = screen.getAllByText(/^reply /).map((p) => p.textContent);
+    expect(order).toEqual(["reply a", "reply b", "reply c"]);
+  });
+
+  it("says so when it couldn't read further back, and tries again", async () => {
+    const loadEarlier = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Can't find this agent's session."))
+      .mockResolvedValue({ entries: [reply("a")], earlier: false });
+    render(
+      <AgentSessionView session={session([reply("c")], { earlier: true })} onShowTerminal={vi.fn()} loadEarlier={loadEarlier} />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("reply a")).toBeTruthy();
+  });
+
+  it("points to the terminal when it can't ask for more", () => {
+    render(<AgentSessionView session={session([reply("c")], { earlier: true })} onShowTerminal={vi.fn()} />);
+    expect(screen.getByText("Earlier in this session is in its terminal.")).toBeTruthy();
+  });
+
+  it("keeps what slides out of the live read as the agent works", () => {
+    const { rerender } = render(<AgentSessionView session={session([reply("a"), reply("b")])} onShowTerminal={vi.fn()} />);
+    rerender(<AgentSessionView session={session([reply("b"), reply("c")])} onShowTerminal={vi.fn()} />);
+    expect(screen.getAllByText(/^reply /).map((p) => p.textContent)).toEqual(["reply a", "reply b", "reply c"]);
+  });
+});
+
 describe("SessionUnavailable", () => {
   it("says a CLI can't be read yet, with where to add it", () => {
     render(<SessionUnavailable reason="no_converter" cli="opencode" onShowTerminal={vi.fn()} />);

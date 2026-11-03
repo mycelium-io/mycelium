@@ -189,6 +189,52 @@ export function revOf(s: AgentSession): string {
   return `${s.entries.length}|${last?._meta.id ?? ""}|${status}|${s.state}|${s.waitingOn ?? ""}`;
 }
 
+/** Entries from before the live ones, asked for as someone scrolls up. */
+export interface SessionPage {
+  /** Oldest first, ending just before the entry asked about. */
+  entries: SessionEntry[];
+  /** The session has more before these. */
+  earlier: boolean;
+}
+
+/** How many earlier entries one scroll-up asks for. */
+export const PAGE_SIZE = 200;
+
+/** The most entries the view holds; anything older is left to the terminal. */
+export const MAX_ENTRIES = 2000;
+
+/**
+ * What the view holds after a new live read: what it had, up to where the
+ * live entries begin, then the live entries. The live read is the latest few
+ * hundred, and slides forward as the agent works; entries that slide out stay.
+ * When the live read no longer reaches back to anything held (the agent wrote
+ * more than a whole read since the last one), what was held is let go.
+ */
+export function mergeLive(held: SessionEntry[], live: SessionEntry[]): SessionEntry[] {
+  if (held.length === 0 || live.length === 0) return live;
+  const first = live[0]._meta.id;
+  const at = held.findIndex((e) => e._meta.id === first);
+  if (at === -1) return live;
+  return [...held.slice(0, at), ...live];
+}
+
+/** `page` put before `held`, with any entry both have kept once. */
+export function prependPage(held: SessionEntry[], page: SessionEntry[]): SessionEntry[] {
+  const ids = new Set(held.map((e) => e._meta.id));
+  return [...page.filter((e) => !ids.has(e._meta.id)), ...held];
+}
+
+/** Asks the app for the entries before `before`. Never through the hub. */
+export async function readEarlier(
+  agent: { room: string; handle: string },
+  before: string,
+): Promise<SessionPage> {
+  const invoke = appInvoke();
+  if (!invoke) throw new Error("Not available to this page.");
+  const page = (await invoke("agent_session_page", { ...agent, before, limit: PAGE_SIZE })) as SessionPage | null;
+  return { entries: page?.entries ?? [], earlier: page?.earlier ?? false };
+}
+
 /** The text of a message's or thought's blocks. */
 export const textOf = (blocks: TextBlock[]) => blocks.map((b) => b.text).join("\n\n");
 

@@ -46,9 +46,13 @@ import {
   X,
 } from "lucide-react";
 import {
+  MAX_ENTRIES,
   diffLines,
+  mergeLive,
+  prependPage,
   textOf,
   type AgentSession,
+  type SessionPage,
   type Plan,
   type SessionEntry,
   type ToolCall,
@@ -100,14 +104,84 @@ function rowsOf(entries: SessionEntry[]): Row[] {
 
 const isTool = (row: Row) => row.sessionUpdate === "tool_call" || row.sessionUpdate === "reads";
 
-export function AgentSessionView({ session, onShowTerminal }: { session: AgentSession; onShowTerminal: () => void }) {
-  const rows = useMemo(() => rowsOf(session.entries), [session.entries]);
+/** How close to the top, in pixels, asks for the page before. */
+const EARLIER_SLACK_PX = 400;
+
+/** Where the entries before what's held stand: more to ask for, being asked, none, or past what the view holds. */
+type Earlier = "more" | "loading" | "none" | "cap" | "failed";
+
+export function AgentSessionView({
+  session,
+  onShowTerminal,
+  loadEarlier,
+}: {
+  session: AgentSession;
+  onShowTerminal: () => void;
+  /** Asks for the entries before one, as someone scrolls up. Without it, the top says the terminal has the rest. */
+  loadEarlier?: (before: string) => Promise<SessionPage>;
+}) {
+  // Everything seen, the live entries last. A new live read slides forward;
+  // what slid out of it stays, and pages from scrolling up go before it.
+  const [held, setHeld] = useState<SessionEntry[]>(session.entries);
+  const [earlier, setEarlier] = useState<Earlier>(session.earlier ? "more" : "none");
+  const [liveSeen, setLiveSeen] = useState(session.entries);
+  if (liveSeen !== session.entries) {
+    // Adjusting state to a new prop while rendering, as React suggests over an effect.
+    setLiveSeen(session.entries);
+    const merged = mergeLive(held, session.entries);
+    setHeld(merged.slice(-MAX_ENTRIES));
+    // Let go of what it held: back to what the live read says.
+    if (merged[0]?._meta.id !== held[0]?._meta.id) setEarlier(session.earlier ? "more" : "none");
+  }
+
+  const rows = useMemo(() => rowsOf(held), [held]);
   const ref = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
+  // While a page goes in above, the row that was first and where it stood, and
+  // how far the view was from its bottom, for when that row was folded into another.
+  const anchor = useRef<{ id: string; top: number | null; fromBottom: number } | null>(null);
+
+  const rowTop = (id: string) =>
+    ref.current?.querySelector<HTMLElement>(`[data-entry="${CSS.escape(id)}"]`)?.offsetTop ?? null;
+
+  const askEarlier = async (retry = false) => {
+    const first = held[0]?._meta.id;
+    // A failed read is asked again only from its Try again, never on scroll.
+    if (!loadEarlier || !first || (earlier !== "more" && !(retry && earlier === "failed"))) return;
+    if (held.length >= MAX_ENTRIES) return setEarlier("cap");
+    setEarlier("loading");
+    try {
+      const page = await loadEarlier(first);
+      const el = ref.current;
+      const id = rows[0]?._meta.id ?? first;
+      if (el) anchor.current = { id, top: rowTop(id), fromBottom: el.scrollHeight - el.scrollTop };
+      setHeld((h) => prependPage(h, page.entries));
+      setEarlier(!page.earlier ? "none" : held.length + page.entries.length >= MAX_ENTRIES ? "cap" : "more");
+    } catch {
+      setEarlier("failed");
+    }
+  };
+
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && following.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    // A page went in above: keep the row that was first where it was on screen.
+    const was = anchor.current;
+    if (was) {
+      anchor.current = null;
+      const now = rowTop(was.id);
+      if (now !== null && was.top !== null) el.scrollTop += now - was.top;
+      else el.scrollTop = el.scrollHeight - was.fromBottom;
+      return;
+    }
+    if (following.current) el.scrollTop = el.scrollHeight;
   }, [rows]);
+
+  // Too few entries to scroll: ask for more until there's something to scroll through.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && earlier === "more" && loadEarlier && el.scrollHeight <= el.clientHeight) void askEarlier();
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -116,17 +190,43 @@ export function AgentSessionView({ session, onShowTerminal }: { session: AgentSe
         onScroll={(e) => {
           const el = e.currentTarget;
           following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX;
+          if (el.scrollTop < EARLIER_SLACK_PX) void askEarlier();
         }}
         aria-label="What it's doing"
+        aria-busy={earlier === "loading"}
         className="min-h-0 flex-1 overflow-auto px-4 py-3"
       >
-        {session.earlier && (
-          <p className="mb-2 text-center text-micro text-faint">Earlier in this session is in its terminal.</p>
-        )}
+        <EarlierLine
+          earlier={loadEarlier ? earlier : earlier === "none" ? "none" : "cap"}
+          onRetry={() => void askEarlier(true)}
+        />
         <Rows rows={rows} />
       </div>
       <Now session={session} onShowTerminal={onShowTerminal} />
     </div>
+  );
+}
+
+/** The top of the list: loading the page before, or where the rest of the session is. */
+function EarlierLine({ earlier, onRetry }: { earlier: Earlier; onRetry: () => void }) {
+  if (earlier === "none") return null;
+  // The line keeps its height while there's more to ask for, so the spinner
+  // showing up doesn't push what's being read down.
+  return (
+    <p className="mb-2 flex h-5 items-center justify-center gap-1.5 text-center text-micro text-faint">
+      {earlier === "more" ? null : earlier === "loading" ? (
+        <Loader2 className="size-3 animate-spin" aria-label="Loading earlier entries" />
+      ) : earlier === "failed" ? (
+        <>
+          Couldn&apos;t read further back.
+          <button type="button" onClick={onRetry} className="text-accent hover:underline">
+            Try again
+          </button>
+        </>
+      ) : (
+        "Earlier in this session is in its terminal."
+      )}
+    </p>
   );
 }
 
@@ -138,7 +238,11 @@ export function AgentSessionView({ session, onShowTerminal }: { session: AgentSe
 const Rows = memo(function Rows({ rows }: { rows: Row[] }) {
   return rows.map((row, i) => (
     // Tool calls in a row sit close together; anything else gets room.
-    <div key={row._meta.id} className={i === 0 ? "" : isTool(row) && isTool(rows[i - 1]) ? "mt-0.5" : "mt-2.5"}>
+    <div
+      key={row._meta.id}
+      data-entry={row._meta.id}
+      className={i === 0 ? "" : isTool(row) && isTool(rows[i - 1]) ? "mt-0.5" : "mt-2.5"}
+    >
       <SameRow row={row} />
     </div>
   ));

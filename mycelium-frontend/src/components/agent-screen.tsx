@@ -22,7 +22,7 @@ import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
 import type { Runner } from "@/lib/api";
-import { useAgentSession } from "@/lib/agent-session";
+import { readEarlier, useAgentSession } from "@/lib/agent-session";
 import { AgentSessionView, SessionUnavailable } from "@/components/agent-session-view";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -100,7 +100,12 @@ export function AgentScreen({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {view === "rendered" && read.session ? (
-        <AgentSessionView session={read.session} onShowTerminal={showTerminal} />
+        <AgentSessionView
+          key={read.session.sessionId}
+          session={read.session}
+          onShowTerminal={showTerminal}
+          loadEarlier={(before) => readEarlier({ room, handle }, before)}
+        />
       ) : view === "rendered" && read.unavailable ? (
         <SessionUnavailable
           reason={read.unavailable}
