@@ -420,6 +420,42 @@ def test_restart_all_in_a_room_leaves_other_rooms_alone(
     assert bridge.registry.get("checkout", "old") is not None
 
 
+def test_the_desktop_app_s_call_for_an_earlier_page_parses(
+    herdr: FakeHerdr, monkeypatch: pytest.MonkeyPatch
+):
+    """The arguments the desktop app's `agent_session_page` runs this with
+    (`page_args` in mycelium-desktop/src-tauri/src/session.rs), so a change on
+    either side fails here rather than as a view that can't scroll back."""
+    from typer.testing import CliRunner
+
+    from mycelium.commands import machine as cmd
+    from mycelium.runner import sessions
+
+    bridge = _two_rooms(herdr)
+    monkeypatch.setattr(cmd, "report", lambda: _report(bridge))
+    asked: list[tuple[str, int]] = []
+
+    def page(_kind, _folder, _session, before: str, limit: int) -> dict:
+        asked.append((before, limit))
+        return {"entries": [], "earlier": False}
+
+    monkeypatch.setattr(sessions, "page", page)
+    entry = "3f2a9c1e-7b44-4d0a-9e1f-2c8b5a6d7e90"
+    app_args = [
+        "session",
+        "--room=checkout",
+        f"--before={entry}",
+        "--limit=200",
+        "--json",
+        "--",
+        "reviewer",
+    ]
+    result = CliRunner().invoke(cmd.app, app_args)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {"entries": [], "earlier": False}
+    assert asked == [(entry, 200)]
+
+
 def test_renaming_changes_herdrs_name_and_unbinding_forgets_the_pane(herdr: FakeHerdr):
     bridge = _setup(herdr)
     r = _report(bridge)
