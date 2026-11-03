@@ -398,6 +398,25 @@ class TestAnswering:
         assert answer["text"] == "the address form"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("multiple", [False, True])
+    async def test_a_choose_can_be_answered_with_none_of_its_options(self, room, multiple):
+        ask, _r, _t = await _ask(kind="choose", options=OPTIONS, multiple=multiple)
+        _f, answer, record = await approvals.answer(
+            ROOM, ask["id"], by="julia", choices=[], text="neither fits our contract"
+        )
+        assert answer["choices"] == []
+        assert answer["chosen"] == []
+        assert record.content["content"] == (
+            "Chose none of the options for "
+            '"Turn Apple Pay on for everyone on Friday at 9:00?"'
+            "\n\nNote: neither fits our contract"
+        )
+        # The agent reads the same empty pick.
+        folded = approvals.asked(room.persister.log.records, ROOM)[ask["id"]].answer
+        assert folded is not None
+        assert folded["choices"] == []
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("kind", "given"),
         [

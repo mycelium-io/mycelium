@@ -165,6 +165,7 @@ export function linkKind(link: string): "web" | "memory" | "text" {
 export function verdictOf(answer: AskAnswer): string {
   if (answer.kind === "approve") return answer.decision === "declined" ? "Declined" : "Approved";
   if (answer.kind === "choose") {
+    if (answer.choices.length === 0) return "Chose none of the options";
     const labels = answer.chosen.length ? answer.chosen : answer.choices;
     if (answer.choices.length < 2) return `Chose ${labels.join(", ")}`;
     const ids = answer.choices;

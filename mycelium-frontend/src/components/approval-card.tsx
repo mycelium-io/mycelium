@@ -104,14 +104,16 @@ export function AskCard({
   const who = (handle: string) => (handle.toLowerCase() === me ? "you" : (nameOf(names, handle) ?? handle));
   const Icon = KIND_ICON[ask.kind];
 
-  const send = async (decision?: Decision) => {
+  /** `none` answers a choose with none of its options, whatever is ticked. */
+  const send = async (decision?: Decision, none = false) => {
     if (busy || !me) return;
     const text = note.trim() || null;
     if (ask.kind === "question" && !text) return;
-    if (ask.kind === "choose" && (picked.length === 0 || (!ask.multiple && picked.length > 1))) return;
+    if (ask.kind === "choose" && !none && (picked.length === 0 || (!ask.multiple && picked.length > 1))) return;
     setBusy(true);
     setError(null);
-    const choices = ask.kind === "choose" ? ask.options.filter((o) => picked.includes(o.id)).map((o) => o.id) : [];
+    const choices =
+      ask.kind === "choose" && !none ? ask.options.filter((o) => picked.includes(o.id)).map((o) => o.id) : [];
     try {
       await answerAsk(roomName, ask.id, {
         by: me,
@@ -335,14 +337,23 @@ export function AskCard({
                   </Button>
                 </>
               ) : (
-                <Button
-                  type="submit"
-                  size="xs"
-                  variant={mine ? "default" : "outline"}
-                  disabled={busy || (ask.kind === "question" ? !note.trim() : pickedCount === 0)}
-                >
-                  {ask.kind === "choose" && ask.multiple && pickedCount > 0 ? `Send ${pickedCount}` : "Send"}
-                </Button>
+                <>
+                  <Button
+                    type="submit"
+                    size="xs"
+                    variant={mine ? "default" : "outline"}
+                    disabled={busy || (ask.kind === "question" ? !note.trim() : pickedCount === 0)}
+                  >
+                    {ask.kind === "choose" && ask.multiple && pickedCount > 0 ? `Send ${pickedCount}` : "Send"}
+                  </Button>
+                  {/* None of them is an answer too, said on purpose rather
+                      than by sending with nothing ticked. The note goes with it. */}
+                  {ask.kind === "choose" && (
+                    <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void send(undefined, true)}>
+                      None of these
+                    </Button>
+                  )}
+                </>
               )}
             </span>
           </form>

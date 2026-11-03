@@ -139,6 +139,29 @@ describe("a choose", () => {
     await userEvent.click(screen.getByRole("button", { name: "Send 3" }));
     expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", { by: "operator", choices: ["1", "2", "3"] });
   });
+
+  it.each([
+    ["one", false],
+    ["several", true],
+  ])("can be answered with none of its options when it takes %s, with a note", async (_takes, multiple) => {
+    // The agent's pick is ticked; None of these still sends none.
+    renderWithSWR(<AskCard roomName="checkout" ask={choose({ multiple })} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "neither fits our contract");
+    await userEvent.click(screen.getByRole("button", { name: "None of these" }));
+    expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", {
+      by: "operator",
+      choices: [],
+      text: "neither fits our contract",
+    });
+    // It folds to the question, with what was answered under it.
+    expect(await screen.findByText(/^Chose none of the options/)).toHaveTextContent("neither fits our contract");
+  });
+
+  it("won't send with nothing ticked: none is its own button", async () => {
+    renderWithSWR(<AskCard roomName="checkout" ask={choose({ multiple: true, recommend: [] })} />);
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "None of these" })).toBeEnabled();
+  });
 });
 
 describe("a question", () => {
