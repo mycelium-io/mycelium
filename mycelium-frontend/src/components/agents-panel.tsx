@@ -46,7 +46,7 @@ import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { RenameAgentDialog } from "@/components/rename-agent-dialog";
-import { AgentScreenPeek } from "@/components/agent-screen-peek";
+import { AgentScreenWindow } from "@/components/agent-screen-window";
 import { useAgentOpener } from "@/components/agent-opener";
 import { Button } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
@@ -220,7 +220,7 @@ export function AgentsPanel({
   const [unregistering, setUnregistering] = useState<UnregisterTarget | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   // The agent whose terminal is open, with the machine its manifest names. In
-  // a room the room's opener shows it, so an @ tag and Members share one peek;
+  // a room the room's opener shows it, so an @ tag and Members share one window;
   // anywhere else this panel shows its own.
   const opener = useAgentOpener();
   const [watching, setWatching] = useState<{ handle: string; runner: string | null } | null>(null);
@@ -363,7 +363,7 @@ export function AgentsPanel({
           onRenamed={refresh}
         />
         {watching && (
-          <AgentScreenPeek
+          <AgentScreenWindow
             key={watching.handle}
             onClose={() => setWatching(null)}
             room={roomName}

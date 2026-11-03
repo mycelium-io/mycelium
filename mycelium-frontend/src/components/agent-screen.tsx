@@ -12,7 +12,7 @@
  *
  *   <AgentScreen room handle />        the view, or where the agent runs instead
  *
- * `AgentScreenPeek` (agent-screen-peek.tsx) is where it's opened.
+ * `AgentScreenWindow` (agent-screen-window.tsx) is where it's opened.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";

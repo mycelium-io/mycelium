@@ -9,11 +9,12 @@ const screen = { width: 1440, height: 900 };
 describe("a popped-out terminal's place", () => {
   beforeEach(() => window.localStorage.clear());
 
-  it("starts on the right, a little in from the top, and on screen", () => {
+  it("starts on the right, as tall as the room, between the title bar and the status bar", () => {
     const r = defaultRect(screen);
-    expect(r.x + r.width).toBeLessThan(screen.width);
+    expect(screen.width - (r.x + r.width)).toBeLessThanOrEqual(16);
     expect(r.y).toBeGreaterThan(0);
     expect(r.y + r.height).toBeLessThan(screen.height);
+    expect(r.height).toBeGreaterThan(screen.height * 0.8);
   });
 
   it("is put back on a screen that shrank, header and all", () => {

@@ -25,7 +25,7 @@ import { Loader2 } from "lucide-react";
 import { restartMachineAgents, type MachineAgent, type MachineProblem, type Runner } from "@/lib/api";
 import { signFor } from "@/lib/device-key";
 import { useThisMachine } from "@/lib/desktop";
-import { AgentScreenPeek } from "@/components/agent-screen-peek";
+import { AgentScreenWindow } from "@/components/agent-screen-window";
 import { JOB_STATUS_LABEL, jobSettled, pairingNote, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -189,7 +189,7 @@ export function MachineAgents({ runner }: { runner: Runner }) {
       )}
       {restarting && <RestartDialog runner={runner} agents={restarting} onClose={() => setRestarting(null)} />}
       {viewing && (
-        <AgentScreenPeek
+        <AgentScreenWindow
           key={`${viewing.room}/${viewing.handle}`}
           onClose={() => setViewing(null)}
           room={viewing.room}
