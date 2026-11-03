@@ -604,6 +604,9 @@ class Supervisor:
         self.runner_id: str | None = None
         self.runner_state: State = "stopped"
         self.runner_detail: str | None = None
+        #: Whether the hub refused this computer's sign-in, so the page can say
+        #: so outright rather than that the runner is still connecting.
+        self.runner_signed_out = False
         #: How a herdr server from before the app was updated is found and
         #: restarted (``herdr_server.stale`` and ``herdr_server.restart``).
         self.find_stale_herdr = stale_herdr
@@ -799,6 +802,9 @@ class Supervisor:
             "api_url": self.api_url,
             # So the app can tell the page which machine is this one.
             "runner_id": self.runner_id,
+            # The hub that refused this computer's sign-in, so the page says
+            # that outright; null while the runner connects or is connected.
+            "runner_signed_out_of": self.api_url if self.runner_signed_out else None,
             "components": components,
             # More than one hub here, a hub on someone else's store, an old one.
             "warnings": self.warnings
@@ -1103,6 +1109,7 @@ class Supervisor:
     def _tick_runner(self) -> None:
         if self.runner is None:
             return
+        signed_out = False
         if self.runner.connected:
             state: State = "running"
             detail = None if self.runner.herdr else "herdr isn't running, so agents can't start"
@@ -1112,10 +1119,16 @@ class Supervisor:
             from mycelium.runner.daemon import signed_out_message
 
             state, detail = "failed", signed_out_message(self.api_url)
+            signed_out = True
         else:
             state, detail = "starting", f"connecting to {self.api_url}"
-        if (state, detail) != (self.runner_state, self.runner_detail):
+        if (state, detail, signed_out) != (
+            self.runner_state,
+            self.runner_detail,
+            self.runner_signed_out,
+        ):
             self.runner_state, self.runner_detail = state, detail
+            self.runner_signed_out = signed_out
             self._publish()
 
     # ── a herdr server from before the app was updated ───────────────────────

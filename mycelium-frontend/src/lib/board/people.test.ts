@@ -10,6 +10,7 @@ import {
   STANDING,
   WAITING_KINDS,
   WAITING_STANDING,
+  closedGroup,
   epicLine,
   humanLine,
   sideBySide,
@@ -156,6 +157,16 @@ describe("the people's board words", () => {
       "conductor is waiting on you",
     );
     expect(waitingLine({ kind: "task", title: "Test it", text: "Opened #502.", count: 1 })).toBe("Opened #502.");
+  });
+
+  it("heads closed tasks by this week, last week, then the month, with its year once it's another", () => {
+    const now = Date.parse("2026-11-01T12:00:00Z");
+    const ago = (days: number) => new Date(now - days * 24 * 60 * 60 * 1000).toISOString();
+    expect(closedGroup(ago(0.5), now)).toBe("This week");
+    expect(closedGroup(ago(6), now)).toBe("This week");
+    expect(closedGroup(ago(9), now)).toBe("Last week");
+    expect(closedGroup("2026-10-03T12:00:00Z", now)).toBe("October");
+    expect(closedGroup("2025-12-20T12:00:00Z", now)).toBe("December 2025");
   });
 
   it("keeps yellow for a quiet task: waiting its turn is ordinary", () => {

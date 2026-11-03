@@ -320,10 +320,23 @@ def test_a_runner_the_hub_refuses_shows_as_a_sign_in_not_as_connecting():
     assert sup.runner_state == "failed"
     assert "isn't signed in to https://hub.example.com" in (sup.runner_detail or "")
     assert "`mycelium login`" in (sup.runner_detail or "")
+    # The page reads it as a field, not out of the prose.
+    assert sup.status()["runner_signed_out_of"] == "https://hub.example.com"
     # Signing in clears it on the next heartbeat.
     sup.runner = SimpleNamespace(connected=True, signed_out=False, herdr=True)  # type: ignore[assignment]
     sup._tick_runner()
     assert (sup.runner_state, sup.runner_detail) == ("running", None)
+    assert sup.status()["runner_signed_out_of"] is None
+
+
+def test_a_runner_still_connecting_isn_t_signed_out():
+    from types import SimpleNamespace
+
+    sup = Supervisor("client", hub_url="https://hub.example.com", emit=Events(), env={})
+    sup.runner = SimpleNamespace(connected=False, signed_out=False, herdr=True)  # type: ignore[assignment]
+    sup._tick_runner()
+    assert sup.runner_state == "starting"
+    assert sup.status()["runner_signed_out_of"] is None
 
 
 def test_a_missing_program_says_what_to_install():

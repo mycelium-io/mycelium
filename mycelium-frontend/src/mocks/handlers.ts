@@ -30,7 +30,7 @@ import {
   runnerAgentOf,
 } from "./runners";
 import type { MockMemory, MockMessage, RoomFixture } from "./fixtures";
-import { mockBoard, mockBoardRow, mockWaiting } from "./board";
+import { mockBoard, mockBoardRow, mockClosedTasks, mockWaiting } from "./board";
 import { demoBusy, demoOnLaunch, demoOnMessage, demoOnTask, isDemoScenario } from "./demo";
 import {
   LEARN_PERSON,
@@ -749,6 +749,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // GET /board, GET /board/{key} — the board as people read it (services/board.py).
       if (method !== "GET") return null;
       if (sub.length === 1) return json(mockBoard(fx));
+      if (sub.length === 2 && sub[1] === "closed") {
+        return json(
+          mockClosedTasks(fx, roomName, {
+            q: searchParams.get("q") ?? "",
+            before: searchParams.get("before"),
+            limit: Number(searchParams.get("limit") ?? 30) || 30,
+          }),
+        );
+      }
       const key = sub.slice(1).map(decodeURIComponent).join("/");
       const row = mockBoardRow(fx, key);
       return row ? json(row) : notFound(`No board row '${key}' in this room (mock)`);
@@ -934,13 +943,17 @@ export async function handleMock(req: Request): Promise<Response | null> {
           decided = { decision: body.decision };
           said = `${body.decision === "approved" ? "Approved" : "Declined"} "${String(ask.question)}"`;
         } else if (ask.kind === "choose") {
-          const choices = (Array.isArray(body.choices) ? (body.choices as unknown[]) : []).map(String);
-          if (!choices.length || choices.some((c) => !options.some((o) => o.id === c)) || (choices.length > 1 && !ask.multiple)) {
-            return json({ detail: ask.multiple ? "Pick one or more of its options." : "Pick exactly one of its options." }, 422);
+          // An empty list is none of the options; a missing one isn't an answer.
+          if (!Array.isArray(body.choices)) return json({ detail: "A choose is answered with its options' ids, or none." }, 422);
+          const choices = (body.choices as unknown[]).map(String);
+          if (choices.some((c) => !options.some((o) => o.id === c)) || (choices.length > 1 && !ask.multiple)) {
+            return json({ detail: ask.multiple ? "Pick any of its options, or none." : "Pick one of its options, or none." }, 422);
           }
           const chosen = options.filter((o) => choices.includes(o.id)).map((o) => o.label);
           decided = { choices, chosen };
-          said = `Chose "${chosen.join(", ")}" for "${String(ask.question)}"`;
+          said = chosen.length
+            ? `Chose "${chosen.join(", ")}" for "${String(ask.question)}"`
+            : `Chose none of the options for "${String(ask.question)}"`;
         } else {
           if (!note) return json({ detail: "A question needs an answer." }, 422);
           decided = {};

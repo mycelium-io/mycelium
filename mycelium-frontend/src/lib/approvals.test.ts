@@ -109,7 +109,12 @@ describe("verdictOf", () => {
   it("says what was decided", () => {
     expect(verdictOf({ ...base, kind: "approve", decision: "approved" })).toBe("Approved");
     expect(verdictOf({ ...base, kind: "approve", decision: "declined" })).toBe("Declined");
-    expect(verdictOf({ ...base, kind: "choose", decision: null, choices: ["1", "3"], chosen: ["A", "C"] })).toBe("Chose A, C");
+    expect(verdictOf({ ...base, kind: "choose", decision: null, choices: ["2"], chosen: ["B"] })).toBe("Chose B");
+    expect(verdictOf({ ...base, kind: "choose", decision: null, choices: [], chosen: [] })).toBe("Chose none of the options");
+    expect(verdictOf({ ...base, kind: "choose", decision: null, choices: ["1", "3"], chosen: ["A", "C"] })).toBe("Chose 1 and 3: A; C");
+    expect(verdictOf({ ...base, kind: "choose", decision: null, choices: ["1", "2", "3"], chosen: ["A", "B", "C"] })).toBe(
+      "Chose 1, 2 and 3: A; B; C",
+    );
     expect(verdictOf({ ...base, kind: "question", decision: null, text: "x" })).toBe("Answered");
   });
 });

@@ -5,12 +5,21 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_DOWNLOADS, type AppDownload } from "@/lib/desktop";
 
-const env: { download: AppDownload | null; desktop: boolean } = { download: null, desktop: false };
+const env: { download: AppDownload | null; desktop: boolean; signedOutOf: string | null } = {
+  download: null,
+  desktop: false,
+  signedOutOf: null,
+};
 
 vi.mock("@/lib/desktop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/desktop")>()),
   useAppDownload: () => env.download,
   useIsDesktop: () => env.desktop,
+}));
+
+vi.mock("@/lib/desktop-app", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/desktop-app")>()),
+  useRunnerSignedOutOf: () => env.signedOutOf,
 }));
 
 import { ConnectMachine } from "./runner-fields";
@@ -19,6 +28,18 @@ describe("<ConnectMachine />", () => {
   beforeEach(() => {
     env.download = APP_DOWNLOADS.Mac;
     env.desktop = false;
+    env.signedOutOf = null;
+  });
+
+  it("in the app, says outright when the hub refused this computer's sign-in", () => {
+    env.desktop = true;
+    env.signedOutOf = "https://hub.example.com/";
+    render(<ConnectMachine />);
+    expect(screen.getByText(/isn't signed in to https:\/\/hub\.example\.com$/)).toBeInTheDocument();
+    expect(screen.getByText("mycelium login")).toBeInTheDocument();
+    // No spinner and no "if it doesn't": the app knows.
+    expect(screen.queryByText(/is connecting$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/If it doesn't/)).not.toBeInTheDocument();
   });
 
   it.each(Object.values(APP_DOWNLOADS))("offers the app first in a browser on $platform", (download) => {

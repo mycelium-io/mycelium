@@ -5,10 +5,11 @@
 Board API — the board as people read it, and what is waiting on a member.
 
 GET /rooms/{room}/board          — the open epics as paths, and the other open tasks
+GET /rooms/{room}/board/closed   — the closed tasks, newest first, by words and a page at a time
 GET /rooms/{room}/board/{key}    — one row as the board reads it, with its parts
 GET /rooms/{room}/waiting?for=   — what is waiting on a member
 
-All three are worked out on read (:mod:`app.services.board`,
+All of them are worked out on read (:mod:`app.services.board`,
 :mod:`app.services.waiting`); nothing here writes. The app and the CLI draw
 what these return rather than projecting epics themselves, so the two agree.
 """
@@ -95,6 +96,37 @@ async def read_board(room_name: str) -> BoardRead:
     """The room's open epics, each with its parts in path order, and its other open tasks."""
     _require_room(room_name)
     return BoardRead.model_validate(board.board(room_name, datetime.now(UTC)))
+
+
+class ClosedTask(BoardPart):
+    closed_at: str = Field(..., description="When it settled: its last write, which a resolve is")
+    closed_by: str | None = Field(None, description="Who resolved it, else who held it")
+
+
+class ClosedPage(BaseModel):
+    tasks: list[ClosedTask]
+    more: bool = Field(..., description="Older matches past this page; ask again with before")
+    total: int = Field(..., description="Every closed task matching q, not only this page")
+
+
+# Declared before ``/board/{key:path}``, which would otherwise read "closed" as a key.
+@router.get("/board/closed", response_model=ClosedPage, responses=refusals(404, 422))
+async def read_closed(
+    room_name: str,
+    q: str = Query("", description="Words that must all be in the title or the latest line"),
+    before: str | None = Query(None, description="Only tasks closed strictly before this ISO time"),
+    limit: int = Query(board.CLOSED_PAGE, ge=1, le=board.CLOSED_PAGE_MAX),
+) -> ClosedPage:
+    """The room's closed tasks, newest closed first, found by their words and paged by time."""
+    from app.services.filesystem import parse_timestamp
+
+    _require_room(room_name)
+    until = parse_timestamp(before) if before else None
+    if before and until is None:
+        raise HTTPException(status_code=422, detail=f"before isn't an ISO time: {before!r}")
+    return ClosedPage.model_validate(
+        board.closed(room_name, datetime.now(UTC), q=q, before=until, limit=limit)
+    )
 
 
 @router.get("/board/{key:path}", response_model=BoardEpic, responses=refusals(404))

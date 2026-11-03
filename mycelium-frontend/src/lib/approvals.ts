@@ -160,10 +160,17 @@ export function linkKind(link: string): "web" | "memory" | "text" {
 }
 
 /** What an answer decided, in a few words: "Approved", "Declined", "Chose
- *  Stripe", or "Answered". */
+ *  Stripe", or "Answered". Several picks lead with their numbers, "Chose 1 and
+ *  3: Stripe; PayPal", so a line cut short still says how many were picked. */
 export function verdictOf(answer: AskAnswer): string {
   if (answer.kind === "approve") return answer.decision === "declined" ? "Declined" : "Approved";
-  if (answer.kind === "choose") return `Chose ${answer.chosen.length ? answer.chosen.join(", ") : answer.choices.join(", ")}`;
+  if (answer.kind === "choose") {
+    if (answer.choices.length === 0) return "Chose none of the options";
+    const labels = answer.chosen.length ? answer.chosen : answer.choices;
+    if (answer.choices.length < 2) return `Chose ${labels.join(", ")}`;
+    const ids = answer.choices;
+    return `Chose ${ids.slice(0, -1).join(", ")} and ${ids[ids.length - 1]}: ${labels.join("; ")}`;
+  }
   return "Answered";
 }
 

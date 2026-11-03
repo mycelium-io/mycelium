@@ -37,7 +37,8 @@ import {
   layoutStorage,
 } from "@/lib/panel-layout";
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
-import { useSheetLayout } from "@/lib/use-viewport";import { RailSheet } from "@/components/rail-sheet";
+import { useSheetLayout } from "@/lib/use-viewport";
+import { RailSheet } from "@/components/rail-sheet";
 import { useKeyAction } from "@/components/keymap-provider";
 import type { RoomViewsNav } from "@/components/room-views-nav";
 

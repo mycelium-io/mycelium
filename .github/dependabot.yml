@@ -5,12 +5,22 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # slim-bindings moves with the SLIM node and slimctl, never on its own
+      # (CLAUDE.md: same minor version, 2.1 today).
+      - dependency-name: slim-bindings
+        versions: [">=2.2"]
 
   - package-ecosystem: pip
     directory: /mycelium-cli
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # slim-bindings moves with the SLIM node and slimctl, never on its own
+      # (CLAUDE.md: same minor version, 2.1 today).
+      - dependency-name: slim-bindings
+        versions: [">=2.2"]
 
   - package-ecosystem: npm
     directory: /mycelium-frontend
@@ -19,6 +29,9 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
-    directory: /
+    # The workflows, and the repo's own actions (setup-uv's pin lives in one).
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly

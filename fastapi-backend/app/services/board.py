@@ -285,3 +285,50 @@ def show(room: str, key: str, now: datetime) -> dict[str, Any] | None:
     if key not in rows.rows:
         return None
     return rows.epic(key)
+
+
+#: How many closed tasks one page holds, by default and at most.
+CLOSED_PAGE = 30
+CLOSED_PAGE_MAX = 100
+
+
+def closed(
+    room: str,
+    now: datetime,
+    *,
+    q: str = "",
+    before: datetime | None = None,
+    limit: int = CLOSED_PAGE,
+) -> dict[str, Any]:
+    """The room's settled tasks, newest closed first, a page at a time.
+
+    Every settled row in the listed namespaces, parts of epics included, since
+    a closed task is looked for by what it was, not where it sat. ``q`` keeps
+    the ones whose title or latest line has every one of its words, in any
+    letter case. ``before`` pages back: only rows closed strictly earlier.
+    ``total`` counts every match for ``q``, not just this page.
+
+    When a row closed is its last write, since resolving one writes it, and who
+    closed it is who resolved it, as the resolve recorded, else whoever held it.
+    """
+    from app.services.filesystem import parse_timestamp
+
+    rows = _Rows(room, now)
+    words = q.lower().split()
+    found: list[tuple[datetime, dict[str, Any]]] = []
+    for key, (meta, _content) in rows.rows.items():
+        if key.split("/", 1)[0] not in LISTED_NAMESPACES or not rows.settled(key):
+            continue
+        part = rows.part(key)
+        said = f"{part['title']} {(part['latest'] or {}).get('text', '')}".lower()
+        if not all(w in said for w in words):
+            continue
+        at = parse_timestamp(meta.get("updated_at") or meta.get("created_at")) or now
+        resolved = meta.get(assignments.FIELD) == "resolved"
+        by = meta.get("assignment_note_by") if resolved else None
+        by = str(by or meta.get("owner") or "").lstrip("@") or None
+        found.append((at, {**part, "closed_at": at.isoformat(), "closed_by": by}))
+    found.sort(key=lambda hit: hit[0], reverse=True)
+    older = [task for at, task in found if before is None or at < before]
+    size = max(1, min(limit, CLOSED_PAGE_MAX))
+    return {"tasks": older[:size], "more": len(older) > size, "total": len(found)}
