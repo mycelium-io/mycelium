@@ -29,11 +29,13 @@ run on the CPU through sherpa-onnx, like the search model runs through
 fastembed. Audio is never stored: a session holds only the samples of the
 piece it is hearing, and forgets a mic left idle.
 
-One limit shapes Moonshine's cutting: sherpa-onnx 1.13.8 returns empty text
-for a Moonshine v2 piece much past six seconds (k2-fsa/sherpa-onnx#3975, fixed
-after that release). For it the detector caps a piece's length, and
+One limit shapes Moonshine's cutting: sherpa-onnx before 2.0 returned empty
+text for a Moonshine v2 piece much past six seconds (k2-fsa/sherpa-onnx#3975,
+fixed in 2.0). For it the detector caps a piece's length, and
 :func:`split_long` cuts anything longer at its quietest point, so no piece
-reaches the model whole. Parakeet has no such limit: its pieces end at a pause,
+reaches the model whole. The cap is still in place on 2.0, where it now only
+costs accuracy when a cut lands mid-word; raising it wants testing with long
+real recordings. Parakeet has no such limit: its pieces end at a pause,
 or after :data:`ACCURATE`'s ``max_piece_s`` of unbroken speech so text still
 arrives during a long run.
 """
@@ -114,7 +116,8 @@ FAST = SpeechModel(
         "decoder": "d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d",
         "tokens": "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049",
     },
-    # Under the length past which Moonshine v2 comes back empty (see above).
+    # Under the length past which Moonshine v2 came back empty before
+    # sherpa-onnx 2.0 (see above).
     max_piece_s=5.5,
     # Short enough that text arrives while someone is still talking in
     # sentences, long enough not to split words.

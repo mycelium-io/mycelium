@@ -26,13 +26,12 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.29.0,<2",
     "opentelemetry-instrumentation-fastapi>=0.50b0,<0.67",
     "pillow>=13.0.0",
-    # Voice (services/voice.py). Pinned: 1.13.8 drops Moonshine v2 pieces
-    # over ~6s, which the service works around by cutting speech shorter, so a
-    # new release is worth re-testing rather than taking blindly. The core
-    # package carries the native libraries; sherpa-onnx requires it, but uv's
-    # lock leaves it out, so it is listed itself.
-    "sherpa-onnx==1.13.8",
-    "sherpa-onnx-core==1.13.8",
+    # Voice (services/voice.py). Pinned, so a new release is re-tested by
+    # transcribing real speech with both models (fast and accurate) rather than
+    # taken blindly. The core package carries the native libraries and must be
+    # the same version; it is listed itself so the two move together.
+    "sherpa-onnx==2.0.1",
+    "sherpa-onnx-core==2.0.1",
 ]
 
 [dependency-groups]
