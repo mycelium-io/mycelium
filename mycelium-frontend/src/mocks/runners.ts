@@ -15,6 +15,7 @@
 import { DEMO_PERSON, isDemoScenario } from "./demo";
 import { LEARN_PERSON, LEARN_ROOTS, isLearnScenario } from "./learn";
 import type {
+  AgentSessionSummary,
   Framework,
   MachineAgent,
   MachineProblem,
@@ -28,6 +29,77 @@ import type {
 
 const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
 
+/**
+ * A machine's worth of earlier sessions: a couple of hundred across ten
+ * folders, newest first, the way someone who uses an agent CLI every day has
+ * them. The titles are made up, in the checkout story.
+ */
+const ANGLES = [
+  "",
+  ", then the tests",
+  " (second try)",
+  " after review",
+  ", on staging",
+  " for the sale",
+  ", with Ana's notes",
+  ", rolled back",
+  ", phone layout",
+  ", the follow-up",
+  ", from the incident",
+  ", smaller version",
+];
+
+function mockSessions(): AgentSessionSummary[] {
+  const folders = [
+    ["checkout", ["main", "fix/double-charge", "feat/apple-pay", "fix/tax-rounding"]],
+    ["storefront", ["main", "feat/delivery-date", "fix/safari-17"]],
+    ["payments-api", ["main", "feat/webhooks", "fix/idempotency"]],
+    ["admin", ["main", "feat/refund-queue"]],
+    ["mobile-app", ["main", "feat/wallet"]],
+    ["design-system", ["main"]],
+    ["infra", ["main", "chore/node-24"]],
+    ["receipts", ["main"]],
+    ["coupons", ["main", "feat/stacking"]],
+    ["notes", [null]],
+  ] as const;
+  const titles = [
+    "Fix the double charge when the card network times out",
+    "Add Apple Pay to checkout behind the switch",
+    "Why does the tax line round wrong over $1,000?",
+    "Write tests for the refund webhook",
+    "Move the receipt email off the checkout request",
+    "Put the address form on one page",
+    "Show the delivery date before payment",
+    "Safari 17 drops the card form on back",
+    "Review #504 and check the refund path",
+    "Upgrade to Node 24 and fix what breaks",
+    "Add an idempotency key to every charge",
+    "Explain how coupons stack with sale prices",
+    "Find where the checkout spends 1.2 seconds",
+    "Draft the refund policy for double charges",
+    "Wire failed payments to the room",
+    "Remove the old PayPal button",
+    "Rename the checkout events for analytics",
+    "Pair on the wallet screen layout",
+  ];
+  const out: AgentSessionSummary[] = [];
+  let minutes = 20;
+  for (let i = 0; i < 214; i++) {
+    const [folder, branches] = folders[(i * 7 + (i % 3)) % folders.length];
+    out.push({
+      id: `s${(i * 2654435761 >>> 0).toString(16).padStart(8, "0")}`,
+      folder: `/Users/morgan/code/${folder}`,
+      last_used: iso(minutes),
+      messages: 4 + ((i * 37) % 180),
+      branch: branches[i % branches.length],
+      // Real sessions rarely share a title: each topic comes back at a different turn.
+      title: `${titles[(i * 5 + folder.length) % titles.length]}${ANGLES[Math.floor(i / titles.length) % ANGLES.length]}`,
+    });
+    minutes += 25 + ((i * 53) % 400);
+  }
+  return out;
+}
+
 const FRAMEWORKS: Framework[] = [
   {
     id: "claude",
@@ -38,12 +110,7 @@ const FRAMEWORKS: Framework[] = [
     installed: true,
     launchable: true,
     note: null,
-    sessions: [
-      { id: "6f1c2e0a-checkout", folder: "/Users/morgan/code/checkout", last_used: iso(35), messages: 84 },
-      { id: "0b7d91e4-checkout", folder: "/Users/morgan/code/checkout", last_used: iso(60 * 26), messages: 12 },
-      { id: "a3e5c8f2-storefront", folder: "/Users/morgan/code/storefront", last_used: iso(60 * 5), messages: 140 },
-      { id: "9c4b1d77-payments", folder: "/Users/morgan/code/payments-api", last_used: iso(60 * 24 * 4), messages: 31 },
-    ],
+    sessions: mockSessions(),
   },
   {
     id: "opencode",

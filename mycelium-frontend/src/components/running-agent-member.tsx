@@ -5,15 +5,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Laptop } from "lucide-react";
-import {
-  adoptRunnerAgent,
-  resumeAgentSession,
-  type AgentSessionSummary,
-  type Framework,
-  type MachineUnenrolled,
-  type Runner,
-} from "@/lib/api";
-import { Ago } from "@/lib/relative-time";
+import { adoptRunnerAgent, resumeAgentSession, type Framework, type MachineUnenrolled, type Runner } from "@/lib/api";
+import { EarlierSessions, sessionKey, type EarlierSession } from "@/components/earlier-sessions";
 import { runnerName, useRunnerJob, useRunners, useRunnersRevalidate } from "@/lib/runners";
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
@@ -48,13 +41,6 @@ export function runningAgents(runners: Runner[]): RunningAgent[] {
       .filter((agent) => !taken.has(agent.pane))
       .map((agent) => ({ runner, agent }));
   });
-}
-
-/** An earlier session a person could bring in, its agent CLI and its machine. */
-export interface EarlierSession {
-  runner: Runner;
-  framework: Framework;
-  session: AgentSessionSummary;
 }
 
 /** Every earlier session your machines' agent CLIs can list, newest first. */
@@ -126,7 +112,7 @@ export function RunningAgentMember({
   const [queued, setQueued] = useState<{ runner: Runner; job: string; handle: string; resumed: boolean } | null>(null);
 
   const key = (c: RunningAgent) => `run:${c.runner.id}:${c.agent.pane}`;
-  const pastKey = (s: EarlierSession) => `past:${s.runner.id}:${s.framework.id}:${s.session.id}`;
+  const pastKey = sessionKey;
   // Running now comes first, so it's the one picked until another is.
   const chosenPast = earlier.find((s) => pastKey(s) === pick) ?? null;
   const chosen = chosenPast ? undefined : (candidates.find((c) => key(c) === pick) ?? candidates[0]);
@@ -268,14 +254,11 @@ export function RunningAgentMember({
       "flex w-full items-baseline gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
       active ? "border-accent bg-accent/10" : "border-border hover:border-border2 hover:bg-hairline",
     );
-  // Earlier sessions grouped by folder, the folders in the order of their newest.
-  const byFolder = new Map<string, EarlierSession[]>();
-  for (const s of earlier) byFolder.set(s.session.folder, [...(byFolder.get(s.session.folder) ?? []), s]);
 
   return (
     <>
       <div className="space-y-4 px-5 py-4">
-        <div role="radiogroup" aria-label="Which agent" className="max-h-72 space-y-3 overflow-y-auto">
+        <div role="radiogroup" aria-label="Which agent" className="max-h-[26rem] space-y-3 overflow-y-auto">
           {candidates.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-micro font-medium text-muted-foreground">Running now</p>
@@ -298,39 +281,12 @@ export function RunningAgentMember({
             </div>
           )}
           {earlier.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-micro font-medium text-muted-foreground">Earlier sessions</p>
-              {[...byFolder].map(([folder, sessions]) => (
-                <div key={folder} className="space-y-1">
-                  <p className="truncate pt-0.5 font-mono text-micro text-faint">{tildePath(folder)}</p>
-                  {sessions.map((s) => {
-                    const active = past !== null && pastKey(s) === pastKey(past);
-                    return (
-                      <button
-                        key={pastKey(s)}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        aria-label={`${s.framework.name} session in ${tildePath(folder)}`}
-                        onClick={() => choose(pastKey(s))}
-                        className={cn(row(active), "py-1.5")}
-                      >
-                        <span className={cn("text-label font-medium", active ? "text-text" : "text-muted-foreground")}>
-                          {s.framework.name}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-micro text-faint">
-                          {s.session.messages ? `${s.session.messages} messages` : ""}
-                        </span>
-                        <span className="flex-shrink-0 text-micro text-faint">
-                          {connected.length > 1 ? `${runnerName(s.runner)}, ` : ""}
-                          <Ago at={s.session.last_used} />
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+            <EarlierSessions
+              sessions={earlier}
+              picked={past ? pastKey(past) : null}
+              onPick={choose}
+              manyMachines={connected.length > 1}
+            />
           )}
           {missing}
         </div>

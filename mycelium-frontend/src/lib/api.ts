@@ -1537,7 +1537,7 @@ export interface Framework {
   sessions?: AgentSessionSummary[] | null;
 }
 
-/** An earlier agent session on a machine, as the scan lists it. */
+/** An earlier agent session on a machine. */
 export interface AgentSessionSummary {
   /** The CLI's own id for it, which resumes it. */
   id: string;
@@ -1545,6 +1545,12 @@ export interface AgentSessionSummary {
   last_used: string;
   /** How long it is, so two in one folder can be told apart. */
   messages?: number | null;
+  /** The git branch it was working on, when it was in a repository. */
+  branch?: string | null;
+  /** Its own words: the CLI's title for it, else what it was first asked.
+   *  Read only by the desktop app on the machine it's on, never through the
+   *  hub, so a session listed from anywhere else has none. */
+  title?: string | null;
 }
 
 export type RunnerAgentStatus =
