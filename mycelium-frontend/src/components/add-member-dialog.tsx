@@ -46,10 +46,10 @@ const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; 
   {
     kind: "running",
     icon: Play,
-    label: "Running agent",
-    hint: "Already running",
+    label: "Existing agent",
+    hint: "Running or past",
     about:
-      "An agent already running on your machine that isn't in a room yet. It keeps its session and joins this room as a member.",
+      "An agent already on your machine: one running now, or an earlier session picked up where it left off. It joins this room as a member.",
   },
   {
     kind: "engine",

@@ -5,7 +5,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Laptop } from "lucide-react";
-import { adoptRunnerAgent, type MachineUnenrolled, type Runner } from "@/lib/api";
+import {
+  adoptRunnerAgent,
+  resumeAgentSession,
+  type AgentSessionSummary,
+  type Framework,
+  type MachineUnenrolled,
+  type Runner,
+} from "@/lib/api";
+import { Ago } from "@/lib/relative-time";
 import { runnerName, useRunnerJob, useRunners, useRunnersRevalidate } from "@/lib/runners";
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
@@ -42,6 +50,41 @@ export function runningAgents(runners: Runner[]): RunningAgent[] {
   });
 }
 
+/** An earlier session a person could bring in, its agent CLI and its machine. */
+export interface EarlierSession {
+  runner: Runner;
+  framework: Framework;
+  session: AgentSessionSummary;
+}
+
+/** Every earlier session your machines' agent CLIs can list, newest first. */
+export function earlierSessions(runners: Runner[]): EarlierSession[] {
+  return runners
+    .flatMap((runner) =>
+      runner.frameworks.flatMap((framework) =>
+        framework.installed ? (framework.sessions ?? []).map((session) => ({ runner, framework, session })) : [],
+      ),
+    )
+    .sort((a, b) => b.session.last_used.localeCompare(a.session.last_used));
+}
+
+/** The installed agent CLIs whose sessions can't be listed yet. */
+export function sessionsUnsupported(runners: Runner[]): Framework[] {
+  const seen = new Map<string, Framework>();
+  for (const r of runners) for (const f of r.frameworks) if (f.installed && !f.sessions) seen.set(f.id, f);
+  return [...seen.values()];
+}
+
+/** Where to read how an agent CLI's integration lists and resumes sessions. */
+export const ADD_SESSION_SUPPORT_URL =
+  "https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/integrations/agents";
+
+/** A suggested handle for a session: its folder's name. */
+function handleFor(folder: string): string {
+  const name = folder.replace(/\/+$/, "").split("/").pop() ?? "";
+  return name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 function cliName(runner: Runner, kind: string | null): string {
   if (!kind) return "An agent";
   return runner.frameworks.find((f) => f.id === kind)?.name ?? kind;
@@ -73,18 +116,30 @@ export function RunningAgentMember({
   const revalidateRoom = useRoomRevalidate(roomName);
   const revalidateRunners = useRunnersRevalidate();
   const candidates = useMemo(() => runningAgents(connected), [connected]);
+  const earlier = useMemo(() => earlierSessions(connected), [connected]);
+  const unsupported = useMemo(() => sessionsUnsupported(connected), [connected]);
 
   const [pick, setPick] = useState<string | null>(null);
   const [handle, setHandle] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [queued, setQueued] = useState<{ runner: Runner; job: string; handle: string } | null>(null);
+  const [queued, setQueued] = useState<{ runner: Runner; job: string; handle: string; resumed: boolean } | null>(null);
 
-  const key = (c: RunningAgent) => `${c.runner.id}:${c.agent.pane}`;
-  const chosen = candidates.find((c) => key(c) === pick) ?? candidates[0];
-  const handleShown = handle ?? chosen?.agent.suggested_handle ?? "";
+  const key = (c: RunningAgent) => `run:${c.runner.id}:${c.agent.pane}`;
+  const pastKey = (s: EarlierSession) => `past:${s.runner.id}:${s.framework.id}:${s.session.id}`;
+  // Running now comes first, so it's the one picked until another is.
+  const chosenPast = earlier.find((s) => pastKey(s) === pick) ?? null;
+  const chosen = chosenPast ? undefined : (candidates.find((c) => key(c) === pick) ?? candidates[0]);
+  const chosenAny = chosen ?? chosenPast ?? earlier[0] ?? null;
+  const past = chosenPast ?? (chosen ? null : (earlier[0] ?? null));
+  const handleShown = handle ?? (past ? handleFor(past.session.folder) : (chosen?.agent.suggested_handle ?? ""));
   const trimmed = normHandle(handleShown);
-  const canSubmit = !!chosen && handleValid(handleShown) && !submitting;
+  const canSubmit = !!chosenAny && handleValid(handleShown) && !submitting;
+  const choose = (k: string) => {
+    setPick(k);
+    setHandle(null);
+    setError(null);
+  };
 
   const { job } = useRunnerJob(queued?.runner.id ?? null, queued?.job ?? null);
   const reported = useRef<string | null>(null);
@@ -97,18 +152,33 @@ export function RunningAgentMember({
   }, [job?.status, queued, revalidateRoom, revalidateRunners, onAdded]);
 
   const submit = async () => {
-    if (!canSubmit || !chosen) return;
+    if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
     try {
+      const by = principal.trim() || undefined;
+      if (past) {
+        const made = await resumeAgentSession(past.runner.id, {
+          room: roomName,
+          framework: past.framework.id,
+          session: past.session.id,
+          folder: past.session.folder,
+          handle: trimmed,
+          created_by: by,
+        });
+        revalidateRoom();
+        setQueued({ runner: past.runner, job: made.id, handle: trimmed, resumed: true });
+        return;
+      }
+      if (!chosen) return;
       const made = await adoptRunnerAgent(chosen.runner.id, {
         room: roomName,
         pane: chosen.agent.pane,
         handle: trimmed,
-        created_by: principal.trim() || undefined,
+        created_by: by,
       });
       revalidateRoom();
-      setQueued({ runner: chosen.runner, job: made.id, handle: trimmed });
+      setQueued({ runner: chosen.runner, job: made.id, handle: trimmed, resumed: false });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not bring the agent in");
     } finally {
@@ -122,9 +192,11 @@ export function RunningAgentMember({
     const introduced = job?.result?.introduced === true;
     const line =
       status === "done"
-        ? introduced
-          ? `@${queued.handle} is in ${roomName}, and its introduction is typed into its pane.`
-          : `@${queued.handle} is in ${roomName}. It gets its introduction as soon as it's idle.`
+        ? queued.resumed
+          ? `@${queued.handle} is in ${roomName}, its session resumed in its own pane.`
+          : introduced
+            ? `@${queued.handle} is in ${roomName}, and its introduction is typed into its pane.`
+            : `@${queued.handle} is in ${roomName}. It gets its introduction as soon as it's idle.`
         : status === "failed"
           ? (job?.error ?? `${machine} couldn't bring it in.`)
           : status === "waiting"
@@ -167,57 +239,100 @@ export function RunningAgentMember({
     );
   }
 
-  if (!chosen) {
+  // Not seeing them? Each agent CLI whose sessions can't be listed says so,
+  // and where to add it.
+  const missing = unsupported.map((f) => (
+    <p key={f.id} className="text-micro text-faint">
+      Not seeing your {f.name} sessions? They can&apos;t be brought in yet.{" "}
+      <a href={ADD_SESSION_SUPPORT_URL} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+        Add support
+      </a>
+    </p>
+  ));
+
+  if (!chosenAny) {
     const where = connected.length === 1 ? runnerName(connected[0]) : "your machines";
     return (
       <div className="space-y-1 px-5 py-4">
-        <p className="text-label text-text">Every agent running on {where} is in a room already.</p>
+        <p className="text-label text-text">Every agent running on {where} is in a room already, and there are no earlier sessions to bring in.</p>
         <p className="text-micro text-muted-foreground">
           An agent CLI you start in herdr shows up here until a room has it.
         </p>
+        {missing}
       </div>
     );
   }
 
+  const row = (active: boolean) =>
+    cn(
+      "flex w-full items-baseline gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
+      active ? "border-accent bg-accent/10" : "border-border hover:border-border2 hover:bg-hairline",
+    );
+  // Earlier sessions grouped by folder, the folders in the order of their newest.
+  const byFolder = new Map<string, EarlierSession[]>();
+  for (const s of earlier) byFolder.set(s.session.folder, [...(byFolder.get(s.session.folder) ?? []), s]);
+
   return (
     <>
       <div className="space-y-4 px-5 py-4">
-        <div>
-          <p id="running-agent-label" className="mb-2 text-micro font-medium text-muted-foreground">
-            Which agent
-          </p>
-          <div role="radiogroup" aria-labelledby="running-agent-label" className="max-h-56 space-y-1.5 overflow-y-auto">
-            {candidates.map((c) => {
-              const active = key(c) === key(chosen);
-              const where = [c.agent.tab_label, c.agent.folder && tildePath(c.agent.folder)].filter(Boolean).join(" · ");
-              return (
-                <button
-                  key={key(c)}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => {
-                    setPick(key(c));
-                    setHandle(null);
-                    setError(null);
-                  }}
-                  className={cn(
-                    "flex w-full items-baseline gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
-                    active ? "border-accent bg-accent/10" : "border-border hover:border-border2 hover:bg-hairline",
-                  )}
-                >
-                  <span className={cn("text-label font-medium", active ? "text-text" : "text-muted-foreground")}>
-                    {cliName(c.runner, c.agent.kind)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-micro text-faint">{where}</span>
-                  <span className="flex-shrink-0 text-micro text-faint">
-                    {connected.length > 1 ? `${runnerName(c.runner)}, ` : ""}
-                    {STATE_LABEL[c.agent.state]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        <div role="radiogroup" aria-label="Which agent" className="max-h-72 space-y-3 overflow-y-auto">
+          {candidates.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-micro font-medium text-muted-foreground">Running now</p>
+              {candidates.map((c) => {
+                const active = !past && chosen !== undefined && key(c) === key(chosen);
+                const where = [c.agent.tab_label, c.agent.folder && tildePath(c.agent.folder)].filter(Boolean).join(" · ");
+                return (
+                  <button key={key(c)} type="button" role="radio" aria-checked={active} onClick={() => choose(key(c))} className={row(active)}>
+                    <span className={cn("text-label font-medium", active ? "text-text" : "text-muted-foreground")}>
+                      {cliName(c.runner, c.agent.kind)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-micro text-faint">{where}</span>
+                    <span className="flex-shrink-0 text-micro text-faint">
+                      {connected.length > 1 ? `${runnerName(c.runner)}, ` : ""}
+                      {STATE_LABEL[c.agent.state]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {earlier.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-micro font-medium text-muted-foreground">Earlier sessions</p>
+              {[...byFolder].map(([folder, sessions]) => (
+                <div key={folder} className="space-y-1">
+                  <p className="truncate pt-0.5 font-mono text-micro text-faint">{tildePath(folder)}</p>
+                  {sessions.map((s) => {
+                    const active = past !== null && pastKey(s) === pastKey(past);
+                    return (
+                      <button
+                        key={pastKey(s)}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        aria-label={`${s.framework.name} session in ${tildePath(folder)}`}
+                        onClick={() => choose(pastKey(s))}
+                        className={cn(row(active), "py-1.5")}
+                      >
+                        <span className={cn("text-label font-medium", active ? "text-text" : "text-muted-foreground")}>
+                          {s.framework.name}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-micro text-faint">
+                          {s.session.messages ? `${s.session.messages} messages` : ""}
+                        </span>
+                        <span className="flex-shrink-0 text-micro text-faint">
+                          {connected.length > 1 ? `${runnerName(s.runner)}, ` : ""}
+                          <Ago at={s.session.last_used} />
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+          {missing}
         </div>
 
         <IdentityRow
@@ -226,7 +341,11 @@ export function RunningAgentMember({
             setHandle(v);
             setError(null);
           }}
-          hint="How the room addresses it. Its own session keeps going as it is."
+          hint={
+            past
+              ? "How the room addresses it. It picks up the session where it left off."
+              : "How the room addresses it. Its own session keeps going as it is."
+          }
         />
         {error && (
           <p role="alert" className="break-words text-label text-red">
@@ -243,7 +362,9 @@ export function RunningAgentMember({
       >
         <Laptop className="size-4 flex-shrink-0" aria-hidden />
         <span className="truncate">
-          {runnerName(chosen.runner)} asks first, then types its introduction once it&apos;s idle.
+          {past
+            ? `${runnerName(past.runner)} asks first, then resumes the session in its own pane.`
+            : `${runnerName(chosenAny.runner)} asks first, then types its introduction once it's idle.`}
         </span>
       </MemberFooter>
     </>

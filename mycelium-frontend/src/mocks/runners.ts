@@ -38,6 +38,12 @@ const FRAMEWORKS: Framework[] = [
     installed: true,
     launchable: true,
     note: null,
+    sessions: [
+      { id: "6f1c2e0a-checkout", folder: "/Users/morgan/code/checkout", last_used: iso(35), messages: 84 },
+      { id: "0b7d91e4-checkout", folder: "/Users/morgan/code/checkout", last_used: iso(60 * 26), messages: 12 },
+      { id: "a3e5c8f2-storefront", folder: "/Users/morgan/code/storefront", last_used: iso(60 * 5), messages: 140 },
+      { id: "9c4b1d77-payments", folder: "/Users/morgan/code/payments-api", last_used: iso(60 * 24 * 4), messages: 31 },
+    ],
   },
   {
     id: "opencode",
@@ -237,7 +243,8 @@ if (!isDemoScenario() && !isLearnScenario()) {
     version: "0.14.0",
     herdr: true,
     roots: ["/Users/morgan/models"],
-    frameworks: FRAMEWORKS,
+    // The same agent CLIs, with no earlier sessions on this machine.
+    frameworks: FRAMEWORKS.map((f) => (f.sessions ? { ...f, sessions: [] } : f)),
     agents: [],
     pairings: [
       {
