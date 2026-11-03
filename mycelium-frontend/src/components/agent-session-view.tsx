@@ -41,6 +41,7 @@ import {
   Search,
   SquareTerminal,
   Trash2,
+  UserRound,
   Wrench,
   X,
 } from "lucide-react";
@@ -308,7 +309,7 @@ function ToolRow({ call }: { call: ToolCall }) {
   const [open, setOpen] = useState(false);
   const [json, setJson] = useState(false);
   const sub = call._meta.subagent;
-  const Icon = sub ? Bot : TOOL_ICON[call.kind];
+  const Icon = sub ? Bot : call._meta.from === "person" ? UserRound : TOOL_ICON[call.kind];
   const failed = call.status === "failed" && !call._meta.interrupted;
   const diffs = useMemo(
     () =>

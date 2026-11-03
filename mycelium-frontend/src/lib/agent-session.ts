@@ -111,6 +111,8 @@ export interface ToolCall {
   rawInput?: unknown;
   rawOutput?: unknown;
   _meta: EntryMeta & {
+    /** The person ran it, not the agent: a shell command typed into the CLI. */
+    from?: "person";
     /** When the result came back. */
     endedAt?: string | null;
     /** It failed because someone stopped it. */
