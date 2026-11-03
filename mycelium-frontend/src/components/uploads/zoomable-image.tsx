@@ -104,10 +104,32 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
     latest.current = { view, stage, update };
   });
 
-  const measureImage = () => {
+  // Until it's measured the image still shows, at fit by CSS, so a size that
+  // never arrives can't leave the preview blank. A size of 0 isn't one yet:
+  // it's measured again on its load and once it has decoded.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const measureImage = useCallback(() => {
     const img = imgRef.current;
-    if (img) setNatural({ width: img.naturalWidth, height: img.naturalHeight });
-  };
+    if (!img || !img.naturalWidth || !img.naturalHeight) return;
+    setFailed(false);
+    setNatural((was) =>
+      was.width === img.naturalWidth && was.height === img.naturalHeight
+        ? was
+        : { width: img.naturalWidth, height: img.naturalHeight },
+    );
+  }, []);
+  const loaded = useCallback(() => {
+    measureImage();
+    // An image that failed before this mounted fired its error already: its
+    // decode is refused and it has no size, so it's a failure too.
+    const img = imgRef.current;
+    void img?.decode?.().then(measureImage, () => {
+      if (img.complete && !img.naturalWidth) setFailed(true);
+    });
+  }, [measureImage]);
+  // Retrying asks again, past whatever the browser kept from the failure.
+  const shownSrc = attempt ? `${src}${src.includes("?") ? "&" : "?"}retry=${attempt}` : src;
 
   // The frame's size is the window's, so it's watched. An image already
   // loaded (from the cache) fired its load before this.
@@ -119,12 +141,12 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
         was.width === el.clientWidth && was.height === el.clientHeight ? was : { width: el.clientWidth, height: el.clientHeight },
       );
     measure();
-    if (imgRef.current?.complete) measureImage();
+    if (imgRef.current?.complete) loaded();
     if (typeof ResizeObserver === "undefined") return;
     const seen = new ResizeObserver(measure);
     seen.observe(el);
     return () => seen.disconnect();
-  }, []);
+  }, [loaded]);
 
   const center = (): Point => ({ x: stage.frame.width / 2, y: stage.frame.height / 2 });
   const zoomBy = (factor: number, point: Point = center()) => update((v, st) => zoomAt(v, v.scale * factor, point, st));
@@ -238,11 +260,19 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
         {/* eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset */}
         <img
           ref={imgRef}
-          src={src}
+          src={shownSrc}
           alt={alt}
           draggable={false}
-          onLoad={measureImage}
-          className={cn("absolute top-0 left-0 block max-w-none origin-top-left", !shown && "invisible")}
+          onLoad={loaded}
+          onError={() => setFailed(true)}
+          className={cn(
+            "absolute block",
+            shown
+              ? "top-0 left-0 max-w-none origin-top-left"
+              : // Not measured yet: whole and centered by CSS, never hidden.
+                "inset-0 m-auto max-h-full max-w-full object-contain",
+            failed && "invisible",
+          )}
           style={
             shown
               ? {
@@ -253,9 +283,26 @@ export function ZoomableImage({ src, alt, ref }: { src: string; alt: string; ref
               : undefined
           }
         />
+        {failed && (
+          <div role="alert" className="absolute inset-0 grid place-content-center gap-2 text-center text-label text-muted-foreground">
+            <p>This image didn&apos;t load.</p>
+            {/* The preview's own header offers Download beside this. */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFailed(false);
+                setAttempt((n) => n + 1);
+              }}
+              className="mx-auto rounded-md border border-border px-2 py-0.5 text-text hover:bg-hairline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
         {!fit && shown && (
           <Minimap
-            src={src}
+            src={shownSrc}
             view={view}
             stage={stage}
             awake={awake || dragging}
