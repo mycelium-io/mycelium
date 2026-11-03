@@ -23,6 +23,7 @@ whatever hub answers on the developer's machine.
 ```python
 from tests.conftest import install_stand_in_hub, memory_read
 
+
 def test_board_new_files_the_task(monkeypatch):
     hub = install_stand_in_hub(monkeypatch)
     # The typed client parses what comes back against openapi.json, so answer
@@ -38,10 +39,13 @@ def test_board_new_files_the_task(monkeypatch):
 ```python
 from tests.conftest import FakeSlimClient
 
-monkeypatch.setattr(member, "SlimClient", fake_slim_client)   # the fixture, reset per test
+monkeypatch.setattr(member, "SlimClient", fake_slim_client)  # the fixture, reset per test
 await member.publish_once(
-    api_url="http://localhost:8000", node_endpoint="http://127.0.0.1:46357",
-    room="r", handle="agent-a", payload=message.serialize(content),
+    api_url="http://localhost:8000",
+    node_endpoint="http://127.0.0.1:46357",
+    room="r",
+    handle="agent-a",
+    payload=message.serialize(content),
 )
 assert FakeSlimClient.published == [message.serialize(content)]
 ```
