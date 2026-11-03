@@ -134,7 +134,7 @@ describe("AddMemberDialog", () => {
     open();
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Your machineStart a new one",
-      "Running agentAlready running",
+      "Existing agentRunning or past",
       "EngineRuns on this hub",
       "A2A serviceRuns elsewhere",
       "Open sessionPaste a prompt",

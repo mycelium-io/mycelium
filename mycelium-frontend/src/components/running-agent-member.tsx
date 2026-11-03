@@ -240,7 +240,7 @@ export function RunningAgentMember({
     const where = connected.length === 1 ? runnerName(connected[0]) : "your machines";
     return (
       <div className="space-y-1 px-5 py-4">
-        <p className="text-label text-text">Every agent running on {where} is in a room already, and there are no earlier sessions to bring in.</p>
+        <p className="text-label text-text">Every agent running on {where} is in a room already.</p>
         <p className="text-micro text-muted-foreground">
           An agent CLI you start in herdr shows up here until a room has it.
         </p>
@@ -285,7 +285,6 @@ export function RunningAgentMember({
               sessions={earlier}
               picked={past ? pastKey(past) : null}
               onPick={choose}
-              manyMachines={connected.length > 1}
             />
           )}
           {missing}
@@ -297,11 +296,6 @@ export function RunningAgentMember({
             setHandle(v);
             setError(null);
           }}
-          hint={
-            past
-              ? "How the room addresses it. It picks up the session where it left off."
-              : "How the room addresses it. Its own session keeps going as it is."
-          }
         />
         {error && (
           <p role="alert" className="break-words text-label text-red">

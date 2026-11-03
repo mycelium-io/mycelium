@@ -34,19 +34,37 @@ const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).t
  * folders, newest first, the way someone who uses an agent CLI every day has
  * them. The titles are made up, in the checkout story.
  */
-const ANGLES = [
-  "",
-  ", then the tests",
-  " (second try)",
-  " after review",
-  ", on staging",
-  " for the sale",
-  ", with Ana's notes",
-  ", rolled back",
-  ", phone layout",
-  ", the follow-up",
-  ", from the incident",
-  ", smaller version",
+// Each title is one plain request, an action on one part of the checkout,
+// so a couple of hundred of them are all different.
+const ACTIONS = ["Fix", "Write tests for", "Review", "Explain", "Speed up", "Clean up", "Document", "Debug"];
+const PARTS = [
+  "the double charge on a network timeout",
+  "Apple Pay behind its switch",
+  "the tax line on large orders",
+  "the refund webhook",
+  "the receipt email",
+  "the one-page address form",
+  "the delivery date on the basket",
+  "the card form on Safari 17",
+  "the refund path in #504",
+  "the Node 24 upgrade",
+  "idempotency keys on charges",
+  "coupon stacking with sale prices",
+  "the slow start of checkout",
+  "the refund policy for double charges",
+  "failed payment alerts",
+  "the PayPal button removal",
+  "the checkout analytics events",
+  "the wallet screen layout",
+  "the stock check before payment",
+  "guest checkout",
+  "the order confirmation page",
+  "gift card balances",
+  "the shipping rate lookup",
+  "saved cards for returning customers",
+  "the fraud check threshold",
+  "the abandoned basket email",
+  "the currency switcher",
 ];
 
 function mockSessions(): AgentSessionSummary[] {
@@ -62,26 +80,6 @@ function mockSessions(): AgentSessionSummary[] {
     ["coupons", ["main", "feat/stacking"]],
     ["notes", [null]],
   ] as const;
-  const titles = [
-    "Fix the double charge when the card network times out",
-    "Add Apple Pay to checkout behind the switch",
-    "Why does the tax line round wrong over $1,000?",
-    "Write tests for the refund webhook",
-    "Move the receipt email off the checkout request",
-    "Put the address form on one page",
-    "Show the delivery date before payment",
-    "Safari 17 drops the card form on back",
-    "Review #504 and check the refund path",
-    "Upgrade to Node 24 and fix what breaks",
-    "Add an idempotency key to every charge",
-    "Explain how coupons stack with sale prices",
-    "Find where the checkout spends 1.2 seconds",
-    "Draft the refund policy for double charges",
-    "Wire failed payments to the room",
-    "Remove the old PayPal button",
-    "Rename the checkout events for analytics",
-    "Pair on the wallet screen layout",
-  ];
   const out: AgentSessionSummary[] = [];
   let minutes = 20;
   for (let i = 0; i < 214; i++) {
@@ -92,8 +90,7 @@ function mockSessions(): AgentSessionSummary[] {
       last_used: iso(minutes),
       messages: 4 + ((i * 37) % 180),
       branch: branches[i % branches.length],
-      // Real sessions rarely share a title: each topic comes back at a different turn.
-      title: `${titles[(i * 5 + folder.length) % titles.length]}${ANGLES[Math.floor(i / titles.length) % ANGLES.length]}`,
+      title: `${ACTIONS[i % ACTIONS.length]} ${PARTS[Math.floor(i / ACTIONS.length) % PARTS.length]}`,
     });
     minutes += 25 + ((i * 53) % 400);
   }

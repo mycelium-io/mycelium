@@ -112,7 +112,7 @@ function RenameForm({
           Its notes and tasks move to the new name. The agent restarts to use it.
         </DialogDescription>
       </DialogHeader>
-      <IdentityRow value={value} onChange={setValue} hint="The name people use to mention it." />
+      <IdentityRow value={value} onChange={setValue} />
       {error && (
         <p role="alert" className="break-words text-label text-red">
           {error}

@@ -17,7 +17,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, GitBranch, Laptop, MessageSquare, Search } from "lucide-react";
 import type { AgentSessionSummary, Framework, Runner } from "@/lib/api";
 import { Ago } from "@/lib/relative-time";
 import { runnerName } from "@/lib/runners";
@@ -45,14 +45,11 @@ export function EarlierSessions({
   sessions,
   picked,
   onPick,
-  manyMachines,
 }: {
   /** Newest first. */
   sessions: EarlierSession[];
   picked: string | null;
   onPick: (key: string) => void;
-  /** Name each session's machine, when there's more than one. */
-  manyMachines: boolean;
 }) {
   const [typed, setTyped] = useState("");
   const words = typed.toLowerCase().split(/\s+/).filter(Boolean);
@@ -77,6 +74,8 @@ export function EarlierSessions({
       return next;
     });
   const titled = sessions.some((s) => s.session.title);
+  const manyClis = new Set(sessions.map((s) => s.framework.id)).size > 1;
+  const manyMachines = new Set(sessions.map((s) => s.runner.id)).size > 1;
 
   return (
     <div className="space-y-1.5">
@@ -91,7 +90,7 @@ export function EarlierSessions({
         <input
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
-          placeholder={titled ? "Find a session by what it was about, its folder or branch" : "Find a session by its folder or branch"}
+          placeholder="Find a session"
           aria-label="Find a session"
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-faint"
@@ -130,12 +129,6 @@ export function EarlierSessions({
                   {shown.map((s) => {
                     const k = sessionKey(s);
                     const active = picked === k;
-                    const facts = [
-                      s.framework.name,
-                      s.session.branch,
-                      s.session.messages ? `${s.session.messages} messages` : null,
-                      manyMachines ? runnerName(s.runner) : null,
-                    ].filter(Boolean);
                     return (
                       <button
                         key={k}
@@ -157,7 +150,30 @@ export function EarlierSessions({
                             <Ago at={s.session.last_used} />
                           </span>
                         </span>
-                        <span className="block truncate text-micro text-faint">{facts.join(" · ")}</span>
+                        {/* What tells two apart, each with its own mark rather than a
+                            string of dots: the branch, the length, and the CLI and
+                            machine only when there's more than one of either. */}
+                        <span className="flex min-w-0 items-center gap-3 text-micro text-faint">
+                          {manyClis && <span className="flex-shrink-0">{s.framework.name}</span>}
+                          {s.session.branch && (
+                            <span className="flex min-w-0 items-center gap-1">
+                              <GitBranch className="size-3 flex-shrink-0" aria-hidden />
+                              <span className="truncate">{s.session.branch}</span>
+                            </span>
+                          )}
+                          {s.session.messages ? (
+                            <span className="flex flex-shrink-0 items-center gap-1" title={`${s.session.messages} messages`}>
+                              <MessageSquare className="size-3" aria-hidden />
+                              {s.session.messages}
+                            </span>
+                          ) : null}
+                          {manyMachines && (
+                            <span className="flex flex-shrink-0 items-center gap-1">
+                              <Laptop className="size-3" aria-hidden />
+                              {runnerName(s.runner)}
+                            </span>
+                          )}
+                        </span>
                       </button>
                     );
                   })}
