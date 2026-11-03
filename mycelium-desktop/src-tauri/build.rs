@@ -13,6 +13,7 @@ const COMMANDS: &[&str] = &[
     "this_machine",
     "choose_agent_folder",
     "agent_screen",
+    "agent_session",
     "run_doctor",
     "herdr_integrations",
     "get_model",

@@ -11,6 +11,7 @@
     "allow-this-machine",
     "allow-choose-agent-folder",
     "allow-agent-screen",
+    "allow-agent-session",
     "allow-run-doctor",
     "allow-herdr-integrations",
     "allow-get-model",
