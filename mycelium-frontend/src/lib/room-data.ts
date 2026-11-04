@@ -18,10 +18,10 @@
  * module is only for what the hub owns.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EMPTY_LAYOUT, type RoomFolders } from "@/lib/room-folders";
 import type { RoomStatus } from "@/lib/board/upstream";
-import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
+import useSWR, { unstable_serialize, useSWRConfig, type SWRConfiguration } from "swr";
 import useSWRInfinite from "swr/infinite";
 import {
   fetchA2aBridge,
@@ -351,6 +351,60 @@ export function useRoomPeople(room: string, opts: RoomQueryOptions = {}) {
 
 /** Recent chat, for surfaces that read the room's history rather than tail it.
  *  Shares one cache entry with every other reader of the same page size. */
+/**
+ * The channel's newest page, as `read` gives it, kept across room switches.
+ * The channel is drawn again for every room it opens, so without this a room
+ * you just left was read from the hub again, and drawn only once both its
+ * reads came back. With it, going back to a room draws what it had at once
+ * and refreshes behind; a page that comes back the same changes nothing.
+ */
+export function useChannelPage<T>(
+  room: string,
+  read: () => Promise<T>,
+  onPage: (page: T, first: boolean) => void,
+  /** The page the channel drew its first render from (`useCachedChannelPage`), not handed again. */
+  seed?: T,
+) {
+  const { data, error } = useSWR(channelPageKey(room), read, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    dedupingInterval: 2_000,
+    shouldRetryOnError: false,
+  });
+  // Each page once, in order: the fresh one after the seed, if it differs.
+  const handed = useRef<T | undefined>(seed);
+  const [loaded, setLoaded] = useState(seed !== undefined);
+  const latest = useRef(onPage);
+  useLayoutEffect(() => {
+    latest.current = onPage;
+  });
+  useLayoutEffect(() => {
+    if (data === undefined || data === handed.current) return;
+    const first = handed.current === undefined;
+    handed.current = data;
+    latest.current(data, first);
+    if (first) setLoaded(true);
+  }, [data]);
+  // A failed first read still ends the wait; the channel says it's empty.
+  return { loaded: loaded || Boolean(error), error };
+}
+
+const channelPageKey = (room: string) => (room ? (["room", room, "channel-page"] as const) : null);
+
+/**
+ * The channel's newest page as the cache holds it when the channel first
+ * renders, read once, so a room opened again builds its rows in that first
+ * render rather than a render later.
+ */
+export function useCachedChannelPage<T>(room: string): T | undefined {
+  const { cache } = useSWRConfig();
+  const [seed] = useState(() => {
+    const key = channelPageKey(room);
+    return key ? (cache.get(unstable_serialize(key))?.data as T | undefined) : undefined;
+  });
+  return seed;
+}
+
 export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOptions = {}) {
   const { data, isLoading, mutate } = useSWR(
     room ? (["room", room, "messages", limit] as const) : null,
