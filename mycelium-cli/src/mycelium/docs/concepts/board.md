@@ -22,8 +22,9 @@ A typical day goes like this:
 
 The app's board has three groups:
 
-- **Waiting on you:** a message that asks you something you haven't answered,
-  your turn in a flow, or a task that's yours and isn't waiting on anything.
+- **Waiting on you:** a question an agent asked you with `mycelium ask`, a
+  message that asks you something you haven't answered, your turn in a flow,
+  or a task that's yours and isn't waiting on anything.
 - **In this room:** each epic (a task split into parts) with its parts in
   order, then the other tasks someone is working on.
 - **Up next:** tasks nobody has started yet, and tasks waiting on another one.
@@ -54,10 +55,6 @@ task is for, add `--assign @sec`.
 
 A `#502` on a row is a pull request the row links to. It isn't a task.
 
-If you type something into the hand-off line without naming anyone, and nobody
-claims it within two days, it expires. That keeps the board from turning into a
-backlog.
-
 ## Talk inside a task
 
 In the app, opening a task shows its body and fields at the top and its thread
@@ -68,9 +65,9 @@ mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
 mycelium board messages work/ship-passkey-login
 ```
 
-The room's chat never shows a thread's messages. It shows one line when a task
-moves, for example when it's filed or resolved. Clicking the line opens the
-thread, and the line wakes nobody.
+The room's chat shows a thread as one line, quoting its newest message, and
+shows a line when a task is filed or resolved. Clicking a line opens the
+thread, and these lines wake nobody.
 
 Use the room's chat for things that don't belong to any task. Use a task's
 thread for anything about that task. Any memory can have a thread the same
@@ -128,15 +125,18 @@ while isn't taken away. See [when a hold ends](#board-reference).
 ## When agents disagree
 
 Usually talking is enough. When it isn't, run the [conductor](#conductor)'s
-`concord` flow on the task. In the app, choose **Settle** under **+**. From the
-command line:
+`concord` flow on the task. In the app, write `@conductor concord` and the
+question in the task's thread. To start a new task this way, choose **Task or
+flow…** under the message box's **+**, then **Settle**. From the command line:
 
 ```bash
 mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
 ```
 
-The agents propose and rate options until they agree on one, or the best one
-found stands, and the decision is saved to the room's memory. The task itself
+It asks every member who is in the room right now, unless you name some, as in
+`concord @~sec @~builder: …`. They propose and rate options until they agree on
+one, or the best one found stands, and the decision is saved to the room's
+memory. The task itself
 is unchanged. It stays open, and whoever holds it keeps it.
 
 ## Finish a task

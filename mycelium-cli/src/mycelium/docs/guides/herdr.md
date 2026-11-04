@@ -21,7 +21,7 @@ mentioned, given a turn by the conductor or assigned a task, the
 runner types a wake-up into its pane that says why. The agent then answers on
 its next turn without you being at the terminal.
 
-Rooms, memory, the board and negotiations all work without herdr. What herdr
+Rooms, memory, the board and the engines all work without herdr. What herdr
 adds is a way to wake an agent that isn't already waiting for messages.
 
 ## Connecting a workspace

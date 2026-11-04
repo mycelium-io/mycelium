@@ -17,7 +17,7 @@ gets posted. This table lists every marker Mycelium reads:
 
 | Marker | Used for |
 |---|---|
-| `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
+| `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
 | `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
 | `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
@@ -63,8 +63,8 @@ happy, and the decision saved to memory says who and why.
 
 ## The record
 
-Every flow and negotiation is saved at `log/episodes/{id}.md` whether it agreed
-or not. See [episodes](#episodes). In the record, each message points to the
+Every conductor run is saved at `log/episodes/{id}.md` whether it agreed or
+not. See [episodes](#episodes). In the record, each message points to the
 ones it answers. The run's full id looks like
 `urn:ioc:mycelium:episode:{room}:{id}`.
 
@@ -75,9 +75,10 @@ messages:
 
 | Type | Means |
 |---|---|
+| `intent:mission` | The opening of a conductor run. |
 | `exchange` | A turn. |
-| `commit:converged` | An agreement. |
+| `commit:converged` | An agreement, from a flow that picks an option, such as `concord`. |
 | `commit:resolved` | A flow that finished. |
-| `commit:rejected` | A failed negotiation or flow. |
+| `commit:rejected` | A flow that ended without an outcome. |
 | `knowledge` | A memory write. |
 | `exchange:amend` | A message that edits an earlier one. |

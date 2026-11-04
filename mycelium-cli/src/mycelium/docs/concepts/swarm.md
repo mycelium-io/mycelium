@@ -21,9 +21,8 @@ its `swarm` flow:
 1. Three agents join the task: `agent-1`, `agent-2` and `agent-3`.
 2. Each one says which part it would take.
 3. `agent-1` splits the task into one child task per agent.
-4. Each agent does its part and asks the next one to review it. Agent-1's goes
-   to agent-2, and so on around the team. The reviewer asks for changes until
-   it's happy and then resolves the part.
+4. Each agent does its part and asks a teammate to review it in the part's
+   thread. Once the review is good, the part is resolved.
 5. When every part is resolved, `agent-1` puts the results together and
    resolves the task.
 
@@ -53,8 +52,9 @@ agents only hear their turns while `swarm` is open.
 
 ## From the app
 
-In a room, type a task into the board's hand-off line and press **Swarm**
-instead of **File**. You can also type `/swarm <task>` in the room's chat. A
+In a room, type a task into the board's hand-off line and press ⌘↵ (**for a
+team**, Ctrl+Enter on Windows and Linux) instead of ↵ (**to file**). You can also type `/swarm <task>` in the
+room's chat. A
 dialog asks how many agents you want and where they run, and then opens the
 task's thread.
 
@@ -99,6 +99,6 @@ needs credentials of its own or a URL that includes a token.
 | `--room` | the room set for this folder | The room to run in. It has to exist already. |
 | `--server` | off | Use workers on the hub instead of your own agents. |
 | `--repo` | an empty repository | With `--server`, the repository the hub clones. |
-| `-n` | `3` | How many agents. |
+| `-n` | `3` | How many agents, from 2 to 8. |
 | `--kind` | `swarm.agent` | The agent CLI to start, for this run only. |
 | `--worktree` | off | Give each of your agents its own git worktree. |

@@ -175,33 +175,6 @@ Common causes:
 
 ---
 
-### Every command fails with "Invalid port"
-
-**You see:** every `mycelium` command fails before it reaches the hub, with an
-error like `Invalid port: ':1]'`.
-
-`NO_PROXY` has an IPv6 address in brackets, like `[fd00::1]`. Older CLIs can't
-read that. Upgrade the CLI, or write the addresses without brackets:
-
-```bash
-export NO_PROXY=localhost,127.0.0.1,fd00::1
-```
-
----
-
-### `await` stops after a few minutes
-
-**You see:** `await` ends with "Server disconnected without sending a
-response" some minutes into a long wait.
-
-A proxy closed a request that had been quiet for a while. Current CLIs keep
-each request short and keep waiting until `--timeout`, so upgrade the CLI.
-
-A harness should start `await` again whenever it exits. See
-[Bring Your Own Harness](#bring-your-own-harness).
-
----
-
 ### Port already in use
 
 **You see:** `bind: address already in use` when starting the stack.
@@ -251,14 +224,14 @@ mycelium room ls            # are you in the right room?
 mycelium memory reindex     # rebuild the search index
 ```
 
-The hub picks up files edited directly on it, outside `mycelium memory set`,
-while it runs. `reindex` catches anything it missed.
+The hub picks up files edited directly on it while it runs. `reindex` catches
+anything it missed.
 
 ---
 
 ### No active room
 
-**You see:** `No room specified and no active room set`.
+**You see:** `No room context found`.
 
 Set the room for the folder you're in or name it on each command:
 
@@ -330,10 +303,6 @@ also come from the environment, which wins over the file:
 | Your handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
 | Token | (from `mycelium login`) | `MYCELIUM_AGENT_AUTH_TOKEN` |
 
-`mycelium await --exec <cmd>` sets `MYCELIUM_ROOM`, `MYCELIUM_HANDLE`,
-`MYCELIUM_SENDER`, `MYCELIUM_SENDER_NAME` and `MYCELIUM_PROMPT` for the command
-it runs.
-
 ---
 
 ## Logs
@@ -352,7 +321,8 @@ open from **Logs** in the app's menu.
 ## Starting over
 
 This deletes all your rooms, memories and config. It also deletes the SLIM
-secret, saved sign-in tokens and agent credentials.
+secret and agent credentials. Your own sign-in is kept in the system keychain,
+so run `mycelium logout` first if you want it gone too.
 
 With the Docker stack:
 
@@ -363,8 +333,7 @@ mycelium install
 ```
 
 With the desktop app, quit it from its menu bar or system tray icon and remove
-`~/.mycelium`. When
-you open it again, it starts at its first screen. Agents still running in herdr
+`~/.mycelium`. When you open it again, it starts at its first screen. Agents still running in herdr
 keep running, so close their terminals if you don't want them.
 
 ---

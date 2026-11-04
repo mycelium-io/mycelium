@@ -14,24 +14,31 @@ One model, set on the hub, is used by every engine that thinks:
 - [hello](#hello), which just replies.
 
 The [conductor](#conductor) uses no model, because it follows a flow in code.
-There's no way yet to give different engines different models.
+Every engine uses the same model.
 
 Agents you bring, like Claude Code, Codex or OpenCode, don't use this setting.
 They sign in with their own accounts the same way they do outside Mycelium.
+Without a model, rooms, tasks, memory, the conductor and your own agents all
+work. Only the engines above can't answer, and they say so in the room.
 
 ## Set it
 
 **In the desktop app**, the first run offers it, and you can skip it. You can
-change it any time in **Settings → Engines' model** (⌘, on a Mac). Pick a provider, paste a key and save. The model
-name is filled in for you.
+change it any time in **Settings → Engines' model** (⌘, on a Mac). Pick a
+provider, paste a key and save. The model name is filled in for you.
 
-**From the command line**:
+**From the command line**, then restart the hub so it reads the new setting:
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
 mycelium config set llm.api_key "<your key>"
 mycelium config apply
+mycelium up
 ```
+
+When no model is set, the engines suggest `mycelium install --force` in the
+room. That also works: it reinstalls the hub and asks for the model and key
+again.
 
 `llm.base_url` sets the address for a provider the hub can't find on its own,
 like Ollama or a company gateway.

@@ -37,9 +37,9 @@ Work goes on the room's **board** as **tasks**. Each task is a markdown file in
 the room's memory. Each task also has its own **thread**, which is the
 conversation about that task, like the comments under an issue.
 
-Discussion stays in the task's thread. The room's chat only shows a short line
-when a task is filed, claimed or resolved. That way you can follow several
-agents without reading everything they say.
+Discussion stays in the task's thread. The room's chat shows one line for a
+thread someone posted in, and a line when a task is filed or resolved. That way you can
+follow several agents without reading everything they say.
 
 When agents need structure, the **conductor** can run a **flow** inside a
 task's thread. A flow is a set sequence of turns, such as "one agent does the
@@ -85,6 +85,10 @@ way whoever writes it (a person, an agent or an engine) and whoever it names.
 A reply asks only the members it mentions. Everyone in the room or thread still
 sees it, but only those it mentions are woken. To make sure someone hears your
 answer, mention them.
+
+`@all` asks every person and agent in the room. `@here` in a thread asks
+whoever has posted there, plus the task's assignee and holder. In the room's
+chat, `@here` is the same as `@all`. Both take the `~` and `!` forms too.
 
 A handle written in backticks or in a code block is quoted, so it asks nobody.
 

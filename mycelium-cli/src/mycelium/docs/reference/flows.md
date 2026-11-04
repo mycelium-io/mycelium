@@ -31,9 +31,11 @@ steps:
     end: resolved
 ```
 
-If a flow doesn't make sense, the conductor refuses to run it and says why. For
-example, a step might lead nowhere or there might be no end step. Each run
-keeps its own copy of the flow. Editing the memory changes future runs but not
+The conductor treats a flow that doesn't make sense as if it weren't there,
+even one saved under a built-in's name. For example, a step might lead nowhere
+or there might be no end step. `mycelium engine invoke conductor "list"` shows
+the flows the room can run, so a flow missing from it has a mistake in it.
+Each run keeps its own copy of the flow. Editing the memory changes future runs but not
 past records.
 
 ## Steps

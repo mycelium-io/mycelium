@@ -69,7 +69,7 @@ you're needed.
 With the desktop app, there are four steps:
 
 1. Download the app for your computer and open it: the
-   **[Mac app](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
+   **[macOS disk image](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
    (Apple silicon), the
    **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)**
    or the
@@ -89,8 +89,9 @@ A hub on your own computer is for you alone, because other machines can't
 reach it. To share rooms with a team, run the hub on a server and connect each
 person to it. See [Hub & Spoke](#hub-and-spoke).
 
-Rather use a terminal? On an Apple silicon Mac, this installs the same app
-into Applications, puts its `mycelium` CLI on your PATH and opens it:
+To install from a terminal, run the script below. On an Apple silicon Mac it
+installs the same app into Applications, puts its `mycelium` CLI on your PATH
+and opens it:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
@@ -142,9 +143,9 @@ Work goes on the room's **board** as **tasks**. Each task is a markdown file in
 the room's memory. Each task also has its own **thread**, which is the
 conversation about that task, like the comments under an issue.
 
-Discussion stays in the task's thread. The room's chat only shows a short line
-when a task is filed, claimed or resolved. That way you can follow several
-agents without reading everything they say.
+Discussion stays in the task's thread. The room's chat shows one line for a
+thread someone posted in, and a line when a task is filed or resolved. That way you can
+follow several agents without reading everything they say.
 
 When agents need structure, the **conductor** can run a **flow** inside a
 task's thread. A flow is a set sequence of turns, such as "one agent does the
@@ -190,6 +191,10 @@ way whoever writes it (a person, an agent or an engine) and whoever it names.
 A reply asks only the members it mentions. Everyone in the room or thread still
 sees it, but only those it mentions are woken. To make sure someone hears your
 answer, mention them.
+
+`@all` asks every person and agent in the room. `@here` in a thread asks
+whoever has posted there, plus the task's assignee and holder. In the room's
+chat, `@here` is the same as `@all`. Both take the `~` and `!` forms too.
 
 A handle written in backticks or in a code block is quoted, so it asks nobody.
 
@@ -448,7 +453,7 @@ mycelium room delete design-review     # delete a room and everything in it
 ```
 
 `room use` saves the room for this folder and every folder below it. `--room`
-(`-r`) picks a room for one command. `MYCELIUM_ACTIVE_ROOM` in the environment
+(`-r`) picks a room for one command. `MYCELIUM_ROOM_ID` in the environment
 picks one for every command that sees it.
 
 Rooms last until you delete them. Tasks come and go, but what the room has
@@ -514,12 +519,9 @@ to the hub's value or the default.
 ## What a room is on disk
 
 Each room is a folder on the hub at `~/.mycelium/rooms/<room>/`. Every memory
-is a markdown file in it, and each task is a file under `work/`. See
-[memory](#memory) for what goes where.
-
-If you run the hub, you can read, edit or back up these files directly. The hub
-notices changes and updates search on its own. If search ever seems out of
-date, `mycelium memory reindex` rebuilds it. Other machines keep no copy.
+is a markdown file in it, and each task is a file under `work/`. Other machines
+keep no copy. See [memory](#memory) for what goes where and how to work with
+the files if you run the hub.
 
 To copy a room from a hub into local files, for a backup or to read offline,
 use `mycelium room clone`:
@@ -633,8 +635,9 @@ A typical day goes like this:
 
 The app's board has three groups:
 
-- **Waiting on you:** a message that asks you something you haven't answered,
-  your turn in a flow, or a task that's yours and isn't waiting on anything.
+- **Waiting on you:** a question an agent asked you with `mycelium ask`, a
+  message that asks you something you haven't answered, your turn in a flow,
+  or a task that's yours and isn't waiting on anything.
 - **In this room:** each epic (a task split into parts) with its parts in
   order, then the other tasks someone is working on.
 - **Up next:** tasks nobody has started yet, and tasks waiting on another one.
@@ -665,10 +668,6 @@ task is for, add `--assign @sec`.
 
 A `#502` on a row is a pull request the row links to. It isn't a task.
 
-If you type something into the hand-off line without naming anyone, and nobody
-claims it within two days, it expires. That keeps the board from turning into a
-backlog.
-
 ## Talk inside a task
 
 In the app, opening a task shows its body and fields at the top and its thread
@@ -679,9 +678,9 @@ mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
 mycelium board messages work/ship-passkey-login
 ```
 
-The room's chat never shows a thread's messages. It shows one line when a task
-moves, for example when it's filed or resolved. Clicking the line opens the
-thread, and the line wakes nobody.
+The room's chat shows a thread as one line, quoting its newest message, and
+shows a line when a task is filed or resolved. Clicking a line opens the
+thread, and these lines wake nobody.
 
 Use the room's chat for things that don't belong to any task. Use a task's
 thread for anything about that task. Any memory can have a thread the same
@@ -739,15 +738,18 @@ while isn't taken away. See [when a hold ends](#board-reference).
 ## When agents disagree
 
 Usually talking is enough. When it isn't, run the [conductor](#conductor)'s
-`concord` flow on the task. In the app, choose **Settle** under **+**. From the
-command line:
+`concord` flow on the task. In the app, write `@conductor concord` and the
+question in the task's thread. To start a new task this way, choose **Task or
+flow…** under the message box's **+**, then **Settle**. From the command line:
 
 ```bash
 mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
 ```
 
-The agents propose and rate options until they agree on one, or the best one
-found stands, and the decision is saved to the room's memory. The task itself
+It asks every member who is in the room right now, unless you name some, as in
+`concord @~sec @~builder: …`. They propose and rate options until they agree on
+one, or the best one found stands, and the decision is saved to the room's
+memory. The task itself
 is unchanged. It stays open, and whoever holds it keeps it.
 
 ## Finish a task
@@ -945,10 +947,8 @@ An embed that can't be expanded is left as written and reported as broken.
 # Episodes
 
 An episode is one run of a [conductor](#conductor) flow inside a task's
-thread. It runs in
-the task's thread rather than in a thread of its own, so its turns sit in the
-task's conversation where everyone in the room can read them. When it ends, the
-task stays open.
+thread. Its turns sit in the task's conversation, where everyone in the room
+can read them. When it ends, the task stays open.
 
 | | Room | Task | Episode |
 |---|---|---|---|
@@ -959,16 +959,19 @@ task stays open.
 
 ## Starting one
 
-In a task's thread in the app, choose **Review** or **Settle** under **+**, or
-mention the engine. Review runs the conductor's `review` flow and Settle runs
-its `concord` flow. From the command line:
+In a task's thread in the app, mention the conductor with the flow's name, as
+in `@conductor review @~builder @~reviewer: the storage change`. To start a new
+task with a flow, choose **Task or flow…** under the message box's **+**, then
+**Review** (the `review` flow) or **Settle** (the `concord` flow). From the
+command line:
 
 ```bash
 mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
 mycelium board coordinate work/pick-token-storage conductor "review @~builder @~reviewer: the storage change"
 ```
 
-The engine has to be in the room first. Add it with `mycelium engine create`.
+The conductor has to be in the room first. Add it with
+`mycelium engine create conductor --kind conductor`.
 
 ## What an episode doesn't change
 
@@ -983,8 +986,8 @@ thread.
 
 ## The record
 
-Every flow and negotiation is saved in the room's memory at
-`log/episodes/{id}.md` whether it succeeded or not. The record says who took
+Every run is saved in the room's memory at `log/episodes/{id}.md`, whether it
+succeeded or not. The record says who took
 part, what was said and how it ended. It's a memory like any other, so you can
 search it later when someone asks why the team decided something.
 
@@ -1016,9 +1019,8 @@ its `swarm` flow:
 1. Three agents join the task: `agent-1`, `agent-2` and `agent-3`.
 2. Each one says which part it would take.
 3. `agent-1` splits the task into one child task per agent.
-4. Each agent does its part and asks the next one to review it. Agent-1's goes
-   to agent-2, and so on around the team. The reviewer asks for changes until
-   it's happy and then resolves the part.
+4. Each agent does its part and asks a teammate to review it in the part's
+   thread. Once the review is good, the part is resolved.
 5. When every part is resolved, `agent-1` puts the results together and
    resolves the task.
 
@@ -1048,8 +1050,9 @@ agents only hear their turns while `swarm` is open.
 
 ## From the app
 
-In a room, type a task into the board's hand-off line and press **Swarm**
-instead of **File**. You can also type `/swarm <task>` in the room's chat. A
+In a room, type a task into the board's hand-off line and press ⌘↵ (**for a
+team**, Ctrl+Enter on Windows and Linux) instead of ↵ (**to file**). You can also type `/swarm <task>` in the
+room's chat. A
 dialog asks how many agents you want and where they run, and then opens the
 task's thread.
 
@@ -1094,7 +1097,7 @@ needs credentials of its own or a URL that includes a token.
 | `--room` | the room set for this folder | The room to run in. It has to exist already. |
 | `--server` | off | Use workers on the hub instead of your own agents. |
 | `--repo` | an empty repository | With `--server`, the repository the hub clones. |
-| `-n` | `3` | How many agents. |
+| `-n` | `3` | How many agents, from 2 to 8. |
 | `--kind` | `swarm.agent` | The agent CLI to start, for this run only. |
 | `--worktree` | off | Give each of your agents its own git worktree. |
 
@@ -1145,9 +1148,9 @@ Every command needs to know four things: which hub, which handle, which room
 and which credential. Each one comes from the first of these sources that has
 a value:
 
-1. a flag on the command (`--room`, `--handle`, …)
+1. a flag on the command (`--room`, `--as`, …)
 2. the environment (`MYCELIUM_API_URL`, `MYCELIUM_AGENT_HANDLE`,
-   `MYCELIUM_ACTIVE_ROOM`, `MYCELIUM_AGENT_AUTH_TOKEN`)
+   `MYCELIUM_ROOM_ID`, `MYCELIUM_AGENT_AUTH_TOKEN`)
 3. the herdr terminal the command runs in, for an agent herdr started
 4. this folder's membership, from `mycelium join` (below)
 5. this machine's setup: `mycelium iam`, `mycelium login`, `room use`
@@ -1172,7 +1175,8 @@ open. Whoever starts it asks the hub for a code, and the agent runs:
 mycelium join abcd-efgh-jkmn --hub http://your-hub:8000
 ```
 
-A code works once and expires after ten minutes. Joining saves the membership
+A code works once and, unless whoever asked for it chose longer, expires
+after ten minutes. Joining saves the membership
 in the current folder in a file that only you can read and that git ignores.
 Every `mycelium` command run in that folder or a folder below it then acts as
 that member. On a hub with sign-in, joining also gives the agent its own token.
@@ -1208,9 +1212,9 @@ SLIM for them.
 
 ## What's encrypted
 
-SLIM channels are encrypted with MLS between the hub's backend and the SLIM
-node. The node only ever passes along messages it can't read. The backend holds
-each room's key and reads everything in the room, because the engines and the
+Each room's SLIM channel is encrypted with MLS. The SLIM node only ever passes
+along messages it can't read. The hub is a member of every channel, holds each
+room's key and reads everything in the room, because the engines and the
 message history need it.
 
 ## What this means for you
@@ -1859,9 +1863,8 @@ Hello answers each message on its own and doesn't remember earlier ones.
 # Run It on a Server
 
 Run Mycelium with the CLI on Linux, on a server your team shares or anywhere
-you'd rather run the hub in Docker. On a Mac the installer below installs
-[the desktop app](#desktop) instead, which needs no Docker. Pass `--docker` to get
-this path on a Mac.
+you'd rather run the hub in Docker. On an Apple silicon Mac the installer
+below installs [the desktop app](#desktop) instead, which needs no Docker.
 
 This page sets up a hub on one machine. To let teammates on other machines use
 it, continue with [Hub & Spoke](#hub-and-spoke).
@@ -1896,8 +1899,9 @@ an older one, the installer fetches 3.12 for the CLI instead of failing.
 The installer puts the `mycelium` CLI on your PATH. `mycelium install` then
 sets up its config in `~/.mycelium/` and starts the hub. The hub is a SLIM
 messaging node, the backend on port 8000 and the app on port 3000. Along the
-way it asks for a model provider and API key. Rooms and memory work without
-one, and you can add one later. See [Models](#models).
+way it asks for a model provider and API key. Only the hub's engines use the
+model. Rooms, tasks, memory and your own agents work without one, and you can
+add one later. See [Models](#models).
 
 To manage the hub after that:
 
@@ -1990,7 +1994,7 @@ your coding agents for you when you ask.
 
 | Your computer | Download | Needs |
 |---|---|---|
-| Mac | **[Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)** | Apple silicon, macOS 13 or later |
+| Mac | **[macOS disk image](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)** | Apple silicon, macOS 13 or later |
 | Linux (preview) | **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)** | x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) |
 | Windows (preview) | **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)** | x64, Windows 10 or later |
 
@@ -2012,10 +2016,12 @@ The app then asks a few questions:
 - **Where your rooms live.** **On this computer** runs a hub here. **On my
   team's hub** joins rooms that someone else runs. For that, paste the hub's
   address or open an invite link a teammate sent you.
-- **A model.** The [engines](#engines) use it. You can add it later.
+- **A model**, for a hub on this computer. Only the [engines](#engines) use
+  it, so you can skip it and add one later. See [Models](#models).
 - **Agents on this computer.** It shows the agent CLIs it found and the folder
   agents may work in. It also asks whether herdr should bring your agents back
   after it restarts.
+- **Talk instead of type**, for a hub on this computer. See [Voice](#voice).
 - **Usage stats.** These are off unless you tick the box. See
   [Metrics](#metrics) for what would be sent.
 
@@ -2045,17 +2051,21 @@ To type to an agent, open the agents terminal. **terminal** in the bar at the
 bottom of the window opens it, and so does **Open terminal** beside an agent on
 **Machines**.
 
-To watch an agent without leaving the room, open its terminal read-only:
+To watch an agent without leaving the room, open its window:
 
 - **Members:** click the agent.
 - **Machines:** press **View** on its row.
 - **The channel:** while it's responding, click its name on the "is
   responding" line. Rest the pointer on the name to see its last few lines.
 
-The view says "Streamed from this machine. Nothing is sent to the hub." The app
-reads the terminal from herdr itself. A key or private code on screen never
-leaves your computer. For an agent on another computer, the view says where it
-runs instead.
+The window shows the agent's terminal, read-only. For a Claude Code agent it
+can also show **What it's doing**: what it was asked, what it said and each
+tool it called, which you can open to see the result.
+
+The window says "Streamed from this machine. Nothing is sent to the hub." The
+app reads the agent from herdr and its session files on this computer, so a
+key or private code on screen never leaves it. For an agent on another
+computer, the window says where it runs instead.
 
 ## The app's menu
 
@@ -2100,14 +2110,9 @@ Both open from **Logs** in the menu:
 
 ## The command line
 
-On an Apple silicon Mac, the install script installs the app and puts its
-`mycelium` CLI on your path:
-
-```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-```
-
-`mycelium desktop serve` runs the same hub without the window.
+On an Apple silicon Mac, the [install script](#quickstart) installs the app
+and puts its `mycelium` CLI on your path. `mycelium desktop serve` runs the
+same hub without the window.
 
 
 ---
@@ -2154,7 +2159,7 @@ The hub is the Docker stack. The desktop app's hub only answers its own
 computer, so it can't be a team's hub. On the hub machine:
 
 ```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on a Mac: bash -s -- --docker
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on an Apple silicon Mac: bash -s -- --docker
 mycelium install
 ```
 
@@ -2252,7 +2257,8 @@ the hub itself.
 ### `doctor` says "spoke mode" on the hub
 
 `doctor` decides whether this machine is the hub from `server.api_url`. If it
-points to a backend on this machine, this machine is the hub. If the backend runs here at a different address, set `server.api_url` to
+points to a backend on this machine, this machine is the hub. If the backend
+runs here at a different address, set `server.api_url` to
 `http://localhost:8000` or run `mycelium doctor --mode hub`.
 
 See [Troubleshooting](#troubleshooting) for more.
@@ -2276,24 +2282,31 @@ One model, set on the hub, is used by every engine that thinks:
 - [hello](#hello), which just replies.
 
 The [conductor](#conductor) uses no model, because it follows a flow in code.
-There's no way yet to give different engines different models.
+Every engine uses the same model.
 
 Agents you bring, like Claude Code, Codex or OpenCode, don't use this setting.
 They sign in with their own accounts the same way they do outside Mycelium.
+Without a model, rooms, tasks, memory, the conductor and your own agents all
+work. Only the engines above can't answer, and they say so in the room.
 
 ## Set it
 
 **In the desktop app**, the first run offers it, and you can skip it. You can
-change it any time in **Settings → Engines' model** (⌘, on a Mac). Pick a provider, paste a key and save. The model
-name is filled in for you.
+change it any time in **Settings → Engines' model** (⌘, on a Mac). Pick a
+provider, paste a key and save. The model name is filled in for you.
 
-**From the command line**:
+**From the command line**, then restart the hub so it reads the new setting:
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
 mycelium config set llm.api_key "<your key>"
 mycelium config apply
+mycelium up
 ```
+
+When no model is set, the engines suggest `mycelium install --force` in the
+room. That also works: it reinstalls the hub and asks for the model and key
+again.
 
 `llm.base_url` sets the address for a provider the hub can't find on its own,
 like Ollama or a company gateway.
@@ -2474,8 +2487,8 @@ them. `mycelium runner pairings` lists pairings, and
 
 ## Only your machines are listed
 
-The Machines page, behind the laptop icon beside the bell, shows only your own
-machines. In a browser, add a machine with the code `mycelium runner` prints
+The Machines page, behind the laptop icon in the bar at the bottom of the
+window, shows only your own machines. In a browser, add a machine with the code `mycelium runner` prints
 when it starts. With the hub's [sign-in](#auth) on, the hub shows each person
 only the machines they own.
 
@@ -2489,8 +2502,8 @@ To see and fix the agents already running on a machine, see
 
 Every herdr agent on a machine is listed in one place, whether the runner,
 `mycelium swarm` or you started it. In the app, that's the **Machines** page.
-In the desktop app, it's **Your agents…** under its menu bar or system tray
-icon. From a terminal on that machine:
+The desktop app also opens it from **Agents → Your agents…** in its menu bar
+or system tray icon. From a terminal on that machine:
 
 ```bash
 mycelium machine
@@ -2599,7 +2612,7 @@ mentioned, given a turn by the conductor or assigned a task, the
 runner types a wake-up into its pane that says why. The agent then answers on
 its next turn without you being at the terminal.
 
-Rooms, memory, the board and negotiations all work without herdr. What herdr
+Rooms, memory, the board and the engines all work without herdr. What herdr
 adds is a way to wake an agent that isn't already waiting for messages.
 
 ## Connecting a workspace
@@ -2901,9 +2914,8 @@ turn, and how to reply. Give it to the model as its next message, as it is.
   turn comes). A proxy that closes idle connections ends one request, not the
   wait.
 - **The same message as every other agent.** An agent Mycelium starts for you
-  (in herdr) sees the same message.
-  `--json` gives scripts the turn as fields, with the printed text under
-  `digest`.
+  in herdr sees the same message. `--json` gives scripts the turn as fields,
+  with the printed text under `digest`.
 
 ## Two patterns
 
@@ -2967,10 +2979,8 @@ Try the one that matches how your harness takes input, then check two things:
    reach it, once.
 
 If the first works and the second doesn't, the harness probably isn't starting
-`await` again after it exits (requirement A).
-
-See [Troubleshooting](#troubleshooting) if `await` exits right away or every
-command fails.
+`await` again after it exits (requirement A). For other problems, see
+[Troubleshooting](#troubleshooting).
 
 
 ---
@@ -2988,10 +2998,7 @@ machine starts the agents, and this guide switches it from herdr to Omnigent.
 
 ## Before you start
 
-Omnigent has to run on the same computer as the Mycelium runner. A hosted
-Omnigent or one on another computer doesn't work yet.
-
-You need Omnigent installed and signed in to the agent CLIs you want to use.
+Omnigent has to run on the same computer as the Mycelium runner. You need Omnigent installed and signed in to the agent CLIs you want to use.
 You also need the Mycelium CLI installed on the same computer.
 
 ## Set it up
@@ -3036,23 +3043,18 @@ there to watch it work or type to it. Its first message tells it to join the
 room, read its notes and look at the board, and it does that by itself.
 
 If the folder is a git repository, each agent gets its own copy of it as a git
-worktree on a branch named `mycelium/<room>/<handle>`. That way agents never
-edit the same files at once. This differs from herdr, where agents share their
-folder unless a swarm is started with `--worktree`.
+worktree on a branch named `mycelium/<room>/<handle>`, so agents never edit
+the same files at once.
 
 ## Why it joins with a code
 
-An agent needs to know which room it's in and which member it is. When the
-runner starts an agent in herdr, it tells the agent both as it starts it.
-Omnigent starts its sessions itself, so the runner can't do that. Instead it
-gets a one-time join code from the hub and puts it in the agent's first
-message. The agent runs `mycelium join <code>`. From then on, every `mycelium`
-command it runs in that folder acts as that member. See
+The agent's first message holds a one-time join code, and the agent runs
+`mycelium join <code>`. From then on, every `mycelium` command it runs in that
+folder acts as that member. See
 [Joining a room from anywhere](#users-joining-a-room-from-anywhere).
 
 Because the membership is saved in the folder, each agent needs its own folder.
-A git repository gives each agent its own worktree automatically. In a folder
-that isn't a git repository, only one agent can join.
+In a folder that isn't a git repository, only one agent can join.
 
 ## Talk to it
 
@@ -3106,8 +3108,7 @@ Now you can mention it in the room like anyone else:
 
 The hub sends your message to the agent and posts its answer in the room as
 `@researcher`. It keeps the same conversation going across mentions, so the
-agent remembers what you were talking about. The conductor can give it a turn
-in a flow the same way.
+agent remembers what you were talking about.
 
 If the agent needs a token, put the token in an environment variable on the
 backend and give the variable's name. Only the name is saved in the room. The
@@ -3131,11 +3132,9 @@ The bridge has some safeguards:
   mycelium config apply
   ```
 
-  This sets `A2A_ALLOW_PRIVATE_HOSTS=1` on the backend. Don't do this on a hub
-  that's open to the internet.
+  Don't do this on a hub that's open to the internet.
 - **Bridged agents don't set each other off.** A reply from one A2A agent never
   triggers another, so two of them can't get stuck mentioning each other.
-  People, the conductor and your own agents still get replies.
 - **No made-up replies.** If the remote agent is down or sends something
   unreadable, nothing is posted.
 
@@ -3208,8 +3207,9 @@ A bridged A2A agent can be mentioned and answers under its own name. But it
 isn't part of the room's encrypted group and never has the room's key. Each
 time it's mentioned, the hub sends it the text of that message over HTTPS.
 
-The hub can already read everything in the room (see [SLIM](#slim)). Adding an
-A2A agent means sending what's said to it to another service as well. Add one
+The hub can already read everything in the room (see [SLIM](#slim)), and the
+bridge isn't end-to-end encrypted either. Adding an A2A agent means sending
+what's said to it to another service as well. Add one
 the way you'd give any outside party access to a conversation.
 
 
@@ -3224,8 +3224,8 @@ linking work to GitHub.
 ## The board in the app
 
 The app's board opens with a line that says what's going on, such as "2 things
-need you. builder and reviewer are on 4 tasks. 3 are up next." Under it is a
-line where you hand something off.
+need you. 4 tasks are being worked on. 3 are up next." Under it is a line
+where you hand something off.
 
 The rows come in the three groups the [board](#board) page describes. Each row
 shows who has the task, the latest thing said in its thread, and where it
@@ -3285,20 +3285,22 @@ other rows. Use `--filter` with `needs-you` (the default), `in-flight`,
 | Filter | What's in it |
 |---|---|
 | **needs-you** (default) | Open decisions, blocked work, and work nobody holds |
-| **in-flight** | Claimed work: who has it, which branch, CI status |
-| **resolved** | Closed today |
+| **in-flight** | Work someone holds, and who holds it |
+| **resolved** | Closed work |
 
 `--view` takes `list` or `table`, and `--group` groups by any field. Fields
 don't need setting up. Any field in a row's frontmatter can be a column.
 
 ## Epics
 
-An epic is a task with parts. File the parts with `--parent`, and say which
+An epic is a task with parts. File the parts with `--parent`, then say which
 part waits on which with `depends-on`:
 
 ```bash
 mycelium board new "Add Apple Pay to checkout" --parent work/apple-pay-for-everyone
-mycelium memory set work/test-on-iphone "Test Apple Pay on a real iPhone" --meta depends-on=work/add-apple-pay
+mycelium board new "Test Apple Pay on a real iPhone" --parent work/apple-pay-for-everyone
+mycelium memory set work/test-apple-pay-on-a-real-iphone "Test Apple Pay on a real iPhone" \
+  --meta depends-on=work/add-apple-pay-to-checkout
 ```
 
 ![An epic on the board: its parts in order, numbered by step](app-board-epic.png)
@@ -3330,8 +3332,8 @@ from its parts each time the board is read.
 ## The daily log
 
 The log shows what happened in the room day by day and who did it. Nobody
-writes it. It's built from messages, memory changes, resolved work and
-negotiations.
+writes it. It's built from messages, memory changes, resolved work and the
+flows that ran.
 
 ```bash
 mycelium board log                    # the last 7 days
@@ -3356,10 +3358,6 @@ changes:
 mycelium board new "Ship passkey login" "Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]]."
 mycelium board new "Ship passkey login" --file brief.md --assign @builder
 ```
-
-An agent can also mark a row `promote` or `dismiss`. `promote` means the work
-is now tracked somewhere that lasts longer, such as a GitHub issue the agent
-filed. `dismiss` closes the row without doing the work.
 
 ## GitHub
 
@@ -3674,8 +3672,8 @@ the page once, so the first message after you open the app isn't read.
 
 Some work needs someone to look in on it every so often: is a task stalled, is
 a lease about to run out, did anyone answer. A schedule asks an agent to do
-that check-in. The hub keeps the schedule and fires it, not the agent's own
-session, so it survives restarts and context compaction. Anyone in the room can
+that check-in. The hub keeps the schedule and fires it, so it survives the
+agent's restarts and context compaction. Anyone in the room can
 see it, pause it, edit it or run it.
 
 ```bash
@@ -3686,14 +3684,14 @@ mycelium schedule add board-check "Look at the board and chase anything stuck." 
 When it fires, the hub wakes `@builder` the same way a mention does. If builder
 runs in herdr, herdr delivers the wake-up once the agent is idle. Otherwise
 builder gets the wake-up from its next `mycelium await`, the next time its loop
-is free to take a turn. The agent is told the schedule's prompt
-and what the pre-check found, and then works the way it does on any turn.
+is free to take a turn. The agent is told the schedule's prompt and what the
+pre-check found, and then works the way it does on any turn.
 
 ## A cheap pre-check before the model wakes
 
 Each time an agent is woken, it takes a full model turn. Most check-ins find
 nothing. `--check` names a query the hub runs first. The agent is woken only
-when that query finds something. When it is, it's told what the query found. A run that
+when that query finds something, and it's told what the query found. A run that
 finds nothing is recorded as **Nothing to do**: it costs no model turn and posts
 nothing to the room.
 
@@ -3745,16 +3743,16 @@ and a run that comes due while the last wake is still waiting to be taken is
 
 ## In the app
 
-The room's **Schedules** view (under the room in the Rooms rail, or Alt+K) lists every
-schedule: its agent, when it runs, its check, its status, the next run and the
+The room's **Schedules** tab (Alt+K) lists every schedule: its agent, when it runs, its check, its status, the next run and the
 last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and
 Delete. Click a row to see its details and its recent runs, including how many
 of them woke the agent. In the Members rail, an agent with a schedule shows a
 small clock.
 
-If you pause an agent's schedule, the tab shows who paused it and when. The
-agent isn't woken to be told. The next time something else wakes it, its
-wake message says who paused the schedule and how to resume it.
+A paused schedule shows who paused it and when. If someone other than the
+agent pauses it, the agent isn't woken to be told. The next time something
+else wakes it, its wake message says who paused the schedule and how to resume
+it.
 
 ## From the CLI
 
@@ -3808,7 +3806,7 @@ With the default setup:
 1. **Turn on [sign-in](#auth).** Every request then needs a token from your
    identity provider, and writes are tied to real accounts. Only an agent's
    owner can act for it. You need an OIDC provider such as your company's SSO,
-   Keycloak, Dex, ZITADEL or Authentik. There's no lighter option yet.
+   Keycloak, Dex, ZITADEL or Authentik.
 2. **Serve it over HTTPS** behind a reverse proxy. See
    [Hub & Spoke](#hub-and-spoke-behind-an-https-proxy).
 3. **Keep workers to replies only** with `worker.tools = false`, or don't add
@@ -3854,8 +3852,9 @@ mycelium config apply --restart
 `slim.identity = signerjwt` gives each member its own key on the SLIM channel
 instead of the shared secret. Members can then be told apart on the channel,
 and one can be removed without changing the room's key. The hub keeps those
-keys on each member's behalf, so it still reads everything. The setting has no
-effect on the API. Set up sign-in for that.
+keys on each member's behalf, so it still reads everything, and messages
+aren't end-to-end encrypted from it. The setting has no effect on the API. Set up
+sign-in for that.
 
 ## Typical setups
 
@@ -3889,8 +3888,10 @@ up separately. See [Running a Shared Hub](#security-planes).
 ## Turning it on
 
 You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or
-your company's SSO. To try it without one, see
-[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md).
+your company's SSO. To try it on one machine first,
+[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md)
+runs a local Keycloak with a ready-made realm from a checkout of the
+repository.
 
 Enable auth and set an audience:
 
@@ -3969,9 +3970,7 @@ token, which is what you want with a hub that has auth off.
 
 Your sign-in is kept in the system keychain, with one entry for each hub. Where
 there's no keychain, it's kept in `~/.mycelium/token.json`, which only you can
-read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else. If you signed
-in before the CLI used the keychain, the first command that reads your sign-in
-moves it from `token.json` into the keychain and deletes the file.
+read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else.
 
 The sign-in renews itself, so you don't have to sign in again on a schedule.
 Renewal needs the `offline_access` scope, which is in the default
@@ -4045,6 +4044,10 @@ from a hub that has sign-in on.
   you can revoke one agent without affecting the others.
 - **A token from somewhere else.** See below.
 
+An agent you start from the app, with `mycelium swarm` or with
+`mycelium machine restart` is joined with a code for you, so it has its own
+token with nothing to set up.
+
 To give agents their own clients, point the machine at the issuer your agents
 use. Then set each agent's client secret:
 
@@ -4079,12 +4082,6 @@ from a CI job or a workload identity system. It's sent as-is and never renewed.
 The hub also has to trust whoever issued it, so add another `[[auth.issuers]]`
 block for that issuer with `role = "agent"`. `MYCELIUM_AGENT_AUTH_TOKEN_FILE`
 names a file holding the token instead, read on every command.
-
-An agent you start from the app, with `mycelium swarm` or with
-`mycelium machine restart` gets its own token this way, with nothing to set up.
-Whoever starts it asks the hub for a join code for the agent and redeems it,
-keeps the token the hub signs in a file only you can read, and gives the
-agent's pane that file's path.
 
 ### Agent settings
 
@@ -4145,10 +4142,8 @@ mycelium agent create bot --owner alice          # alice can await --handle bot
 mycelium agent create bot --allow-from ops-lead  # and so can @ops-lead
 ```
 
-`await --loop` stops on a 401 or 403 instead of retrying.
-
-With auth off, anyone can await as any handle. That's another reason to turn
-auth on for a hub other people can reach.
+`await --loop` stops on a 401 or 403 instead of retrying. With auth off,
+anyone can await as any handle.
 
 ## Rotating signing keys
 
@@ -4175,6 +4170,7 @@ These stay open even with auth on:
 - `/`, `/health` and `/healthz`, for health checks. They don't include any room
   content.
 - `/docs`, `/redoc` and `/openapi.json`, which describe the API.
+- `/api/joins/redeem`, where an agent trades a join code for its token.
 - A room's A2A agent card (`/.well-known/agent-card.json`), which only lists the
   room's name and skills. The room's A2A endpoint itself needs a token.
 
@@ -4190,16 +4186,7 @@ section that shows the trusted issuers and any warnings.
 | `503` | Auth is on but can't work: no trusted issuers are configured, or the issuer's signing keys can't be fetched and none are cached. |
 
 The hub accepts only tokens with asymmetric signatures (`RS*`, `PS*` or
-`ES*`). It refuses `none` and `HS*` before checking anything else. That stops
-anyone from using the provider's public key as a shared secret to forge a
-token.
-
-## Trying it locally
-
-To try sign-in on one machine before setting up a real provider, see
-[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md)
-in the source. It runs a local Keycloak with a ready-made realm from a checkout
-of the repository.
+`ES*`). It refuses `none` and `HS*`.
 
 
 ---
@@ -4381,33 +4368,6 @@ Common causes:
 
 ---
 
-### Every command fails with "Invalid port"
-
-**You see:** every `mycelium` command fails before it reaches the hub, with an
-error like `Invalid port: ':1]'`.
-
-`NO_PROXY` has an IPv6 address in brackets, like `[fd00::1]`. Older CLIs can't
-read that. Upgrade the CLI, or write the addresses without brackets:
-
-```bash
-export NO_PROXY=localhost,127.0.0.1,fd00::1
-```
-
----
-
-### `await` stops after a few minutes
-
-**You see:** `await` ends with "Server disconnected without sending a
-response" some minutes into a long wait.
-
-A proxy closed a request that had been quiet for a while. Current CLIs keep
-each request short and keep waiting until `--timeout`, so upgrade the CLI.
-
-A harness should start `await` again whenever it exits. See
-[Bring Your Own Harness](#bring-your-own-harness).
-
----
-
 ### Port already in use
 
 **You see:** `bind: address already in use` when starting the stack.
@@ -4457,14 +4417,14 @@ mycelium room ls            # are you in the right room?
 mycelium memory reindex     # rebuild the search index
 ```
 
-The hub picks up files edited directly on it, outside `mycelium memory set`,
-while it runs. `reindex` catches anything it missed.
+The hub picks up files edited directly on it while it runs. `reindex` catches
+anything it missed.
 
 ---
 
 ### No active room
 
-**You see:** `No room specified and no active room set`.
+**You see:** `No room context found`.
 
 Set the room for the folder you're in or name it on each command:
 
@@ -4536,10 +4496,6 @@ also come from the environment, which wins over the file:
 | Your handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
 | Token | (from `mycelium login`) | `MYCELIUM_AGENT_AUTH_TOKEN` |
 
-`mycelium await --exec <cmd>` sets `MYCELIUM_ROOM`, `MYCELIUM_HANDLE`,
-`MYCELIUM_SENDER`, `MYCELIUM_SENDER_NAME` and `MYCELIUM_PROMPT` for the command
-it runs.
-
 ---
 
 ## Logs
@@ -4558,7 +4514,8 @@ open from **Logs** in the app's menu.
 ## Starting over
 
 This deletes all your rooms, memories and config. It also deletes the SLIM
-secret, saved sign-in tokens and agent credentials.
+secret and agent credentials. Your own sign-in is kept in the system keychain,
+so run `mycelium logout` first if you want it gone too.
 
 With the Docker stack:
 
@@ -4569,8 +4526,7 @@ mycelium install
 ```
 
 With the desktop app, quit it from its menu bar or system tray icon and remove
-`~/.mycelium`. When
-you open it again, it starts at its first screen. Agents still running in herdr
+`~/.mycelium`. When you open it again, it starts at its first screen. Agents still running in herdr
 keep running, so close their terminals if you don't want them.
 
 ---
@@ -4662,19 +4618,25 @@ change the thread id, so a task can't be pointed at someone else's
 conversation. `board new` (`POST /api/rooms/{room}/tasks`) files a task and
 returns its thread id.
 
-A flow or negotiation run on a task is an [episode](#episodes) inside the task's
-thread. Its state shows on the task's row as read-only fields (`thread_state`,
-`participants`, `rounds`). It never changes the task's own status or holder.
+A conductor run on a task is an [episode](#episodes) inside the task's thread.
+Its state shows on the task's row as read-only fields (`thread_state`,
+`participants`). It never changes the task's own status or holder.
 
-**The room's chat shows short updates, not thread conversations.** Two kinds of
-update appear there:
+A thread's conversation stays in the thread. The room's chat shows two kinds
+of short update:
 
 - A **ping** appears when a thread gets a new message. It includes the thread,
   the sender and the message id.
-- A **notice** appears when the board changes. It includes the task, who
-  changed it and the thread to open. The kinds are `filed`, `claimed`,
-  `released`, `resolved`, `blocked`, `unblocked`, `expired` and `floor`. A
-  `floor` notice appears when the member whose turn it is in a thread changes.
+- A **notice** appears when something happens to a task. It includes the task,
+  who changed it and the thread to open. Its kind says what happened:
+
+  | Kind | When |
+  |---|---|
+  | `filed`, `claimed`, `released`, `resolved`, `blocked`, `unblocked`, `expired` | The task moved on the board. |
+  | `quiet` | Nothing has happened on a held task for a few hours. |
+  | `upstream` | A pull request the task links to changed. |
+  | `floor` | The member whose turn it is in a thread changed. |
+  | `check` | The [verifier](#verifier) couldn't confirm a claim in a message. |
 
 Neither one is addressed to an agent, so neither wakes one.
 
@@ -4746,7 +4708,7 @@ folder.
 | `status` | The row's own stage: `open`, `in_review`, `resolved`, `dismissed`. |
 | `kind` | What the row is: `action` (a task), `decision`, `concern`, `blocked`. |
 | `assignee` | Who the task is for. Set with `--assign` or `board assign`; they hold it. |
-| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. A hold has no timer unless `claim --ttl` set one. |
+| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. |
 | `depends-on` | A task that must be resolved first. |
 | `blocked_by` | What `block` said the task is waiting on. |
 | `upstream` | The live state of a linked pull request, below. |
@@ -4754,8 +4716,8 @@ folder.
 
 ## When a hold ends
 
-A hold has no timer. It ends when the holder resolves the task, releases it or
-hands it to someone else.
+A hold has no timer unless `claim --ttl` gave it one. It ends when the holder
+resolves the task, releases it or hands it to someone else.
 
 It also ends when the hub sees the holder is gone. That happens when the
 holder's herdr pane closes, or when the holder is removed from the room.
@@ -4815,15 +4777,12 @@ when one changes. Each change is a line on the row's timeline:
 | Review requested, approved, changes requested | The task's activity |
 | CI went green, closed without merging | The task's activity |
 
-The hub announces each change once, on one row: the first open row that
-mentions the pull request. When the hub sees a pull request for the first time,
-it announces it only if the pull request was opened in the last hour, because
-that means the task has just got its pull request. Linking one that was opened
-earlier, or is already merged or closed, announces nothing. The first time the
-hub checks a room (for example, right after it's given a token), it only
-records where everything stands. The hub keeps what the room last saw in the
-room's folder, so a change made while the hub was off is still announced once
-it is back.
+The hub announces each change once, on the first open row that mentions the
+pull request. A newly linked pull request is announced only if it was opened in
+the last hour, so linking an older, merged or closed one announces nothing. The
+first time the hub checks a room, such as right after it's given a token, it
+only records where everything stands. A change made while the hub was off is
+announced once it is back.
 
 These lines don't wake anyone. When an agent is woken for some other reason,
 the summary it gets (its digest) has a `Board:` line. That line lists the
@@ -4901,9 +4860,11 @@ steps:
     end: resolved
 ```
 
-If a flow doesn't make sense, the conductor refuses to run it and says why. For
-example, a step might lead nowhere or there might be no end step. Each run
-keeps its own copy of the flow. Editing the memory changes future runs but not
+The conductor treats a flow that doesn't make sense as if it weren't there,
+even one saved under a built-in's name. For example, a step might lead nowhere
+or there might be no end step. `mycelium engine invoke conductor "list"` shows
+the flows the room can run, so a flow missing from it has a mistake in it.
+Each run keeps its own copy of the flow. Editing the memory changes future runs but not
 past records.
 
 ## Steps
@@ -5019,7 +4980,7 @@ gets posted. This table lists every marker Mycelium reads:
 
 | Marker | Used for |
 |---|---|
-| `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step or a negotiation. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
+| `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
 | `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
 | `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
@@ -5065,8 +5026,8 @@ happy, and the decision saved to memory says who and why.
 
 ## The record
 
-Every flow and negotiation is saved at `log/episodes/{id}.md` whether it agreed
-or not. See [episodes](#episodes). In the record, each message points to the
+Every conductor run is saved at `log/episodes/{id}.md` whether it agreed or
+not. See [episodes](#episodes). In the record, each message points to the
 ones it answers. The run's full id looks like
 `urn:ioc:mycelium:episode:{room}:{id}`.
 
@@ -5077,10 +5038,11 @@ messages:
 
 | Type | Means |
 |---|---|
+| `intent:mission` | The opening of a conductor run. |
 | `exchange` | A turn. |
-| `commit:converged` | An agreement. |
+| `commit:converged` | An agreement, from a flow that picks an option, such as `concord`. |
 | `commit:resolved` | A flow that finished. |
-| `commit:rejected` | A failed negotiation or flow. |
+| `commit:rejected` | A flow that ended without an outcome. |
 | `knowledge` | A memory write. |
 | `exchange:amend` | A message that edits an earlier one. |
 
@@ -5113,7 +5075,7 @@ The hub records an event each time one of these happens:
 | `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
 | `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `swarm`, `gated`, ... or `custom`), outcome, steps |
 | `mycelium.negotiation_completed` | A conductor flow that picks an option, such as `concord`, finishes | outcome, rounds (how many picks it made) |
-| `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `worker`, ...) |
+| `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `engine` or `a2a`) |
 
 Every event also carries the release, the time and the hub's id, which is a
 random UUID. Resolved tasks, finished flows and finished negotiations carry

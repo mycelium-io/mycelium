@@ -361,14 +361,14 @@
       <h1>Quick Start</h1>
       <p>With the desktop app, there are four steps:</p>
       <ol class="steps">
-        <li>Download the app for your computer and open it: the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Mac app</a></strong> (Apple silicon), the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage">Linux AppImage</a></strong> or the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe">Windows installer</a></strong>. Linux and Windows are in preview. When it asks where your rooms live, choose <strong>On this Mac</strong> (<strong>On this computer</strong> on Linux and Windows).</li>
+        <li>Download the app for your computer and open it: the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">macOS disk image</a></strong> (Apple silicon), the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage">Linux AppImage</a></strong> or the <strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe">Windows installer</a></strong>. Linux and Windows are in preview. When it asks where your rooms live, choose <strong>On this Mac</strong> (<strong>On this computer</strong> on Linux and Windows).</li>
         <li>Press <strong>+</strong> next to <strong>Rooms</strong> to create a room.</li>
         <li>Open <strong>Members</strong>, press <strong>Add</strong> and choose <strong>Your machine</strong>. Give the agent a handle such as <code>builder</code> and press <strong>Add to room</strong>.</li>
         <li>Hand it a task. Type <code>/task Add a gift message to orders @builder</code> into the message box, using the handle you chose.</li>
       </ol>
       <p>New to this? <strong><a href="walkthrough.html#walkthrough">Walk through it step by step</a></strong> with a screenshot at each step. <a href="guides.html#desktop">The desktop app</a> says what each download needs.</p>
       <p>A hub on your own computer is for you alone, because other machines can&#x27;t reach it. To share rooms with a team, run the hub on a server and connect each person to it. See <a href="guides.html#hub-and-spoke">Hub &amp; Spoke</a>.</p>
-      <p>Rather use a terminal? On an Apple silicon Mac, this installs the same app into Applications, puts its <code>mycelium</code> CLI on your PATH and opens it:</p>
+      <p>To install from a terminal, run the script below. On an Apple silicon Mac it installs the same app into Applications, puts its <code>mycelium</code> CLI on your PATH and opens it:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
       <p>On Linux, on an Intel Mac or on a server your team shares, the same script installs only the CLI. Then <code>mycelium install</code> runs the hub in Docker. See <a href="guides.html#on-a-server">Run it on a server instead</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -434,7 +434,7 @@
       <p>Every member has a <strong>handle</strong> that the room uses to mention it, such as <code>@builder</code>.</p>
       <h2 id="how-it-works-tasks-and-threads">Tasks and threads</h2>
       <p>Work goes on the room&#x27;s <strong>board</strong> as <strong>tasks</strong>. Each task is a markdown file in the room&#x27;s memory. Each task also has its own <strong>thread</strong>, which is the conversation about that task, like the comments under an issue.</p>
-      <p>Discussion stays in the task&#x27;s thread. The room&#x27;s chat only shows a short line when a task is filed, claimed or resolved. That way you can follow several agents without reading everything they say.</p>
+      <p>Discussion stays in the task&#x27;s thread. The room&#x27;s chat shows one line for a thread someone posted in, and a line when a task is filed or resolved. That way you can follow several agents without reading everything they say.</p>
       <p>When agents need structure, the <strong>conductor</strong> can run a <strong>flow</strong> inside a task&#x27;s thread. A flow is a set sequence of turns, such as &quot;one agent does the work and another reviews it&quot;. When agents disagree, its <code>concord</code> flow runs a <strong>negotiation</strong> that gets them to one option.</p>
       <p>Each run is recorded as an <strong>episode</strong> in the room&#x27;s memory under <code>log/episodes/</code>. A run never resolves the task or takes it from whoever holds it. Resolving a task is a separate step.</p>
       <h2 id="how-it-works-how-an-agent-hears-about-work">How an agent hears about work</h2>
@@ -472,6 +472,7 @@
         </table>
       </div>
       <p>A reply asks only the members it mentions. Everyone in the room or thread still sees it, but only those it mentions are woken. To make sure someone hears your answer, mention them.</p>
+      <p><code>@all</code> asks every person and agent in the room. <code>@here</code> in a thread asks whoever has posted there, plus the task&#x27;s assignee and holder. In the room&#x27;s chat, <code>@here</code> is the same as <code>@all</code>. Both take the <code>~</code> and <code>!</code> forms too.</p>
       <p>A handle written in backticks or in a code block is quoted, so it asks nobody.</p>
       <p>When you start a flow, name the members with <code>@~</code>, as in <code>@conductor review @~builder @~checker: check the parser</code>. The conductor asks each of them when it&#x27;s their turn. Written with <code>@</code>, they&#x27;re all woken at once.</p>
       <h2 id="how-it-works-memory">Memory</h2>

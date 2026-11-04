@@ -180,10 +180,6 @@
         closing message, called a <em>commit</em>. What Concord and Accord agree is saved to the
         room&#x27;s memory, next to the task. A conductor run never adds tasks to the board.
       </p>
-      <p>
-        Mycelium used to have a second negotiator, the aligner, and has retired it. A room that
-        still summons <code>@aligner</code> gets one reply that says to run Concord or Accord instead.
-      </p>
     </section>
 
     <section class="doc-section" id="watch">
@@ -221,8 +217,8 @@
         want different things. Everyone rates two reference outcomes, proposes one option with its
         reasons, and rates every option with a reason. A fixed rule chooses. The
         members&#x27; language models write the options, ratings and reasons. Code, not a model,
-        decides what happens next. The numbers are never the argument: the thread, the scorecard
-        and the saved decision all lead with the reasons.
+        decides what happens next. The thread, the scorecard and the saved decision all lead with
+        the reasons, and the numbers come after them.
       </p>
       <p>To start it from the terminal:</p>
       <pre><code>mycelium board coordinate work/acme-renewal-offer conductor \
@@ -285,9 +281,9 @@ B (Three years at list price): 82 - it holds margin and still renews them"
         short structured note that says what just happened: <code>open</code>, <code>turn</code>,
         <code>select</code>, <code>edge</code> or <code>close</code>, and in Accord also
         <code>tally</code> and <code>lock</code>. The app uses these notes to draw the scorecard
-        and the step diagram. Here is the commit from the run in the video:
+        and the step diagram. Here is the commit from a Concord run:
       </p>
-      <pre><code>// the commit from the run in the video, shortened:
+      <pre><code>// a Concord commit, shortened:
 {
   "header": {"kind": "commit", "subkind": "converged",
     "participants": {"actors": [{"id": "conductor", "role": "coordinator"},
@@ -401,27 +397,6 @@ flowchart LR
           <tr><td>Afterwards</td><td>The decision is saved as <code>context/decision/&lt;task&gt;</code></td><td>The summary is saved as <code>context/summary/&lt;task&gt;</code>, and later work in the task is held to it</td></tr>
         </tbody>
       </table>
-
-      <h2>How Concord ran</h2>
-      <p>
-        We ran Concord five times in September 2026. Every run used the same task, the same four
-        AI teammates, a local install and <code>claude-haiku-4-5</code>.
-      </p>
-      <table class="l9">
-        <thead><tr><th></th><th>Concord</th></tr></thead>
-        <tbody>
-          <tr><td>Reached agreement</td><td class="num">5 of 5</td></tr>
-          <tr><td>Typical time (median)</td><td class="num">60 seconds</td></tr>
-          <tr><td>Messages in the room</td><td class="num">42 to 53</td></tr>
-        </tbody>
-      </table>
-      <p>
-        Those runs were of an earlier Concord, with a bar of 70 on raw ratings, two fixes, and no
-        reasons asked for. In them, Concord&#x27;s agreements landed right at the bar: the least
-        happy member rated the choice 70. Agreement means everyone can live with the decision, not
-        that anyone loves it. A fix that resubmitted an existing option added nothing but still
-        used up a fix; the current Concord sends such a fix back once.
-      </p>
     </section>
 
     <section class="doc-section" id="components">
@@ -476,7 +451,7 @@ flowchart LR
           </tr>
           <tr>
             <td><span class="pill gap">not built</span></td>
-            <td colspan="2">Telling whether an agent really changed its mind or just went along with the others. This would mean watching how the agent behaved over the whole conversation, instead of trusting what it says about itself. Mycelium leaves this out on purpose. It would use the upstream drift detection engine once that is released.</td>
+            <td colspan="2">Telling whether an agent really changed its mind or just went along with the others. This would mean watching how the agent behaved over the whole conversation, instead of trusting what it says about itself.</td>
           </tr>
         </tbody>
       </table>
@@ -631,12 +606,6 @@ B (GraphQL everywhere): 35 - the mobile clients would need a rewrite [[mycelium:
       <p>
         Both appear in the commit&#x27;s <code>metrics</code> and in the episode record. Accord and the
         conductor&#x27;s other flows make no choice, so their commits carry no scores.
-      </p>
-      <p>
-        Mycelium no longer calculates the IoC metrics from L9&#x27;s SIEP sub-protocol (MPC, GAR and
-        SCR), and it no longer saves a team prior at <code>l9/rule_update/topic</code>. What the
-        conductor saves is Concord&#x27;s decisions and Accord&#x27;s shared summaries, under
-        <code>context/</code>.
       </p>
     </section>
 
