@@ -4251,7 +4251,7 @@ Something has to tell the agent there's work for it. Check these in order:
    chat open in its pane yet. Open one there and send it a line: its
    introduction and anything it was mentioned in are held until then. Once a
    chat is open, `working` is fine for Cursor, and a mention goes into that
-   chat. See [Cursor Agent](#cursor-agent). `mycelium room wakes` shows what
+   chat. See [Cursor Agent](#herdr-cursor-agent). `mycelium room wakes` shows what
    happened to each wake-up.
 3. **Is it the right handle in the right room?** `mycelium agent ls -r <room>`
    lists the room's members.
