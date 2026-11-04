@@ -291,9 +291,3 @@ def test_sync_pushes_presence_and_hands_each_wake_to_its_session(
     said = omnigent.said_to("conv_1")
     assert len(said) == 2
     assert "mycelium await --room eng --handle scout" in said[1]
-
-
-def test_a_swarm_is_refused_rather_than_started_somewhere_else(make_runner):
-    r = make_runner()
-    with pytest.raises(daemon.JobError, match="a swarm starts in herdr for now"):
-        r.swarm({"room": "eng", "key": "k", "episode": "e", "task": "t", "team": []}, None)

@@ -244,7 +244,7 @@ def skill_print() -> None:
     """Print the Mycelium agent skill, to install by hand into an agent CLI.
 
     This is Mycelium's own SKILL.md (the protocol an agent follows in a room),
-    not an entry in a room's skills store above. Agents the runner, swarm or
+    not an entry in a room's skills store above. Agents the runner or
     the desktop app start don't need it: their notes and wake prompts carry the
     commands. It is for an agent CLI you start yourself, e.g.:
 

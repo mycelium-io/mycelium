@@ -106,7 +106,6 @@
         <a href="concepts.html#board" class="nav-link sub">Board</a>
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
-        <a href="concepts.html#swarm" class="nav-link sub">Swarm</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
         <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
@@ -213,7 +212,6 @@
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-herdr" class="nav-link sub">herdr</a>
-          <a href="#config-swarm" class="nav-link sub">swarm</a>
           <a href="#config-runner" class="nav-link sub">runner</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
           <a href="#config-telemetry" class="nav-link sub">telemetry</a>
@@ -1378,12 +1376,6 @@
 <span class="comment"># How many agent panes a herdr tab holds before the next agent opens a new tab in the room&#x27;s workspace.</span>
 <span class="arg">panes_per_tab</span> = 4
 
-<span class="comment"># What ``mycelium swarm`` starts when it runs your own agents.</span>
-<span class="cmd" id="config-swarm">[swarm]</span>
-
-<span class="comment"># The agent CLI a local swarm starts in herdr, as the command herdr runs. Asked for, and saved here, the first time you swarm without one.</span>
-<span class="arg">agent</span> = <span class="str">&quot;&quot;</span>
-
 <span class="comment"># Where this machine&#x27;s runner starts the agents the app asks for.</span>
 <span class="cmd" id="config-runner">[runner]</span>
 
@@ -2144,7 +2136,7 @@ steps:
             <tr>
               <td><code>mycelium.flow_completed</code></td>
               <td>A conductor flow finishes</td>
-              <td>the flow (<code>review</code>, <code>swarm</code>, <code>gated</code>, ... or <code>custom</code>), outcome, steps</td>
+              <td>the flow (<code>review</code>, <code>gated</code>, <code>fan-out</code>, ... or <code>custom</code>), outcome, steps</td>
             </tr>
             <tr>
               <td><code>mycelium.negotiation_completed</code></td>

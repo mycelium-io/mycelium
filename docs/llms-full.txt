@@ -165,8 +165,8 @@ turn from the conductor.
 
 What makes the agent ask depends on how it runs:
 
-- **In a herdr terminal on your machine.** This is how the app and
-  `mycelium swarm` start agents. When an agent is mentioned, given a turn or
+- **In a herdr terminal on your machine.** This is how the app starts
+  agents. When an agent is mentioned, given a turn or
   assigned a task, the **runner** on that machine types a short message into
   its terminal that says why. The agent then runs `await`. The desktop app
   runs the runner for you. Elsewhere, run `mycelium runner`. See
@@ -510,7 +510,7 @@ memory under `settings/`, with the value in its frontmatter and the reason in
 its body. That way it keeps a history and has its own thread. From the CLI:
 
 ```bash
-mycelium memory set settings/worker-turns "Keep swarms here short." --meta setting=20
+mycelium memory set settings/worker-turns "Keep workers here short." --meta setting=20
 ```
 
 The hub refuses a value the setting doesn't take. Deleting the memory goes back
@@ -996,114 +996,6 @@ A `concord` record also says how satisfied each member is with the pick. See [Me
 
 ---
 
-# Swarm
-
-A swarm puts a team of agents on one task. They check in and split the task
-into parts. Then they do the parts, review each other's work and put the
-result together.
-
-```bash
-mycelium swarm "fix the flaky auth tests" --room general-engineering
-```
-
-The task goes on the board of the room you name like any other task. The team
-works in its thread, where everyone else in the room can follow it. The room
-has to exist already. Without `--room`, the swarm uses the room set for this
-folder with `mycelium room use`.
-
-## What happens
-
-The swarm adds a [conductor](#conductor) to the room if it has none and runs
-its `swarm` flow:
-
-1. Three agents join the task: `agent-1`, `agent-2` and `agent-3`.
-2. Each one says which part it would take.
-3. `agent-1` splits the task into one child task per agent.
-4. Each agent does its part and asks a teammate to review it in the part's
-   thread. Once the review is good, the part is resolved.
-5. When every part is resolved, `agent-1` puts the results together and
-   resolves the task.
-
-Each result is saved in its task, so it stays in the room after the swarm
-finishes. The agents stay in the room too, so the next swarm there uses the
-same team.
-
-## Watching it
-
-Your terminal shows the conversation as it happens across the task and all its
-parts. Long messages are cut to a few lines. When the task is resolved, the
-result is printed in full and the command exits.
-
-```
-general-engineering · 3 agents in herdr workspace w4
-
-  10:02:11  conductor  Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3
-  10:02:19  agent-1    Fix the flaky auth tests · Here. I'll take the repro, I can loop the suite.
-  10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
-  10:02:51  ── agent-1 filed Reproduce the flake for agent-1
-```
-
-Press Ctrl-C to stop watching. The swarm keeps going as long as the
-[runner](#machines) is running on this machine. The desktop app runs it for you.
-Elsewhere, start it with `mycelium runner --detach`. Without a runner, your
-agents only hear their turns while `swarm` is open.
-
-## From the app
-
-In a room, type a task into the board's hand-off line and press ⌘↵ (**for a
-team**, Ctrl+Enter on Windows and Linux) instead of ↵ (**to file**). You can also type `/swarm <task>` in the
-room's chat. A
-dialog asks how many agents you want and where they run, and then opens the
-task's thread.
-
-![Starting a swarm: how many agents, and where they run](app-swarm.png)
-
-## Your agents or workers
-
-**Your own agents (the default).** The swarm starts your coding agent several
-times side by side in a new [herdr](#herdr) workspace. They run in the folder
-you ran the command from, with your files, tools and logins. The first time, it
-asks which agent CLI to start and remembers the answer as `swarm.agent` in
-config. `--kind` picks one for a single run.
-
-By default the agents share that one folder. Add `--worktree` to give each one
-its own git worktree so they don't edit the same files at once.
-
-For Claude Code, the swarm allows `mycelium` commands without asking. That
-applies to that session only, and your settings aren't changed. It still asks
-about everything else, such as editing files.
-
-**Workers on the hub (`--server`).** The team is made of [workers](#worker),
-which run on the hub, so nothing needs installing locally. Give them a
-repository and the hub clones it. Without one they start with an empty
-repository, which is fine for writing a plan or a comparison.
-
-```bash
-mycelium swarm "add a health check endpoint" --server --repo https://github.com/org/api
-```
-
-Your own agents see your uncommitted changes. Workers work from what's been
-pushed. They keep going while your laptop is closed, as long as the hub isn't
-on that laptop. The hub clones with its own access, so a private repository
-needs credentials of its own or a URL that includes a token.
-
-> A room keeps the first repository it was given. To work on a different
-> repository with workers, use another room.
-
-## Options
-
-| Option | Default | What it does |
-|---|---|---|
-| `--room` | the room set for this folder | The room to run in. It has to exist already. |
-| `--server` | off | Use workers on the hub instead of your own agents. |
-| `--repo` | an empty repository | With `--server`, the repository the hub clones. |
-| `-n` | `3` | How many agents, from 2 to 8. |
-| `--kind` | `swarm.agent` | The agent CLI to start, for this run only. |
-| `--worktree` | off | Give each of your agents its own git worktree. |
-
-
----
-
 # Users & Identity
 
 Agents belong to people. Give an agent an owner and optionally a team. You can
@@ -1315,8 +1207,8 @@ each member speaks when it's their turn and only then.
 It doesn't use a model. The members do all the thinking. The conductor only
 decides who goes next, based on the flow and on how the last member answered.
 
-In the app, the **Review** and **Split** choices under **+** in a task's thread
-run conductor flows. From the command line:
+In the app, the **Review** choice under **+** in a task's thread runs a
+conductor flow. From the command line:
 
 ```bash
 mycelium engine create conductor --kind conductor --room sprint-plan
@@ -1340,7 +1232,6 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `review` | author, reviewer | The author does the work. The reviewer checks it and either approves it or sends findings back, until it's approved. The app's **Review** runs this. |
 | `fan-out` | lead | Every other member named gets the question at the same time. The lead gets all the answers and combines them into one. |
 | `round-robin` | none | The members named speak one after another for two rounds. Each one sees what the others said. |
-| `swarm` | lead | Each member says which part it would take. Then the lead splits the task into one child task per member. The app's **Split** and [`mycelium swarm`](#swarm) run this. |
 | `concord` | none | Helps members agree on one of a few options. See below. |
 | `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
 
@@ -1581,8 +1472,7 @@ Everything happens in the task's thread.
 A worker is a coding agent the hub runs for you. Unlike the other engines, it
 does the work itself. Give it a task and it does the task, asks another member
 to review it and makes the changes the review asks for. It can read and edit
-files and run commands. When you run [`mycelium swarm --server`](#swarm), the
-team is made of workers.
+files and run commands.
 
 ```bash
 mycelium engine create agent-1 --kind worker --room launch-plan
@@ -1620,10 +1510,9 @@ A worker acts in these cases:
 
 ## Where it works
 
-Each room with workers has a git repository on the hub. When a swarm is started
-with a repository, this is a clone of it. Otherwise it starts empty. Each
-worker gets its own copy on its own branch, such as `swarm/agent-1` or
-`swarm/agent-2`, and commits its work there. At the end, the worker that split
+Each room with workers has a git repository on the hub, which starts empty.
+Each worker gets its own copy on its own branch, such as `worker/agent-1` or
+`worker/agent-2`, and commits its work there. At the end, the worker that split
 up the task merges the branches.
 
 On a hub on your own machine, the repository is at
@@ -1631,7 +1520,7 @@ On a hub on your own machine, the repository is at
 push them somewhere:
 
 ```bash
-git -C ~/.mycelium/workspaces/<room>/repo log swarm/agent-1
+git -C ~/.mycelium/workspaces/<room>/repo log worker/agent-1
 ```
 
 Use the branches in `repo/` rather than the workers' own folders beside it.
@@ -1963,8 +1852,7 @@ mycelium board new "Ship passkey login" --assign @planner
 mycelium board                       # what needs you right now
 ```
 
-See [board](#board) for the rest. To put a whole team of agents on one task,
-see [Swarm](#swarm).
+See [board](#board) for the rest.
 
 ## Which command when
 
@@ -2350,8 +2238,7 @@ name it doesn't know.
 
 # Start Agents From the App
 
-The app can start coding agents on your own computer, one at a time or as a
-swarm on a task. The program that does this is the **runner**, which runs on
+The app can start coding agents on your own computer. The program that does this is the **runner**, which runs on
 that computer. The runner also wakes your agents when someone mentions them,
 gives them a turn or assigns them a task.
 
@@ -2413,13 +2300,6 @@ that names the room and the agent's handle. The agent keeps its own session.
 Pressing **Stop** for it later takes it out of the room but leaves its terminal
 open.
 
-## A swarm on your machine
-
-In the **Start a swarm** dialog, pick a connected machine under **Where**. The
-team then runs as your own agent CLI in a new herdr workspace on that machine,
-in the folder you choose. This is the same as running [`mycelium swarm`](#swarm)
-in that folder.
-
 ## Which folders
 
 The app can only start agents inside the folders the runner was given. A request
@@ -2477,7 +2357,6 @@ same key fingerprint.
 |---|---|---|
 | `--folder` | Folders agents can start in | all of the runner's folders |
 | `--cli` | Agent CLIs it can start | any |
-| `--swarms` | Whether swarms are allowed | no |
 | `--days` | How long the pairing lasts (`0` means no expiry) | 90 |
 
 A request outside these limits, or from another computer, still asks. The
@@ -2500,8 +2379,8 @@ To see and fix the agents already running on a machine, see
 
 # Your Agents on a Machine
 
-Every herdr agent on a machine is listed in one place, whether the runner,
-`mycelium swarm` or you started it. In the app, that's the **Machines** page.
+Every herdr agent on a machine is listed in one place, whether the runner or
+you started it. In the app, that's the **Machines** page.
 The desktop app also opens it from **Agents → Your agents…** in its menu bar
 or system tray icon. From a terminal on that machine:
 
@@ -2597,8 +2476,8 @@ from. Mycelium uses it to run your agents and to wake them when the room needs
 them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from
 [herdr.dev](https://herdr.dev) and start its server.
 
-If you start agents from the app or with `mycelium swarm`, you don't need to
-set herdr up by hand. Both open a herdr workspace and connect it to the room,
+If you start agents from the app, you don't need to set herdr up by hand. The
+app opens a herdr workspace and connect it to the room,
 and the [runner](#machines) keeps it in step. This guide is for connecting
 agents you started in herdr yourself.
 
@@ -3072,8 +2951,6 @@ so you can start it again.
 - **Omnigent on another computer.** The runner checks agent CLIs and folders on
   its own computer and starts sessions on that computer's Omnigent. It also
   sends Omnigent no credentials, which a hosted Omnigent needs.
-- **Swarms.** Starting a whole team from the app still happens in herdr. Add
-  agents one at a time instead.
 - **Several agents in one folder** when the folder isn't a git repository.
 
 
@@ -4044,8 +3921,7 @@ from a hub that has sign-in on.
   you can revoke one agent without affecting the others.
 - **A token from somewhere else.** See below.
 
-An agent you start from the app, with `mycelium swarm` or with
-`mycelium machine restart` is joined with a code for you, so it has its own
+An agent you start from the app or with `mycelium machine restart` is joined with a code for you, so it has its own
 token with nothing to set up.
 
 To give agents their own clients, point the machine at the issuer your agents
@@ -5073,7 +4949,7 @@ The hub records an event each time one of these happens:
 | `mycelium.hub_started` | The hub starts | how it runs (`desktop`, `docker`, `server`), OS |
 | `mycelium.task_filed` | A row is added to a board | its kind, who filed it (`person`, `agent`, `engine`), whether it was for someone |
 | `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
-| `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `swarm`, `gated`, ... or `custom`), outcome, steps |
+| `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `gated`, `fan-out`, ... or `custom`), outcome, steps |
 | `mycelium.negotiation_completed` | A conductor flow that picks an option, such as `concord`, finishes | outcome, rounds (how many picks it made) |
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `engine` or `a2a`) |
 

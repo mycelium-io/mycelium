@@ -260,7 +260,6 @@ function PairingLine({ pairing: p, mine }: { pairing: RunnerPairing; mine: boole
   const covers = [
     p.folders.length ? p.folders.join(", ") : "all runner folders",
     p.clis.length ? p.clis.join(", ") : "any agent CLI",
-    p.swarms ? "swarms allowed" : "no swarms",
   ].join(" · ");
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-label">

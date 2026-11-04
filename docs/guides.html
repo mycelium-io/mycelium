@@ -106,7 +106,6 @@
         <a href="concepts.html#board" class="nav-link sub">Board</a>
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
-        <a href="concepts.html#swarm" class="nav-link sub">Swarm</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
         <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
@@ -213,7 +212,6 @@
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="reference.html#config-herdr" class="nav-link sub">herdr</a>
-          <a href="reference.html#config-swarm" class="nav-link sub">swarm</a>
           <a href="reference.html#config-runner" class="nav-link sub">runner</a>
           <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
           <a href="reference.html#config-telemetry" class="nav-link sub">telemetry</a>
@@ -291,7 +289,7 @@
       <h2 id="on-a-server-put-work-on-the-board">Put work on the board</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="flag">--assign</span> @planner
 <span class="bin">mycelium</span> <span class="cmd">board</span>                       # what needs you right now</code></pre>
-      <p>See <a href="concepts.html#board">board</a> for the rest. To put a whole team of agents on one task, see <a href="concepts.html#swarm">Swarm</a>.</p>
+      <p>See <a href="concepts.html#board">board</a> for the rest.</p>
       <h2 id="on-a-server-which-command-when">Which command when</h2>
       <div class="table-wrap">
         <table>
@@ -633,7 +631,7 @@
 
     <section class="doc-section" id="machines">
       <h1>Start Agents From the App</h1>
-      <p>The app can start coding agents on your own computer, one at a time or as a swarm on a task. The program that does this is the <strong>runner</strong>, which runs on that computer. The runner also wakes your agents when someone mentions them, gives them a turn or assigns them a task.</p>
+      <p>The app can start coding agents on your own computer. The program that does this is the <strong>runner</strong>, which runs on that computer. The runner also wakes your agents when someone mentions them, gives them a turn or assigns them a task.</p>
       <p>The desktop app runs the runner for you. Anywhere else, start it and leave it running:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>     # start in the background
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">status</span>       # is it running, and does the hub see it?
@@ -655,8 +653,6 @@
       <h2 id="machines-bringing-in-an-agent-thats-already-running">Bringing in an agent that&#x27;s already running</h2>
       <p>If you started an agent CLI in herdr yourself, open <strong>Members → Add → Running agent</strong>. Pick the agent, check its handle, and press <strong>Add to room</strong>.</p>
       <p>Your machine asks you first, because the runner is about to type into that agent&#x27;s terminal. Once the agent is idle, the runner types a short introduction that names the room and the agent&#x27;s handle. The agent keeps its own session. Pressing <strong>Stop</strong> for it later takes it out of the room but leaves its terminal open.</p>
-      <h2 id="machines-a-swarm-on-your-machine">A swarm on your machine</h2>
-      <p>In the <strong>Start a swarm</strong> dialog, pick a connected machine under <strong>Where</strong>. The team then runs as your own agent CLI in a new herdr workspace on that machine, in the folder you choose. This is the same as running <a href="concepts.html#swarm"><code>mycelium swarm</code></a> in that folder.</p>
       <h2 id="machines-which-folders">Which folders</h2>
       <p>The app can only start agents inside the folders the runner was given. A request from the hub names an agent CLI and a folder, never a command to run.</p>
       <p>By default the allowed folder is the one you ran <code>mycelium runner</code> from. Name others with <code>--root</code>:</p>
@@ -695,11 +691,6 @@
               <td>any</td>
             </tr>
             <tr>
-              <td><code>--swarms</code></td>
-              <td>Whether swarms are allowed</td>
-              <td>no</td>
-            </tr>
-            <tr>
               <td><code>--days</code></td>
               <td>How long the pairing lasts (<code>0</code> means no expiry)</td>
               <td>90</td>
@@ -728,7 +719,7 @@
 
     <section class="doc-section" id="agents-on-a-machine">
       <h1>Your Agents on a Machine</h1>
-      <p>Every herdr agent on a machine is listed in one place, whether the runner, <code>mycelium swarm</code> or you started it. In the app, that&#x27;s the <strong>Machines</strong> page. The desktop app also opens it from <strong>Agents → Your agents…</strong> in its menu bar or system tray icon. From a terminal on that machine:</p>
+      <p>Every herdr agent on a machine is listed in one place, whether the runner or you started it. In the app, that&#x27;s the <strong>Machines</strong> page. The desktop app also opens it from <strong>Agents → Your agents…</strong> in its menu bar or system tray icon. From a terminal on that machine:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span></code></pre>
       <figure class="doc-figure"><img class="doc-img" src="app-machines.png" alt="The Machines page: a machine&#x27;s agent CLIs, its agents, and what to fix" loading="lazy">
       </figure>
@@ -779,7 +770,7 @@
     <section class="doc-section" id="herdr">
       <h1>Persistent Agents (herdr)</h1>
       <p><a href="https://herdr.dev">herdr</a> keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from <a href="https://herdr.dev">herdr.dev</a> and start its server.</p>
-      <p>If you start agents from the app or with <code>mycelium swarm</code>, you don&#x27;t need to set herdr up by hand. Both open a herdr workspace and connect it to the room, and the <a href="#machines">runner</a> keeps it in step. This guide is for connecting agents you started in herdr yourself.</p>
+      <p>If you start agents from the app, you don&#x27;t need to set herdr up by hand. The app opens a herdr workspace and connect it to the room, and the <a href="#machines">runner</a> keeps it in step. This guide is for connecting agents you started in herdr yourself.</p>
       <h2 id="herdr-why-it-matters">Why it matters</h2>
       <p>An agent that runs <code>mycelium await --loop</code> is told about each new message without help. The hub remembers where it left off, so it never misses one. But a coding agent sitting idle at its prompt isn&#x27;t waiting for messages, so nothing reaches it. herdr and the runner cover that case. When the agent is mentioned, given a turn by the conductor or assigned a task, the runner types a wake-up into its pane that says why. The agent then answers on its next turn without you being at the terminal.</p>
       <p>Rooms, memory, the board and the engines all work without herdr. What herdr adds is a way to wake an agent that isn&#x27;t already waiting for messages.</p>
@@ -1138,7 +1129,6 @@ done</code></pre>
       <h2 id="omnigent-what-doesnt-work-yet">What doesn&#x27;t work yet</h2>
       <ul>
         <li><strong>Omnigent on another computer.</strong> The runner checks agent CLIs and folders on its own computer and starts sessions on that computer&#x27;s Omnigent. It also sends Omnigent no credentials, which a hosted Omnigent needs.</li>
-        <li><strong>Swarms.</strong> Starting a whole team from the app still happens in herdr. Add agents one at a time instead.</li>
         <li><strong>Several agents in one folder</strong> when the folder isn&#x27;t a git repository.</li>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/omnigent.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -1970,7 +1960,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
         <li><strong>Its own client.</strong> The agent signs in with its own OIDC client, using the <code>client_credentials</code> grant. The client id becomes the agent&#x27;s handle, and you can revoke one agent without affecting the others.</li>
         <li><strong>A token from somewhere else.</strong> See below.</li>
       </ul>
-      <p>An agent you start from the app, with <code>mycelium swarm</code> or with <code>mycelium machine restart</code> is joined with a code for you, so it has its own token with nothing to set up.</p>
+      <p>An agent you start from the app or with <code>mycelium machine restart</code> is joined with a code for you, so it has its own token with nothing to set up.</p>
       <p>To give agents their own clients, point the machine at the issuer your agents use. Then set each agent&#x27;s client secret:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> agent_auth.issuer <span class="url">https://sso.example.com/realms/agents</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> agent_auth.audience <span class="bin">mycelium</span>     # same as the hub&#x27;s auth.audience

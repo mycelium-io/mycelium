@@ -50,7 +50,6 @@ vi.mock("@/components/current-user", () => ({
   useCurrentUser: () => ({ principal: "julia" }),
   usePrincipal: () => "julia",
 }));
-vi.mock("@/components/start-swarm-dialog", () => ({ StartSwarmDialog: () => null }));
 
 const { RoomBoard } = await import("./room-board");
 

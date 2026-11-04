@@ -292,7 +292,6 @@ if (!isDemoScenario() && !isLearnScenario()) {
         expires_at: new Date(Date.now() + 87 * 24 * 3_600_000).toISOString(),
         folders: ["/Users/morgan/models"],
         clis: ["opencode"],
-        swarms: false,
       },
     ],
     connected: true,
@@ -361,7 +360,7 @@ const applied = new Set<string>(["job-0000", "job-0001"]);
  *  take's launch waits on a yes first. */
 function statusOf(job: StoredJob): RunnerJob["status"] {
   const age = Date.now() - Date.parse(job.created_at);
-  if (isLearnScenario() && (job.kind === "launch" || job.kind === "swarm")) {
+  if (isLearnScenario() && job.kind === "launch") {
     if (age < 1_000) return "queued";
     if (age < 3_200) return "waiting";
     if (age < 4_600) return "running";
@@ -425,7 +424,6 @@ function settle(job: StoredJob): void {
       expires_at: r.expires_at,
       folders: r.folders,
       clis: r.clis,
-      swarms: r.swarms,
     };
     runner.pairings = [...(runner.pairings ?? []).filter((p) => p.key !== pairing.key), pairing];
   }
@@ -509,7 +507,6 @@ export async function pairDevice(body: Record<string, unknown>): Promise<RunnerJ
     expires_at: new Date(Date.now() + 90 * 24 * 3_600_000).toISOString(),
     folders: [],
     clis: [],
-    swarms: false,
   };
   const spec = { offer: String(body.code_id ?? ""), name: pairing.name, key };
   return queueJob(MOCK_MINI_ID, "pair", spec, null, null, { label: "studio-mini", ...pairing });

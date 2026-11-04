@@ -41,7 +41,7 @@ import os
 import re
 import secrets
 import threading
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -211,7 +211,6 @@ class Limits:
 
     folders: list[str] = field(default_factory=list)
     clis: list[str] = field(default_factory=list)
-    swarms: bool = False
     #: ISO time it ends; ``None`` never.
     expires_at: str | None = None
 
@@ -221,15 +220,23 @@ class Limits:
         *,
         folders: list[Path] | None = None,
         clis: list[str] | None = None,
-        swarms: bool = False,
         days: int = DEFAULT_DAYS,
     ) -> Limits:
         return cls(
             folders=[str(p.expanduser().resolve()) for p in folders or []],
             clis=sorted({c.strip().lower() for c in clis or [] if c.strip()}),
-            swarms=swarms,
             expires_at=(_now() + timedelta(days=days)).isoformat() if days > 0 else None,
         )
+
+    @classmethod
+    def parse(cls, raw: dict[str, Any]) -> Limits:
+        """The limits a saved pairing names, ignoring any this version no longer has.
+
+        A pairing saved by an older version can carry a limit since dropped, so
+        only the ones still here are read rather than the pairing being lost.
+        """
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in raw.items() if k in known})
 
 
 @dataclass
@@ -264,7 +271,6 @@ class Pairing:
             "expires_at": self.limits.expires_at,
             "folders": self.limits.folders,
             "clis": self.limits.clis,
-            "swarms": self.limits.swarms,
         }
 
     @classmethod
@@ -275,7 +281,7 @@ class Pairing:
             x=str(raw["x"]),
             y=str(raw["y"]),
             paired_at=str(raw["paired_at"]),
-            limits=Limits(**raw.get("limits") or {}),
+            limits=Limits.parse(raw.get("limits") or {}),
             offer=str(raw.get("offer") or ""),
         )
 
@@ -421,7 +427,7 @@ def redeem(spec: dict[str, Any], *, base: Path | None = None) -> Pairing:
             x=x,
             y=y,
             paired_at=_now().isoformat(),
-            limits=Limits(**body["limits"]),
+            limits=Limits.parse(body["limits"]),
             offer=oid,
         )
         _save([*pairings, made], base)

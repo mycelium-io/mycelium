@@ -10,8 +10,8 @@ Adding a capability to one family without the others surfaces as an
 abstract-method gap (and a failing ``tests/test_integration_contract.py``),
 not a silent degradation.
 
-The command layer (``commands/agent.py``, ``commands/engine.py``,
-``commands/swarm.py``) stays thin: resolve the integration via
+The command layer (``commands/agent.py``, ``commands/engine.py``)
+stays thin: resolve the integration via
 :func:`mycelium.integrations.get_integration`, then call it. Add a runtime by
 adding one subclass + registering it in ``integrations.__init__.INTEGRATIONS``,
 no churn in the command layer.

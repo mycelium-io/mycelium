@@ -73,7 +73,7 @@ memory under `settings/`, with the value in its frontmatter and the reason in
 its body. That way it keeps a history and has its own thread. From the CLI:
 
 ```bash
-mycelium memory set settings/worker-turns "Keep swarms here short." --meta setting=20
+mycelium memory set settings/worker-turns "Keep workers here short." --meta setting=20
 ```
 
 The hub refuses a value the setting doesn't take. Deleting the memory goes back

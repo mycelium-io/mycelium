@@ -304,8 +304,7 @@ export function AgentsPanel({
     return () => clearInterval(t);
   }, [refresh]);
 
-  // Agents by where they are in their life, not who owns them (a room's swarm is
-  // nearly all one owner): **Engines** are the backend capabilities (conductor,
+  // Agents by where they are in their life, not who owns them: **Engines** are the backend capabilities (conductor,
   // synthesizer), kept apart because they persist; every other agent — coding
   // agents and bridged A2A ones alike — is **Active** when it holds a live socket
   // or an await lease and **Idle** otherwise. Idle folds by default so the handful
@@ -434,7 +433,7 @@ export function AgentsPanel({
           const owners = new Set(group.agents.map((a) => a.owner).filter(Boolean));
           const groupOwner = owners.size === 1 ? [...owners][0]! : null;
           return (
-            // The idle swarm stays listed, dimmed, rather than folded away.
+            // Idle agents stay listed, dimmed, rather than folded away.
             <div key={group.id} className={group.id === "idle" ? "opacity-60" : undefined}>
               <SectionLabel count={group.agents.length} hint={groupOwner ? `@${groupOwner}` : undefined}>
                 {group.label}

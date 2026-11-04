@@ -193,9 +193,6 @@ async def test_julias_machine_is_not_found_for_bob(hub: Hub):
             BOB, f"{runner}/adopt", {"room": ROOM, "handle": "sneaky", "pane": "w1:p1"}
         ),
         "stop": await hub.post(BOB, stop),
-        "swarm": await hub.post(
-            BOB, f"/api/rooms/{ROOM}/swarms", {"task": "x", "size": 2, "runner": JULIA_RUNNER}
-        ),
     }
     assert {k: r.status_code for k, r in refused.items()} == dict.fromkeys(refused, 404)
     # Nothing Bob asked for was queued on Julia's machine, or written to the room.

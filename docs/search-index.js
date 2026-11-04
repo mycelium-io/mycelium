@@ -42,7 +42,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-how-an-agent-hears-about-work",
     "t": "How an agent hears about work",
     "s": "How It Works",
-    "x": "The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with mycelium await, which returns the next message for it, such as a mention or a turn from the conductor. What makes the agent ask depends on how it runs: In a herdr terminal on your machine. This is how the app and mycelium swarm start agents. When an agent is mentioned, gi",
+    "x": "The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with mycelium await, which returns the next message for it, such as a mention or a turn from the conductor. What makes the agent ask depends on how it runs: In a herdr terminal on your machine. This is how the app starts agents. When an agent is mentioned, given a turn or assi",
     "p": "Get Started"
   },
   {
@@ -313,47 +313,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Concepts"
   },
   {
-    "u": "concepts.html#swarm",
-    "t": "Swarm",
-    "x": "A swarm puts a team of agents on one task. They check in and split the task into parts. Then they do the parts, review each other's work and put the result together. mycelium swarm \"fix the flaky auth tests\" --room general-engineering The task goes on the board of the room you name like any other task. The team works in its thread, where everyone else in the room can follow it. The room has to exist already. Without ",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-what-happens",
-    "t": "What happens",
-    "s": "Swarm",
-    "x": "The swarm adds a conductor to the room if it has none and runs its swarm flow: Three agents join the task: agent-1, agent-2 and agent-3. Each one says which part it would take. agent-1 splits the task into one child task per agent. Each agent does its part and asks a teammate to review it in the part's thread. Once the review is good, the part is resolved. When every part is resolved, agent-1 puts the results togethe",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-watching-it",
-    "t": "Watching it",
-    "s": "Swarm",
-    "x": "Your terminal shows the conversation as it happens across the task and all its parts. Long messages are cut to a few lines. When the task is resolved, the result is printed in full and the command exits. general-engineering · 3 agents in herdr workspace w4 10:02:11 conductor Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3 10:02:19 agent-1 Fix the flaky auth tests · Here. I'll take the re",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-from-the-app",
-    "t": "From the app",
-    "s": "Swarm",
-    "x": "In a room, type a task into the board's hand-off line and press ⌘↵ (for a team, Ctrl+Enter on Windows and Linux) instead of ↵ (to file). You can also type /swarm <task> in the room's chat. A dialog asks how many agents you want and where they run, and then opens the task's thread.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-your-agents-or-workers",
-    "t": "Your agents or workers",
-    "s": "Swarm",
-    "x": "Your own agents (the default). The swarm starts your coding agent several times side by side in a new herdr workspace. They run in the folder you ran the command from, with your files, tools and logins. The first time, it asks which agent CLI to start and remembers the answer as swarm.agent in config. --kind picks one for a single run. By default the agents share that one folder. Add --worktree to give each one its o",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#swarm-options",
-    "t": "Options",
-    "s": "Swarm",
-    "x": "Option Default What it does --room the room set for this folder The room to run in. It has to exist already. --server off Use workers on the hub instead of your own agents. --repo an empty repository With --server, the repository the hub clones. -n 3 How many agents, from 2 to 8. --kind swarm.agent The agent CLI to start, for this run only. --worktree off Give each of your agents its own git worktree.",
-    "p": "Concepts"
-  },
-  {
     "u": "concepts.html#users",
     "t": "Users & Identity",
     "x": "Agents belong to people. Give an agent an owner and optionally a team. You can then filter a room to your own agents, see whose agent made a change and know who to ask when one needs help. There are two kinds of record, both kept on the hub: Users belong to the whole hub (users/{handle}), since a person works across rooms. Agents belong to a room. Each has a record at agents/{handle} in the room's memory, with its in",
@@ -525,7 +484,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "engines.html#worker",
     "t": "Worker",
-    "x": "A worker is a coding agent the hub runs for you. Unlike the other engines, it does the work itself. Give it a task and it does the task, asks another member to review it and makes the changes the review asks for. It can read and edit files and run commands. When you run mycelium swarm --server, the team is made of workers. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine create agent-2 ",
+    "x": "A worker is a coding agent the hub runs for you. Unlike the other engines, it does the work itself. Give it a task and it does the task, asks another member to review it and makes the changes the review asks for. It can read and edit files and run commands. mycelium engine create agent-1 --kind worker --room launch-plan mycelium engine create agent-2 --kind worker --room launch-plan mycelium board new \"Draft the laun",
     "p": "Engines"
   },
   {
@@ -539,7 +498,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#worker-where-it-works",
     "t": "Where it works",
     "s": "Worker",
-    "x": "Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it. Otherwise it starts empty. Each worker gets its own copy on its own branch, such as swarm/agent-1 or swarm/agent-2, and commits its work there. At the end, the worker that split up the task merges the branches. On a hub on your own machine, the repository is at ~/.mycelium/workspaces/<room>/repo. ",
+    "x": "Each room with workers has a git repository on the hub, which starts empty. Each worker gets its own copy on its own branch, such as worker/agent-1 or worker/agent-2, and commits its work there. At the end, the worker that split up the task merges the branches. On a hub on your own machine, the repository is at ~/.mycelium/workspaces/<room>/repo. You can look at the branches there or push them somewhere: git -C ~/.my",
     "p": "Engines"
   },
   {
@@ -670,7 +629,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#on-a-server-put-work-on-the-board",
     "t": "Put work on the board",
     "s": "Setup › Run It on a Server",
-    "x": "mycelium board new \"Ship passkey login\" --assign @planner mycelium board # what needs you right now See board for the rest. To put a whole team of agents on one task, see Swarm.",
+    "x": "mycelium board new \"Ship passkey login\" --assign @planner mycelium board # what needs you right now See board for the rest.",
     "p": "Guides"
   },
   {
@@ -838,7 +797,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines",
     "t": "Start Agents From the App",
     "s": "Agents",
-    "x": "The app can start coding agents on your own computer, one at a time or as a swarm on a task. The program that does this is the runner, which runs on that computer. The runner also wakes your agents when someone mentions them, gives them a turn or assigns them a task. The desktop app runs the runner for you. Anywhere else, start it and leave it running: mycelium runner --detach # start in the background mycelium runne",
+    "x": "The app can start coding agents on your own computer. The program that does this is the runner, which runs on that computer. The runner also wakes your agents when someone mentions them, gives them a turn or assigns them a task. The desktop app runs the runner for you. Anywhere else, start it and leave it running: mycelium runner --detach # start in the background mycelium runner status # is it running, and does the ",
     "p": "Guides"
   },
   {
@@ -860,13 +819,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Bringing in an agent that's already running",
     "s": "Agents › Start Agents From the App",
     "x": "If you started an agent CLI in herdr yourself, open Members → Add → Running agent. Pick the agent, check its handle, and press Add to room. Your machine asks you first, because the runner is about to type into that agent's terminal. Once the agent is idle, the runner types a short introduction that names the room and the agent's handle. The agent keeps its own session. Pressing Stop for it later takes it out of the r",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#machines-a-swarm-on-your-machine",
-    "t": "A swarm on your machine",
-    "s": "Agents › Start Agents From the App",
-    "x": "In the Start a swarm dialog, pick a connected machine under Where. The team then runs as your own agent CLI in a new herdr workspace on that machine, in the folder you choose. This is the same as running mycelium swarm in that folder.",
     "p": "Guides"
   },
   {
@@ -901,7 +853,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#agents-on-a-machine",
     "t": "Your Agents on a Machine",
     "s": "Agents",
-    "x": "Every herdr agent on a machine is listed in one place, whether the runner, mycelium swarm or you started it. In the app, that's the Machines page. The desktop app also opens it from Agents → Your agents… in its menu bar or system tray icon. From a terminal on that machine: mycelium machine It lists the agents by herdr workspace and says what each one is doing. Then it lists what's wrong, with the command that fixes e",
+    "x": "Every herdr agent on a machine is listed in one place, whether the runner or you started it. In the app, that's the Machines page. The desktop app also opens it from Agents → Your agents… in its menu bar or system tray icon. From a terminal on that machine: mycelium machine It lists the agents by herdr workspace and says what each one is doing. Then it lists what's wrong, with the command that fixes each problem. Add",
     "p": "Guides"
   },
   {
@@ -936,7 +888,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#herdr",
     "t": "Persistent Agents (herdr)",
     "s": "Agents",
-    "x": "herdr keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from herdr.dev and start its server. If you start agents from the app or with mycelium swarm, you don't need to set herdr up by hand. Both op",
+    "x": "herdr keeps coding-agent sessions running in named terminals, called panes, even after you close the window you started them from. Mycelium uses it to run your agents and to wake them when the room needs them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from herdr.dev and start its server. If you start agents from the app, you don't need to set herdr up by hand. The app opens a herdr workspac",
     "p": "Guides"
   },
   {
@@ -1125,7 +1077,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#omnigent-what-doesnt-work-yet",
     "t": "What doesn't work yet",
     "s": "Agents › Run Agents in Omnigent",
-    "x": "Omnigent on another computer. The runner checks agent CLIs and folders on its own computer and starts sessions on that computer's Omnigent. It also sends Omnigent no credentials, which a hosted Omnigent needs. Swarms. Starting a whole team from the app still happens in herdr. Add agents one at a time instead. Several agents in one folder when the folder isn't a git repository.",
+    "x": "Omnigent on another computer. The runner checks agent CLIs and folders on its own computer and starts sessions on that computer's Omnigent. It also sends Omnigent no credentials, which a hosted Omnigent needs. Several agents in one folder when the folder isn't a git repository.",
     "p": "Guides"
   },
   {

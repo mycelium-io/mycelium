@@ -85,6 +85,4 @@ so you can start it again.
 - **Omnigent on another computer.** The runner checks agent CLIs and folders on
   its own computer and starts sessions on that computer's Omnigent. It also
   sends Omnigent no credentials, which a hosted Omnigent needs.
-- **Swarms.** Starting a whole team from the app still happens in herdr. Add
-  agents one at a time instead.
 - **Several agents in one folder** when the folder isn't a git repository.

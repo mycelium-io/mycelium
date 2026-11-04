@@ -15,7 +15,7 @@ Design rules (mirrors the package docstring):
   :class:`HerdrUnavailableError`; callers on the wake path catch it and fall back
   to the pure-CLI ``await``/``respond`` behavior. Never let a herdr hiccup break
   ``agent invoke``.
-- **Interactive sessions only.** Agents started here (``swarm``, the runner)
+- **Interactive sessions only.** Agents started here (the runner, a restart)
   are interactive sessions in panes the user can watch and type into; they
   are driven by prompting the pane, never run one-shot.
 - **The reply channel is the room.** We never read agent stdout — herdr can't

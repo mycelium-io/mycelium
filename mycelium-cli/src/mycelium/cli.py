@@ -40,7 +40,6 @@ from mycelium.commands import (
     schedule,
     skill,
     subscribe,
-    swarm,
     theme,
     ui,
     user,
@@ -141,9 +140,6 @@ app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
 app.command(name="waiting")(waiting.waiting)
 app.command(name="ask")(ask.ask)
-
-# A team on one task: the quickest way to watch agents coordinate.
-app.command(name="swarm")(swarm.swarm)
 
 # Convenience alias: `mycelium ls` is `mycelium room ls`; rooms are the entry
 # point, so listing them shouldn't need the `room` prefix.

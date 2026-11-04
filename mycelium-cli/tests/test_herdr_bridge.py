@@ -212,7 +212,7 @@ def test_wake_happy_path(monkeypatch: pytest.MonkeyPatch, isolated_home: Path) -
 def test_wake_without_waiting_hands_the_prompt_over_and_returns(
     monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ) -> None:
-    # A swarm wakes several agents in one pass; waiting on each turn to settle
+    # A sync pass wakes several agents at once; waiting on each turn to settle
     # would have them work one after another.
     bridge, runner = _bridge_with(
         monkeypatch,
@@ -1039,3 +1039,37 @@ def test_herdr_unbind_forgets_the_workspace_and_keeps_its_members(isolated_home:
     again = CliRunner().invoke(herdr_cmd.app, ["unbind", "w2"])
     assert again.exit_code == 1
     assert "No binding" in again.output
+
+
+def test_the_bridge_reads_back_what_herdr_made(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    calls: list[list[str]] = []
+    layout = HerdrLayout()
+
+    def herdr(args: list[str]) -> subprocess.CompletedProcess:
+        calls.append(args)
+        if (result := layout.answer(args)) is not None:
+            return _proc(_ok(result))
+        return _proc(stderr=_ok({}), returncode=2)
+
+    bridge = HerdrBridge(runner=herdr)
+
+    assert bridge.create_workspace("room", cwd="/repo", env={"A": "1"}) == ("w9", "w9:p1")
+    assert bridge.split_pane("w9:p1", direction="down", env={"B": "2"}) == "w9:p2"
+    assert calls[0] == [
+        "workspace",
+        "create",
+        "--label",
+        "room",
+        "--no-focus",
+        "--cwd",
+        "/repo",
+        "--env",
+        "A=1",
+    ]
+    assert calls[1][:5] == ["pane", "split", "w9:p1", "--direction", "down"]
+    assert calls[1][-2:] == ["--env", "B=2"]
+
+    bridge = HerdrBridge(runner=lambda _a: _proc(_ok({"workspace": {}})))
+    with pytest.raises(HerdrError):
+        bridge.create_workspace("room")

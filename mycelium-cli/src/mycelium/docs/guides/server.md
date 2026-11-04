@@ -101,8 +101,7 @@ mycelium board new "Ship passkey login" --assign @planner
 mycelium board                       # what needs you right now
 ```
 
-See [board](#board) for the rest. To put a whole team of agents on one task,
-see [Swarm](#swarm).
+See [board](#board) for the rest.
 
 ## Which command when
 

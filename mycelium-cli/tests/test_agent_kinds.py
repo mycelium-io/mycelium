@@ -396,7 +396,9 @@ def test_each_cli_is_recorded_under_its_manifest_family(framework, adapter):
         "runner/hosts.py",
         "runner/daemon.py",
         "integrations/herdr/bridge.py",
-        "commands/swarm.py",
+        "integrations/herdr/starting.py",
+        "runner/worktrees.py",
+        "live_view.py",
         "machine.py",
     ],
 )

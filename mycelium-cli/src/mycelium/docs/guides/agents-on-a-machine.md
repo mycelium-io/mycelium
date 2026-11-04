@@ -1,7 +1,7 @@
 # Your Agents on a Machine
 
-Every herdr agent on a machine is listed in one place, whether the runner,
-`mycelium swarm` or you started it. In the app, that's the **Machines** page.
+Every herdr agent on a machine is listed in one place, whether the runner or
+you started it. In the app, that's the **Machines** page.
 The desktop app also opens it from **Agents → Your agents…** in its menu bar
 or system tray icon. From a terminal on that machine:
 

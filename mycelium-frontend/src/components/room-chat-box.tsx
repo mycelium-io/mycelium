@@ -36,7 +36,6 @@ import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 import { useClientSetting } from "@/lib/client-settings";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
-import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
 import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
@@ -349,8 +348,6 @@ export function RoomChatBox({
   const bigSend = asked && asked.text === content ? asked : null;
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
-  // The task a `/swarm` is being started on, while its dialog is open.
-  const [swarmTask, setSwarmTask] = useState<string | null>(null);
   // A schedule being made, as `/schedule` or the + filled it in, while its dialog is open.
   const [scheduling, setScheduling] = useState<ScheduleDraft | null>(null);
   const [starting, setStarting] = useState(false);
@@ -859,12 +856,6 @@ export function RoomChatBox({
         setError(`${problem} The key is folder/name, as in context/launch-plan.`);
         return;
       }
-    }
-    if (command?.command.name === "swarm") {
-      // A swarm spends model turns, so it asks first: the dialog takes it from here.
-      setSwarmTask(argValue(command, "what"));
-      cleared();
-      return;
     }
     if (command?.command.name === "schedule") {
       // A schedule spends model turns again and again, so `/schedule` only
@@ -1506,14 +1497,6 @@ export function RoomChatBox({
         />
       )}
 
-      {swarmTask !== null && (
-        <StartSwarmDialog
-          open
-          onClose={() => setSwarmTask(null)}
-          roomName={roomName}
-          initialTask={swarmTask}
-        />
-      )}
     </div>
   );
 }

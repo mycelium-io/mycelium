@@ -3,8 +3,8 @@
 
 """The agents on this machine: what's running, what's wrong, and what to do.
 
-Every herdr agent bound to a room here, however it got there (the runner,
-``mycelium swarm``, or a pane a person bound), read from herdr's registry
+Every herdr agent bound to a room here, however it got there (the runner
+or a pane a person bound), read from herdr's registry
 (which handle in which room is which pane, of which kind, in which folder) and
 from herdr itself (which panes are open, and which have an agent running).
 
@@ -646,7 +646,7 @@ def restart(
     stopped. A session already running in another pane is never started a
     second time.
     """
-    from mycelium.commands.swarm import _start_unblocked, not_ready
+    from mycelium.integrations.herdr.starting import not_ready, start_unblocked
 
     if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
@@ -704,7 +704,7 @@ def restart(
         if workspace and workspace not in bridge.registry.bindings():
             bridge.registry.bind(workspace, agent.room)
         with while_starting or nullcontext():
-            _start_unblocked(bridge, agent.handle, kind, pane, room=agent.room, resume=resume)
+            start_unblocked(bridge, agent.handle, kind, pane, room=agent.room, resume=resume)
         bridge.prompt(pane, prompt, wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e

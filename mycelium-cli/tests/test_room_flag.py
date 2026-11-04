@@ -23,11 +23,10 @@ from mycelium.cli import app
 from mycelium.commands.room import _one_room
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "mycelium"
-#: What agents are told to run: their wake-up prompts, their briefs, the skill.
+#: What agents are told to run: their wake-up prompts, the skill.
 AGENT_TEXT = [
     SRC / "integrations" / "herdr" / "bridge.py",
     SRC / "runner" / "daemon.py",
-    SRC / "commands" / "swarm.py",
     SRC / "skills" / "mycelium" / "SKILL.md",
     # The digest a woken agent is told is built on the hub, in the same checkout.
     SRC.parents[2] / "fastapi-backend" / "app" / "services" / "wake_digest.py",

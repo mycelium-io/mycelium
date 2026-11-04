@@ -165,8 +165,8 @@ function PairForm({ onClose }: { onClose: () => void }) {
         <p>Run this on the remote machine (its runner must be running). It prints a one-time code that expires in 10 minutes.</p>
         <CopyField value={PAIR_COMMAND} className="font-mono" />
         <p className="text-micro text-faint">
-          Add <code className="font-mono">--folder</code>, <code className="font-mono">--cli</code>,{" "}
-          <code className="font-mono">--swarms</code> or <code className="font-mono">--days</code> there to limit what
+          Add <code className="font-mono">--folder</code>, <code className="font-mono">--cli</code> or{" "}
+          <code className="font-mono">--days</code> there to limit what
           this computer can start.
         </p>
       </div>

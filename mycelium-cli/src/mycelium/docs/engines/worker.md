@@ -3,8 +3,7 @@
 A worker is a coding agent the hub runs for you. Unlike the other engines, it
 does the work itself. Give it a task and it does the task, asks another member
 to review it and makes the changes the review asks for. It can read and edit
-files and run commands. When you run [`mycelium swarm --server`](#swarm), the
-team is made of workers.
+files and run commands.
 
 ```bash
 mycelium engine create agent-1 --kind worker --room launch-plan
@@ -42,10 +41,9 @@ A worker acts in these cases:
 
 ## Where it works
 
-Each room with workers has a git repository on the hub. When a swarm is started
-with a repository, this is a clone of it. Otherwise it starts empty. Each
-worker gets its own copy on its own branch, such as `swarm/agent-1` or
-`swarm/agent-2`, and commits its work there. At the end, the worker that split
+Each room with workers has a git repository on the hub, which starts empty.
+Each worker gets its own copy on its own branch, such as `worker/agent-1` or
+`worker/agent-2`, and commits its work there. At the end, the worker that split
 up the task merges the branches.
 
 On a hub on your own machine, the repository is at
@@ -53,7 +51,7 @@ On a hub on your own machine, the repository is at
 push them somewhere:
 
 ```bash
-git -C ~/.mycelium/workspaces/<room>/repo log swarm/agent-1
+git -C ~/.mycelium/workspaces/<room>/repo log worker/agent-1
 ```
 
 Use the branches in `repo/` rather than the workers' own folders beside it.

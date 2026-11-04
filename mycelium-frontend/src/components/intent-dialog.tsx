@@ -11,7 +11,6 @@ import {
   History,
   Loader2,
   Scale,
-  Split,
   SquarePlus,
   X,
   type LucideIcon,
@@ -30,7 +29,6 @@ const FIELD =
 const ICONS: Record<IntentId, LucideIcon> = {
   task: SquarePlus,
   review: CheckCheck,
-  split: Split,
   settle: Scale,
   "catch-up": History,
 };

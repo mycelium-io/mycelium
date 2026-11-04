@@ -84,7 +84,7 @@ class FakeHerdr:
 @pytest.fixture
 def herdr(monkeypatch: pytest.MonkeyPatch, isolated_home: Path) -> FakeHerdr:
     monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr("mycelium.commands.swarm.START_RETRY_S", 0)
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.START_RETRY_S", 0)
     # The agent CLIs on PATH here: Claude Code and Codex, not Pi.
     monkeypatch.setattr(machine, "_installed_kinds", lambda: {"claude", "codex"})
     return FakeHerdr()

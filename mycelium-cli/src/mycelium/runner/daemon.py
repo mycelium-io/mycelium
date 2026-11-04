@@ -9,7 +9,7 @@ Three loops, each on its own thread:
   folders agents may be started in), the agents it is running, and every agent
   on the machine (``mycelium.machine``'s report), re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``, ``restart``, ``rename``), done one at a time and
+  ``scan``, ``restart``, ``rename``), done one at a time and
   reported back.
 - **sync**: presence up and doorbells down for every agent in a workspace
   bound to a room on this machine, so they hear their turns.
@@ -29,7 +29,7 @@ own roots; it never carries a command, so what the hub can ask of this machine
 is exactly "start one of the agent CLIs you found, here".
 
 Even that is asked of the person here first. Anyone who can reach a hub can
-queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
+queue a job for any runner on it, so a launch or restart waits for a yes on
 this machine (``approvals``) unless a device paired here signed it, within
 what the pairing allows (``pairing``), or the runner trusts its hub: the
 desktop app's own hub, which only this machine can reach, or one the person said to
@@ -120,7 +120,7 @@ from mycelium_backend_client.models import (
 #: (``adopt`` introduces an agent someone already has running; ``rename`` ends
 #: one and starts it again under a new handle; ``resume`` starts one in an
 #: earlier session of its CLI's), and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "rename", "resume"})
+ASK_FIRST = frozenset({"launch", "restart", "adopt", "rename", "resume"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 #: How long a paused agent has to stop working before it's told why, and how
@@ -428,7 +428,7 @@ class State:
     agents: dict[str, Tracked] = field(default_factory=dict)
     #: room -> (workspace, the last pane opened there, which the next one splits)
     workspaces: dict[str, tuple[str, str]] = field(default_factory=dict)
-    #: workspace -> room, for every workspace this runner opened, swarms included.
+    #: workspace -> room, for every workspace this runner opened.
     owned: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -510,7 +510,8 @@ class Runner:
         #: Where the devices paired with this machine are kept (``pairing.folder``).
         self._pairings_base = pairings_base
         self.roots = [r.expanduser().resolve() for r in roots]
-        #: herdr's bridge: a swarm is started in herdr whichever host launches do.
+        #: herdr's bridge: restarts, adoptions and the machine report go through
+        #: herdr whichever host launches do.
         self.bridge = bridge or HerdrBridge()
         #: Where launched agents run (``runner.host``).
         self.host: AgentHost = host or (
@@ -769,8 +770,7 @@ class Runner:
         """Whose agents these are: this machine's identity when it reads as a handle.
 
         An identity that is an opaque id (an IdP subject, say) names no one a
-        person would recognize on the roster, so the login name stands in, as
-        ``mycelium swarm`` does when there is no identity at all.
+        person would recognize on the roster, so the login name stands in.
         """
         import getpass
 
@@ -1043,11 +1043,11 @@ class Runner:
                 result={"why": "setup", "detail": reason},
             )
         if spec.get("worktree") and not self.host.worktrees:
-            from mycelium.commands.swarm import SwarmError, member_worktree
+            from mycelium.runner.worktrees import WorktreeError, member_worktree
 
             try:
                 cwd = member_worktree(cwd, room, handle)
-            except SwarmError as e:
+            except WorktreeError as e:
                 raise JobError(str(e)) from e
 
         join = (
@@ -1117,8 +1117,8 @@ class Runner:
         What the host said stays in the result's ``detail`` and in the log, for
         whoever is debugging; the sentence is for the person who asked.
         """
-        from mycelium.commands.swarm import SHELL_WAIT_S
         from mycelium.integrations.herdr import AgentExitedError, AgentNotReadyError
+        from mycelium.integrations.herdr.starting import SHELL_WAIT_S
 
         where = (
             f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
@@ -1421,68 +1421,6 @@ class Runner:
             time.sleep(PAUSE_POLL_S)
         return False
 
-    def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
-        """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
-
-        The same steps as ``mycelium swarm`` from a terminal, with the hub's
-        manifests in place of the ones the CLI would write.
-        """
-        from mycelium.commands.swarm import SwarmError, brief_local, kick_off, start_local
-
-        if self.host.name != "herdr":
-            raise JobError(
-                f"{self.label} starts agents in {self.host.name}; a swarm starts in herdr for now."
-            )
-        if not self.herdr:
-            raise JobError(f"herdr isn't running on {self.label}.")
-        room, key, episode = str(spec["room"]), str(spec["key"]), str(spec["episode"])
-        task, team = str(spec["task"]), [str(h) for h in spec["team"]]
-        known = self.framework(str(spec["framework"]))
-        cwd = self.folder(spec.get("cwd"))
-        me = created_by or self.owner() or "web-ui"
-        if reason := known.not_ready():
-            raise JobError(
-                f"{known.name} can't start on {self.label} yet. {reason}",
-                result={"why": "setup", "detail": reason},
-            )
-        try:
-            local = start_local(
-                self.config,
-                self.bridge,
-                room,
-                team,
-                kind=known.herdr_kind or known.id,
-                cwd=cwd,
-                worktree=bool(spec.get("worktree")),
-                me=me,
-                write_manifests=False,
-                carry={"MYCELIUM_API_URL": self.config.server.api_url},
-            )
-            with self._hub(timeout=30) as client:
-                brief_local(client, self.bridge, room, local, key, task, me)
-                if spec.get("kickoff", True):
-                    kick_off(client, room, episode, team, task, me)
-        except (SwarmError, HerdrError) as e:
-            raise JobError(str(e)) from e
-        with self._lock:
-            self.state.owned[local.workspace] = room
-            for handle, pane in local.panes.items():
-                self.state.agents[f"{room}/{handle}"] = Tracked(
-                    handle=handle,
-                    room=room,
-                    framework=known.id,
-                    pane=pane,
-                    cwd=str(cwd),
-                    started_at=_now(),
-                    status="running",
-                    workspace=local.workspace,
-                )
-            self.state.save(self._state_path)
-        self.log.print(
-            f"[green]swarm[/green] of {len(team)} on {key} in {room} → {local.workspace}"
-        )
-        return {"workspace": local.workspace, "panes": local.panes}
-
     def pair(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Pair the device a ``pair`` job carries, if it proves it has a live code from here."""
         try:
@@ -1551,8 +1489,6 @@ class Runner:
                         "@" + agent.handle + " works outside the folders this pairing allows"
                     )
             return
-        if kind == "swarm" and not paired.limits.swarms:
-            raise pairing.Refused("this pairing doesn't allow swarms")
         same = {
             "launch": ("room", "handle", "framework"),
             "resume": ("room", "handle", "framework", "session"),
@@ -1560,8 +1496,6 @@ class Runner:
         if any(str(fields.get(k)) != str(spec.get(k)) for k in same):
             raise different
         if bool(fields.get("worktree")) != bool(spec.get("worktree")):
-            raise different
-        if kind == "swarm" and fields.get("size") != len(spec.get("team") or []):
             raise different
         cwd = self.folder(spec.get("cwd"))
         if self._signed_folder(fields.get("cwd")) != cwd:
@@ -1590,8 +1524,6 @@ class Runner:
         if kind == "scan":
             found = self.scan()
             return {"installed": [f.id for f in found if f.installed]}
-        if kind == "swarm":
-            return self.swarm(spec, job.get("created_by"))
         if kind == "restart":
             return self.restart_agents(spec)
         if kind == "rename":
@@ -1714,19 +1646,12 @@ class Runner:
             )
             if notes := self.notes(room, handle):
                 message += f"\n\nIts instructions:\n{_clip(notes, NOTES_PREVIEW)}"
-        elif kind == "launch":
+        else:
             handle = str(spec.get("handle"))
             title = f"Start @{handle} on {self.label}?"
             message = f"{known.name} would start as @{handle}, working in {_tilde(cwd)}.\n\n{where}"
             if notes := self.notes(room, handle):
                 message += f"\n\nIts instructions:\n{_clip(notes, NOTES_PREVIEW)}"
-        else:
-            team = [f"@{h}" for h in spec.get("team") or []]
-            title = f"Start a team of {len(team)} on {self.label}?"
-            message = (
-                f"{', '.join(team)} would start in {known.name}, working in {_tilde(cwd)}, "
-                f"on: {_clip(str(spec.get('task') or ''), 200)}\n\n{where}"
-            )
         return {"kind": kind, "title": title, "message": message, "hub": hub, "asked_by": asked_by}
 
     def take(self, job: dict[str, Any]) -> None:

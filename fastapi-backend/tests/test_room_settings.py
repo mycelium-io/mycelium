@@ -74,13 +74,13 @@ async def test_set_and_reset_a_room_setting(client, monkeypatch):
     await _make_room(client)
     resp = await client.put(
         "/api/rooms/demo/settings/worker-turns",
-        json={"value": 20, "reason": "Keep the swarm short.", "by": "julia"},
+        json={"value": 20, "reason": "Keep the review short.", "by": "julia"},
     )
     assert resp.status_code == 200
     body = resp.json()
     assert body["value"] == 20
     assert body["source"] == "room"
-    assert body["reason"] == "Keep the swarm short."
+    assert body["reason"] == "Keep the review short."
     assert body["updated_by"] == "julia"
     assert room_settings.value("demo", "worker-turns") == 20
 

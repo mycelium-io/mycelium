@@ -330,46 +330,6 @@ export async function createTask(
   });
 }
 
-/** Where a swarm is running: its room, its task's key, and the task's thread. */
-export interface Swarm {
-  room: string;
-  key: string;
-  episode: string;
-  members: string[];
-  /** The runner job starting the members, when they run on a machine. */
-  job?: string | null;
-}
-
-/** Put a team of agents on a task in a room: a conductor, the members, the
- *  task and the kickoff, in one write. The members are workers on the hub, or
- *  with `runner` set, agent CLIs on that machine in a herdr workspace. */
-export async function startSwarm(
-  room: string,
-  data: {
-    task: string;
-    size?: number;
-    /** A repository for the hub to clone; each agent works on its own branch of it. */
-    repo?: string;
-    created_by?: string;
-    /** The machine whose agent CLIs are the members (`mycelium runner`). */
-    runner?: string;
-    /** Which of that machine's frameworks to start. */
-    framework?: string;
-    /** The folder on that machine the members work in. */
-    cwd?: string;
-    /** Give each member its own git worktree of `cwd`. */
-    worktree?: boolean;
-    /** With runner: from a device paired with it, starts without asking there. */
-    signature?: DeviceSignature;
-  },
-): Promise<Swarm> {
-  return apiFetch<Swarm>(`${roomApiPath(room)}/swarms`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-}
-
 // ── Memory ───────────────────────────────────────────────────────────────────
 
 export interface Memory {
@@ -1749,7 +1709,6 @@ export interface RunnerPairing {
   folders: string[];
   /** Empty: any agent CLI. */
   clis: string[];
-  swarms: boolean;
 }
 
 /** A paired device's signature over a job, which the hub only carries (`device-key.ts`). */
@@ -1770,7 +1729,6 @@ export type RunnerJobKind =
   | "launch"
   | "stop"
   | "scan"
-  | "swarm"
   | "restart"
   | "pair"
   | "interrupt"
