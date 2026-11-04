@@ -23,14 +23,16 @@ SRC = Path(__file__).resolve().parents[2] / "mycelium-desktop" / "src-tauri" / "
 GUARDS = ("local_only(", "own_ui_only(")
 #: What ``own_ui_only`` may answer, and nothing beyond it. ``agent_screen``
 #: and ``agent_session`` (with its earlier pages) hand the app's own hub UI
-#: what a terminal on this machine shows and the session behind it, which is
-#: why they're here and never hub routes: neither leaves the machine.
+#: what a terminal on this machine shows and the session behind it, and
+#: ``earlier_sessions`` the titles of its agent sessions, which is why they're
+#: here and never hub routes: none of it leaves the machine.
 OWN_UI = {
     "this_machine",
     "choose_agent_folder",
     "agent_screen",
     "agent_session",
     "agent_session_page",
+    "earlier_sessions",
 }
 #: The app's own Settings pages, which are pages of the UI's Settings: where
 #: rooms live and start at login, the model, the agents' folder, experiences,

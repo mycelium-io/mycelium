@@ -13,6 +13,7 @@
     "allow-agent-screen",
     "allow-agent-session",
     "allow-agent-session-page",
+    "allow-earlier-sessions",
     "allow-run-doctor",
     "allow-herdr-integrations",
     "allow-get-model",

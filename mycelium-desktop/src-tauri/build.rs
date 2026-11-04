@@ -15,6 +15,7 @@ const COMMANDS: &[&str] = &[
     "agent_screen",
     "agent_session",
     "agent_session_page",
+    "earlier_sessions",
     "run_doctor",
     "herdr_integrations",
     "get_model",

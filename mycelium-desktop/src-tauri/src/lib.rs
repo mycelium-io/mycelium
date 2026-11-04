@@ -1339,6 +1339,18 @@ async fn agent_session_page(
         .map_err(|e| e.to_string())?
 }
 
+/// This machine's earlier agent sessions with their titles, for the app's own
+/// hub UI to offer one to bring into a room. Titles are the person's own
+/// words, so like a screen they're read here and never go to the hub, and
+/// another hub's pages get nothing.
+#[tauri::command]
+async fn earlier_sessions(app: AppHandle, webview: Webview) -> Result<Value, String> {
+    own_ui_only(&app, &webview)?;
+    tauri::async_runtime::spawn_blocking(session::earlier)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// This machine's runner id, for the app's own hub UI: the machine `choose_agent_folder`
 /// picks on, so the page offers the dialog only for an agent starting here.
 #[tauri::command]
@@ -1673,6 +1685,7 @@ pub fn run() {
             agent_screen,
             agent_session,
             agent_session_page,
+            earlier_sessions,
             run_doctor,
             herdr_integrations,
             get_model,

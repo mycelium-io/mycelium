@@ -8,6 +8,12 @@
 //! the session (`agent-session.ts`'s `AgentSession`), or why there is none.
 //! This reads that file for the app's own pages. Like the screen, it never
 //! goes to the hub.
+//!
+//! It also lists this machine's earlier sessions with their titles, for the
+//! Add member dialog to bring one into a room. A title is the person's own
+//! words (the CLI's title for a session, else what it was first asked), so it
+//! comes from the local `mycelium` program to this window only; the runner's
+//! scan, which goes through the hub, carries the same sessions with none.
 
 use std::path::Path;
 
@@ -129,9 +135,45 @@ fn page_answer(stdout: &[u8]) -> Result<Value, String> {
     }
 }
 
+/// What `earlier` refuses with when the program answered with anything but a listing.
+const UNLISTED: &str = "Couldn't list this computer's agent sessions.";
+
+/// Every agent CLI's earlier sessions here, with their titles, as
+/// `mycelium machine sessions` lists them.
+pub fn earlier() -> Result<Value, String> {
+    let bin = paths::resolve("mycelium").ok_or("The mycelium program isn't available.")?;
+    let out = paths::command(bin)
+        .args(["machine", "sessions", "--json"])
+        .env("PATH", paths::shell_path())
+        .output()
+        .map_err(|e| e.to_string())?;
+    listing(&out.stdout)
+}
+
+/// The program's listing, or why there's none: what it printed wasn't one.
+fn listing(stdout: &[u8]) -> Result<Value, String> {
+    match serde_json::from_slice::<Value>(stdout) {
+        Ok(value) if value.is_array() || value.is_object() => Ok(value),
+        _ => Err(UNLISTED.into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_listing_reaches_the_page_as_the_program_printed_it() {
+        let got = listing(br#"[{"id": "s1", "folder": "/work/api", "title": "Fix the refund"}]"#);
+        assert_eq!(got.unwrap()[0]["title"], "Fix the refund");
+    }
+
+    #[test]
+    fn anything_but_a_listing_says_it_couldnt_list_them() {
+        for bad in [&b""[..], b"Traceback (most recent call last):", b"3", br#""no""#] {
+            assert_eq!(listing(bad).unwrap_err(), UNLISTED);
+        }
+    }
 
     struct Home(std::path::PathBuf);
 
