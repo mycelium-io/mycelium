@@ -16,7 +16,6 @@ import {
   Square,
   SquareTerminal,
   UserMinus,
-  UserPlus,
   Users,
 } from "lucide-react";
 import {
@@ -27,7 +26,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
-import { inviteLink } from "@/lib/desktop";
 import {
   controlAgent,
   logFetchError,
@@ -45,7 +43,6 @@ import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { RenameAgentDialog } from "@/components/rename-agent-dialog";
-import { InviteDialog } from "@/components/invite-dialog";
 import { AgentScreenWindow } from "@/components/agent-screen-window";
 import { useAgentOpener } from "@/components/agent-opener";
 import { Button } from "@/components/ui/button";
@@ -57,7 +54,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
 import { usePrincipal } from "@/components/current-user";
-import { useHubAddress } from "@/lib/hub-address";
 
 interface Props {
   roomName: string;
@@ -331,10 +327,10 @@ export function AgentsPanel({
         <span className="text-micro tabular text-faint">
           {people.length + agents.length} {people.length + agents.length === 1 ? "member" : "members"}
         </span>
-        <InviteButton roomName={roomName} />
         <Button
           variant="ghost"
           size="xs"
+          className="ml-auto"
           onClick={() => {
             setAddKind("machine");
             setAddOpen(true);
@@ -511,29 +507,6 @@ export function AgentsPanel({
         )}
       </FadeScroll>
     </div>
-  );
-}
-
-/** Show the link that invites a person into this room: it opens the desktop
- *  app when they have it, and offers the download or the browser when they don't. */
-function InviteButton({ roomName }: { roomName: string }) {
-  const [open, setOpen] = useState(false);
-  const hub = useHubAddress();
-  return (
-    <>
-      <Tooltip content="Get a link that invites someone to this room">
-        <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setOpen(true)}>
-          <UserPlus className="size-3" />
-          Invite
-        </Button>
-      </Tooltip>
-      <InviteDialog
-        open={open}
-        onClose={() => setOpen(false)}
-        roomName={roomName}
-        link={inviteLink(hub, roomName)}
-      />
-    </>
   );
 }
 
