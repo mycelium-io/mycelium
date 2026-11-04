@@ -755,7 +755,14 @@ def test_a_herdr_that_was_already_running_and_stops_is_started_again(
     there = threading.Event()
     there.set()
     events = Events()
-    herdr = comp("herdr", SLEEP, external=there.is_set, outlives=True, replaced_when_gone=True)
+    herdr = comp(
+        "herdr",
+        SLEEP,
+        external=there.is_set,
+        outlives=True,
+        replaced_when_gone=True,
+        process_alive=lambda: there.is_set(),
+    )
 
     def taken_then_gone() -> bool:
         if herdr.state == "running" and herdr.proc is None:
@@ -775,7 +782,13 @@ def test_a_herdr_gone_only_briefly_is_not_started_again():
     """A restart of herdr's server takes it away for a moment; only one gone
     for GONE_S is replaced, so a second server never races the first."""
     answers = [False]
-    herdr = comp("herdr", SLEEP, external=lambda: answers[0], replaced_when_gone=True)
+    herdr = comp(
+        "herdr",
+        SLEEP,
+        external=lambda: answers[0],
+        replaced_when_gone=True,
+        process_alive=lambda: False,
+    )
     sup = hub(Events(), [herdr])
     t = 100.0
     seen = []
@@ -792,3 +805,35 @@ def test_a_herdr_gone_only_briefly_is_not_started_again():
     assert last is True  # gone GONE_S since it last answered
     # Checked only every WATCH_S, never on every tick.
     assert sup._gone(herdr, now=t + 1) is False
+
+
+@pytest.mark.parametrize(("alive", "replaced"), [(True, False), (None, False), (False, True)])
+def test_a_herdr_too_slow_to_answer_is_never_started_twice(alive: bool | None, replaced: bool):
+    """Not answering isn't gone: a busy server can be too slow to list its
+    agents. A second one beside a live one could cut every agent off, so it's
+    started only once its process has surely gone, never when it's still
+    there or when the machine can't tell."""
+    herdr = comp(
+        "herdr",
+        SLEEP,
+        external=lambda: False,
+        replaced_when_gone=True,
+        process_alive=lambda: alive,
+    )
+    sup = hub(Events(), [herdr])
+    t = 100.0
+    gone = False
+    for _ in range(10):  # well past GONE_S without an answer
+        gone = sup._gone(herdr, now=t)
+        t += sv.WATCH_S
+    assert gone is replaced
+
+
+def test_any_running_tells_a_server_from_no_list(monkeypatch: pytest.MonkeyPatch):
+    from mycelium.desktop import herdr_server
+
+    monkeypatch.setattr(herdr_server, "_listed", lambda: None)
+    assert herdr_server.any_running() is None
+    assert herdr_server.running() == []
+    monkeypatch.setattr(herdr_server, "_listed", list)
+    assert herdr_server.any_running() is False

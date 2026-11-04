@@ -524,6 +524,10 @@ class Component:
     #: When it was already running outside (``external``), it's still checked
     #: while the app runs, and started here once it's gone for :data:`GONE_S`.
     replaced_when_gone: bool = False
+    #: For one ``replaced_when_gone``: whether its process is still there,
+    #: answering or not; ``None`` when that can't be told. Only ``False``
+    #: counts as gone, so one that's slow to answer is never started twice.
+    process_alive: Callable[[], bool | None] | None = None
     #: What to say when something outside provides it, in place of the default.
     adopted: str | None = None
     state: State = "stopped"
@@ -688,6 +692,7 @@ class Supervisor:
         It outlives the supervisor, since quitting Mycelium must not end the
         agents' sessions.
         """
+        from mycelium.desktop import herdr_server
         from mycelium.integrations.herdr import HerdrBridge
         from mycelium.integrations.herdr.bridge import skip_first_run
 
@@ -711,8 +716,12 @@ class Supervisor:
             outlives=True,
             # One left running by the app before an update can stop after
             # this app took it as running: stopped by the old app on its
-            # way out, or restarted and not back. The agents need one.
+            # way out, or restarted and not back. The agents need one. But a
+            # second server beside a live one could cut every agent off, so
+            # one is started only once no herdr server process is left: a
+            # busy one too slow to answer is still there.
             replaced_when_gone=True,
+            process_alive=herdr_server.any_running,
         )
 
     def _hub_env_vars(self) -> dict[str, str]:
@@ -1037,7 +1046,11 @@ class Supervisor:
         if not c.unanswered_since:
             c.unanswered_since = now
             return False
-        return now - c.unanswered_since >= GONE_S
+        if now - c.unanswered_since < GONE_S:
+            return False
+        # Not answering isn't gone: a busy one can be too slow to. Only one
+        # whose process has surely gone is replaced.
+        return c.process_alive is None or c.process_alive() is False
 
     def _watch(self, c: Component, now: float | None = None) -> None:
         """Every :data:`WATCH_S`, see that a running program still answers. One
