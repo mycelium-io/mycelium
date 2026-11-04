@@ -351,6 +351,23 @@ export function useRoomPeople(room: string, opts: RoomQueryOptions = {}) {
 
 /** Recent chat, for surfaces that read the room's history rather than tail it.
  *  Shares one cache entry with every other reader of the same page size. */
+/**
+ * The channel's newest page, as `read` gives it, kept across room switches.
+ * The channel is drawn again for every room it opens, so without this a room
+ * you just left was read from the hub again, and drawn only once both its
+ * reads came back. With it, going back to a room draws what it had at once
+ * and refreshes behind; a page that comes back the same changes nothing.
+ */
+export function useChannelPage<T>(room: string, read: () => Promise<T>) {
+  const { data, error } = useSWR(room ? (["room", room, "channel-page"] as const) : null, read, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    dedupingInterval: 2_000,
+    shouldRetryOnError: false,
+  });
+  return { page: data, error };
+}
+
 export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOptions = {}) {
   const { data, isLoading, mutate } = useSWR(
     room ? (["room", room, "messages", limit] as const) : null,

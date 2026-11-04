@@ -3,13 +3,13 @@
 
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   fetchWireHistory,
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import { useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
+import { useChannelPage, useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
 import { boardMovesInChat } from "@/lib/room-settings";
 import {
   NOTICE_TYPE,
@@ -373,6 +373,24 @@ const CHANNEL_PAGE = 200;
  *  amendment already folded into a message on screen would otherwise unfold
  *  itself into a second copy. An event with no id is kept — there is nothing to
  *  compare it by, and dropping it would lose a row to save a duplicate. */
+/** How many of the newest rows a room's channel draws in its first frame, and
+ *  how many more each frame after, until it has drawn them all. */
+const FIRST_ROWS = 12;
+const ROWS_PER_FRAME = 10;
+
+const byTime = (a: Event, b: Event) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0);
+
+/**
+ * A fresh read of the newest page, over what was drawn from the cache: the
+ * page's copy of each event it has, and everything else kept (older pages read
+ * back, and what arrived live since).
+ */
+function withFresh(existing: Event[], page: Event[]): Event[] {
+  const keyOf = (e: Event) => e.messageId ?? e.id;
+  const fresh = new Set(page.map(keyOf));
+  return [...existing.filter((e) => !fresh.has(keyOf(e))), ...page].sort(byTime);
+}
+
 function mergePage(existing: Event[], page: Event[]): Event[] {
   const seen = new Set(existing.map((e) => e.messageId).filter(Boolean));
   const fresh = page.filter((e) => !e.messageId || !seen.has(e.messageId));
@@ -542,26 +560,29 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [roomName],
   );
 
+  // The newest page comes from the app's cache (`useChannelPage`), so a room
+  // opened again draws what it had at once, then takes the fresh page when it
+  // lands. The channel is drawn anew for each room, so this runs per room.
+  const { page: newest, error: newestError } = useChannelPage(roomName, () => readPage(null));
+  const [drawnPage, setDrawnPage] = useState<typeof newest>(undefined);
+  if (newest && newest !== drawnPage) {
+    // Adjusting state to a new read while rendering, as React suggests over an effect.
+    setDrawnPage(newest);
+    const page = [...newest.page].sort(byTime);
+    setEvents((prev) => (prev.length === 0 ? page : withFresh(prev, page)));
+    if (!historyLoaded) setHistoryLoaded(true);
+  }
+  if (newestError && !historyLoaded && !newest) setHistoryLoaded(true);
+  // Reading back starts from the first page drawn, whichever read it was.
   useEffect(() => {
-    let live = true;
-    older.current = { cursor: null, exhausted: false, loading: false };
-    readPage(null)
-      .then(({ page, more }) => {
-        if (!live) return;
-        older.current.cursor = oldestAt(page);
-        older.current.exhausted = !more || older.current.cursor === null;
-        setReachedStart(older.current.exhausted);
-        setEvents([...page].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)));
-        setHistoryLoaded(true);
-      })
-      .catch((err) => {
-        logFetchError("fetchMessages")(err);
-        if (live) setHistoryLoaded(true);
-      });
-    return () => {
-      live = false;
-    };
-  }, [roomName, readPage]);
+    if (!drawnPage || older.current.cursor !== null || older.current.exhausted) return;
+    older.current.cursor = oldestAt(drawnPage.page);
+    older.current.exhausted = !drawnPage.more || older.current.cursor === null;
+    setReachedStart(older.current.exhausted);
+  }, [drawnPage]);
+  useEffect(() => {
+    if (newestError) logFetchError("fetchMessages")(newestError);
+  }, [newestError]);
 
   // The page before the one on screen, fetched when the reader nears the top.
   //
@@ -1060,8 +1081,22 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // here once its thread prose and churn are placed elsewhere). A live message
   // must not pull the view off a hit the reader stepped to, or off a message
   // they arrived at from search; what they just sent takes them back down.
+  // The newest rows draw first, since they're what's on screen, and the rest
+  // follow a batch a frame. Building a room's whole channel in one commit held
+  // the window for a beat on every switch; a batch a frame keeps it answering.
+  // A find or a message to stand on needs every row, so those draw them all.
+  const [drawCount, setDrawCount] = useState(FIRST_ROWS);
+  const drawAll = Boolean(highlight || (findOpen && query.trim()));
+  const drawn = drawAll || drawCount >= visible.length ? visible : visible.slice(-drawCount);
+  useEffect(() => {
+    if (!historyLoaded || drawn.length >= visible.length) return;
+    const frame = requestAnimationFrame(() => startTransition(() => setDrawCount((n) => n + ROWS_PER_FRAME)));
+    return () => cancelAnimationFrame(frame);
+  }, [historyLoaded, drawn.length, visible.length]);
+  const skipped = visible.length - drawn.length;
+
   const newestPending = pending[pending.length - 1]?.id ?? null;
-  const rowIds = useMemo(() => (historyLoaded ? visible.map((e) => e.id) : null), [historyLoaded, visible]);
+  const rowIds = useMemo(() => (historyLoaded ? drawn.map((e) => e.id) : null), [historyLoaded, drawn]);
   const follow = useFollowLatest(scroller, {
     rows: rowIds,
     holding: Boolean(highlight || activeId),
@@ -1165,13 +1200,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           <div className="py-3 text-center text-micro text-muted-foreground">Beginning of the room</div>
         ) : null}
         <NowProvider>
-        {visible.map((ev, idx) => {
+        {drawn.map((ev, idx) => {
               const marked = highlight !== null && ev.messageId === highlight;
               return (
                 <FeedRow
                   key={ev.id}
                   ev={ev}
-                  prev={visible[idx - 1]}
+                  prev={visible[skipped + idx - 1]}
                   ctx={feed}
                   pingLine={pingLines.get(ev.id)}
                   run={runs.get(runEpisode(ev) ?? "")}
