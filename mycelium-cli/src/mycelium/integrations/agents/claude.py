@@ -129,6 +129,11 @@ class Claude(AgentKind):
 
         return claude_session.read_page(path, before, limit)
 
+    def list_sessions(self, *, titles: bool = False) -> list[dict[str, Any]] | None:
+        from mycelium.integrations.agents import claude_session
+
+        return claude_session.list_sessions(titles=titles)
+
     def blocked_hint(self) -> str | None:
         # Nothing says which prompt is on screen (herdr has no rule for the
         # first-run one), so this names what it commonly is, never which.

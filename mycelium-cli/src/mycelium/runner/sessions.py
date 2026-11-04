@@ -54,6 +54,48 @@ def sessions_dir() -> Path:
     return runner_dir() / "sessions"
 
 
+#: Beside :func:`sessions_dir`: which member each session here has been.
+MEMBERS_FILE = "session-members.json"
+
+
+def remember_members(seen: dict[str, dict[str, str]], path: Path) -> None:
+    """Keep which member each session here was (``seen``: session to ``{room,
+    handle}``, from the herdr registry while that member is in it), so an
+    earlier session can say whose it was after the member is gone. Written
+    only when something is new. It is the runner's record, not the session's
+    words, so the scan may carry it."""
+    known = read_members(path)
+    if all(known.get(s) == who for s, who in seen.items()):
+        return
+    known.update(seen)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(known, f)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def read_members(path: Path | None = None) -> dict[str, dict[str, str]]:
+    """``{session: {room, handle}}`` for every session a member here has been in."""
+    try:
+        found = json.loads((path or sessions_dir().parent / MEMBERS_FILE).read_text("utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(found, dict):
+        return {}
+    return {
+        str(s): {"room": str(who["room"]), "handle": str(who["handle"])}
+        for s, who in found.items()
+        if isinstance(who, dict) and who.get("room") and who.get("handle")
+    }
+
+
 class Follower:
     """Keeps each agent's session file current, one look at a time (:meth:`tick`)."""
 
@@ -70,6 +112,7 @@ class Follower:
         except HerdrError:
             live, up = {}, False
         kept: set[tuple[str, str]] = set()
+        seen: dict[str, dict[str, str]] = {}
         for mapping in self.bridge.registry.all():
             if not (_SAFE.fullmatch(mapping.room) and _SAFE.fullmatch(mapping.handle)):
                 continue
@@ -84,6 +127,8 @@ class Follower:
             folder = (
                 mapping.cwd or (running or {}).get("foreground_cwd") or (running or {}).get("cwd")
             )
+            if session:
+                seen[session] = {"room": mapping.room, "handle": mapping.handle}
             try:
                 self._follow(key, kind, session, folder, state)
             except Exception:  # noqa: BLE001 - one agent's file must not stop the others'
@@ -92,6 +137,10 @@ class Follower:
                 )
         for gone in set(self._written) - kept:
             self._remove(gone)
+        try:
+            remember_members(seen, self.base.parent / MEMBERS_FILE)
+        except OSError:
+            log.exception("couldn't keep which member each session was")
 
     def _follow(
         self, key: tuple[str, str], kind: Any, session: str | None, folder: str | None, state: str
