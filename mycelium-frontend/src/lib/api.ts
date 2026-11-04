@@ -9,6 +9,7 @@
 import type { SearchResponse } from "@/lib/search";
 import type { MessageSearchResponse } from "@/lib/message-search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
+import { memorySummaryOf } from "@/lib/memory-preview";
 import { uiTokenHeaders } from "@/lib/ui-token";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
@@ -533,21 +534,40 @@ export interface MemorySummary {
 }
 
 /** Every memory in a room (or under `prefix`) as a list shows it, newest
- *  first, up to `MEMORIES_MAX`: titles and frontmatter, no text. */
+ *  first, up to `MEMORIES_MAX`: titles and frontmatter, no text.
+ *
+ *  A hub from before the light list answers it with a 404 (it reads
+ *  `summaries` as a memory's key), so on a 404 the full list is read and each
+ *  memory named here, as the app did before. Asked every time rather than
+ *  remembered: a room that isn't there is a 404 too, and a hub can update. */
 export async function fetchMemorySummaries(roomName: string, prefix?: string): Promise<MemorySummary[]> {
-  return pagedMemories<MemorySummary>(`${roomApiPath(roomName)}/memory/summaries`, prefix);
+  const path = `${roomApiPath(roomName)}/memory/summaries`;
+  try {
+    return await pagedMemories<MemorySummary>(path, prefix, { strict: true });
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) {
+      logFetchError(path)(err);
+      return [];
+    }
+  }
+  return (await fetchMemories(roomName, prefix)).map(memorySummaryOf);
 }
 
-async function pagedMemories<T extends { key: string }>(path: string, prefix?: string): Promise<T[]> {
+async function pagedMemories<T extends { key: string }>(
+  path: string,
+  prefix?: string,
+  { strict = false }: { strict?: boolean } = {},
+): Promise<T[]> {
   // Pages are offsets into a newest-first list, so a write between two calls
   // shifts the next page by one: keyed, a memory read twice is kept once.
   const byKey = new Map<string, T>();
   for (let offset = 0; offset < MEMORIES_MAX; offset += MEMORIES_PAGE_LIMIT) {
     const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT), offset: String(offset) });
     if (prefix) params.set("prefix", prefix);
+    // Strict, a failed page throws, so the caller can tell a 404 from the rest.
     const page = await apiFetch<T[]>(`${path}?${params}`, {
       cache: "no-store",
-      fallback: [],
+      ...(strict ? {} : { fallback: [] }),
       guard: isArray as (d: unknown) => d is T[],
     });
     for (const memory of page) if (!byKey.has(memory.key)) byKey.set(memory.key, memory);

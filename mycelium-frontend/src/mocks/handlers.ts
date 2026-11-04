@@ -68,7 +68,7 @@ import type {
   Schedule,
   ScheduleRun,
 } from "@/lib/api";
-import { memoryTitle } from "@/lib/memory-preview";
+import { memorySummaryOf } from "@/lib/memory-preview";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -227,21 +227,7 @@ function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
 /** A memory as `GET /memory/summaries` lists it: named, with no text. */
 function memorySummary(room: string, memory: MockMemory): MemorySummary {
   const read = memoryRead(room, memory) as unknown as Memory & { created_at: string };
-  const value = read.value;
-  return {
-    key: read.key,
-    title: memoryTitle(read),
-    structured: !!value && typeof value === "object" && !("text" in (value as object)),
-    created_by: read.created_by,
-    updated_by: read.updated_by ?? null,
-    version: read.version,
-    tags: read.tags ?? null,
-    meta: read.meta ?? null,
-    episode: read.episode ?? null,
-    expandable: Boolean(read.expandable),
-    created_at: read.created_at,
-    updated_at: read.updated_at,
-  };
+  return { ...memorySummaryOf(read), created_at: read.created_at };
 }
 
 /** A room with no A2A bridge: no bridged members, no traffic — but still served

@@ -6,11 +6,18 @@
 A list of many reads this; one memory's text is read by its key.
 """
 
+import json
+from pathlib import Path
+
 import pytest
 from httpx import AsyncClient
 
-from app.routes.memory import memory_title
+from app.routes.memory import TITLE_CHARS, memory_title
 
+#: The title rule both the hub and the app follow.
+CONTRACT = json.loads(
+    (Path(__file__).resolve().parents[2] / "contracts" / "memory-title.json").read_text()
+)
 ROOM = "checkout"
 LONG = "Fix the double charge " * 20
 
@@ -89,18 +96,10 @@ async def test_summaries_of_a_room_that_isnt_there_are_a_404(client: AsyncClient
     assert resp.status_code == 404
 
 
-@pytest.mark.parametrize(
-    ("value", "content", "title"),
-    [
-        ({"title": "  Tax on large orders  ", "text": "x"}, "x", "Tax on large orders"),
-        ({"title": "   ", "text": "Refund policy"}, "Refund policy", "Refund policy"),
-        ("\n\n---\n## Receipt email\nbody", None, "Receipt email"),
-        ({"text": "\n---\n# Coupons\n"}, None, "Coupons"),
-        ({"rate": 0.2}, "rate: 0.2", "rate: 0.2"),
-        ({}, None, "context/empty"),
-        (["refunds", "tax"], "- refunds\n- tax", "- refunds"),
-        ({"text": "---\n---\n"}, None, "context/empty"),
-    ],
-)
-def test_a_title_is_derived_as_the_app_derives_it(value, content, title):
-    assert memory_title("context/empty", value, content) == title
+def test_titles_are_cut_where_the_contract_says():
+    assert CONTRACT["max_chars"] == TITLE_CHARS
+
+
+@pytest.mark.parametrize("case", CONTRACT["cases"], ids=lambda c: c["about"])
+def test_a_title_is_derived_as_the_app_derives_it(case):
+    assert memory_title(case["key"], case["value"], case["content_text"]) == case["title"]
