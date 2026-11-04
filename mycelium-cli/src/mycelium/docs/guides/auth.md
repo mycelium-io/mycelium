@@ -175,8 +175,7 @@ from a hub that has sign-in on.
   you can revoke one agent without affecting the others.
 - **A token from somewhere else.** See below.
 
-An agent you start from the app, with `mycelium swarm` or with
-`mycelium machine restart` is joined with a code for you, so it has its own
+An agent you start from the app or with `mycelium machine restart` is joined with a code for you, so it has its own
 token with nothing to set up.
 
 To give agents their own clients, point the machine at the issuer your agents

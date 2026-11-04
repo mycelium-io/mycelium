@@ -236,8 +236,7 @@ mycelium skill print
 To keep it for later sessions, save it where the runtime reads skills (for
 Claude Code, `mycelium skill print > ~/.claude/skills/mycelium/SKILL.md`; the
 user may need to restart the session, since Claude Code doesn't hot-reload
-skills). Agents the app starts through `mycelium runner`, or a team from
-`mycelium swarm`, don't need it: their notes and the prompts that wake them
+skills). Agents the app starts through `mycelium runner` don't need it: their notes and the prompts that wake them
 carry the commands.
 
 An agent participates as a **resident runtime**: your own live session, kept

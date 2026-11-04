@@ -22,7 +22,7 @@ The hub records an event each time one of these happens:
 | `mycelium.hub_started` | The hub starts | how it runs (`desktop`, `docker`, `server`), OS |
 | `mycelium.task_filed` | A row is added to a board | its kind, who filed it (`person`, `agent`, `engine`), whether it was for someone |
 | `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
-| `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `swarm`, `gated`, ... or `custom`), outcome, steps |
+| `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `gated`, `fan-out`, ... or `custom`), outcome, steps |
 | `mycelium.negotiation_completed` | A conductor flow that picks an option, such as `concord`, finishes | outcome, rounds (how many picks it made) |
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `engine` or `a2a`) |
 

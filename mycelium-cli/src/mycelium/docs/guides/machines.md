@@ -1,7 +1,6 @@
 # Start Agents From the App
 
-The app can start coding agents on your own computer, one at a time or as a
-swarm on a task. The program that does this is the **runner**, which runs on
+The app can start coding agents on your own computer. The program that does this is the **runner**, which runs on
 that computer. The runner also wakes your agents when someone mentions them,
 gives them a turn or assigns them a task.
 
@@ -63,13 +62,6 @@ that names the room and the agent's handle. The agent keeps its own session.
 Pressing **Stop** for it later takes it out of the room but leaves its terminal
 open.
 
-## A swarm on your machine
-
-In the **Start a swarm** dialog, pick a connected machine under **Where**. The
-team then runs as your own agent CLI in a new herdr workspace on that machine,
-in the folder you choose. This is the same as running [`mycelium swarm`](#swarm)
-in that folder.
-
 ## Which folders
 
 The app can only start agents inside the folders the runner was given. A request
@@ -127,7 +119,6 @@ same key fingerprint.
 |---|---|---|
 | `--folder` | Folders agents can start in | all of the runner's folders |
 | `--cli` | Agent CLIs it can start | any |
-| `--swarms` | Whether swarms are allowed | no |
 | `--days` | How long the pairing lasts (`0` means no expiry) | 90 |
 
 A request outside these limits, or from another computer, still asks. The

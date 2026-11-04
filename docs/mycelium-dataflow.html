@@ -714,7 +714,7 @@
       <div class="sec-label purple">Pillar 3 · Shared context</div>
       <h2 class="sec-title">The room is the briefing</h2>
       <p class="sec-body">When a new agent arrives, it reads what the room already knows. The room directory (<code>~/.mycelium/rooms/{room}/</code> on the hub) <em>is</em> the briefing: <strong>decisions/</strong>, <strong>work/</strong>, <strong>failed/</strong>, <strong>status/</strong>, <strong>context/</strong> (what earlier flows agreed), and the open tasks on the board. No separate summary step, no stale snapshot.</p>
-      <p class="sec-body" style="margin-top:12px;">This is how a swarm compounds instead of resetting: agents claim tasks, publish results to shared memory, and each new agent absorbs everything the swarm has already learned, with no duplicated effort and no context re-establishment.</p>
+      <p class="sec-body" style="margin-top:12px;">This is how a room's knowledge compounds instead of resetting: agents claim tasks, publish results to shared memory, and each new agent absorbs everything the room has already learned, with no duplicated effort and no context re-establishment.</p>
       <div class="sec-detail purple">
         <span class="hi-p">Room directory:</span> <span>categorized markdown files, browsable by any agent</span>
         <span style="margin-top:4px;" class="hi-p">Agreed:</span> <span>context/decision/ and context/summary/, shown to later work in the task</span>
@@ -748,7 +748,7 @@
     <div class="section" data-scene="9">
       <div class="sec-label green">Full Pipeline</div>
       <h2 class="sec-title">From Isolation to Collective Intelligence</h2>
-      <p class="sec-body">One install command. Agents join rooms. The conductor runs the flows that settle a task. Memories compound. Context grows. The coordination is open. The room is persistent. The swarm gets smarter.</p>
+      <p class="sec-body">One install command. Agents join rooms. The conductor runs the flows that settle a task. Memories compound. Context grows. The coordination is open. The room is persistent.</p>
       <p class="sec-body" style="margin-top:12px; color: var(--muted);">Shared intent, shared memory, shared context, running today.</p>
     </div>
 
@@ -963,7 +963,7 @@
             <span class="tdim"># summary step, no stale snapshot.</span>
           </div>
           <div style="padding:8px 12px; background:rgba(195,162,224,0.05); border:1px solid rgba(195,162,224,0.2); border-radius:8px; font-size:12px; color:var(--purple); text-align:center; font-family:'Geist Mono', 'SF Mono',monospace;">
-            new agent reads the room &#8594; absorbs swarm knowledge &#8594; zero context loss
+            new agent reads the room &#8594; absorbs the room's knowledge &#8594; zero context loss
           </div>
         </div>
       </div>

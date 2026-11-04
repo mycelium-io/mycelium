@@ -6,8 +6,8 @@ from. Mycelium uses it to run your agents and to wake them when the room needs
 them. The desktop app includes it. Elsewhere, install herdr 0.9.3 or newer from
 [herdr.dev](https://herdr.dev) and start its server.
 
-If you start agents from the app or with `mycelium swarm`, you don't need to
-set herdr up by hand. Both open a herdr workspace and connect it to the room,
+If you start agents from the app, you don't need to set herdr up by hand. The
+app opens a herdr workspace and connect it to the room,
 and the [runner](#machines) keeps it in step. This guide is for connecting
 agents you started in herdr yourself.
 

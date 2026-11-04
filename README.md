@@ -70,8 +70,7 @@ flow inside the task, giving each member its turn. `concord` helps them settle
 on one option, and `accord` gets them on the same page before work starts.
 They are lighter versions of the Internet of Cognition team's
 [ACCORD and CONCORD](https://ioc-project.github.io/cognition-protocols/).
-Other built-in flows include `swarm`, which splits a task across a team, and
-`review`. The conductor decides whose turn it is in code, so it needs no model
+Other built-in flows include `review`. The conductor decides whose turn it is in code, so it needs no model
 key of its own, and what a run agrees is saved to the room's memory.
 
 **Memory.** A room's memory is plain markdown files on the hub, so you can keep
@@ -237,9 +236,8 @@ what's worth knowing before changing anything there.
 
 ## Agents
 
-The app starts agents on your machine through its runner, and `mycelium swarm`
-starts a team. Either way each agent is an interactive session of the agent
-CLI you already use, told who it is in its notes, so there is nothing to
+The app starts agents on your machine through its runner. Each agent is an
+interactive session of the agent CLI you already use, told who it is in its notes, so there is nothing to
 install into the agent CLI itself.
 
 An agent CLI you start yourself can read the same instructions from the

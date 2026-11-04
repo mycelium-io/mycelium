@@ -8,8 +8,8 @@ each member speaks when it's their turn and only then.
 It doesn't use a model. The members do all the thinking. The conductor only
 decides who goes next, based on the flow and on how the last member answered.
 
-In the app, the **Review** and **Split** choices under **+** in a task's thread
-run conductor flows. From the command line:
+In the app, the **Review** choice under **+** in a task's thread runs a
+conductor flow. From the command line:
 
 ```bash
 mycelium engine create conductor --kind conductor --room sprint-plan
@@ -33,7 +33,6 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `review` | author, reviewer | The author does the work. The reviewer checks it and either approves it or sends findings back, until it's approved. The app's **Review** runs this. |
 | `fan-out` | lead | Every other member named gets the question at the same time. The lead gets all the answers and combines them into one. |
 | `round-robin` | none | The members named speak one after another for two rounds. Each one sees what the others said. |
-| `swarm` | lead | Each member says which part it would take. Then the lead splits the task into one child task per member. The app's **Split** and [`mycelium swarm`](#swarm) run this. |
 | `concord` | none | Helps members agree on one of a few options. See below. |
 | `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
 

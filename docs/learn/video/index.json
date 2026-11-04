@@ -23,19 +23,7 @@
   "pairing-work": {
     "seconds": 42.2
   },
-  "relay": {
-    "seconds": 80.6
-  },
   "side-quest": {
     "seconds": 51.3
-  },
-  "swarm-run": {
-    "seconds": 35.9
-  },
-  "swarm-steer": {
-    "seconds": 54.1
-  },
-  "swarm-task": {
-    "seconds": 46
   }
 }

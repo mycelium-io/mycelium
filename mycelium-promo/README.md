@@ -97,7 +97,7 @@ agents' side.
 ```bash
 node mycelium-promo/learn/record.mjs                    # every take → docs/learn/video/
 node mycelium-promo/learn/record.mjs pair-idea github   # just these
-node mycelium-promo/learn/record.mjs --raw swarm-run    # keep the take as recorded, in .shotkit/learn/, to check it
+node mycelium-promo/learn/record.mjs --raw side-quest   # keep the take as recorded, in .shotkit/learn/, to check it
 ```
 
 | | |

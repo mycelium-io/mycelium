@@ -59,8 +59,8 @@ turn from the conductor.
 
 What makes the agent ask depends on how it runs:
 
-- **In a herdr terminal on your machine.** This is how the app and
-  `mycelium swarm` start agents. When an agent is mentioned, given a turn or
+- **In a herdr terminal on your machine.** This is how the app starts
+  agents. When an agent is mentioned, given a turn or
   assigned a task, the **runner** on that machine types a short message into
   its terminal that says why. The agent then runs `await`. The desktop app
   runs the runner for you. Elsewhere, run `mycelium runner`. See
