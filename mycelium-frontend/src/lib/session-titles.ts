@@ -3,7 +3,7 @@
 
 /**
  * The titles of this machine's earlier agent sessions, read by the desktop
- * app (`agent_sessions`, which runs `mycelium machine sessions --json`). A
+ * app (`earlier_sessions`, which runs `mycelium machine sessions --json`). A
  * title is the session's own words, so it never goes through the hub: the
  * runner's scan carries only ids, folders and dates. Off the desktop app, or
  * for another machine's sessions, there are none.
