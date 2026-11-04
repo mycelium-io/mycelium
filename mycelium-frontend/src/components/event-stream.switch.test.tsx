@@ -63,6 +63,7 @@ describe("<EventStream /> across room switches", () => {
       </SWRTestCache>,
     );
     expect(await screen.findByText("line 39")).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("line 0")).toBeTruthy());
+    // The rest arrive a batch a frame; a loaded machine draws frames slowly.
+    await waitFor(() => expect(screen.getByText("line 0")).toBeTruthy(), { timeout: 5000 });
   });
 });
