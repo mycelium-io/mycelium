@@ -86,9 +86,9 @@ vi.mock("@/lib/api", async (importOriginal) => ({
       { message_type: "broadcast", sender_handle: "synthesizer" },
     ],
   }),
-  fetchMemories: vi.fn().mockResolvedValue([
-    { key: "decisions/db", value: "", version: 2, created_by: "julia", updated_at: "" },
-    { key: "context/goals", value: "", version: 1, created_by: "sam", updated_at: "" },
+  fetchMemorySummaries: vi.fn().mockResolvedValue([
+    { key: "decisions/db", title: "decisions/db", version: 2, created_by: "julia", updated_at: "" },
+    { key: "context/goals", title: "context/goals", version: 1, created_by: "sam", updated_at: "" },
   ]),
   fetchSkills: vi.fn().mockResolvedValue([
     { name: "summarize-room", description: "condense decisions", body: "", version: 1, created_by: "julia", created_at: "", updated_at: "" },

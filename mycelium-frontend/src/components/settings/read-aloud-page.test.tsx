@@ -10,7 +10,7 @@ import { resetStreamHub } from "@/lib/stream-hub";
 
 const hub = { speech: true };
 vi.mock("@/lib/api", () => ({
-  fetchMemories: vi.fn(async () => []),
+  fetchMemorySummaries: vi.fn(async () => []),
   fetchRooms: vi.fn(async () => [{ name: "sprint" }, { name: "lobby" }]),
   fetchVoiceStatus: vi.fn(async () => ({ state: "ready", speech: hub.speech })),
   fetchSpeechVoices: vi.fn(async () => ({ voices: ["af_heart", "bm_george"], default: "af_heart" })),

@@ -72,7 +72,7 @@ vi.mock("@/components/current-user", () => ({
 
 vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemorySummaries: vi.fn().mockResolvedValue([]),
   fetchMemory: vi.fn(),
   fetchMemoryExpanded: vi.fn(),
 }));

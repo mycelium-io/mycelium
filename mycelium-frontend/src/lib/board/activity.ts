@@ -156,7 +156,8 @@ export function localZone(): string {
 export interface ActivityInput {
   room: string;
   messages: RoomMessage[];
-  memories: Memory[];
+  /** What a memory's line needs: who moved it, when and its version, never its text. */
+  memories: Pick<Memory, "key" | "version" | "created_by" | "updated_by" | "updated_at">[];
   episodes: EpisodeSummary[];
   agentHandles: string[];
 }

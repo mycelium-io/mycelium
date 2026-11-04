@@ -13,7 +13,7 @@ vi.mock("@/lib/api", () => ({
   // MemoryDetail loads the selected memory's links on mount.
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
   // The memory view follows the room's memories, to show a new version as it lands.
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemorySummaries: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/components/current-user", () => ({

@@ -47,7 +47,7 @@ import {
   MEMORIES_MAX,
   deleteMemory,
   searchMemories,
-  type Memory,
+  type MemorySummary,
   type MemorySearchResult,
 } from "@/lib/api";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
@@ -71,7 +71,7 @@ function folderOf(key: string | null): string {
 interface TreeNode {
   name: string;
   path: string;
-  memory?: Memory;
+  memory?: MemorySummary;
   children: TreeNode[];
 }
 
@@ -92,7 +92,7 @@ interface Props {
   activeKey?: string | null;
 }
 
-function buildTree(memories: Memory[]): TreeNode[] {
+function buildTree(memories: MemorySummary[]): TreeNode[] {
   const root: TreeNode = { name: "", path: "", children: [] };
 
   for (const mem of memories) {
@@ -153,9 +153,7 @@ function folderPaths(nodes: TreeNode[], into: Set<string> = new Set()): Set<stri
 // A key that already carries an extension is shown as-is.
 function fileName(node: TreeNode): string {
   if (node.name.includes(".")) return node.name;
-  const v = node.memory?.value;
-  const ext = v && typeof v === "object" && !("text" in (v as Record<string, unknown>)) ? "json" : "md";
-  return `${node.name}.${ext}`;
+  return `${node.name}.${node.memory?.structured ? "json" : "md"}`;
 }
 
 const ROW_H = 22; // px, matches vscode compact density
@@ -175,8 +173,8 @@ function MemoryRowMenu({
   children,
 }: {
   roomName: string;
-  memory: Memory | null;
-  onOpen: (mem: Memory) => void;
+  memory: MemorySummary | null;
+  onOpen: (mem: MemorySummary) => void;
   children: React.ReactElement;
 }) {
   const router = useRouter();
@@ -287,9 +285,9 @@ interface TreeRowsProps {
   depth: number;
   collapsed: Set<string>;
   onToggle: (path: string) => void;
-  onSelect: (mem: Memory) => void;
+  onSelect: (mem: MemorySummary) => void;
   selectedKey: string | null;
-  onPeek: (mem: Memory, row: HTMLElement) => void;
+  onPeek: (mem: MemorySummary, row: HTMLElement) => void;
   onPeekEnd: () => void;
   /** Paths on the way to a find-file match. When set, anything not in it is
    *  dimmed (the row stays put and clickable, just faded). Null = no filter. */
@@ -425,7 +423,7 @@ export function MemoryPanel({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [peek, setPeek] = useState<{ memory: Memory; anchor: PreviewAnchor } | null>(null);
+  const [peek, setPeek] = useState<{ memory: MemorySummary; anchor: PreviewAnchor } | null>(null);
   const [adding, setAdding] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -441,7 +439,7 @@ export function MemoryPanel({
     setPeek(null);
   }, []);
 
-  const startPeek = useCallback((memory: Memory, row: HTMLElement) => {
+  const startPeek = useCallback((memory: MemorySummary, row: HTMLElement) => {
     if (peekTimer.current) clearTimeout(peekTimer.current);
     peekTimer.current = setTimeout(() => {
       const rect = row.getBoundingClientRect();
@@ -461,7 +459,7 @@ export function MemoryPanel({
 
   // Picking a memory opens it in the room's tabs; the panel only lists.
   const selectMemory = useCallback(
-    (m: Memory) => {
+    (m: { key: string }) => {
       endPeek();
       onOpenMemory(m.key);
     },
@@ -743,7 +741,7 @@ export function MemoryPanel({
         )}
       </FadeScroll>
 
-      {peek && <MemoryPreviewCard memory={peek.memory} anchor={peek.anchor} />}
+      {peek && <MemoryPreviewCard room={roomName} memory={peek.memory} anchor={peek.anchor} />}
     </div>
   );
 }

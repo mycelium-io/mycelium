@@ -599,6 +599,35 @@ class MemoryRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MemorySummaryRead(BaseModel):
+    """A memory as a list shows it: what it's called and its frontmatter, not its text.
+
+    Read one memory for its value; this is for lists of many, where the text
+    of every one would be most of what's sent.
+    """
+
+    key: str
+    title: str = Field(
+        ...,
+        description=(
+            "What it's called: a structured value's ``title``, else the first line "
+            "of its text (a heading's marker dropped, at most 120 characters), else its key"
+        ),
+    )
+    structured: bool = Field(
+        False, description="Its value is structured data with no ``text``, not prose"
+    )
+    created_by: str
+    updated_by: str | None = None
+    version: int
+    tags: list[str] | None = None
+    meta: dict[str, Any] | None = Field(None, description="As on ``MemoryRead``")
+    episode: str | None = Field(None, description="As on ``MemoryRead``")
+    expandable: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+
 class MemorySearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
     limit: int = Field(10, ge=1, le=100)

@@ -9,6 +9,7 @@ database.
 
 POST   /rooms/{room}/memory              — create/upsert memories (batch support)
 GET    /rooms/{room}/memory              — list memories (prefix filter, pagination)
+GET    /rooms/{room}/memory/summaries    — the same list with titles, without text
 GET    /rooms/{room}/memory/{key:path}   — get a specific memory by key
 DELETE /rooms/{room}/memory/{key:path}   — delete a memory
 POST   /rooms/{room}/memory/search       — semantic vector search
@@ -22,6 +23,7 @@ import fnmatch
 import hashlib
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -37,6 +39,7 @@ from app.schemas import (
     MemorySearchRequest,
     MemorySearchResponse,
     MemorySearchResult,
+    MemorySummaryRead,
     SubscriptionCreate,
     SubscriptionRead,
     refusals,
@@ -154,6 +157,54 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
         updated_at=updated_at,
         file_path=f"rooms/{room_name}/{key}.md",
     )
+
+
+def _memory_summary_from_file(
+    room_name: str, key: str, meta: dict, content: str
+) -> MemorySummaryRead:
+    """A memory's list entry: its title and frontmatter, without its text."""
+    created_at, updated_at = recover_timestamps(meta, get_room_dir(room_name) / f"{key}.md")
+    value = _reconstruct_value(meta, content)
+    return MemorySummaryRead(
+        key=key,
+        title=memory_title(key, value, content),
+        structured=isinstance(value, list) or (isinstance(value, dict) and "text" not in value),
+        created_by=meta.get("created_by", "unknown"),
+        updated_by=meta.get("updated_by"),
+        version=meta.get("version", 1),
+        tags=meta.get("tags"),
+        meta=unmanaged_meta(meta) or None,
+        episode=meta.get(EPISODE_META),
+        expandable=links.is_expandable(meta),
+        created_at=created_at,
+        updated_at=updated_at,
+    )
+
+
+#: How long a title is at most, the app's ``firstLine`` cap.
+TITLE_CHARS = 120
+
+
+def memory_title(key: str, value: Any, content: str | None) -> str:
+    """What a memory is called: a structured value's ``title``, else the first
+    line of its text, else its key. The app's ``memoryTitle``
+    (``lib/memory-preview.ts``) says the same, so a list and an opened memory
+    never disagree."""
+    if isinstance(value, dict):
+        title = value.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+    if isinstance(value, str):
+        body = value
+    elif isinstance(value, dict) and isinstance(value.get("text"), str):
+        body = value["text"]
+    else:
+        body = content or key
+    line = next(
+        (ln.strip() for ln in body.split("\n") if ln.strip() and not ln.strip().startswith("---")),
+        "",
+    )
+    return re.sub(r"^#+\s*", "", line)[:TITLE_CHARS] or key
 
 
 def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> None:
@@ -537,6 +588,35 @@ async def list_memories(
     Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
     changed.
     """
+    return _listed(room_name, request, prefix, limit, offset, _memory_read_from_file)
+
+
+@router.get("/summaries", response_model=list[MemorySummaryRead], responses=refusals(404))
+async def list_memory_summaries(
+    room_name: str,
+    request: Request,
+    prefix: str | None = Query(None, description="Key prefix filter"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """List memories in a room as a list shows them: titles and frontmatter, no text.
+
+    Paged and cached like the full list, newest first. A memory's text is
+    read one memory at a time (``GET /memory/{key}``).
+    """
+    return _listed(room_name, request, prefix, limit, offset, _memory_summary_from_file)
+
+
+def _listed(
+    room_name: str,
+    request: Request,
+    prefix: str | None,
+    limit: int,
+    offset: int,
+    build: Any,
+) -> Response:
+    """A page of a room's memories, newest first, each made by ``build``, with
+    an ETag so a caller that has it already gets a 304."""
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
     file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
@@ -547,9 +627,7 @@ async def list_memories(
         return Response(status_code=304, headers={"ETag": etag})
 
     page = file_entries[offset : offset + limit]
-    memories = [
-        _memory_read_from_file(room_name, key, meta, content) for key, meta, content in page
-    ]
+    memories = [build(room_name, key, meta, content) for key, meta, content in page]
 
     from fastapi.encoders import jsonable_encoder
 

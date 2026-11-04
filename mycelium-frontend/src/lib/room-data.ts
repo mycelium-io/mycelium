@@ -27,7 +27,8 @@ import {
   fetchA2aBridge,
   fetchEpisodes,
   fetchMyPaused,
-  fetchMemories,
+  fetchMemory,
+  fetchMemorySummaries,
   fetchMessages,
   fetchNetworkStatus,
   fetchRoom,
@@ -57,7 +58,7 @@ import {
   type BoardRead,
   type EpisodeSummary,
   type WaitingItem,
-  type Memory,
+  type MemorySummary,
   type NetworkStatus,
   type PresenceMember,
   type Protocol,
@@ -159,7 +160,7 @@ const NO_AGENTS: AgentSummary[] = [];
 const NO_PRESENCE: RoomPresence = { members: [], floors: [], subscriptions: [], paused: [] };
 const NO_MESSAGES: RoomMessage[] = [];
 const NO_PEOPLE: RoomPeople = { people: [], agents: [], engines: [], others: [] };
-const NO_MEMORIES: Memory[] = [];
+const NO_MEMORIES: MemorySummary[] = [];
 const NO_SKILLS: Skill[] = [];
 const NO_SETTINGS: RoomSetting[] = [];
 const NO_SCHEDULES: ScheduleList = { schedules: [], total: 0, checks: {} };
@@ -174,6 +175,7 @@ type RoomResource =
   | "people"
   | "messages"
   | "memories"
+  | "memory"
   | "skills"
   | "settings"
   | "schedules"
@@ -639,11 +641,30 @@ export function useRoomWaiting(room: string, handle: string, opts: RoomQueryOpti
   return { items: data?.items ?? NO_WAITING, loading: isLoading, refresh };
 }
 
+/** A room's memories as a list shows them: titles and frontmatter, no text
+ *  (`MemorySummary`). A view that needs one memory's text reads it with
+ *  {@link useRoomMemory}. */
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
-    room, "memories", fetchMemories, NO_MEMORIES, POLL.memories, opts,
+    room, "memories", fetchMemorySummaries, NO_MEMORIES, POLL.memories, opts,
   );
   return { memories: data, loading, refresh };
+}
+
+/** One memory with its text, read again when the list says its `version`
+ *  moved. Parked while `key` is null. */
+export function useRoomMemory(room: string, key: string | null, version?: number) {
+  const { data, isLoading, mutate } = useSWR(
+    key ? roomKey(room, "memory", key, version ?? 0) : null,
+    () => fetchMemory(room, key as string),
+    { keepPreviousData: true },
+  );
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  // A previous memory kept while the next loads is only shown for the same key.
+  const memory = data && data.key === key ? data : null;
+  return { memory, loading: isLoading, refresh };
 }
 
 /** A room's settings, with where each value comes from. One cache entry for the
