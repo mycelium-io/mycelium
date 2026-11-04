@@ -736,3 +736,113 @@ async def test_members_say_which_agents_cant_reply_as_their_runner_knows_it(clie
         assert got["scout"] is None
     finally:
         room_channels.manager.set_herdr_presence(room, {})
+
+
+# ── resume: an earlier session on the machine joins a room ───────────────────
+
+FOLDER = "/Users/julia/code/checkout"
+
+
+def _with_sessions(**session) -> dict:
+    body = hello()
+    body["frameworks"][0]["sessions"] = [
+        {
+            "id": "a1b2-c3",
+            "folder": FOLDER,
+            "last_used": "2026-11-03T10:00:00+00:00",
+            "branch": "fix/double-charge",
+            "member": None,
+            # A runner must never send one, and the hub keeps none if it does.
+            "title": "Fix the double charge on a network timeout",
+            **session,
+        }
+    ]
+    return body
+
+
+@pytest.mark.asyncio
+async def test_a_scan_s_sessions_say_where_and_when_never_what_was_said(client):
+    resp = await client.post("/api/runners", json=_with_sessions())
+    assert resp.status_code == 200, resp.text
+    claude = (await client.get(f"/api/runners/{RUNNER}")).json()["frameworks"][0]
+    (session,) = claude["sessions"]
+    assert session["id"] == "a1b2-c3"
+    assert session["branch"] == "fix/double-charge"
+    assert "title" not in session
+    assert "double charge" not in resp.text
+    # A CLI whose sessions can't be listed says nothing about them.
+    assert (await client.get(f"/api/runners/{RUNNER}")).json()["frameworks"][1]["sessions"] is None
+
+
+@pytest.mark.asyncio
+async def test_resume_writes_the_member_then_queues_the_job(client, room):
+    await client.post("/api/runners", json=_with_sessions())
+    resp = await client.post(
+        f"/api/runners/{RUNNER}/resume",
+        json={
+            "room": room,
+            "handle": "@Refunds",
+            "framework": "claude",
+            "session": "a1b2-c3",
+            "folder": FOLDER,
+            "instructions": "Take the refund tasks on the board.",
+            "created_by": "julia",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    job = resp.json()
+    assert job["kind"] == "resume"
+    assert job["spec"] == {
+        "room": room,
+        "handle": "refunds",
+        "framework": "claude",
+        "session": "a1b2-c3",
+        "cwd": FOLDER,
+    }
+    manifest = _manifest(room, "refunds")
+    assert manifest["runner"] == RUNNER
+    assert manifest["framework"] == "claude"
+    assert manifest["cwd"] == FOLDER
+    notes = read_memory_file(get_room_dir(room), "agents/refunds/notes")
+    assert notes is not None
+    assert "refund tasks" in notes[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("change", "status", "says"),
+    [
+        ({"session": "not-listed"}, 422, "doesn't list that session"),
+        ({"folder": "/Users/julia/code/other"}, 422, "doesn't list that session"),
+        ({"folder": "/etc"}, 422, "outside the folders"),
+        ({"framework": "gemini"}, 422, "not an agent CLI"),
+        ({"handle": "Not A Handle!"}, 422, "lowercase slug"),
+        ({"room": "no-such-room"}, 404, "Room not found"),
+    ],
+)
+async def test_a_resume_the_machine_cant_do_writes_nothing(client, room, change, status, says):
+    await client.post("/api/runners", json=_with_sessions())
+    body = {
+        "room": room,
+        "handle": "refunds",
+        "framework": "claude",
+        "session": "a1b2-c3",
+        "folder": FOLDER,
+        **change,
+    }
+    resp = await client.post(f"/api/runners/{RUNNER}/resume", json=body)
+    assert resp.status_code == status, resp.text
+    assert says in resp.json()["detail"]
+    assert _manifest(room, "refunds") == {}
+    assert runners.registry.jobs(RUNNER) == []
+
+
+@pytest.mark.asyncio
+async def test_a_resume_as_a_member_already_in_the_room_is_refused(client, room):
+    await client.post("/api/runners", json=_with_sessions())
+    body = {"room": room, "framework": "claude", "session": "a1b2-c3", "folder": FOLDER}
+    first = await client.post(f"/api/runners/{RUNNER}/resume", json={**body, "handle": "refunds"})
+    assert first.status_code == 201, first.text
+    again = await client.post(f"/api/runners/{RUNNER}/resume", json={**body, "handle": "refunds"})
+    assert again.status_code == 409
+    assert "already a member" in again.json()["detail"]
