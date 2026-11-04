@@ -564,8 +564,23 @@ class Runner:
 
     def scan(self) -> list[frameworks.Found]:
         self.herdr = self.host.available()
-        self.found = frameworks.scan(self.host.kinds() if self.herdr else None, host=self.host.name)
+        found = frameworks.scan(self.host.kinds() if self.herdr else None, host=self.host.name)
+        from mycelium.runner.sessions import read_members
+
+        self.found = frameworks.with_sessions(
+            found, roots=self.roots, busy=self._busy_sessions(), members=read_members()
+        )
         return self.found
+
+    def _busy_sessions(self) -> set[str]:
+        """The sessions an agent here is in, a member or not: they show as
+        running, never as earlier sessions to bring in again."""
+        busy = {m.session for m in self.bridge.registry.all() if m.session}
+        try:
+            busy |= {s for a in self.bridge.list_agents() if (s := session_of(a))}
+        except HerdrError:
+            pass
+        return busy
 
     def hello_body(self) -> dict[str, Any]:
         with self._lock:

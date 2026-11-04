@@ -79,6 +79,14 @@ class AgentKind:
         ``before`` in ``path``, oldest first; ``None`` when it isn't there."""
         raise NotImplementedError(f"No rendered view for {self.name}")
 
+    def list_sessions(self, *, titles: bool = False) -> list[dict[str, Any]] | None:  # noqa: ARG002 - a CLI that can list them does
+        """This CLI's sessions on this machine, newest first, to bring one into a
+        room: each its ``id`` (what :meth:`resume_args` takes), ``folder``,
+        ``last_used`` and ``branch``, plus, with ``titles``, its ``title`` in its
+        own words, which never goes to the hub. ``None`` when it can't list them
+        or can't resume one."""
+        return None
+
     def launch_args(self) -> list[str]:
         """Arguments every agent of this kind starts with."""
         return []

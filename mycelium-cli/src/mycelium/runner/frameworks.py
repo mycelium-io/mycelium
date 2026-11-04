@@ -27,9 +27,9 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from mycelium.integrations.agents import KNOWN
+from mycelium.integrations.agents import KNOWN, by_id
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -50,9 +50,59 @@ class Found:
     installed: bool
     launchable: bool
     note: str | None
+    #: Its earlier sessions here that can be brought into a room (see
+    #: :func:`with_sessions`); ``None`` when its integration can't list them.
+    sessions: list[dict[str, Any]] | None = None
 
     def wire(self) -> dict:
         return asdict(self)
+
+
+#: What the scan says about a session. It reaches the hub, so it says where and
+#: when, never what was said in it: no title, nothing from inside the file.
+SESSION_FIELDS = ("id", "folder", "last_used", "branch")
+
+
+def with_sessions(
+    found: list[Found],
+    *,
+    roots: list[Path],
+    busy: set[str],
+    members: dict[str, dict[str, str]] | None = None,
+) -> list[Found]:
+    """``found`` with the earlier sessions of each CLI here that could be
+    brought into a room: in a folder that is still there, inside ``roots``
+    (where a launch may start), and not one an agent here is already in
+    (``busy``). Each says which ``member`` it was, from the runner's own record
+    (``members``), or ``None``. A CLI whose integration can't list them keeps
+    ``None``."""
+    members = members or {}
+    for f in found:
+        kind = by_id(f.id)
+        if kind is None or not (f.installed or f.launchable):
+            continue
+        try:
+            listed = kind.list_sessions()
+        except OSError:
+            listed = None
+        if listed is None:
+            continue
+        f.sessions = [
+            {**{k: s.get(k) for k in SESSION_FIELDS}, "member": members.get(str(s.get("id")))}
+            for s in listed
+            if s.get("id") not in busy and _can_start_in(s.get("folder"), roots)
+        ]
+    return found
+
+
+def _can_start_in(folder: Any, roots: list[Path]) -> bool:
+    if not isinstance(folder, str) or not folder:
+        return False
+    path = Path(folder)
+    if not path.is_dir():
+        return False
+    path = path.resolve()
+    return any(path == root or root in path.parents for root in roots)
 
 
 def _newest_first(dirs: Iterable[Path]) -> list[Path]:
