@@ -1192,6 +1192,17 @@ const checkout: RoomFixture = {
     mas_id: "mas_7c1e9a2b",
   },
   memories: [
+    // A thread started from a message (h6), not a task: no board row, just the
+    // conversation, under the message in the channel.
+    {
+      key: "threads/when-should-the-payment-alert-fire",
+      value: "When should the payment alert fire?",
+      meta: { kind: "thread", from: "h6" },
+      created_by: "reviewer",
+      version: 1,
+      updated_at: iso(70),
+      episode: checkoutEpisode("e7a1c3"),
+    },
     {
       key: "agents/builder",
       value: agentManifest("Writes the checkout code: Apple Pay and the double-charge fix."),
@@ -1307,6 +1318,10 @@ const checkout: RoomFixture = {
     { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is approved and green, so it can go to staging.", created_at: iso(140) },
     { id: "h5", sender_handle: "reviewer", message_type: "broadcast", content: "i'll do the testing. i need it on staging to try real phones and real cards.", created_at: iso(130) },
     { id: "h6", sender_handle: "operator", message_type: "broadcast", content: "adding an alert for when payments start failing, so we hear about it before customers email us.", created_at: iso(95) },
+    // The thread started from h6, in its own episode: it reads under h6 as one line.
+    { id: "t6a", sender_handle: "reviewer", message_type: "broadcast", content: "what counts as failing? a single declined card is normal.", created_at: iso(90), episode: checkoutEpisode("e7a1c3") },
+    { id: "t6b", sender_handle: "builder", message_type: "broadcast", content: "more than 5% of payments failing over ten minutes. one bad card won't trip it.", created_at: iso(80), episode: checkoutEpisode("e7a1c3") },
+    { id: "t6c", sender_handle: "operator", message_type: "broadcast", content: "good. send it to the room and to my phone, not email.", created_at: iso(70), episode: checkoutEpisode("e7a1c3") },
     { id: "h7", sender_handle: "builder", message_type: "broadcast", content: "some order emails are going out twice when stripe retries a webhook. filing it, i'll fix it after apple pay.", created_at: iso(58) },
     // Builder forgets #499 merged yesterday (h3): the verifier's darker line.
     { id: "h7b", sender_handle: "builder", message_type: "broadcast", content: "apple pay sits on top of #499, which still needs a review before it can merge.", created_at: iso(55) },

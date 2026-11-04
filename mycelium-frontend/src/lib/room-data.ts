@@ -532,6 +532,31 @@ export function useRoomThreads(room: string): Map<string, ThreadOwner> {
   }, [memories]);
 }
 
+/** A thread started from a message: its memory, its episode, what it's called. */
+export interface MessageThread {
+  key: string;
+  episode: string;
+  title: string;
+}
+
+/**
+ * The threads started from messages, by the message each came from: a
+ * `threads/` memory whose `from` names the message. Off the room's memory list,
+ * so it costs no request of its own.
+ */
+export function useMessageThreads(room: string): Map<string, MessageThread> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => {
+    const byMessage = new Map<string, MessageThread>();
+    for (const memory of memories) {
+      const from = memory.meta?.from;
+      if (!memory.key.startsWith("threads/") || !memory.episode || typeof from !== "string") continue;
+      byMessage.set(from, { key: memory.key, episode: memory.episode, title: memoryTitle(memory) });
+    }
+    return byMessage;
+  }, [memories]);
+}
+
 /** What a row is called, and the thread that opens it. */
 export interface RowNaming {
   title: string;

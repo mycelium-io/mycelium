@@ -311,6 +311,22 @@ export async function deleteRoom(roomName: string): Promise<void> {
 }
 
 /** Put a task on a room's board, with its thread minted (the app's `board new`). */
+/**
+ * Start a thread from a message: a `threads/` memory naming the message it
+ * came from, bound to a thread of its own as a task's row is, but on no board.
+ * (MOCK: the hub has no such route yet; the mock hub answers it.)
+ */
+export async function createThread(
+  roomName: string,
+  data: { from: string; title: string; handle: string },
+): Promise<Memory & { episode: string }> {
+  return apiFetch<Memory & { episode: string }>(`${roomApiPath(roomName)}/threads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
 export async function createTask(
   roomName: string,
   data: {

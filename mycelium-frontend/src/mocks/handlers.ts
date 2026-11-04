@@ -1048,6 +1048,36 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json(memoryRead(roomName, row), 201);
     }
 
+    case "threads": {
+      // POST /threads — a thread started from a message (MOCK of a proposed
+      // route): a `threads/` memory naming the message, with a thread of its
+      // own like a task's, and on no board, so no `filed` notice.
+      if (sub.length !== 1 || method !== "POST") return null;
+      const body = await readJson(req);
+      const from = String(body.from ?? "");
+      const title = String(body.title ?? "").trim();
+      if (!from || !title) return json({ detail: "A thread needs the message it's from and a title." }, 422);
+      const existing = fx.memories.find((m) => m.key.startsWith("threads/") && m.meta?.from === from);
+      if (existing) return json(memoryRead(roomName, existing), 200);
+      const by = String(body.handle ?? "user");
+      let key = `threads/${slug(title)}`;
+      for (let n = 2; fx.memories.some((m) => m.key === key); n++) key = `threads/${slug(title)}-${n}`;
+      const row: MockMemory = {
+        key,
+        value: title,
+        content_text: title,
+        meta: { kind: "thread", from },
+        created_by: by,
+        updated_by: by,
+        version: 1,
+        updated_at: new Date().toISOString(),
+        episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${key}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+      };
+      fx.memories.push(row);
+      publish(roomName, memoryChangedFrame(key, 1, by));
+      return json(memoryRead(roomName, row), 201);
+    }
+
     case "fields": {
       // POST /fields — a row's frontmatter, merged (a board action or an edit).
       if (sub.length !== 1 || method !== "POST") return null;
