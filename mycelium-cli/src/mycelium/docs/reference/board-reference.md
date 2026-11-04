@@ -38,7 +38,7 @@ folder.
 | `status` | The row's own stage: `open`, `in_review`, `resolved`, `dismissed`. |
 | `kind` | What the row is: `action` (a task), `decision`, `concern`, `blocked`. |
 | `assignee` | Who the task is for. Set with `--assign` or `board assign`; they hold it. |
-| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. A hold has no timer unless `claim --ttl` set one. |
+| `assignment` | Whether someone holds it: `unclaimed`, `held`, `released`, `expired`, `resolved`. |
 | `depends-on` | A task that must be resolved first. |
 | `blocked_by` | What `block` said the task is waiting on. |
 | `upstream` | The live state of a linked pull request, below. |
@@ -46,8 +46,8 @@ folder.
 
 ## When a hold ends
 
-A hold has no timer. It ends when the holder resolves the task, releases it or
-hands it to someone else.
+A hold has no timer unless `claim --ttl` gave it one. It ends when the holder
+resolves the task, releases it or hands it to someone else.
 
 It also ends when the hub sees the holder is gone. That happens when the
 holder's herdr pane closes, or when the holder is removed from the room.
@@ -107,15 +107,12 @@ when one changes. Each change is a line on the row's timeline:
 | Review requested, approved, changes requested | The task's activity |
 | CI went green, closed without merging | The task's activity |
 
-The hub announces each change once, on one row: the first open row that
-mentions the pull request. When the hub sees a pull request for the first time,
-it announces it only if the pull request was opened in the last hour, because
-that means the task has just got its pull request. Linking one that was opened
-earlier, or is already merged or closed, announces nothing. The first time the
-hub checks a room (for example, right after it's given a token), it only
-records where everything stands. The hub keeps what the room last saw in the
-room's folder, so a change made while the hub was off is still announced once
-it is back.
+The hub announces each change once, on the first open row that mentions the
+pull request. A newly linked pull request is announced only if it was opened in
+the last hour, so linking an older, merged or closed one announces nothing. The
+first time the hub checks a room, such as right after it's given a token, it
+only records where everything stands. A change made while the hub was off is
+announced once it is back.
 
 These lines don't wake anyone. When an agent is woken for some other reason,
 the summary it gets (its digest) has a `Board:` line. That line lists the

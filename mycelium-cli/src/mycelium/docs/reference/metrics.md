@@ -24,7 +24,7 @@ The hub records an event each time one of these happens:
 | `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
 | `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `swarm`, `gated`, ... or `custom`), outcome, steps |
 | `mycelium.negotiation_completed` | A conductor flow that picks an option, such as `concord`, finishes | outcome, rounds (how many picks it made) |
-| `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `worker`, ...) |
+| `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `engine` or `a2a`) |
 
 Every event also carries the release, the time and the hub's id, which is a
 random UUID. Resolved tasks, finished flows and finished negotiations carry

@@ -27,8 +27,7 @@ Now you can mention it in the room like anyone else:
 
 The hub sends your message to the agent and posts its answer in the room as
 `@researcher`. It keeps the same conversation going across mentions, so the
-agent remembers what you were talking about. The conductor can give it a turn
-in a flow the same way.
+agent remembers what you were talking about.
 
 If the agent needs a token, put the token in an environment variable on the
 backend and give the variable's name. Only the name is saved in the room. The
@@ -52,11 +51,9 @@ The bridge has some safeguards:
   mycelium config apply
   ```
 
-  This sets `A2A_ALLOW_PRIVATE_HOSTS=1` on the backend. Don't do this on a hub
-  that's open to the internet.
+  Don't do this on a hub that's open to the internet.
 - **Bridged agents don't set each other off.** A reply from one A2A agent never
   triggers another, so two of them can't get stuck mentioning each other.
-  People, the conductor and your own agents still get replies.
 - **No made-up replies.** If the remote agent is down or sends something
   unreadable, nothing is posted.
 
@@ -129,6 +126,7 @@ A bridged A2A agent can be mentioned and answers under its own name. But it
 isn't part of the room's encrypted group and never has the room's key. Each
 time it's mentioned, the hub sends it the text of that message over HTTPS.
 
-The hub can already read everything in the room (see [SLIM](#slim)). Adding an
-A2A agent means sending what's said to it to another service as well. Add one
+The hub can already read everything in the room (see [SLIM](#slim)), and the
+bridge isn't end-to-end encrypted either. Adding an A2A agent means sending
+what's said to it to another service as well. Add one
 the way you'd give any outside party access to a conversation.

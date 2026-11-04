@@ -16,7 +16,7 @@ mycelium room delete design-review     # delete a room and everything in it
 ```
 
 `room use` saves the room for this folder and every folder below it. `--room`
-(`-r`) picks a room for one command. `MYCELIUM_ACTIVE_ROOM` in the environment
+(`-r`) picks a room for one command. `MYCELIUM_ROOM_ID` in the environment
 picks one for every command that sees it.
 
 Rooms last until you delete them. Tasks come and go, but what the room has
@@ -82,12 +82,9 @@ to the hub's value or the default.
 ## What a room is on disk
 
 Each room is a folder on the hub at `~/.mycelium/rooms/<room>/`. Every memory
-is a markdown file in it, and each task is a file under `work/`. See
-[memory](#memory) for what goes where.
-
-If you run the hub, you can read, edit or back up these files directly. The hub
-notices changes and updates search on its own. If search ever seems out of
-date, `mycelium memory reindex` rebuilds it. Other machines keep no copy.
+is a markdown file in it, and each task is a file under `work/`. Other machines
+keep no copy. See [memory](#memory) for what goes where and how to work with
+the files if you run the hub.
 
 To copy a room from a hub into local files, for a backup or to read offline,
 use `mycelium room clone`:

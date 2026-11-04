@@ -3,7 +3,7 @@
 With the desktop app, there are four steps:
 
 1. Download the app for your computer and open it: the
-   **[Mac app](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
+   **[macOS disk image](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
    (Apple silicon), the
    **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)**
    or the
@@ -23,8 +23,9 @@ A hub on your own computer is for you alone, because other machines can't
 reach it. To share rooms with a team, run the hub on a server and connect each
 person to it. See [Hub & Spoke](#hub-and-spoke).
 
-Rather use a terminal? On an Apple silicon Mac, this installs the same app
-into Applications, puts its `mycelium` CLI on your PATH and opens it:
+To install from a terminal, run the script below. On an Apple silicon Mac it
+installs the same app into Applications, puts its `mycelium` CLI on your PATH
+and opens it:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash

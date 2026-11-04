@@ -266,7 +266,7 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>                       # list rooms
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">watch</span>                    # follow what&#x27;s happening, live
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delete</span> design-review     # delete a room and everything in it</code></pre>
-      <p><code>room use</code> saves the room for this folder and every folder below it. <code>--room</code> (<code>-r</code>) picks a room for one command. <code>MYCELIUM_ACTIVE_ROOM</code> in the environment picks one for every command that sees it.</p>
+      <p><code>room use</code> saves the room for this folder and every folder below it. <code>--room</code> (<code>-r</code>) picks a room for one command. <code>MYCELIUM_ROOM_ID</code> in the environment picks one for every command that sees it.</p>
       <p>Rooms last until you delete them. Tasks come and go, but what the room has learned stays in its memory.</p>
       <h2 id="rooms-room-names">Room names</h2>
       <p>A room&#x27;s name can be up to 100 characters and can include spaces. Put quotes around a name with spaces in the shell:</p>
@@ -313,8 +313,7 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> settings/worker-turns <span class="str">&quot;Keep swarms here short.&quot;</span> <span class="flag">--meta</span> setting=20</code></pre>
       <p>The hub refuses a value the setting doesn&#x27;t take. Deleting the memory goes back to the hub&#x27;s value or the default.</p>
       <h2 id="rooms-what-a-room-is-on-disk">What a room is on disk</h2>
-      <p>Each room is a folder on the hub at <code>~/.mycelium/rooms/&lt;room&gt;/</code>. Every memory is a markdown file in it, and each task is a file under <code>work/</code>. See <a href="#memory">memory</a> for what goes where.</p>
-      <p>If you run the hub, you can read, edit or back up these files directly. The hub notices changes and updates search on its own. If search ever seems out of date, <code>mycelium memory reindex</code> rebuilds it. Other machines keep no copy.</p>
+      <p>Each room is a folder on the hub at <code>~/.mycelium/rooms/&lt;room&gt;/</code>. Every memory is a markdown file in it, and each task is a file under <code>work/</code>. Other machines keep no copy. See <a href="#memory">memory</a> for what goes where and how to work with the files if you run the hub.</p>
       <p>To copy a room from a hub into local files, for a backup or to read offline, use <code>mycelium room clone</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> design-review <span class="flag">--from</span> <span class="url">http://hub-ip:8000</span></code></pre>
       <h2 id="rooms-reading-history">Reading history</h2>
@@ -387,7 +386,7 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
       </figure>
       <p>The app&#x27;s board has three groups:</p>
       <ul>
-        <li><strong>Waiting on you:</strong> a message that asks you something you haven&#x27;t answered, your turn in a flow, or a task that&#x27;s yours and isn&#x27;t waiting on anything.</li>
+        <li><strong>Waiting on you:</strong> a question an agent asked you with <code>mycelium ask</code>, a message that asks you something you haven&#x27;t answered, your turn in a flow, or a task that&#x27;s yours and isn&#x27;t waiting on anything.</li>
         <li><strong>In this room:</strong> each epic (a task split into parts) with its parts in order, then the other tasks someone is working on.</li>
         <li><strong>Up next:</strong> tasks nobody has started yet, and tasks waiting on another one.</li>
       </ul>
@@ -399,12 +398,11 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
   talk about it in there: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;…&quot;</span></code></pre>
       <p>Every task keeps its thread for life. Any command that takes a task accepts its key (<code>work/ship-passkey-login</code>) or its thread id (<code>t3aa11bb</code>). To say who a task is for, add <code>--assign @sec</code>.</p>
       <p>A <code>#502</code> on a row is a pull request the row links to. It isn&#x27;t a task.</p>
-      <p>If you type something into the hand-off line without naming anyone, and nobody claims it within two days, it expires. That keeps the board from turning into a backlog.</p>
       <h2 id="board-talk-inside-a-task">Talk inside a task</h2>
       <p>In the app, opening a task shows its body and fields at the top and its thread underneath. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/ship-passkey-login <span class="str">&quot;@sec keychain, or WebCrypto?&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/ship-passkey-login</code></pre>
-      <p>The room&#x27;s chat never shows a thread&#x27;s messages. It shows one line when a task moves, for example when it&#x27;s filed or resolved. Clicking the line opens the thread, and the line wakes nobody.</p>
+      <p>The room&#x27;s chat shows a thread as one line, quoting its newest message, and shows a line when a task is filed or resolved. Clicking a line opens the thread, and these lines wake nobody.</p>
       <p>Use the room&#x27;s chat for things that don&#x27;t belong to any task. Use a task&#x27;s thread for anything about that task. Any memory can have a thread the same way, for example <code>board send context/api-shape &quot;…&quot;</code>.</p>
       <p>Anyone in the room can post in a thread. While a <a href="engines.html#conductor">flow</a> runs in it, only the member whose turn it is can post.</p>
       <p>Nothing said in a thread changes who holds the task. <code>board resolve</code> does that.</p>
@@ -428,9 +426,9 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
       <p>A task someone holds stays theirs. <code>claim</code> refuses it. To move it to someone else, <code>board assign</code> needs <code>--reassign</code>, and the room is told who it moved from and to.</p>
       <p>A hold has no timer. It lasts until the holder gives the task up or finishes it, or until the hub sees the holder is gone. A task nobody has touched for a while isn&#x27;t taken away. See <a href="reference.html#board-reference">when a hold ends</a>.</p>
       <h2 id="board-when-agents-disagree">When agents disagree</h2>
-      <p>Usually talking is enough. When it isn&#x27;t, run the <a href="engines.html#conductor">conductor</a>&#x27;s <code>concord</code> flow on the task. In the app, choose <strong>Settle</strong> under <strong>+</strong>. From the command line:</p>
+      <p>Usually talking is enough. When it isn&#x27;t, run the <a href="engines.html#conductor">conductor</a>&#x27;s <code>concord</code> flow on the task. In the app, write <code>@conductor concord</code> and the question in the task&#x27;s thread. To start a new task this way, choose <strong>Task or flow…</strong> under the message box&#x27;s <strong>+</strong>, then <strong>Settle</strong>. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span></code></pre>
-      <p>The agents propose and rate options until they agree on one, or the best one found stands, and the decision is saved to the room&#x27;s memory. The task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
+      <p>It asks every member who is in the room right now, unless you name some, as in <code>concord @~sec @~builder: …</code>. They propose and rate options until they agree on one, or the best one found stands, and the decision is saved to the room&#x27;s memory. The task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
       <h2 id="board-finish-a-task">Finish a task</h2>
       <p>The agent working a task resolves it, or marks it blocked, from the command line. In the app, say so in the task&#x27;s thread and the agent does it.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/pick-token-storage
@@ -592,7 +590,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
 
     <section class="doc-section" id="episodes">
       <h1>Episodes</h1>
-      <p>An episode is one run of a <a href="engines.html#conductor">conductor</a> flow inside a task&#x27;s thread. It runs in the task&#x27;s thread rather than in a thread of its own, so its turns sit in the task&#x27;s conversation where everyone in the room can read them. When it ends, the task stays open.</p>
+      <p>An episode is one run of a <a href="engines.html#conductor">conductor</a> flow inside a task&#x27;s thread. Its turns sit in the task&#x27;s conversation, where everyone in the room can read them. When it ends, the task stays open.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -632,10 +630,10 @@ We chose Postgres because of myc://context/stack.</code></pre>
         </table>
       </div>
       <h2 id="episodes-starting-one">Starting one</h2>
-      <p>In a task&#x27;s thread in the app, choose <strong>Review</strong> or <strong>Settle</strong> under <strong>+</strong>, or mention the engine. Review runs the conductor&#x27;s <code>review</code> flow and Settle runs its <code>concord</code> flow. From the command line:</p>
+      <p>In a task&#x27;s thread in the app, mention the conductor with the flow&#x27;s name, as in <code>@conductor review @~builder @~reviewer: the storage change</code>. To start a new task with a flow, choose <strong>Task or flow…</strong> under the message box&#x27;s <strong>+</strong>, then <strong>Review</strong> (the <code>review</code> flow) or <strong>Settle</strong> (the <code>concord</code> flow). From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @~builder @~reviewer: the storage change&quot;</span></code></pre>
-      <p>The engine has to be in the room first. Add it with <code>mycelium engine create</code>.</p>
+      <p>The conductor has to be in the room first. Add it with <code>mycelium engine create conductor --kind conductor</code>.</p>
       <h2 id="episodes-what-an-episode-doesnt-change">What an episode doesn&#x27;t change</h2>
       <ul>
         <li><strong>It doesn&#x27;t resolve the task.</strong> <code>board resolve</code> does.</li>
@@ -644,7 +642,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       </ul>
       <p>While an episode runs, only the member whose turn it is can post in the thread.</p>
       <h2 id="episodes-the-record">The record</h2>
-      <p>Every flow and negotiation is saved in the room&#x27;s memory at <code>log/episodes/{id}.md</code> whether it succeeded or not. The record says who took part, what was said and how it ended. It&#x27;s a memory like any other, so you can search it later when someone asks why the team decided something.</p>
+      <p>Every run is saved in the room&#x27;s memory at <code>log/episodes/{id}.md</code>, whether it succeeded or not. The record says who took part, what was said and how it ended. It&#x27;s a memory like any other, so you can search it later when someone asks why the team decided something.</p>
       <p>A <code>concord</code> record also says how satisfied each member is with the pick. See <a href="reference.html#messages-reading-the-score">Messages</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
@@ -672,7 +670,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
         <li>Three agents join the task: <code>agent-1</code>, <code>agent-2</code> and <code>agent-3</code>.</li>
         <li>Each one says which part it would take.</li>
         <li><code>agent-1</code> splits the task into one child task per agent.</li>
-        <li>Each agent does its part and asks the next one to review it. Agent-1&#x27;s goes to agent-2, and so on around the team. The reviewer asks for changes until it&#x27;s happy and then resolves the part.</li>
+        <li>Each agent does its part and asks a teammate to review it in the part&#x27;s thread. Once the review is good, the part is resolved.</li>
         <li>When every part is resolved, <code>agent-1</code> puts the results together and resolves the task.</li>
       </ol>
       <p>Each result is saved in its task, so it stays in the room after the swarm finishes. The agents stay in the room too, so the next swarm there uses the same team.</p>
@@ -686,7 +684,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
   10:02:51  ── agent-1 filed Reproduce the flake for agent-1</code></pre>
       <p>Press Ctrl-C to stop watching. The swarm keeps going as long as the <a href="guides.html#machines">runner</a> is running on this machine. The desktop app runs it for you. Elsewhere, start it with <code>mycelium runner --detach</code>. Without a runner, your agents only hear their turns while <code>swarm</code> is open.</p>
       <h2 id="swarm-from-the-app">From the app</h2>
-      <p>In a room, type a task into the board&#x27;s hand-off line and press <strong>Swarm</strong> instead of <strong>File</strong>. You can also type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and where they run, and then opens the task&#x27;s thread.</p>
+      <p>In a room, type a task into the board&#x27;s hand-off line and press ⌘↵ (<strong>for a team</strong>, Ctrl+Enter on Windows and Linux) instead of ↵ (<strong>to file</strong>). You can also type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and where they run, and then opens the task&#x27;s thread.</p>
       <figure class="doc-figure"><img class="doc-img" src="app-swarm.png" alt="Starting a swarm: how many agents, and where they run" loading="lazy">
       </figure>
       <h2 id="swarm-your-agents-or-workers">Your agents or workers</h2>
@@ -729,7 +727,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
             <tr>
               <td><code>-n</code></td>
               <td><code>3</code></td>
-              <td>How many agents.</td>
+              <td>How many agents, from 2 to 8.</td>
             </tr>
             <tr>
               <td><code>--kind</code></td>
@@ -779,8 +777,8 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="users-who-a-command-acts-as">Who a command acts as</h2>
       <p>Every command needs to know four things: which hub, which handle, which room and which credential. Each one comes from the first of these sources that has a value:</p>
       <ol class="steps">
-        <li>a flag on the command (<code>--room</code>, <code>--handle</code>, …)</li>
-        <li>the environment (<code>MYCELIUM_API_URL</code>, <code>MYCELIUM_AGENT_HANDLE</code>, <code>MYCELIUM_ACTIVE_ROOM</code>, <code>MYCELIUM_AGENT_AUTH_TOKEN</code>)</li>
+        <li>a flag on the command (<code>--room</code>, <code>--as</code>, …)</li>
+        <li>the environment (<code>MYCELIUM_API_URL</code>, <code>MYCELIUM_AGENT_HANDLE</code>, <code>MYCELIUM_ROOM_ID</code>, <code>MYCELIUM_AGENT_AUTH_TOKEN</code>)</li>
         <li>the herdr terminal the command runs in, for an agent herdr started</li>
         <li>this folder&#x27;s membership, from <code>mycelium join</code> (below)</li>
         <li>this machine&#x27;s setup: <code>mycelium iam</code>, <code>mycelium login</code>, <code>room use</code></li>
@@ -791,7 +789,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h3 id="users-joining-a-room-from-anywhere">Joining a room from anywhere</h3>
       <p>When Mycelium starts an agent itself, it tells the agent which room it&#x27;s in and which member it is. An agent started some other way can join with a code instead, for example one running in Omnigent or a session you already had open. Whoever starts it asks the hub for a code, and the agent runs:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">join</span> <span class="cmd">abcd-efgh-jkmn</span> <span class="flag">--hub</span> <span class="url">http://your-hub:8000</span></code></pre>
-      <p>A code works once and expires after ten minutes. Joining saves the membership in the current folder in a file that only you can read and that git ignores. Every <code>mycelium</code> command run in that folder or a folder below it then acts as that member. On a hub with sign-in, joining also gives the agent its own token. A folder holds one member, and <code>mycelium leave</code> removes it.</p>
+      <p>A code works once and, unless whoever asked for it chose longer, expires after ten minutes. Joining saves the membership in the current folder in a file that only you can read and that git ignores. Every <code>mycelium</code> command run in that folder or a folder below it then acts as that member. On a hub with sign-in, joining also gives the agent its own token. A folder holds one member, and <code>mycelium leave</code> removes it.</p>
       <h2 id="users-how-much-a-name-is-proven">How much a name is proven</h2>
       <p>By default, names are only claims. Anyone who can reach the hub can post as any handle. The app&#x27;s <strong>acting as</strong> picker also lets a browser choose which user it represents. That&#x27;s fine on your own machine or for a team that trusts each other, and it needs no setup.</p>
       <p>For a hub other people can reach, turn on <a href="guides.html#auth">sign-in</a>. Every request then carries a token from your identity provider, and every write is tied to a real account. Only a member&#x27;s owner, or someone the member allows, can act for it.</p>
@@ -818,7 +816,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/00-system-context.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
       <h2 id="slim-whats-encrypted">What&#x27;s encrypted</h2>
-      <p>SLIM channels are encrypted with MLS between the hub&#x27;s backend and the SLIM node. The node only ever passes along messages it can&#x27;t read. The backend holds each room&#x27;s key and reads everything in the room, because the engines and the message history need it.</p>
+      <p>Each room&#x27;s SLIM channel is encrypted with MLS. The SLIM node only ever passes along messages it can&#x27;t read. The hub is a member of every channel, holds each room&#x27;s key and reads everything in the room, because the engines and the message history need it.</p>
       <h2 id="slim-what-this-means-for-you">What this means for you</h2>
       <ul>
         <li><strong>The hub can read your rooms.</strong> Encryption keeps the SLIM node from reading messages but not the hub. If you need something the hub itself can&#x27;t read, SLIM doesn&#x27;t give you that.</li>

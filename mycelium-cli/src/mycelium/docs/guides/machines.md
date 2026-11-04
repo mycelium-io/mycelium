@@ -137,8 +137,8 @@ them. `mycelium runner pairings` lists pairings, and
 
 ## Only your machines are listed
 
-The Machines page, behind the laptop icon beside the bell, shows only your own
-machines. In a browser, add a machine with the code `mycelium runner` prints
+The Machines page, behind the laptop icon in the bar at the bottom of the
+window, shows only your own machines. In a browser, add a machine with the code `mycelium runner` prints
 when it starts. With the hub's [sign-in](#auth) on, the hub shows each person
 only the machines they own.
 

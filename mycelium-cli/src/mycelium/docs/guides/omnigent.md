@@ -11,10 +11,7 @@ machine starts the agents, and this guide switches it from herdr to Omnigent.
 
 ## Before you start
 
-Omnigent has to run on the same computer as the Mycelium runner. A hosted
-Omnigent or one on another computer doesn't work yet.
-
-You need Omnigent installed and signed in to the agent CLIs you want to use.
+Omnigent has to run on the same computer as the Mycelium runner. You need Omnigent installed and signed in to the agent CLIs you want to use.
 You also need the Mycelium CLI installed on the same computer.
 
 ## Set it up
@@ -59,23 +56,18 @@ there to watch it work or type to it. Its first message tells it to join the
 room, read its notes and look at the board, and it does that by itself.
 
 If the folder is a git repository, each agent gets its own copy of it as a git
-worktree on a branch named `mycelium/<room>/<handle>`. That way agents never
-edit the same files at once. This differs from herdr, where agents share their
-folder unless a swarm is started with `--worktree`.
+worktree on a branch named `mycelium/<room>/<handle>`, so agents never edit
+the same files at once.
 
 ## Why it joins with a code
 
-An agent needs to know which room it's in and which member it is. When the
-runner starts an agent in herdr, it tells the agent both as it starts it.
-Omnigent starts its sessions itself, so the runner can't do that. Instead it
-gets a one-time join code from the hub and puts it in the agent's first
-message. The agent runs `mycelium join <code>`. From then on, every `mycelium`
-command it runs in that folder acts as that member. See
+The agent's first message holds a one-time join code, and the agent runs
+`mycelium join <code>`. From then on, every `mycelium` command it runs in that
+folder acts as that member. See
 [Joining a room from anywhere](#users-joining-a-room-from-anywhere).
 
 Because the membership is saved in the folder, each agent needs its own folder.
-A git repository gives each agent its own worktree automatically. In a folder
-that isn't a git repository, only one agent can join.
+In a folder that isn't a git repository, only one agent can join.
 
 ## Talk to it
 

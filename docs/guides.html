@@ -258,7 +258,7 @@
   <div class="main-inner">
     <section class="doc-section" id="on-a-server">
       <h1>Run It on a Server</h1>
-      <p>Run Mycelium with the CLI on Linux, on a server your team shares or anywhere you&#x27;d rather run the hub in Docker. On a Mac the installer below installs <a href="#desktop">the desktop app</a> instead, which needs no Docker. Pass <code>--docker</code> to get this path on a Mac.</p>
+      <p>Run Mycelium with the CLI on Linux, on a server your team shares or anywhere you&#x27;d rather run the hub in Docker. On an Apple silicon Mac the installer below installs <a href="#desktop">the desktop app</a> instead, which needs no Docker.</p>
       <p>This page sets up a hub on one machine. To let teammates on other machines use it, continue with <a href="#hub-and-spoke">Hub &amp; Spoke</a>.</p>
       <h2 id="on-a-server-start-with-a-prompt">Start with a prompt</h2>
       <p>The quickest way is to ask your coding agent to do it. Paste this into any coding agent that can run shell commands:</p>
@@ -269,7 +269,7 @@
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p>On an Apple silicon Mac, add <code>--docker</code> to the installer (<code>… | bash -s -- --docker</code>). Otherwise it installs the desktop app. An Intel Mac gets this Docker path either way.</p>
       <p>You need Docker running. The CLI needs Python 3.12 or newer. If the machine has an older one, the installer fetches 3.12 for the CLI instead of failing.</p>
-      <p>The installer puts the <code>mycelium</code> CLI on your PATH. <code>mycelium install</code> then sets up its config in <code>~/.mycelium/</code> and starts the hub. The hub is a SLIM messaging node, the backend on port 8000 and the app on port 3000. Along the way it asks for a model provider and API key. Rooms and memory work without one, and you can add one later. See <a href="#models">Models</a>.</p>
+      <p>The installer puts the <code>mycelium</code> CLI on your PATH. <code>mycelium install</code> then sets up its config in <code>~/.mycelium/</code> and starts the hub. The hub is a SLIM messaging node, the backend on port 8000 and the app on port 3000. Along the way it asks for a model provider and API key. Only the hub&#x27;s engines use the model. Rooms, tasks, memory and your own agents work without one, and you can add one later. See <a href="#models">Models</a>.</p>
       <p>To manage the hub after that:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start it, or restart it with new settings
 <span class="bin">mycelium</span> <span class="cmd">status</span>   # check the backend, the node and the model
@@ -383,7 +383,7 @@
           <tbody>
             <tr>
               <td>Mac</td>
-              <td><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">Mycelium for Mac</a></strong></td>
+              <td><strong><a href="https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg">macOS disk image</a></strong></td>
               <td>Apple silicon, macOS 13 or later</td>
             </tr>
             <tr>
@@ -409,8 +409,9 @@
       <p>The app then asks a few questions:</p>
       <ul>
         <li><strong>Where your rooms live.</strong> <strong>On this computer</strong> runs a hub here. <strong>On my team&#x27;s hub</strong> joins rooms that someone else runs. For that, paste the hub&#x27;s address or open an invite link a teammate sent you.</li>
-        <li><strong>A model.</strong> The <a href="engines.html#engines">engines</a> use it. You can add it later.</li>
+        <li><strong>A model</strong>, for a hub on this computer. Only the <a href="engines.html#engines">engines</a> use it, so you can skip it and add one later. See <a href="#models">Models</a>.</li>
         <li><strong>Agents on this computer.</strong> It shows the agent CLIs it found and the folder agents may work in. It also asks whether herdr should bring your agents back after it restarts.</li>
+        <li><strong>Talk instead of type</strong>, for a hub on this computer. See <a href="#voice">Voice</a>.</li>
         <li><strong>Usage stats.</strong> These are off unless you tick the box. See <a href="reference.html#metrics">Metrics</a> for what would be sent.</li>
       </ul>
       <figure class="doc-figure"><img class="doc-img" src="desktop-onboarding.png" alt="The first step: where your rooms live" loading="lazy">
@@ -424,13 +425,14 @@
       <h2 id="desktop-adding-and-watching-agents">Adding and watching agents</h2>
       <p>In a room, open <strong>Members</strong>, press <strong>Add</strong> and pick <strong>Your machine</strong>. Start from a role or write your own instructions, then press <strong>Add to room</strong>. The agent opens in a herdr terminal and is already a member of the room. See <a href="#machines">Start Agents From the App</a>.</p>
       <p>To type to an agent, open the agents terminal. <strong>terminal</strong> in the bar at the bottom of the window opens it, and so does <strong>Open terminal</strong> beside an agent on <strong>Machines</strong>.</p>
-      <p>To watch an agent without leaving the room, open its terminal read-only:</p>
+      <p>To watch an agent without leaving the room, open its window:</p>
       <ul>
         <li><strong>Members:</strong> click the agent.</li>
         <li><strong>Machines:</strong> press <strong>View</strong> on its row.</li>
         <li><strong>The channel:</strong> while it&#x27;s responding, click its name on the &quot;is responding&quot; line. Rest the pointer on the name to see its last few lines.</li>
       </ul>
-      <p>The view says &quot;Streamed from this machine. Nothing is sent to the hub.&quot; The app reads the terminal from herdr itself. A key or private code on screen never leaves your computer. For an agent on another computer, the view says where it runs instead.</p>
+      <p>The window shows the agent&#x27;s terminal, read-only. For a Claude Code agent it can also show <strong>What it&#x27;s doing</strong>: what it was asked, what it said and each tool it called, which you can open to see the result.</p>
+      <p>The window says &quot;Streamed from this machine. Nothing is sent to the hub.&quot; The app reads the agent from herdr and its session files on this computer, so a key or private code on screen never leaves it. For an agent on another computer, the window says where it runs instead.</p>
       <h2 id="desktop-the-apps-menu">The app&#x27;s menu</h2>
       <p>Mycelium has an icon in the menu bar on a Mac, and in the system tray on Linux and Windows. Closing the window leaves it running. <strong>Quit Mycelium</strong> stops the hub. Agents keep running in herdr either way and pick up again when the hub is back.</p>
       <p>The menu shows whether each part of Mycelium is running. <strong>Health check…</strong> runs the same checks as <code>mycelium doctor --mode desktop</code> and says what to do about anything that&#x27;s wrong. The menu also opens <strong>Settings…</strong> and the <strong>Logs</strong>, and has <strong>Check for Updates…</strong>.</p>
@@ -447,9 +449,7 @@
         <li><strong>Agent starts</strong> (<code>~/.mycelium/runner/runner.log</code>). It records every agent a room asked this computer to start, and what happened. Look here first when an agent won&#x27;t start.</li>
       </ul>
       <h2 id="desktop-the-command-line">The command line</h2>
-      <p>On an Apple silicon Mac, the install script installs the app and puts its <code>mycelium</code> CLI on your path:</p>
-      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
-      <p><code>mycelium desktop serve</code> runs the same hub without the window.</p>
+      <p>On an Apple silicon Mac, the <a href="index.html#quickstart">install script</a> installs the app and puts its <code>mycelium</code> CLI on your path. <code>mycelium desktop serve</code> runs the same hub without the window.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/desktop.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="desktop" aria-label="Previous and next sections">
@@ -492,7 +492,7 @@
       </div>
       <h2 id="hub-and-spoke-1-set-up-the-hub">1. Set up the hub</h2>
       <p>The hub is the Docker stack. The desktop app&#x27;s hub only answers its own computer, so it can&#x27;t be a team&#x27;s hub. On the hub machine:</p>
-      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash   # on a Mac: bash <span class="flag">-s</span> -- <span class="flag">--docker</span>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash   # on an Apple silicon Mac: bash <span class="flag">-s</span> -- <span class="flag">--docker</span>
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p>This starts the backend, the app and the SLIM node. Check it with:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
@@ -560,14 +560,15 @@
         <li>the <a href="engines.html#verifier">verifier</a>, which checks what agents claim;</li>
         <li><a href="engines.html#hello">hello</a>, which just replies.</li>
       </ul>
-      <p>The <a href="engines.html#conductor">conductor</a> uses no model, because it follows a flow in code. There&#x27;s no way yet to give different engines different models.</p>
-      <p>Agents you bring, like Claude Code, Codex or OpenCode, don&#x27;t use this setting. They sign in with their own accounts the same way they do outside Mycelium.</p>
+      <p>The <a href="engines.html#conductor">conductor</a> uses no model, because it follows a flow in code. Every engine uses the same model.</p>
+      <p>Agents you bring, like Claude Code, Codex or OpenCode, don&#x27;t use this setting. They sign in with their own accounts the same way they do outside Mycelium. Without a model, rooms, tasks, memory, the conductor and your own agents all work. Only the engines above can&#x27;t answer, and they say so in the room.</p>
       <h2 id="models-set-it">Set it</h2>
       <p><strong>In the desktop app</strong>, the first run offers it, and you can skip it. You can change it any time in <strong>Settings → Engines&#x27; model</strong> (⌘, on a Mac). Pick a provider, paste a key and save. The model name is filled in for you.</p>
-      <p><strong>From the command line</strong>:</p>
+      <p><strong>From the command line</strong>, then restart the hub so it reads the new setting:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key &quot;&lt;your key&gt;&quot;
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+<span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
       <p><code>llm.base_url</code> sets the address for a provider the hub can&#x27;t find on its own, like Ollama or a company gateway.</p>
       <p>Set this on the hub&#x27;s machine. A spoke&#x27;s model setting does nothing. The key is saved in <code>~/.mycelium/config.toml</code> on that machine, readable only by you, and passed to the hub when it starts. Anything running inside the hub can read it, including <a href="engines.html#worker">workers</a>. After you save it, the desktop app never shows the key again. It shows only the last four characters so you can tell which key is in use.</p>
       <h2 id="models-providers">Providers</h2>
@@ -707,7 +708,7 @@
       </div>
       <p>A request outside these limits, or from another computer, still asks. The limits are kept on the machine, so neither the network nor the hub can change them. <code>mycelium runner pairings</code> lists pairings, and <code>mycelium runner unpair &quot;work laptop&quot;</code> removes one.</p>
       <h2 id="machines-only-your-machines-are-listed">Only your machines are listed</h2>
-      <p>The Machines page, behind the laptop icon beside the bell, shows only your own machines. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> on, the hub shows each person only the machines they own.</p>
+      <p>The Machines page, behind the laptop icon in the bar at the bottom of the window, shows only your own machines. In a browser, add a machine with the code <code>mycelium runner</code> prints when it starts. With the hub&#x27;s <a href="#auth">sign-in</a> on, the hub shows each person only the machines they own.</p>
       <p>To see and fix the agents already running on a machine, see <a href="#agents-on-a-machine">Your agents on a machine</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/machines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
@@ -726,7 +727,7 @@
 
     <section class="doc-section" id="agents-on-a-machine">
       <h1>Your Agents on a Machine</h1>
-      <p>Every herdr agent on a machine is listed in one place, whether the runner, <code>mycelium swarm</code> or you started it. In the app, that&#x27;s the <strong>Machines</strong> page. In the desktop app, it&#x27;s <strong>Your agents…</strong> under its menu bar or system tray icon. From a terminal on that machine:</p>
+      <p>Every herdr agent on a machine is listed in one place, whether the runner, <code>mycelium swarm</code> or you started it. In the app, that&#x27;s the <strong>Machines</strong> page. The desktop app also opens it from <strong>Agents → Your agents…</strong> in its menu bar or system tray icon. From a terminal on that machine:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">machine</span></code></pre>
       <figure class="doc-figure"><img class="doc-img" src="app-machines.png" alt="The Machines page: a machine&#x27;s agent CLIs, its agents, and what to fix" loading="lazy">
       </figure>
@@ -780,7 +781,7 @@
       <p>If you start agents from the app or with <code>mycelium swarm</code>, you don&#x27;t need to set herdr up by hand. Both open a herdr workspace and connect it to the room, and the <a href="#machines">runner</a> keeps it in step. This guide is for connecting agents you started in herdr yourself.</p>
       <h2 id="herdr-why-it-matters">Why it matters</h2>
       <p>An agent that runs <code>mycelium await --loop</code> is told about each new message without help. The hub remembers where it left off, so it never misses one. But a coding agent sitting idle at its prompt isn&#x27;t waiting for messages, so nothing reaches it. herdr and the runner cover that case. When the agent is mentioned, given a turn by the conductor or assigned a task, the runner types a wake-up into its pane that says why. The agent then answers on its next turn without you being at the terminal.</p>
-      <p>Rooms, memory, the board and negotiations all work without herdr. What herdr adds is a way to wake an agent that isn&#x27;t already waiting for messages.</p>
+      <p>Rooms, memory, the board and the engines all work without herdr. What herdr adds is a way to wake an agent that isn&#x27;t already waiting for messages.</p>
       <h2 id="herdr-connecting-a-workspace">Connecting a workspace</h2>
       <p>Connect a herdr workspace to a room once:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">herdr</span> <span class="cmd">sync</span> <span class="flag">--workspace</span> w2 <span class="flag">--room</span> my-project</code></pre>
@@ -1046,7 +1047,7 @@ EOF
       <ul>
         <li><strong>No message is lost.</strong> A message counts as read only once <code>await</code> has it. If the connection drops on the way, the next <code>await</code> hands it over again, so in rare cases the model sees a message twice.</li>
         <li><strong>Proxies don&#x27;t cut it short.</strong> Each request to the hub waits at most 45 seconds, and <code>await</code> keeps asking until its <code>--timeout</code> (by default, until a turn comes). A proxy that closes idle connections ends one request, not the wait.</li>
-        <li><strong>The same message as every other agent.</strong> An agent Mycelium starts for you (in herdr) sees the same message. <code>--json</code> gives scripts the turn as fields, with the printed text under <code>digest</code>.</li>
+        <li><strong>The same message as every other agent.</strong> An agent Mycelium starts for you in herdr sees the same message. <code>--json</code> gives scripts the turn as fields, with the printed text under <code>digest</code>.</li>
       </ul>
       <h2 id="bring-your-own-harness-two-patterns">Two patterns</h2>
       <h3 id="bring-your-own-harness-a-loop">A loop</h3>
@@ -1086,8 +1087,7 @@ done</code></pre>
         <li>Mention the agent in the room (<code>@handle, are you there?</code>). It should answer within a few seconds of its harness handing it the turn.</li>
         <li>Turn the network off for a minute (or, if you run the hub yourself, restart it). Mention the agent again once the connection is back. The message should still reach it, once.</li>
       </ol>
-      <p>If the first works and the second doesn&#x27;t, the harness probably isn&#x27;t starting <code>await</code> again after it exits (requirement A).</p>
-      <p>See <a href="#troubleshooting">Troubleshooting</a> if <code>await</code> exits right away or every command fails.</p>
+      <p>If the first works and the second doesn&#x27;t, the harness probably isn&#x27;t starting <code>await</code> again after it exits (requirement A). For other problems, see <a href="#troubleshooting">Troubleshooting</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/bring-your-own-harness.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="bring-your-own-harness" aria-label="Previous and next sections">
@@ -1108,8 +1108,7 @@ done</code></pre>
       <p><a href="https://github.com/omnigent-ai/omnigent">Omnigent</a> runs coding agents such as Claude Code and Codex and gives you one app to watch and talk to them. Mycelium can start its agents there. You add an agent from a room in the Mycelium app, it opens as a session in Omnigent and it works as a member of the room.</p>
       <p>This builds on <a href="#machines">Start Agents From the App</a>. The runner on your machine starts the agents, and this guide switches it from herdr to Omnigent.</p>
       <h2 id="omnigent-before-you-start">Before you start</h2>
-      <p>Omnigent has to run on the same computer as the Mycelium runner. A hosted Omnigent or one on another computer doesn&#x27;t work yet.</p>
-      <p>You need Omnigent installed and signed in to the agent CLIs you want to use. You also need the Mycelium CLI installed on the same computer.</p>
+      <p>Omnigent has to run on the same computer as the Mycelium runner. You need Omnigent installed and signed in to the agent CLIs you want to use. You also need the Mycelium CLI installed on the same computer.</p>
       <h2 id="omnigent-set-it-up">Set it up</h2>
       <ol class="steps">
         <li>Start Omnigent. It serves its app at <code>http://127.0.0.1:6767</code> and registers this computer as a place to run agents.
@@ -1128,10 +1127,10 @@ done</code></pre>
       <h2 id="omnigent-add-an-agent">Add an agent</h2>
       <p>In a room, open <strong>Members → Add → Your machine</strong>. Pick a role or write instructions, give the agent a handle and pick an agent CLI and a folder. Then press <strong>Add to room</strong>.</p>
       <p>The agent opens as a session in Omnigent titled &quot;@handle in room&quot;. Open it there to watch it work or type to it. Its first message tells it to join the room, read its notes and look at the board, and it does that by itself.</p>
-      <p>If the folder is a git repository, each agent gets its own copy of it as a git worktree on a branch named <code>mycelium/&lt;room&gt;/&lt;handle&gt;</code>. That way agents never edit the same files at once. This differs from herdr, where agents share their folder unless a swarm is started with <code>--worktree</code>.</p>
+      <p>If the folder is a git repository, each agent gets its own copy of it as a git worktree on a branch named <code>mycelium/&lt;room&gt;/&lt;handle&gt;</code>, so agents never edit the same files at once.</p>
       <h2 id="omnigent-why-it-joins-with-a-code">Why it joins with a code</h2>
-      <p>An agent needs to know which room it&#x27;s in and which member it is. When the runner starts an agent in herdr, it tells the agent both as it starts it. Omnigent starts its sessions itself, so the runner can&#x27;t do that. Instead it gets a one-time join code from the hub and puts it in the agent&#x27;s first message. The agent runs <code>mycelium join &lt;code&gt;</code>. From then on, every <code>mycelium</code> command it runs in that folder acts as that member. See <a href="concepts.html#users-joining-a-room-from-anywhere">Joining a room from anywhere</a>.</p>
-      <p>Because the membership is saved in the folder, each agent needs its own folder. A git repository gives each agent its own worktree automatically. In a folder that isn&#x27;t a git repository, only one agent can join.</p>
+      <p>The agent&#x27;s first message holds a one-time join code, and the agent runs <code>mycelium join &lt;code&gt;</code>. From then on, every <code>mycelium</code> command it runs in that folder acts as that member. See <a href="concepts.html#users-joining-a-room-from-anywhere">Joining a room from anywhere</a>.</p>
+      <p>Because the membership is saved in the folder, each agent needs its own folder. In a folder that isn&#x27;t a git repository, only one agent can join.</p>
       <h2 id="omnigent-talk-to-it">Talk to it</h2>
       <p>Mention the agent in the room, and the runner passes the message to its Omnigent session. If the agent is busy, Omnigent holds the message until the agent finishes. Along with the message, the agent gets what was said before it in the same room or thread. It answers in the room as itself.</p>
       <p>The Machines page lists each agent with its Omnigent session and whether it&#x27;s working. <strong>Stop</strong> ends the session. The agent stays in the room with its notes, so you can start it again.</p>
@@ -1167,7 +1166,7 @@ done</code></pre>
     <span class="flag">--room</span> my-room</code></pre>
       <p>Now you can mention it in the room like anyone else:</p>
       <pre><code>@researcher what did last quarter&#x27;s numbers say about churn?</code></pre>
-      <p>The hub sends your message to the agent and posts its answer in the room as <code>@researcher</code>. It keeps the same conversation going across mentions, so the agent remembers what you were talking about. The conductor can give it a turn in a flow the same way.</p>
+      <p>The hub sends your message to the agent and posts its answer in the room as <code>@researcher</code>. It keeps the same conversation going across mentions, so the agent remembers what you were talking about.</p>
       <p>If the agent needs a token, put the token in an environment variable on the backend and give the variable&#x27;s name. Only the name is saved in the room. The token stays in the hub&#x27;s environment.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
     <span class="flag">--card</span> <span class="url">https://research.example.com</span> \
@@ -1177,9 +1176,9 @@ done</code></pre>
         <li><strong>Only public addresses.</strong> The hub won&#x27;t register a card URL that points to a private or local network address. That stops a registration from making the backend call into its own network. If your A2A agents are on an internal network you trust, turn this off:
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> a2a.allow_private_hosts true
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p>This sets <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> on the backend. Don&#x27;t do this on a hub that&#x27;s open to the internet.</p>
+      <p>Don&#x27;t do this on a hub that&#x27;s open to the internet.</p>
         </li>
-        <li><strong>Bridged agents don&#x27;t set each other off.</strong> A reply from one A2A agent never triggers another, so two of them can&#x27;t get stuck mentioning each other. People, the conductor and your own agents still get replies.</li>
+        <li><strong>Bridged agents don&#x27;t set each other off.</strong> A reply from one A2A agent never triggers another, so two of them can&#x27;t get stuck mentioning each other.</li>
         <li><strong>No made-up replies.</strong> If the remote agent is down or sends something unreadable, nothing is posted.</li>
       </ul>
       <figure class="doc-figure"><img class="doc-img" src="diagrams/02-a2a-outbound.svg" alt="A remote A2A agent joins the room as a member: the hub calls it over HTTPS and posts its reply in the room" loading="lazy">
@@ -1209,7 +1208,7 @@ done</code></pre>
       <p>These counts are kept in memory and reset when the hub restarts. The room&#x27;s messages are saved as usual, including replies from bridged agents.</p>
       <h2 id="a2a-bridge-privacy">Privacy</h2>
       <p>A bridged A2A agent can be mentioned and answers under its own name. But it isn&#x27;t part of the room&#x27;s encrypted group and never has the room&#x27;s key. Each time it&#x27;s mentioned, the hub sends it the text of that message over HTTPS.</p>
-      <p>The hub can already read everything in the room (see <a href="concepts.html#slim">SLIM</a>). Adding an A2A agent means sending what&#x27;s said to it to another service as well. Add one the way you&#x27;d give any outside party access to a conversation.</p>
+      <p>The hub can already read everything in the room (see <a href="concepts.html#slim">SLIM</a>), and the bridge isn&#x27;t end-to-end encrypted either. Adding an A2A agent means sending what&#x27;s said to it to another service as well. Add one the way you&#x27;d give any outside party access to a conversation.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/a2a-bridge.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="a2a-bridge" aria-label="Previous and next sections">
@@ -1229,7 +1228,7 @@ done</code></pre>
       <h1>Working the Board</h1>
       <p>This guide covers reading and acting on a room&#x27;s <a href="concepts.html#board">board</a>. It covers the board in the app, the board on the command line, epics, the daily log and linking work to GitHub.</p>
       <h2 id="working-the-board-the-board-in-the-app">The board in the app</h2>
-      <p>The app&#x27;s board opens with a line that says what&#x27;s going on, such as &quot;2 things need you. builder and reviewer are on 4 tasks. 3 are up next.&quot; Under it is a line where you hand something off.</p>
+      <p>The app&#x27;s board opens with a line that says what&#x27;s going on, such as &quot;2 things need you. 4 tasks are being worked on. 3 are up next.&quot; Under it is a line where you hand something off.</p>
       <p>The rows come in the three groups the <a href="concepts.html#board">board</a> page describes. Each row shows who has the task, the latest thing said in its thread, and where it stands. It also shows how long ago the task last moved. A row that has been quiet for three hours says so.</p>
       <p>To open a row&#x27;s thread, click the row. You can also move with <code>j</code> and <code>k</code> and press Enter.</p>
       <h2 id="working-the-board-whats-waiting-on-you">What&#x27;s waiting on you</h2>
@@ -1267,20 +1266,22 @@ done</code></pre>
             </tr>
             <tr>
               <td><strong>in-flight</strong></td>
-              <td>Claimed work: who has it, which branch, CI status</td>
+              <td>Work someone holds, and who holds it</td>
             </tr>
             <tr>
               <td><strong>resolved</strong></td>
-              <td>Closed today</td>
+              <td>Closed work</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p><code>--view</code> takes <code>list</code> or <code>table</code>, and <code>--group</code> groups by any field. Fields don&#x27;t need setting up. Any field in a row&#x27;s frontmatter can be a column.</p>
       <h2 id="working-the-board-epics">Epics</h2>
-      <p>An epic is a task with parts. File the parts with <code>--parent</code>, and say which part waits on which with <code>depends-on</code>:</p>
+      <p>An epic is a task with parts. File the parts with <code>--parent</code>, then say which part waits on which with <code>depends-on</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Add Apple Pay to checkout&quot;</span> <span class="flag">--parent</span> work/apple-pay-for-everyone
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/test-on-iphone <span class="str">&quot;Test Apple Pay on a real iPhone&quot;</span> <span class="flag">--meta</span> depends-on=work/add-apple-pay</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Test Apple Pay on a real iPhone&quot;</span> <span class="flag">--parent</span> work/apple-pay-for-everyone
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/test-apple-pay-on-a-real-iphone <span class="str">&quot;Test Apple Pay on a real iPhone&quot;</span> \
+  <span class="flag">--meta</span> depends-on=work/add-apple-pay-to-checkout</code></pre>
       <figure class="doc-figure"><img class="doc-img" src="app-board-epic.png" alt="An epic on the board: its parts in order, numbered by step" loading="lazy">
       </figure>
       <p>The parts&#x27; order comes from what each one waits on, so parts that wait on nothing among themselves run side by side. <code>mycelium board show</code> lists an epic&#x27;s parts in that order, with where each stands and the latest thing said in its thread:</p>
@@ -1296,7 +1297,7 @@ done</code></pre>
         Waits on Add Apple Pay to checkout  work/test-on-iphone</code></pre>
       <p>Nothing about an epic is stored. Its progress and its order are worked out from its parts each time the board is read.</p>
       <h2 id="working-the-board-the-daily-log">The daily log</h2>
-      <p>The log shows what happened in the room day by day and who did it. Nobody writes it. It&#x27;s built from messages, memory changes, resolved work and negotiations.</p>
+      <p>The log shows what happened in the room day by day and who did it. Nobody writes it. It&#x27;s built from messages, memory changes, resolved work and the flows that ran.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span>                    # the last 7 days
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--since</span> 30d        # a longer window
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>        # the week before this one
@@ -1307,7 +1308,6 @@ done</code></pre>
       <p>The body&#x27;s links work, and search finds it. You can edit it as the plan changes:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="str">&quot;Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]].&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span> <span class="flag">--file</span> brief.md <span class="flag">--assign</span> @builder</code></pre>
-      <p>An agent can also mark a row <code>promote</code> or <code>dismiss</code>. <code>promote</code> means the work is now tracked somewhere that lasts longer, such as a GitHub issue the agent filed. <code>dismiss</code> closes the row without doing the work.</p>
       <h2 id="working-the-board-github">GitHub</h2>
       <p>Anything that needs to outlast the work belongs in GitHub, and the board links to it.</p>
       <p>To link a pull request, mention it in a task&#x27;s body or thread as <code>owner/repo#123</code> or by its URL. Once the hub has a GitHub token, the row shows the pull request&#x27;s live state. See <a href="reference.html#board-reference">live pull request status</a>.</p>
@@ -1606,12 +1606,12 @@ done</code></pre>
 
     <section class="doc-section" id="schedules">
       <h1>Schedules</h1>
-      <p>Some work needs someone to look in on it every so often: is a task stalled, is a lease about to run out, did anyone answer. A schedule asks an agent to do that check-in. The hub keeps the schedule and fires it, not the agent&#x27;s own session, so it survives restarts and context compaction. Anyone in the room can see it, pause it, edit it or run it.</p>
+      <p>Some work needs someone to look in on it every so often: is a task stalled, is a lease about to run out, did anyone answer. A schedule asks an agent to do that check-in. The hub keeps the schedule and fires it, so it survives the agent&#x27;s restarts and context compaction. Anyone in the room can see it, pause it, edit it or run it.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">schedule</span> <span class="cmd">add</span> board-check <span class="str">&quot;Look at the board and chase anything stuck.&quot;</span> \
   <span class="flag">--every</span> 30m <span class="flag">--check</span> stale <span class="flag">--for</span> builder</code></pre>
       <p>When it fires, the hub wakes <code>@builder</code> the same way a mention does. If builder runs in herdr, herdr delivers the wake-up once the agent is idle. Otherwise builder gets the wake-up from its next <code>mycelium await</code>, the next time its loop is free to take a turn. The agent is told the schedule&#x27;s prompt and what the pre-check found, and then works the way it does on any turn.</p>
       <h2 id="schedules-a-cheap-pre-check-before-the-model-wakes">A cheap pre-check before the model wakes</h2>
-      <p>Each time an agent is woken, it takes a full model turn. Most check-ins find nothing. <code>--check</code> names a query the hub runs first. The agent is woken only when that query finds something. When it is, it&#x27;s told what the query found. A run that finds nothing is recorded as <strong>Nothing to do</strong>: it costs no model turn and posts nothing to the room.</p>
+      <p>Each time an agent is woken, it takes a full model turn. Most check-ins find nothing. <code>--check</code> names a query the hub runs first. The agent is woken only when that query finds something, and it&#x27;s told what the query found. A run that finds nothing is recorded as <strong>Nothing to do</strong>: it costs no model turn and posts nothing to the room.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1666,8 +1666,8 @@ done</code></pre>
         <li><strong>You need the right to act as its agent.</strong> On a hub with sign-in turned on, you can create, edit or run a schedule only for an agent you may act as: your own handle, or one whose owner or allow_from names you.</li>
       </ul>
       <h2 id="schedules-in-the-app">In the app</h2>
-      <p>The room&#x27;s <strong>Schedules</strong> view (under the room in the Rooms rail, or Alt+K) lists every schedule: its agent, when it runs, its check, its status, the next run and the last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and Delete. Click a row to see its details and its recent runs, including how many of them woke the agent. In the Members rail, an agent with a schedule shows a small clock.</p>
-      <p>If you pause an agent&#x27;s schedule, the tab shows who paused it and when. The agent isn&#x27;t woken to be told. The next time something else wakes it, its wake message says who paused the schedule and how to resume it.</p>
+      <p>The room&#x27;s <strong>Schedules</strong> tab (Alt+K) lists every schedule: its agent, when it runs, its check, its status, the next run and the last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and Delete. Click a row to see its details and its recent runs, including how many of them woke the agent. In the Members rail, an agent with a schedule shows a small clock.</p>
+      <p>A paused schedule shows who paused it and when. If someone other than the agent pauses it, the agent isn&#x27;t woken to be told. The next time something else wakes it, its wake message says who paused the schedule and how to resume it.</p>
       <h2 id="schedules-from-the-cli">From the CLI</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">schedule</span> <span class="cmd">ls</span>                       # the room&#x27;s schedules
 <span class="bin">mycelium</span> <span class="cmd">schedule</span> <span class="cmd">show</span> board-check         # one, with its recent runs
@@ -1709,7 +1709,7 @@ done</code></pre>
       </ul>
       <h2 id="security-planes-what-to-do-about-it">What to do about it</h2>
       <ol class="steps">
-        <li><strong>Turn on <a href="#auth">sign-in</a>.</strong> Every request then needs a token from your identity provider, and writes are tied to real accounts. Only an agent&#x27;s owner can act for it. You need an OIDC provider such as your company&#x27;s SSO, Keycloak, Dex, ZITADEL or Authentik. There&#x27;s no lighter option yet.</li>
+        <li><strong>Turn on <a href="#auth">sign-in</a>.</strong> Every request then needs a token from your identity provider, and writes are tied to real accounts. Only an agent&#x27;s owner can act for it. You need an OIDC provider such as your company&#x27;s SSO, Keycloak, Dex, ZITADEL or Authentik.</li>
         <li><strong>Serve it over HTTPS</strong> behind a reverse proxy. See <a href="#hub-and-spoke-behind-an-https-proxy">Hub &amp; Spoke</a>.</li>
         <li><strong>Keep workers to replies only</strong> with <code>worker.tools = false</code>, or don&#x27;t add them. Leave their tools on only if everyone who can start a worker should be allowed to run commands on the hub.</li>
         <li><strong>Keep secrets out of rooms.</strong> The hub and everyone in the room can read anything posted there.</li>
@@ -1761,7 +1761,7 @@ done</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> slim.master_secret <span class="str">&quot;$(openssl rand <span class="flag">-hex</span> 32)&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span> <span class="flag">--restart</span></code></pre>
       <h3 id="security-planes-per-member-slim-identity">Per-member SLIM identity</h3>
-      <p><code>slim.identity = signerjwt</code> gives each member its own key on the SLIM channel instead of the shared secret. Members can then be told apart on the channel, and one can be removed without changing the room&#x27;s key. The hub keeps those keys on each member&#x27;s behalf, so it still reads everything. The setting has no effect on the API. Set up sign-in for that.</p>
+      <p><code>slim.identity = signerjwt</code> gives each member its own key on the SLIM channel instead of the shared secret. Members can then be told apart on the channel, and one can be removed without changing the room&#x27;s key. The hub keeps those keys on each member&#x27;s behalf, so it still reads everything, and messages aren&#x27;t end-to-end encrypted from it. The setting has no effect on the API. Set up sign-in for that.</p>
       <h2 id="security-planes-typical-setups">Typical setups</h2>
       <div class="table-wrap">
         <table>
@@ -1816,7 +1816,7 @@ done</code></pre>
       </div>
       <p>This covers the hub&#x27;s HTTP API. Encryption on the messaging layer (SLIM) is set up separately. See <a href="#security-planes">Running a Shared Hub</a>.</p>
       <h2 id="auth-turning-it-on">Turning it on</h2>
-      <p>You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or your company&#x27;s SSO. To try it without one, see <a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md">Keycloak / OIDC setup</a>.</p>
+      <p>You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or your company&#x27;s SSO. To try it on one machine first, <a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md">Keycloak / OIDC setup</a> runs a local Keycloak with a ready-made realm from a checkout of the repository.</p>
       <p>Enable auth and set an audience:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.enabled true
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.audience mycelium
@@ -1901,7 +1901,7 @@ role     = &quot;user&quot;</code></pre>
       <p>You don&#x27;t need to set <code>login.issuer</code>, because the CLI asks the hub which issuer it trusts. If the hub trusts more than one, the CLI asks you to pick one with <code>--issuer</code>.</p>
       <p>On a machine without a browser, run <code>mycelium login --device</code>. It prints a URL and a code to enter on another device. The CLI also switches to this on its own when it can&#x27;t find a browser.</p>
       <p><code>mycelium logout</code> signs you out. If you never sign in, the CLI never sends a token, which is what you want with a hub that has auth off.</p>
-      <p>Your sign-in is kept in the system keychain, with one entry for each hub. Where there&#x27;s no keychain, it&#x27;s kept in <code>~/.mycelium/token.json</code>, which only you can read. Set <code>MYCELIUM_TOKEN_FILE</code> to keep that file somewhere else. If you signed in before the CLI used the keychain, the first command that reads your sign-in moves it from <code>token.json</code> into the keychain and deletes the file.</p>
+      <p>Your sign-in is kept in the system keychain, with one entry for each hub. Where there&#x27;s no keychain, it&#x27;s kept in <code>~/.mycelium/token.json</code>, which only you can read. Set <code>MYCELIUM_TOKEN_FILE</code> to keep that file somewhere else.</p>
       <p>The sign-in renews itself, so you don&#x27;t have to sign in again on a schedule. Renewal needs the <code>offline_access</code> scope, which is in the default <code>login.scopes</code>.</p>
       <p><strong>Inside an agent&#x27;s terminal, the CLI never uses your sign-in.</strong> Commands there act as that agent alone, and <code>--as</code> someone else is refused. Agents sign in with their own credentials. See <a href="#auth-signing-in-agents">Signing in agents</a>.</p>
       <p><code>mycelium whoami</code> shows who you&#x27;re acting as and when your sign-in expires:</p>
@@ -1969,6 +1969,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
         <li><strong>Its own client.</strong> The agent signs in with its own OIDC client, using the <code>client_credentials</code> grant. The client id becomes the agent&#x27;s handle, and you can revoke one agent without affecting the others.</li>
         <li><strong>A token from somewhere else.</strong> See below.</li>
       </ul>
+      <p>An agent you start from the app, with <code>mycelium swarm</code> or with <code>mycelium machine restart</code> is joined with a code for you, so it has its own token with nothing to set up.</p>
       <p>To give agents their own clients, point the machine at the issuer your agents use. Then set each agent&#x27;s client secret:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> agent_auth.issuer <span class="url">https://sso.example.com/realms/agents</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> agent_auth.audience <span class="bin">mycelium</span>     # same as the hub&#x27;s auth.audience
@@ -1980,7 +1981,6 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       <p>Credentials are kept in <code>~/.mycelium/agent-credentials.json</code>, which only you can read. For a container that runs one agent and has no config file, use <code>MYCELIUM_AGENT_AUTH_ISSUER</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_ID</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_SECRET</code>, <code>MYCELIUM_AGENT_AUTH_SCOPES</code> and <code>MYCELIUM_AGENT_AUTH_AUDIENCE</code>. Set <code>MYCELIUM_AGENT_HANDLE</code> to the agent&#x27;s handle.</p>
       <h3 id="auth-using-a-token-from-somewhere-else">Using a token from somewhere else</h3>
       <p>Set <code>MYCELIUM_AGENT_AUTH_TOKEN</code> to use a token you already have, such as one from a CI job or a workload identity system. It&#x27;s sent as-is and never renewed. The hub also has to trust whoever issued it, so add another <code>[[auth.issuers]]</code> block for that issuer with <code>role = &quot;agent&quot;</code>. <code>MYCELIUM_AGENT_AUTH_TOKEN_FILE</code> names a file holding the token instead, read on every command.</p>
-      <p>An agent you start from the app, with <code>mycelium swarm</code> or with <code>mycelium machine restart</code> gets its own token this way, with nothing to set up. Whoever starts it asks the hub for a join code for the agent and redeems it, keeps the token the hub signs in a file only you can read, and gives the agent&#x27;s pane that file&#x27;s path.</p>
       <h3 id="auth-agent-settings">Agent settings</h3>
       <div class="table-wrap">
         <table>
@@ -2030,8 +2030,7 @@ role   = &quot;agent&quot;</code></pre>
       <p>An agent&#x27;s record belongs to one room. Owning <code>@bot</code> in one room gives you nothing in another. An agent with its own credential awaits as itself and needs none of this. To drive an agent&#x27;s loop from your own session, add yourself to its record:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--owner</span> alice          # alice can await <span class="flag">--handle</span> bot
 <span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--allow-from</span> ops-lead  # and so can @ops-lead</code></pre>
-      <p><code>await --loop</code> stops on a 401 or 403 instead of retrying.</p>
-      <p>With auth off, anyone can await as any handle. That&#x27;s another reason to turn auth on for a hub other people can reach.</p>
+      <p><code>await --loop</code> stops on a 401 or 403 instead of retrying. With auth off, anyone can await as any handle.</p>
       <h2 id="auth-rotating-signing-keys">Rotating signing keys</h2>
       <p>The hub caches your provider&#x27;s signing keys. When a token is signed with a key it hasn&#x27;t seen, it fetches the keys again. You don&#x27;t need to restart anything after rotating keys. If the provider is briefly unreachable, the hub keeps using the keys it already has.</p>
       <h2 id="auth-requests-from-the-hubs-own-machine">Requests from the hub&#x27;s own machine</h2>
@@ -2042,6 +2041,7 @@ role   = &quot;agent&quot;</code></pre>
       <ul>
         <li><code>/</code>, <code>/health</code> and <code>/healthz</code>, for health checks. They don&#x27;t include any room content.</li>
         <li><code>/docs</code>, <code>/redoc</code> and <code>/openapi.json</code>, which describe the API.</li>
+        <li><code>/api/joins/redeem</code>, where an agent trades a join code for its token.</li>
         <li>A room&#x27;s A2A agent card (<code>/.well-known/agent-card.json</code>), which only lists the room&#x27;s name and skills. The room&#x27;s A2A endpoint itself needs a token.</li>
       </ul>
       <p>Everything else needs a token. With auth on, <code>/health</code> also has an <code>auth</code> section that shows the trusted issuers and any warnings.</p>
@@ -2070,9 +2070,7 @@ role   = &quot;agent&quot;</code></pre>
           </tbody>
         </table>
       </div>
-      <p>The hub accepts only tokens with asymmetric signatures (<code>RS<em></code>, <code>PS</em></code> or <code>ES<em></code>). It refuses <code>none</code> and <code>HS</em></code> before checking anything else. That stops anyone from using the provider&#x27;s public key as a shared secret to forge a token.</p>
-      <h2 id="auth-trying-it-locally">Trying it locally</h2>
-      <p>To try sign-in on one machine before setting up a real provider, see <a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md">Keycloak / OIDC setup</a> in the source. It runs a local Keycloak with a ready-made realm from a checkout of the repository.</p>
+      <p>The hub accepts only tokens with asymmetric signatures (<code>RS<em></code>, <code>PS</em></code> or <code>ES<em></code>). It refuses <code>none</code> and <code>HS</em></code>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/auth.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="auth" aria-label="Previous and next sections">
@@ -2165,16 +2163,6 @@ enabled = true
         <li>The hub is the one the desktop app runs, which only accepts connections from its own computer.</li>
       </ul>
       <hr class="divider">
-      <h3 id="troubleshooting-every-command-fails-with-invalid-port">Every command fails with &quot;Invalid port&quot;</h3>
-      <p><strong>You see:</strong> every <code>mycelium</code> command fails before it reaches the hub, with an error like <code>Invalid port: &#x27;:1]&#x27;</code>.</p>
-      <p><code>NO_PROXY</code> has an IPv6 address in brackets, like <code>[fd00::1]</code>. Older CLIs can&#x27;t read that. Upgrade the CLI, or write the addresses without brackets:</p>
-      <pre><code>export NO_PROXY=localhost,127.0.0.1,fd00::1</code></pre>
-      <hr class="divider">
-      <h3 id="troubleshooting-await-stops-after-a-few-minutes"><code>await</code> stops after a few minutes</h3>
-      <p><strong>You see:</strong> <code>await</code> ends with &quot;Server disconnected without sending a response&quot; some minutes into a long wait.</p>
-      <p>A proxy closed a request that had been quiet for a while. Current CLIs keep each request short and keep waiting until <code>--timeout</code>, so upgrade the CLI.</p>
-      <p>A harness should start <code>await</code> again whenever it exits. See <a href="#bring-your-own-harness">Bring Your Own Harness</a>.</p>
-      <hr class="divider">
       <h3 id="troubleshooting-port-already-in-use">Port already in use</h3>
       <p><strong>You see:</strong> <code>bind: address already in use</code> when starting the stack.</p>
       <pre><code>lsof <span class="flag">-i</span> :8000    # the API
@@ -2199,10 +2187,10 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>          # are the memories there?
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>            # are you in the right room?
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">reindex</span>     # rebuild the search index</code></pre>
-      <p>The hub picks up files edited directly on it, outside <code>mycelium memory set</code>, while it runs. <code>reindex</code> catches anything it missed.</p>
+      <p>The hub picks up files edited directly on it while it runs. <code>reindex</code> catches anything it missed.</p>
       <hr class="divider">
       <h3 id="troubleshooting-no-active-room">No active room</h3>
-      <p><strong>You see:</strong> <code>No room specified and no active room set</code>.</p>
+      <p><strong>You see:</strong> <code>No room context found</code>.</p>
       <p>Set the room for the folder you&#x27;re in or name it on each command:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> &lt;name&gt;
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> <span class="flag">--room</span> &lt;name&gt;</code></pre>
@@ -2259,7 +2247,6 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
           </tbody>
         </table>
       </div>
-      <p><code>mycelium await --exec &lt;cmd&gt;</code> sets <code>MYCELIUM_ROOM</code>, <code>MYCELIUM_HANDLE</code>, <code>MYCELIUM_SENDER</code>, <code>MYCELIUM_SENDER_NAME</code> and <code>MYCELIUM_PROMPT</code> for the command it runs.</p>
       <hr class="divider">
       <h2 id="troubleshooting-logs">Logs</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">logs</span>                       # every service (Docker)
@@ -2267,7 +2254,7 @@ lsof <span class="flag">-i</span> :3000    # the app</code></pre>
       <p>The desktop app writes everything to <code>~/.mycelium/logs/desktop.log</code>. When an agent won&#x27;t start, the runner&#x27;s log says why: <code>~/.mycelium/runner/runner.log</code>. Both open from <strong>Logs</strong> in the app&#x27;s menu.</p>
       <hr class="divider">
       <h2 id="troubleshooting-starting-over">Starting over</h2>
-      <p>This deletes all your rooms, memories and config. It also deletes the SLIM secret, saved sign-in tokens and agent credentials.</p>
+      <p>This deletes all your rooms, memories and config. It also deletes the SLIM secret and agent credentials. Your own sign-in is kept in the system keychain, so run <code>mycelium logout</code> first if you want it gone too.</p>
       <p>With the Docker stack:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">down</span> <span class="flag">--volumes</span>
 rm <span class="flag">-rf</span> ~/.mycelium

@@ -2,8 +2,8 @@
 
 Every herdr agent on a machine is listed in one place, whether the runner,
 `mycelium swarm` or you started it. In the app, that's the **Machines** page.
-In the desktop app, it's **Your agents…** under its menu bar or system tray
-icon. From a terminal on that machine:
+The desktop app also opens it from **Agents → Your agents…** in its menu bar
+or system tray icon. From a terminal on that machine:
 
 ```bash
 mycelium machine
