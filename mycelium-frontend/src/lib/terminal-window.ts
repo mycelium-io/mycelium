@@ -2,14 +2,11 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Where an agent's terminal shows when it isn't peeking: a window you drag and
- * resize, remembered per agent in this browser, so an agent opens where you
- * left it. What's remembered is put back inside the window you have now, so a
- * terminal never opens off-screen after the window shrank or a display went.
+ * Where an agent's terminal window sits: a window you drag and resize,
+ * remembered per agent in this browser, so an agent opens where you left it.
+ * What's remembered is put back inside the window you have now, so a terminal
+ * never opens off-screen after the window shrank or a display went.
  */
-
-/** The layer over the workspace that a peek is drawn into (`AppShell`). */
-export const PEEK_LAYER_ID = "terminal-peek-layer";
 
 export interface WindowRect {
   x: number;
@@ -20,17 +17,22 @@ export interface WindowRect {
 
 const STORAGE_KEY = "mycelium.terminal-windows";
 
-/** The smallest a popped-out terminal gets: a few lines of a narrow one. */
+/** The smallest a terminal window gets: a few lines of a narrow one. */
 export const MIN_WINDOW = { width: 320, height: 240 } as const;
 
 /** How much of a window must stay on screen to be dragged back. */
 const KEEP_VISIBLE = 48;
 
-/** A new window's place: on the right, a little in from the top. */
+/** Room left above it for the title bar, and below it for the status bar. */
+const TOP = 56;
+const BOTTOM = 40;
+
+/** A first window's place: on the right, over Members, as tall as the room.
+ *  A terminal is tall, so it starts that way. */
 export function defaultRect(viewport: { width: number; height: number }): WindowRect {
-  const width = Math.min(640, viewport.width - 32);
-  const height = Math.min(680, Math.round(viewport.height * 0.72));
-  return { x: Math.max(16, viewport.width - width - 48), y: Math.max(16, Math.round(viewport.height * 0.12)), width, height };
+  const width = Math.min(600, viewport.width - 32);
+  const height = Math.max(MIN_WINDOW.height, viewport.height - TOP - BOTTOM);
+  return { x: Math.max(16, viewport.width - width - 8), y: TOP, width, height };
 }
 
 /** `rect` made to fit `viewport`: no bigger than it, no smaller than the

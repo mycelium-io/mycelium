@@ -32,7 +32,7 @@ def test_a_child_row_reads_its_nearest_ancestors_when_it_has_none():
     _write("work/grandchild", "# Grandchild", **{"part-of": "work/child"})
     _write("context/summary/parent", "# Shared summary: Parent\n\nKeep it small.")
 
-    ((key, _meta, body),) = agreed.found_for(ROOM, "work/grandchild")
+    ((key, _meta, _body),) = agreed.found_for(ROOM, "work/grandchild")
     assert key == "context/summary/parent"
     assert "Keep it small." in agreed.for_prompt(ROOM, "work/grandchild")
 

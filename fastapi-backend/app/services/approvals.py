@@ -6,7 +6,8 @@
 An ask is a message in a task's thread (or the room's channel, when it's about
 no task), addressed to one person, whose payload carries ``ask``. It is one of
 three kinds: ``approve`` (a yes or no on something the agent will do),
-``choose`` (pick one of its ``options``, or several when ``multiple``) and
+``choose`` (pick one of its ``options``, or several when ``multiple``, or
+none of them) and
 ``question`` (an open question). The agent can say what it would do:
 ``recommend`` (``"approve"``, or the option ids it would pick) and, on a
 question, ``suggest`` (a draft answer).
@@ -405,8 +406,16 @@ def _answered(
         raise Refused(422, "Only an approve takes a decision")
     if kind == "choose":
         options = {str(o.get("id")): str(o.get("label")) for o in ask.get("options") or []}
-        picks = list(dict.fromkeys(str(c) for c in choices or []))
-        if not picks or any(p not in options for p in picks):
+        # An empty list is an answer: none of the options. A missing one isn't,
+        # so "none" is always something the person chose to send.
+        if choices is None:
+            raise Refused(
+                422,
+                f"A choose is answered with its options' ids ({', '.join(options)}), "
+                "or an empty list for none of them",
+            )
+        picks = list(dict.fromkeys(str(c) for c in choices))
+        if any(p not in options for p in picks):
             raise Refused(422, f"A choose is answered with its options' ids: {', '.join(options)}")
         if len(picks) > 1 and not ask.get("multiple"):
             raise Refused(422, "This ask takes one choice")
@@ -428,7 +437,9 @@ def says(answer: dict[str, Any]) -> str:
     quoted = f'"{question}"'
     if answer.get("kind") == "choose":
         chosen = ", ".join(f'"{label}"' for label in answer.get("chosen") or [])
-        head = f"Chose {chosen} for {quoted}"
+        head = (
+            f"Chose {chosen} for {quoted}" if chosen else f"Chose none of the options for {quoted}"
+        )
     elif answer.get("kind") == "question":
         return f"Answered {quoted}: {note}"
     else:

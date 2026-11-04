@@ -211,7 +211,7 @@ class TestAsking:
     @pytest.mark.asyncio
     async def test_the_thread_the_agent_was_last_asked_in_wins_over_the_task_it_holds(self, room):
         row("work/other", assignee="lead")
-        ask, record, task = await _ask(recent_episode=thread("other"))
+        _ask_sent, record, task = await _ask(recent_episode=thread("other"))
         assert task == "work/other"
         assert persister.record_episode(record) == thread("other")
 
@@ -302,7 +302,7 @@ class TestAsking:
 
     @pytest.mark.asyncio
     async def test_an_agent_last_asked_in_the_channel_asks_there_over_the_task_it_holds(self, room):
-        _ask_, record, task = await _ask(
+        _ask_sent, record, task = await _ask(
             recent_episode=message_format.live_episode_urn(ROOM), to="julia"
         )
         assert task is None
@@ -310,7 +310,7 @@ class TestAsking:
 
     @pytest.mark.asyncio
     async def test_a_named_task_still_wins_over_the_channel(self, room):
-        _ask_, record, task = await _ask(
+        _ask_sent, record, task = await _ask(
             task="work/apple-pay", recent_episode=message_format.live_episode_urn(ROOM)
         )
         assert task == "work/apple-pay"
@@ -396,6 +396,25 @@ class TestAnswering:
         assert record.content["content"].startswith('Answered "Turn Apple Pay')
         assert record.content["content"].endswith(": the address form")
         assert answer["text"] == "the address form"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("multiple", [False, True])
+    async def test_a_choose_can_be_answered_with_none_of_its_options(self, room, multiple):
+        ask, _r, _t = await _ask(kind="choose", options=OPTIONS, multiple=multiple)
+        _f, answer, record = await approvals.answer(
+            ROOM, ask["id"], by="julia", choices=[], text="neither fits our contract"
+        )
+        assert answer["choices"] == []
+        assert answer["chosen"] == []
+        assert record.content["content"] == (
+            "Chose none of the options for "
+            '"Turn Apple Pay on for everyone on Friday at 9:00?"'
+            "\n\nNote: neither fits our contract"
+        )
+        # The agent reads the same empty pick.
+        folded = approvals.asked(room.persister.log.records, ROOM)[ask["id"]].answer
+        assert folded is not None
+        assert folded["choices"] == []
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

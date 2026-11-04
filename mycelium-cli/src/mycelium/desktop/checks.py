@@ -21,10 +21,21 @@ from typing import Any
 import httpx
 
 from mycelium.caller import desktop_settings_path
-from mycelium.desktop.supervisor import HOST, HUB_PORT, SLIM_PORT, UI_PORT, Locator, port_open
+from mycelium.desktop.supervisor import (
+    HOST,
+    HUB_PORT,
+    SLIM_PORT,
+    UI_PORT,
+    Locator,
+    port_open,
+    started_file,
+    started_ui_port,
+)
 from mycelium.ui_status import CheckResult
 
 SETTINGS = desktop_settings_path()
+#: What the running app started, with the port its UI is on.
+STARTED = started_file()
 
 
 def settings() -> dict[str, Any] | None:
@@ -142,10 +153,14 @@ def hubs_here(*, client: bool = False) -> CheckResult:
 
 
 def ui() -> CheckResult:
-    resp = _get(f"http://{HOST}:{UI_PORT}/")
-    if resp is not None and resp.status_code < 500:
-        return CheckResult(name="App UI", status="ok", message=f"serving on {HOST}:{UI_PORT}")
-    return CheckResult(name="App UI", status="error", message=f"nothing on {HOST}:{UI_PORT}")
+    # The app starts its UI on another port when something else holds UI_PORT,
+    # and writes down which.
+    port = started_ui_port(STARTED) or UI_PORT
+    resp = _get(f"http://{HOST}:{port}/")
+    if resp is None or resp.status_code >= 500:
+        return CheckResult(name="App UI", status="error", message=f"nothing on {HOST}:{port}")
+    taken = "" if port == UI_PORT else f"; {UI_PORT} was taken"
+    return CheckResult(name="App UI", status="ok", message=f"serving on {HOST}:{port}{taken}")
 
 
 def runner(api_url: str) -> CheckResult:

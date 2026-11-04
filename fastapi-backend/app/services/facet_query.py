@@ -49,12 +49,10 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
-
-D = TypeVar("D")
 
 SORTS: tuple[str, ...] = ("newest", "oldest", "relevance")
 
@@ -233,7 +231,7 @@ def parse(
 
 
 @dataclass(frozen=True)
-class Field(Generic[D]):
+class Field[D]:
     """One facet a caller can filter by and count.
 
     ``values`` returns the values a document has for the field (none, one or
@@ -261,7 +259,7 @@ class Bucket:
 
 
 @dataclass
-class Outcome(Generic[D]):
+class Outcome[D]:
     """Every document that matched, scored, plus the facet counts."""
 
     hits: list[tuple[D, float]]
@@ -297,7 +295,7 @@ def _text_score(text: str, query: FacetQuery) -> float | None:
     return score
 
 
-def run(
+def run[D](
     docs: Sequence[D],
     query: FacetQuery,
     fields: Sequence[Field[D]],

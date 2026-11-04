@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from mycelium.cli_options import confirms, emits_json, in_room
+from mycelium.cli_options import confirms, emits_json, in_room, paged
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.hubs import Hub, find_hubs
@@ -299,6 +299,41 @@ def unbind_cmd(
     agent = _find(handle, room)
     unbind(agent)
     console.print(f"unbound @{escape(agent.handle)} from {escape(agent.pane)}")
+
+
+@doc_ref(
+    usage="mycelium machine session <handle> --before <entry> [--room <room>] [--limit <n>] --json",
+    desc="Print the entries of an agent's session just before one entry, read from its CLI's own files on this machine. The desktop app's rendered view reads earlier pages with it.",
+    group="agent",
+)
+@app.command("session")
+@in_room("room", resolve=False)
+@emits_json("as_json")
+@paged("limit")
+def session_cmd(
+    handle: str = typer.Argument(..., help="The agent (@ optional)."),
+    before: str = typer.Option(..., "--before", help="The entry id to read back from."),
+    limit: int = 200,
+    room: str | None = None,
+    as_json: bool = False,
+) -> None:
+    """An earlier page of an agent's session, as the rendered view draws it.
+
+    Prints ``{entries, earlier}``, or ``{unavailable}`` naming why not:
+    ``no_converter``, ``no_session`` or ``no_entry``. It reads files on this
+    machine only and sends nothing to the hub.
+    """
+    from mycelium.runner.sessions import page
+
+    agent = _find(handle, room)
+    body = page(agent.kind, agent.folder, agent.session, before, max(1, min(limit, 1000)))
+    if as_json:
+        typer.echo(json.dumps(body))
+        return
+    if "unavailable" in body:
+        _fail(f"No page: {body['unavailable']}")
+    more = " (more before them)" if body["earlier"] else ""
+    console.print(f"{len(body['entries'])} entries before {escape(before)}{more}")
 
 
 @doc_ref(

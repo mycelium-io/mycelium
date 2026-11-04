@@ -12,7 +12,7 @@
  *
  *   <AgentScreen room handle />        the view, or where the agent runs instead
  *
- * `AgentScreenPeek` (agent-screen-peek.tsx) is where it's opened.
+ * `AgentScreenWindow` (agent-screen-window.tsx) is where it's opened.
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -21,6 +21,9 @@ import { parseAnsi, readable, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
+import type { Runner } from "@/lib/api";
+import { readEarlier, useAgentSession } from "@/lib/agent-session";
+import { AgentSessionView, SessionUnavailable } from "@/components/agent-session-view";
 import { buttonVariants } from "@/components/ui/button";
 
 /** The footer's promise, which the code keeps: the runner sends the hub no screen. */
@@ -34,15 +37,31 @@ export interface AgentScreenProps {
   /** Whether the footer offers Open its terminal. Off where the caller puts
    *  that button somewhere more prominent of its own. */
   openLink?: boolean;
+  /** Its session drawn as what it did, when its CLI has a converter, or its
+   *  terminal. The terminal when unset. */
+  view?: ScreenView;
+  /** Asked to switch, from inside the rendered view. */
+  onView?: (view: ScreenView) => void;
 }
 
-export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }: AgentScreenProps) {
+export type ScreenView = "rendered" | "terminal";
+
+export function AgentScreen({
+  room,
+  handle,
+  runner: runnerOf,
+  openLink = true,
+  view = "terminal",
+  onView,
+}: AgentScreenProps) {
   const desktop = useIsDesktop();
   const thisMachine = useThisMachine();
   const { runners } = useRunners();
   // The app is asked first: whether the agent has a terminal here is its
   // answer, from its own registry of agents, not a guess from the hub's list.
   const screen = useAgentScreen(desktop ? { room, handle } : null);
+  const read = useAgentSession(desktop && view === "rendered" ? { room, handle } : null);
+  const showTerminal = () => onView?.("terminal");
 
   if (!desktop) {
     return <Note>An agent&apos;s terminal shows in the desktop app, for agents on that computer.</Note>;
@@ -80,7 +99,22 @@ export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }:
   }
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <Screen text={screen.text} error={screen.error} />
+      {view === "rendered" && read.session ? (
+        <AgentSessionView
+          key={read.session.sessionId}
+          session={read.session}
+          onShowTerminal={showTerminal}
+          loadEarlier={(before) => readEarlier({ room, handle }, before)}
+        />
+      ) : view === "rendered" && read.unavailable ? (
+        <SessionUnavailable
+          reason={read.unavailable}
+          cli={cliOf(runners, room, handle, runnerOf)}
+          onShowTerminal={showTerminal}
+        />
+      ) : (
+        <Screen text={screen.text} error={screen.error} />
+      )}
       {/* One quiet line, padded like the header: where the screen comes from,
           how fresh it is, and the way to type to it. */}
       <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-2 text-micro text-faint">
@@ -99,6 +133,16 @@ export function AgentScreen({ room, handle, runner: runnerOf, openLink = true }:
       </footer>
     </div>
   );
+}
+
+/** The name of the agent CLI @`handle` runs, from the machine that runs it. */
+function cliOf(runners: Runner[], room: string, handle: string, runnerId?: string | null): string | null {
+  for (const r of runners) {
+    if (runnerId && r.id !== runnerId) continue;
+    const agent = r.agents.find((a) => a.room === room && a.handle === handle);
+    if (agent) return r.frameworks.find((f) => f.id === agent.framework)?.name ?? agent.framework;
+  }
+  return null;
 }
 
 function Note({ children }: { children: React.ReactNode }) {

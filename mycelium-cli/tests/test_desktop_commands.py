@@ -22,9 +22,16 @@ import pytest
 SRC = Path(__file__).resolve().parents[2] / "mycelium-desktop" / "src-tauri" / "src"
 GUARDS = ("local_only(", "own_ui_only(")
 #: What ``own_ui_only`` may answer, and nothing beyond it. ``agent_screen``
-#: hands the app's own hub UI what a terminal on this machine shows, which is
-#: why it's here and never a hub route: a screen doesn't leave the machine.
-OWN_UI = {"this_machine", "choose_agent_folder", "agent_screen"}
+#: and ``agent_session`` (with its earlier pages) hand the app's own hub UI
+#: what a terminal on this machine shows and the session behind it, which is
+#: why they're here and never hub routes: neither leaves the machine.
+OWN_UI = {
+    "this_machine",
+    "choose_agent_folder",
+    "agent_screen",
+    "agent_session",
+    "agent_session_page",
+}
 #: The app's own Settings pages, which are pages of the UI's Settings: where
 #: rooms live and start at login, the model, the agents' folder, experiences,
 #: the version, the health check and its log. Each answers the app's bundled

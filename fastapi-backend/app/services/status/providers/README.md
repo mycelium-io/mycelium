@@ -14,11 +14,13 @@ implements two methods:
 ```python
 class JiraProvider:
     name = "jira"
-    base_url = "https://your-org.atlassian.net"   # ctx.http only talks to this host
-    auth = Basic("JIRA_EMAIL", "JIRA_TOKEN")  # which credentials, by name; the hub supplies the values
-    max_batch = 50                  # most references to fetch in one call
-    ttl = timedelta(minutes=1)      # how long an answer counts as current
-    swr = timedelta(minutes=30)     # how long an older answer is still shown while it refreshes
+    base_url = "https://your-org.atlassian.net"  # ctx.http only talks to this host
+    auth = Basic(
+        "JIRA_EMAIL", "JIRA_TOKEN"
+    )  # which credentials, by name; the hub supplies the values
+    max_batch = 50  # most references to fetch in one call
+    ttl = timedelta(minutes=1)  # how long an answer counts as current
+    swr = timedelta(minutes=30)  # how long an older answer is still shown while it refreshes
 
     def claims(self, text: str) -> list[Ref]:
         """Find this provider's references in a row's text, e.g. PROJ-14."""

@@ -954,13 +954,17 @@ export async function handleMock(req: Request): Promise<Response | null> {
           decided = { decision: body.decision };
           said = `${body.decision === "approved" ? "Approved" : "Declined"} "${String(ask.question)}"`;
         } else if (ask.kind === "choose") {
-          const choices = (Array.isArray(body.choices) ? (body.choices as unknown[]) : []).map(String);
-          if (!choices.length || choices.some((c) => !options.some((o) => o.id === c)) || (choices.length > 1 && !ask.multiple)) {
-            return json({ detail: ask.multiple ? "Pick one or more of its options." : "Pick exactly one of its options." }, 422);
+          // An empty list is none of the options; a missing one isn't an answer.
+          if (!Array.isArray(body.choices)) return json({ detail: "A choose is answered with its options' ids, or none." }, 422);
+          const choices = (body.choices as unknown[]).map(String);
+          if (choices.some((c) => !options.some((o) => o.id === c)) || (choices.length > 1 && !ask.multiple)) {
+            return json({ detail: ask.multiple ? "Pick any of its options, or none." : "Pick one of its options, or none." }, 422);
           }
           const chosen = options.filter((o) => choices.includes(o.id)).map((o) => o.label);
           decided = { choices, chosen };
-          said = `Chose "${chosen.join(", ")}" for "${String(ask.question)}"`;
+          said = chosen.length
+            ? `Chose "${chosen.join(", ")}" for "${String(ask.question)}"`
+            : `Chose none of the options for "${String(ask.question)}"`;
         } else {
           if (!note) return json({ detail: "A question needs an answer." }, 422);
           decided = {};
