@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -187,7 +187,13 @@ describe("<EventStream /> find in the channel", () => {
     // left unsaid rather than flashing "No matches".
     await openFind([["the deploy is stuck"], ["deploy again"]]);
 
-    await userEvent.type(findBar(), "deploy");
+    // Letter by letter, and checked, all in one turn of the event loop: no
+    // timer can fire in between, however busy the machine. Typed with
+    // userEvent, a slow machine could leave more than the pause between two
+    // keys, and the channel marked mid-word.
+    for (const end of [1, 2, 3, 4, 5, 6]) {
+      fireEvent.change(findBar(), { target: { value: "deploy".slice(0, end) } });
+    }
 
     expect(screen.queryByText("No matches")).not.toBeInTheDocument();
     expect(screen.queryAllByText("deploy", { selector: "mark" })).toHaveLength(0);
