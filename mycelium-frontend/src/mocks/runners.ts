@@ -64,7 +64,7 @@ function mockSessions(): AgentSessionSummary[] {
       folder: `/Users/morgan/code/${folder}`,
       last_used: iso(minutes),
       branch: branches[i % branches.length],
-      member: i % 9 === 4 ? removed[i % removed.length] : null,
+      member: i % 9 === 4 ? removed[Math.floor(i / 9) % removed.length] : null,
     });
     minutes += 25 + ((i * 53) % 400);
   }
