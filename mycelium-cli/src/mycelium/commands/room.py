@@ -42,7 +42,7 @@ from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
-    from mycelium.commands.swarm import LiveView
+    from mycelium.live_view import LiveView
     from mycelium_backend_client.models import RoomMembers, RoomPresenceRead
 
 # The "raise-up" whitelist: message types promoted onto the primary channel
@@ -572,11 +572,11 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
 
 
 def _thread_view(config: MyceliumConfig, room_name: str) -> "LiveView":
-    """``swarm``'s live view over the whole room: every thread's messages, each
+    """The live view over the whole room: every thread's messages, each
     labeled with its task, and the board's notices. Each thread's task is
     known up front from the board, and kept current by the notices."""
     from mycelium.chat import thread_tasks
-    from mycelium.commands.swarm import LiveView
+    from mycelium.live_view import LiveView
 
     view = LiveView()
     for episode, (key, title) in thread_tasks(config, room_name).items():

@@ -444,18 +444,6 @@ class HerdrConfig(BaseModel):
     )
 
 
-class SwarmConfig(BaseModel):
-    """What ``mycelium swarm`` starts when it runs your own agents."""
-
-    agent: str | None = Field(
-        default=None,
-        description=(
-            "The agent CLI a local swarm starts in herdr, as the command herdr runs. "
-            "Asked for, and saved here, the first time you swarm without one."
-        ),
-    )
-
-
 class RunnerConfig(BaseModel):
     """Where this machine's runner starts the agents the app asks for."""
 
@@ -878,7 +866,6 @@ class MyceliumConfig(BaseModel):
     agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     herdr: HerdrConfig = Field(default_factory=HerdrConfig)
-    swarm: SwarmConfig = Field(default_factory=SwarmConfig)
     runner: RunnerConfig = Field(default_factory=RunnerConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)

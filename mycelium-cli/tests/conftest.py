@@ -479,7 +479,7 @@ def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         monkeypatch.delenv(name, raising=False)
     # Starting an agent asks the hub for its token, through the real client:
     # no test does that unless it says so (``test_agent_member_token``), so a
-    # runner or swarm test never reaches whatever hub is on localhost.
+    # runner test never reaches whatever hub is on localhost.
     from mycelium import agent_credentials
 
     monkeypatch.setattr(agent_credentials, "issue_member_token", lambda *_a, **_k: None)

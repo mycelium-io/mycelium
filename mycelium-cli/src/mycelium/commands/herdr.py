@@ -1237,9 +1237,8 @@ def sync_pass(
 
     A binding that fails to reconcile is logged and reported in ``failed``; the
     other bindings, presence and wakes still go ahead, so one bad binding can't
-    leave every agent on the machine unwoken. Shared by ``herdr sync`` and
-    ``swarm``, which runs it on a background thread while it shows the room and
-    does not wait on a woken agent (``wait``), since its members work at once.
+    leave every agent on the machine unwoken. ``wait`` is whether to wait on a
+    woken agent's turn to settle before waking the next.
     """
     out = log if log is not None else console
     enrolled = retired = 0

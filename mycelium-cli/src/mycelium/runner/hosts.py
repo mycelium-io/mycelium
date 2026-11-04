@@ -311,8 +311,8 @@ class HerdrHost:
         hooks: StartHooks | None = None,
         session: str | None = None,
     ) -> Started:
-        from mycelium.commands.swarm import _start_when_ready
         from mycelium.integrations.herdr import ShellNotReadyError
+        from mycelium.integrations.herdr.starting import start_when_ready
 
         hooks = hooks or StartHooks()
         hooks.step(STEP_TERMINAL)
@@ -335,7 +335,7 @@ class HerdrHost:
         hooks.step(STEP_SHELL, pane)
         try:
             with hooks.unlocked():
-                came_up = _start_when_ready(
+                came_up = start_when_ready(
                     self.bridge,
                     handle,
                     kind,

@@ -18,6 +18,7 @@ import pytest
 from mycelium.commands import herdr
 from mycelium.config import MyceliumConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping, HerdrRegistry
+from mycelium_backend_client.models import HerdrWakeRead
 
 
 class Hub:
@@ -140,3 +141,29 @@ def test_a_404_that_isnt_the_hub_saying_so_leaves_the_room_in(
     assert hub.calls["POST room-1 herdr-presence"] == 3
     assert hub.calls["GET room-1 herdr-wakes"] == 3
     assert herdr._unknown_rooms == {}
+
+
+def _wake(**fields: Any) -> HerdrWakeRead:
+    """A wake as the hub's drain hands it over."""
+    return HerdrWakeRead.from_dict(fields)
+
+
+def test_a_wake_is_worded_by_why_it_was_queued():
+    turn = herdr.wake_prompt_for("r", _wake(handle="agent-1", reason="turn"))
+    assert "mycelium await --room r --handle agent-1" in turn
+    assigned = herdr.wake_prompt_for(
+        "r", _wake(handle="agent-2", reason="assigned", key="work/x", title="Do X")
+    )
+    assert "'Do X' (work/x)" in assigned
+    assert "board claim work/x --room r --to @agent-2" in assigned
+    # A mention is read through await too, so the room sees the agent
+    # responding and the reply lands where it was asked.
+    mention = herdr.wake_prompt_for("r", _wake(handle="agent-3"))
+    assert "mycelium await --room r --handle agent-3" in mention
+
+
+def test_a_wake_types_the_hubs_digest_when_it_sends_one():
+    digest = "mycelium wake for @agent-3 in r\n\nWhy:     @hay mentioned you in the room (r)"
+    assert herdr.wake_prompt_for("r", _wake(handle="agent-3", prompt=digest)) == digest
+    # A blank one is no digest: the wording by reason stands in.
+    assert "mycelium await" in herdr.wake_prompt_for("r", _wake(handle="agent-3", prompt="  "))

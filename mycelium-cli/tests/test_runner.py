@@ -6,7 +6,7 @@
 No hub and no herdr: the hub is a stand-in answering at httpx's transport, with
 the shapes the real hub answers, and herdr a scripted runner. These hold what the scan reports (herdr decides what is startable),
 what a launch does in herdr and says to the agent, the folders a job may use,
-a stop, a swarm the hub set up, and that every job is reported back.
+a stop, and that every job is reported back.
 """
 
 from __future__ import annotations
@@ -264,7 +264,7 @@ class Hub:
 def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
     hub = Hub()
     install_stand_in_hub(monkeypatch).answer = hub.handler
-    monkeypatch.setattr("mycelium.commands.swarm.START_RETRY_S", 0)
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.START_RETRY_S", 0)
     return hub
 
 
@@ -920,7 +920,7 @@ def test_a_launch_with_a_worktree_starts_the_agent_on_its_own_branch(
         text=True,
         check=True,
     )
-    assert branch.stdout.strip() == "swarm/eng/scout"
+    assert branch.stdout.strip() == "agent/eng/scout"
     assert r.hello_body()["agents"][0]["cwd"] == str(tree.resolve())
 
 
@@ -1015,7 +1015,7 @@ def test_a_shell_slow_to_start_is_waited_for(make_runner, herdr: Herdr, hub: Hub
 def test_a_shell_that_never_comes_up_says_so_and_keeps_its_terminal(
     make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr("mycelium.commands.swarm.SHELL_WAIT_S", 0)
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.SHELL_WAIT_S", 0)
     herdr.shell_starting = 1
     r = make_runner()
     with pytest.raises(daemon.JobError, match="didn't reach a shell prompt") as failed:
@@ -1186,7 +1186,7 @@ def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(
     make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):
     # Every start counts as one that ran the CLI and waited on it.
-    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.SLOW_START_S", 0)
     herdr.fail_start = True
     r = make_runner()
     with pytest.raises(daemon.JobError, match="didn't finish starting") as failed:
@@ -1205,7 +1205,7 @@ def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(
 def test_a_start_reports_its_steps_and_lets_the_sync_pass_run_while_herdr_waits(
     make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr("mycelium.commands.swarm.SHELL_WAIT_S", 0)
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.SHELL_WAIT_S", 0)
     herdr.shell_starting = 1
     r = make_runner()
     locked_during_start: list[bool] = []
@@ -1579,120 +1579,6 @@ def test_no_sync_pass_runs_while_a_job_opens_panes(make_runner, herdr: Herdr, hu
     assert during == [True]
     assert not r._panes.locked()
     assert r.state.owned == {"w9": "eng"}
-
-
-def test_a_swarm_job_starts_the_team_briefs_it_and_kicks_it_off(
-    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
-):
-    r = make_runner()
-    r.take(
-        {
-            "id": "s1",
-            "kind": "swarm",
-            "created_by": "julia",
-            "spec": {
-                "room": "eng",
-                "key": "work/fix",
-                "episode": "urn:ep:eng:t1",
-                "task": "Fix the flaky tests",
-                "team": ["agent-1", "agent-2"],
-                "framework": "claude",
-                "cwd": str(tmp_path),
-                "worktree": False,
-                "kickoff": True,
-            },
-        }
-    )
-
-    assert [c[2] for c in herdr.of("agent start")] == ["agent-1_eng", "agent-2_eng"]
-    # The hub already wrote the members; the runner writes only their briefs.
-    memory = hub.of("POST", "/api/rooms/eng/memory")
-    assert [i["key"] for i in memory[0]["items"]] == [
-        "agents/agent-1/notes",
-        "agents/agent-2/notes",
-    ]
-    kickoff = hub.of("POST", "/api/rooms/eng/messages")[0]
-    assert kickoff["content"] == "@conductor swarm @~agent-1 @~agent-2: Fix the flaky tests"
-    assert kickoff["episode"] == "urn:ep:eng:t1"
-    report = next(b for m, p, b in hub.seen if m == "PATCH")
-    assert report["status"] == "done"
-    assert [a["handle"] for a in r.hello_body()["agents"]] == ["agent-1", "agent-2"]
-    env = herdr.of("workspace create")[0]
-    assert "MYCELIUM_API_URL=http://hub:8000" in env
-
-
-def test_a_swarm_of_a_cli_that_needs_setting_up_opens_no_panes(
-    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    from mycelium.integrations import agents
-
-    kind = type(agents.of_kind("claude"))
-    monkeypatch.setattr(kind, "not_ready", lambda _self: "Sign in first. Then try again.")
-    r = make_runner()
-    spec = {
-        "room": "eng",
-        "key": "work/fix",
-        "episode": "urn:ep:eng:t1",
-        "task": "Fix the flaky tests",
-        "team": ["agent-1", "agent-2"],
-        "framework": "claude",
-        "cwd": str(tmp_path),
-    }
-    with pytest.raises(daemon.JobError, match="can't start on .* yet. Sign in first") as failed:
-        r.swarm(spec, "julia")
-    assert failed.value.result == {"why": "setup", "detail": "Sign in first. Then try again."}
-    assert herdr.of("workspace create") == []
-    assert herdr.of("agent start") == []
-
-
-def test_a_swarm_member_left_at_a_sign_in_is_said_to_be_waiting_there(
-    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, first_runs: None
-):
-    herdr.screen = SIGN_IN
-    r = make_runner()
-    spec = {
-        "room": "eng",
-        "key": "work/fix",
-        "episode": "urn:ep:eng:t1",
-        "task": "Fix the flaky tests",
-        "team": ["agent-1"],
-        "framework": "claude",
-        "cwd": str(tmp_path),
-    }
-    with pytest.raises(daemon.JobError, match="waiting there: Codex is asking you to sign in"):
-        r.swarm(spec, "julia")
-    # Nothing typed into it, and its pane is left for the person.
-    assert herdr.of("pane send-keys") == []
-    assert herdr.of("pane close") == []
-
-
-def test_a_swarm_trusts_the_folder_its_claude_members_start_in(
-    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    from tests.test_agent_kinds import CLAUDE_TRUST, CLAUDE_TRUST_FOLDER, CLAUDE_TRUST_ON_YES
-
-    monkeypatch.setattr("mycelium.integrations.herdr.bridge.FIRST_RUN_SETTLE_S", 0)
-    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
-    herdr.start_leaves = "blocked"
-    herdr.agent_cwd = CLAUDE_TRUST_FOLDER
-    herdr.screen = CLAUDE_TRUST
-    herdr.screens_after_keys = [CLAUDE_TRUST_ON_YES, "> "]
-    herdr.keys_settle = True
-    r = make_runner()
-    spec = {
-        "room": "eng",
-        "key": "work/fix",
-        "episode": "urn:ep:eng:t1",
-        "task": "Fix the flaky tests",
-        "team": ["agent-1"],
-        "framework": "claude",
-        "cwd": str(tmp_path),
-        "kickoff": False,
-    }
-    r.swarm(spec, "julia")
-    assert [c[3:] for c in herdr.of("pane send-keys")] == [["down"], ["enter"]]
-    # Briefed once it's past the question.
-    assert hub.of("POST", "/api/rooms/eng/memory")
 
 
 # ── asking the person at this machine ─────────────────────────────────────────
@@ -2337,28 +2223,6 @@ def test_a_launch_a_paired_device_signed_starts_without_asking(
             "doesn't match the job",
             id="a-job-the-hub-changed",
         ),
-        pytest.param(
-            {},
-            "swarm",
-            {
-                "room": "eng",
-                "task": "t",
-                "framework": "claude",
-                "cwd": None,
-                "size": 2,
-                "worktree": False,
-            },
-            {
-                "room": "eng",
-                "task": "t",
-                "framework": "claude",
-                "team": ["a-1", "a-2"],
-                "key": "k",
-                "episode": "e",
-            },
-            "doesn't allow swarms",
-            id="a-team-without-teams",
-        ),
     ],
 )
 def test_a_signed_job_the_pairing_doesnt_cover_asks_and_says_why(
@@ -2450,6 +2314,34 @@ def test_a_pairing_ends_when_it_says(make_runner, hub: Hub, quick: None):
     )
     assert "expired" in _until(lambda: _report(hub, "a9a9a9", "waiting"))["pairing"]["reason"]
     assert made.name not in [p["name"] for p in r.hello_body()["pairings"]]
+
+
+def test_a_pairing_saved_with_a_limit_since_dropped_still_loads(isolated_home: Path):
+    """Pairings made before the team limit went carry ``"swarms"`` in their
+    limits; they load without it rather than being dropped."""
+    from mycelium.runner import pairing
+
+    _, x, y = _device()
+    saved = {
+        "name": "work laptop",
+        "key": pairing.key_id(x, y),
+        "x": x,
+        "y": y,
+        "paired_at": "2026-08-01T10:00:00+00:00",
+        "limits": {
+            "folders": ["/code"],
+            "clis": ["claude"],
+            "swarms": True,
+            "expires_at": None,
+        },
+        "offer": "AB12",
+    }
+    pairing._write(pairing._pairings_path(None), [saved])  # noqa: SLF001 - a file an older version wrote
+
+    [loaded] = pairing.load()
+    assert loaded.name == "work laptop"
+    assert loaded.limits == pairing.Limits(folders=["/code"], clis=["claude"], expires_at=None)
+    assert "swarms" not in loaded.wire()
 
 
 def test_a_signature_webcrypto_made_verifies_here():
@@ -2547,7 +2439,7 @@ def test_a_signed_adopt_still_asks(
 
     r = make_runner(trust_hub=False)
     key, x, y = _device()
-    _pair(r, x, y, pairing.Limits.make(swarms=True))
+    _pair(r, x, y, pairing.Limits.make())
     spec = {"room": "eng", "handle": "shop", "pane": _already_running(herdr), "framework": "claude"}
     r.take({"id": "f1f1f1", "kind": "adopt", "spec": spec, "signature": _sign(key, "adopt", spec)})
 
@@ -2738,7 +2630,7 @@ def test_nothing_a_pane_shows_ever_reaches_the_hub(
     # on the screen. This fails if any path to the hub starts carrying it.
     secret = "sk-live-4f2a9c Do you trust the files in this folder?"
     herdr.screen = secret
-    monkeypatch.setattr("mycelium.commands.swarm.SLOW_START_S", 0)
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.SLOW_START_S", 0)
     r = make_runner()
 
     herdr.start_leaves = "blocked"

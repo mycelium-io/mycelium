@@ -3,7 +3,7 @@
 
 """Every agent CLI Mycelium knows, and what it knows about each, in one place.
 
-The runner's scan, herdr and Omnigent starting an agent, ``mycelium swarm`` and
+The runner's scan, herdr and Omnigent starting an agent, and
 ``mycelium agent create`` all ask here; nothing outside this package names a
 CLI. A CLI with something of its own (arguments, wording for its prompts, files
 its agents need) has a module beside this one; the rest are :class:`AgentKind`
