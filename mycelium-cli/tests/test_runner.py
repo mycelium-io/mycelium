@@ -1900,6 +1900,97 @@ def test_a_launch_this_machine_could_not_do_fails_without_asking(
     assert approvals.pending(base=tmp_path) == []
 
 
+SESSION = "5d0c7a1e-2f4b-4c8e-9a3d-6b1f0e2c4a7d"
+
+
+@pytest.fixture
+def listed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[Any]:
+    """The earlier sessions Claude Code lists on this machine: one, in ``tmp_path``."""
+    from mycelium.integrations import agents
+
+    found = [{"id": SESSION, "folder": str(tmp_path), "last_used": None, "branch": "main"}]
+    monkeypatch.setattr(type(agents.by_id("claude")), "list_sessions", lambda _self, **_k: found)
+    return found
+
+
+def _resume(tmp_path: Path, **spec: Any) -> dict[str, Any]:
+    return {**LAUNCH, "handle": "scout", "session": SESSION, "cwd": str(tmp_path), **spec}
+
+
+def test_an_earlier_session_starts_where_it_left_off_as_the_member(
+    make_runner, herdr: Herdr, hub: Hub, tmp_path: Path, listed: list[Any]
+):
+    r = make_runner()
+    result = r.resume(_resume(tmp_path))
+
+    assert result["pane"] == "w9:p1"
+    start = herdr.of("agent start")[0]
+    assert start[start.index("--resume") + 1] == SESSION
+    assert "MYCELIUM_AGENT_HANDLE=scout" in herdr.of("workspace create")[0]
+    assert "You are @scout" in herdr.of("agent prompt")[0][3]
+    # Kept with its pane, so a restart resumes this session rather than a new one.
+    mapping = r.bridge.registry.get("eng", "scout")
+    assert mapping is not None
+    assert mapping.session == SESSION
+
+
+@pytest.mark.parametrize(
+    ("spec", "said"),
+    [
+        ({"session": "0000aaaa-0000-0000-0000-000000000000"}, "has no such session"),
+        ({"cwd": "elsewhere"}, "has no such session"),
+        ({"session": ""}, "can't be brought into a room"),
+        ({"framework": "aider"}, "herdr can't start Aider"),
+    ],
+)
+def test_a_session_this_machine_cant_bring_in_fails_without_asking(
+    make_runner,
+    herdr: Herdr,
+    hub: Hub,
+    tmp_path: Path,
+    quick: None,
+    listed: list[Any],
+    spec: dict[str, Any],
+    said: str,
+):
+    """Only a session its CLI lists in that folder here: a job can't start a CLI
+    in whatever session id it names, or anywhere else."""
+    # The listed session, but in another folder than the one it's in.
+    (tmp_path / "elsewhere").mkdir()
+    if "cwd" in spec:
+        spec = {"cwd": str(tmp_path / spec["cwd"])}
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "resume", "spec": _resume(tmp_path, **spec)})
+    failed = _until(lambda: _report(hub, "a1b2c3d4", "failed"))
+    assert said in failed["error"]
+    assert approvals.pending(base=tmp_path) == []
+    assert herdr.of("agent start") == []
+
+
+def test_a_host_that_cant_resume_brings_no_session_in(
+    make_runner, hub: Hub, tmp_path: Path, listed: list[Any]
+):
+    r = make_runner()
+    r.host.resumes = False
+    with pytest.raises(daemon.JobError, match="can't bring an earlier session"):
+        r.resume(_resume(tmp_path))
+
+
+def test_bringing_a_session_in_is_asked_with_its_folder_and_room(
+    make_runner, hub: Hub, tmp_path: Path, quick: None, listed: list[Any]
+):
+    hub.notes_for = "scout"
+    r = make_runner(trust_hub=False)
+    r.take({"id": "a1b2c3d4", "kind": "resume", "spec": _resume(tmp_path)})
+    [waiting] = _until(lambda: approvals.pending(base=tmp_path))
+    assert waiting["title"] == "Bring an earlier Claude Code session into eng as @scout?"
+    assert f"session {SESSION[:8]} in {tmp_path}" in waiting["message"]
+    assert "keeping its conversation" in waiting["message"]
+    assert "Its instructions:\nBe terse." in waiting["message"]
+    r.stop()
+    _until(lambda: _report(hub, "a1b2c3d4", "failed"))
+
+
 def test_a_job_id_that_isnt_one_never_becomes_a_file(
     make_runner, hub: Hub, tmp_path: Path, quick: None
 ):
