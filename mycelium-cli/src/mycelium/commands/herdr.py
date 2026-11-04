@@ -40,6 +40,7 @@ from mycelium.cli_options import emits_json, in_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+from mycelium.integrations.agents import of_kind
 from mycelium.integrations.herdr import (
     HerdrBridge,
     HerdrError,
@@ -948,12 +949,20 @@ def _collect_presence(
         {pane: s for pane, (s, status) in sessions.items() if status in _WORKED_STATES},
         {pane: s for pane, (s, _status) in sessions.items()},
     )
+    # A conversation exists in a pane once its agent has been seen working.
+    working = {pane for pane, s in live.items() if s["status"] == "working"}
+    bridge.registry.note_chats(working)
     view: dict[str, dict[str, dict[str, str | None]]] = {}
     for m in bridge.registry.all():
         if room_filter and m.room != room_filter:
             continue
         state = live.get(m.pane)
         if state is not None:
+            if not m.chatted and of_kind(m.kind).no_chat_yet:
+                # An agent that opens with no chat isn't ready for a wake:
+                # one typed there is lost. ``blocked`` is what holds the hub's
+                # wakes for it, and says on the roster that it waits on a person.
+                state = {**state, "status": "blocked"}
             view.setdefault(m.room, {})[m.handle] = state
     return view
 

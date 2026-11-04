@@ -23,6 +23,7 @@ from mycelium.integrations.herdr import (
     HerdrPaneMapping,
     HerdrRegistry,
     HerdrUnavailableError,
+    WakeResult,
     build_wake_prompt,
 )
 from mycelium.protocol import AgentManifest
@@ -239,6 +240,72 @@ def test_wake_holds_when_agent_busy(monkeypatch: pytest.MonkeyPatch, isolated_ho
     assert "working" in result.detail
     # Never prompts a busy agent — the message stays on the cursor.
     assert not [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
+
+
+def _wake_at(
+    monkeypatch: pytest.MonkeyPatch, status: str, kind: str, *, chatted: bool = False
+) -> tuple[WakeResult, ScriptedRunner, HerdrBridge]:
+    bridge, runner = _bridge_with(
+        monkeypatch,
+        {
+            "agent get": _proc(_ok({"agent": {"pane_id": "w2:pV", "agent_status": status}})),
+            "agent prompt": _proc(_ok({})),
+        },
+    )
+    mapping = HerdrPaneMapping(
+        room="design", handle="reviewer", pane="w2:pV", kind=kind, chatted=chatted
+    )
+    bridge.registry.set(mapping)
+    return bridge.wake(mapping, "wake", timeout_ms=5000, wait=False), runner, bridge
+
+
+def test_a_cursor_chat_that_is_working_takes_a_wake_as_a_follow_up(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    # Its chat stays working for the whole conversation: waiting for idle is never.
+    result, runner, _ = _wake_at(monkeypatch, "working", "cursor")
+    assert result.ok is True
+    assert [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
+
+
+def test_a_wake_for_a_working_claude_still_holds(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    result, runner, _ = _wake_at(monkeypatch, "working", "claude", chatted=True)
+    assert result.ok is False
+    assert not [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
+
+
+def test_a_cursor_with_no_chat_open_is_never_prompted(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    # Idle with no conversation is the empty pane that swallows what's typed in it.
+    for status in ("idle", "blocked"):
+        result, runner, _ = _wake_at(monkeypatch, status, "cursor")
+        assert result.ok is False
+        assert "no chat open" in result.detail
+        assert not [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
+
+
+def test_a_cursor_that_has_had_a_chat_takes_a_wake_when_idle_but_holds_when_blocked(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    assert _wake_at(monkeypatch, "idle", "cursor", chatted=True)[0].ok is True
+    held, runner, _ = _wake_at(monkeypatch, "blocked", "cursor", chatted=True)
+    assert held.ok is False
+    assert not [c for c in runner.calls if c[:2] == ["agent", "prompt"]]
+
+
+def test_seeing_a_pane_working_is_remembered_as_a_chat(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    _, _, bridge = _wake_at(monkeypatch, "working", "cursor")
+    mapped = bridge.registry.get("design", "reviewer")
+    assert mapped is not None and mapped.chatted is True
+    # Not kept across a new mapping of the pane: a restart may open a fresh chat.
+    bridge.registry.set(HerdrPaneMapping(room="design", handle="reviewer", pane="w2:pV"))
+    mapped = bridge.registry.get("design", "reviewer")
+    assert mapped is not None and mapped.chatted is False
 
 
 def test_a_wake_never_reads_or_presses_anything_in_a_codex_that_quotes_its_welcome(
@@ -891,6 +958,36 @@ def test_collect_presence_maps_live_panes_per_room(
     assert _collect_presence(bridge, room_filter="ops") == {
         "ops": {"ci": {"status": "blocked", "title": "Fix CI"}}
     }
+
+
+def test_a_cursor_with_no_chat_yet_is_reported_blocked_until_it_has_worked(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """Idle with no chat open is the empty pane a prompt is lost in: the hub holds
+    its wakes for a ``blocked`` agent, so that's what the roster says until the
+    pane has been seen working once. Claude is a conversation from the start."""
+    from mycelium.commands.herdr import _collect_presence
+
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="design", handle="cursor-1", pane="w2:pC", kind="cursor"))
+    reg.set(HerdrPaneMapping(room="design", handle="claude-1", pane="w2:pL", kind="claude"))
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+
+    def agents(cursor: str) -> HerdrBridge:
+        listed = [
+            {"pane_id": "w2:pC", "agent_status": cursor},
+            {"pane_id": "w2:pL", "agent_status": "idle"},
+        ]
+        return HerdrBridge(runner=ScriptedRunner({"agent list": _proc(_ok({"agents": listed}))}))
+
+    def seen(cursor: str) -> dict[str, str | None]:
+        view = _collect_presence(agents(cursor), room_filter=None)["design"]
+        return {h: s["status"] for h, s in view.items()}
+
+    assert seen("idle") == {"cursor-1": "blocked", "claude-1": "idle"}
+    # Seen working: a chat exists, and it is reported as it is from then on.
+    assert seen("working") == {"cursor-1": "working", "claude-1": "idle"}
+    assert seen("idle") == {"cursor-1": "idle", "claude-1": "idle"}
 
 
 # ── placing panes ──────────────────────────────────────────────────────────────

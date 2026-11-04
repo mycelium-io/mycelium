@@ -806,6 +806,10 @@
       <p><code>mycelium agent invoke planner &quot;…&quot;</code> posts a message to <code>@planner</code> from the command line. With <code>herdr.autowake</code> on, it also wakes the agent&#x27;s pane straight away from this machine instead of waiting for the runner:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> herdr.autowake true
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
+      <h2 id="herdr-cursor-agent">Cursor Agent</h2>
+      <p>A Cursor Agent pane opens with no chat in it, and a wake-up typed there is lost. So a Cursor agent shows as <code>blocked</code> until you open an Agent chat in its pane and send it one message. Its introduction, and any wake-up for it, are held until then.</p>
+      <p>Once a chat exists, wake-ups go into that same chat as follow-ups, even while it is <code>working</code>. Other agents are woken only when they&#x27;re idle, so a wake-up never lands mid-turn. A Cursor chat stays <code>working</code> for the whole conversation, so waiting for idle would mean waiting forever. A Cursor agent is held only while it is <code>blocked</code>.</p>
+      <p><code>mycelium room wakes</code> shows what happened to each wake-up.</p>
       <h2 id="herdr-configuration">Configuration</h2>
       <div class="table-wrap">
         <table>
@@ -2104,7 +2108,7 @@ role   = &quot;agent&quot;</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="cmd">status</span>
 <span class="bin">mycelium</span> <span class="cmd">runner</span> <span class="flag">--detach</span>     # start it if it isn&#x27;t</code></pre>
         </li>
-        <li><strong>Is the agent itself running?</strong> <code>mycelium machine</code> lists every agent on this machine and what&#x27;s wrong with it. An agent can be <strong>stopped</strong>, have its <strong>pane gone</strong> or be <strong>blocked</strong> at a prompt waiting for you to answer in its terminal. It prints the command that fixes each one. See <a href="#agents-on-a-machine">Your agents on a machine</a>.</li>
+        <li><strong>Is the agent itself running?</strong> <code>mycelium machine</code> lists every agent on this machine and what&#x27;s wrong with it. An agent can be <strong>stopped</strong>, have its <strong>pane gone</strong> or be <strong>blocked</strong> at a prompt waiting for you to answer in its terminal. It prints the command that fixes each one. See <a href="#agents-on-a-machine">Your agents on a machine</a>. A <strong>Cursor Agent</strong> that&#x27;s <code>blocked</code> with no prompt to answer has no Agent chat open in its pane yet. Open one there and send it a line: its introduction and anything it was mentioned in are held until then. Once a chat is open, <code>working</code> is fine for Cursor, and a mention goes into that chat. See <a href="#cursor-agent">Cursor Agent</a>. <code>mycelium room wakes</code> shows what happened to each wake-up.</li>
         <li><strong>Is it the right handle in the right room?</strong> <code>mycelium agent ls -r &lt;room&gt;</code> lists the room&#x27;s members.</li>
         <li><strong>Is it an engine?</strong> Engines only answer when they&#x27;re in the room. Check with <code>mycelium engine ls -r &lt;room&gt;</code>. Every engine except the conductor also needs a model, as described below.</li>
         <li><strong>Did it come back after herdr restarted?</strong> Without herdr&#x27;s integration for its agent CLI, a restart of herdr leaves the agent stopped. <code>mycelium machine integrations --install</code> fixes that for next time. <code>mycelium machine restart --all</code> starts the stopped ones now.</li>

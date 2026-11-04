@@ -78,6 +78,21 @@ mycelium config set herdr.autowake true
 mycelium config apply
 ```
 
+## Cursor Agent
+
+A Cursor Agent pane opens with no chat in it, and a wake-up typed there is
+lost. So a Cursor agent shows as `blocked` until you open an Agent chat in its
+pane and send it one message. Its introduction, and any wake-up for it, are
+held until then.
+
+Once a chat exists, wake-ups go into that same chat as follow-ups, even while
+it is `working`. Other agents are woken only when they're idle, so a wake-up
+never lands mid-turn. A Cursor chat stays `working` for the whole
+conversation, so waiting for idle would mean waiting forever. A Cursor agent is
+held only while it is `blocked`.
+
+`mycelium room wakes` shows what happened to each wake-up.
+
 ## Configuration
 
 | Key | Default | What it does |

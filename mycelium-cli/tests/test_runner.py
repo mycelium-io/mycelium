@@ -1155,6 +1155,62 @@ def test_an_agent_past_its_first_run_never_has_its_screen_read_again(
     assert r.hello_body()["agents"][0]["status"] == "idle"
 
 
+@pytest.fixture
+def cursor_herdr(monkeypatch: pytest.MonkeyPatch, herdr: Herdr) -> Herdr:
+    """The herdr stand-in, with Cursor Agent installed and a kind herdr starts."""
+    herdr_which = frameworks.shutil.which
+
+    def which(name: str, path: str | None = None) -> str | None:
+        if name == "cursor-agent":
+            return "/usr/bin/cursor-agent" if path is None else None
+        return herdr_which(name, path=path)
+
+    monkeypatch.setattr("shutil.which", which)
+    monkeypatch.setitem(globals(), "HELP", HELP.replace("opencode", "opencode, cursor"))
+    return herdr
+
+
+def test_a_cursor_agent_with_no_chat_open_isnt_introduced_until_it_works(
+    make_runner, cursor_herdr: Herdr, hub: Hub
+):
+    """Cursor Agent opens with no chat, and idle there doesn't take a typed prompt:
+    its introduction waits for a chat, then goes in as a follow-up while it works."""
+    herdr = cursor_herdr
+    r = make_runner()
+    result = r.launch({"room": "eng", "handle": "scout", "framework": "cursor"})
+    assert result["waiting"].startswith("waiting for input on ")
+    assert herdr.of("agent prompt") == []
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "blocked"
+    assert "no Cursor Agent chat is open in its pane" in agent["detail"]
+
+    # Idle with still no chat: nothing typed into the empty pane.
+    r.refresh()
+    assert r.hello_body()["agents"][0]["status"] == "blocked"
+    assert herdr.of("agent prompt") == []
+
+    # A person opens a chat and sends a line: it works, and the introduction
+    # goes in once, as a follow-up in that chat, without waiting for idle.
+    herdr.live["w9:p1"] = "working"
+    r.refresh()
+    [prompt] = herdr.of("agent prompt")
+    assert "You are @scout" in prompt[3]
+    assert r.hello_body()["agents"][0]["status"] == "working"
+    assert r.bridge.registry.get("eng", "scout").chatted is True
+    r.refresh()
+    assert len(herdr.of("agent prompt")) == 1
+
+
+def test_an_agent_that_goes_idle_between_turns_is_still_introduced_at_once(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    [prompt] = herdr.of("agent prompt")
+    assert "You are @scout" in prompt[3]
+    assert r.bridge.registry.get("eng", "scout").chatted is False
+
+
 def test_a_cli_with_no_first_run_screens_never_has_its_screen_read(
     make_runner, herdr: Herdr, hub: Hub
 ):

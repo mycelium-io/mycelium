@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -388,6 +389,23 @@ def test_what_an_agent_writes_lives_in_the_agent_state_folder(
 def test_each_cli_is_recorded_under_its_manifest_family(framework, adapter):
     assert agents.adapter_for(framework) == adapter
     assert get_integration(adapter).name == adapter
+
+
+def test_the_families_woken_while_they_work_are_the_ones_the_hub_names():
+    """The hub reads the manifest's family; the CLI marks the kind. One list."""
+    contract = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "wake-while-working.json").read_text()
+    )
+    assert {k.adapter for k in agents.KNOWN if k.wakes_while_working} == set(contract["adapters"])
+
+
+def test_only_a_cli_that_opens_with_no_chat_holds_its_introduction_for_one():
+    held = {k.id for k in agents.KNOWN if k.no_chat_yet}
+    assert held == {"cursor"}
+    # Said for the person, so it says what to do.
+    assert "Open one there" in (agents.of_kind("cursor").no_chat_yet or "")
+    # And what a person sees on the blocked agent says the same.
+    assert "no chat open" in (agents.of_kind("cursor").blocked_hint() or "")
 
 
 @pytest.mark.parametrize(

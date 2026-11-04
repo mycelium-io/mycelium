@@ -39,6 +39,12 @@ Something has to tell the agent there's work for it. Check these in order:
    **pane gone** or be **blocked** at a prompt waiting for you to answer in its
    terminal. It prints the command that fixes each one. See
    [Your agents on a machine](#agents-on-a-machine).
+   A **Cursor Agent** that's `blocked` with no prompt to answer has no Agent
+   chat open in its pane yet. Open one there and send it a line: its
+   introduction and anything it was mentioned in are held until then. Once a
+   chat is open, `working` is fine for Cursor, and a mention goes into that
+   chat. See [Cursor Agent](#cursor-agent). `mycelium room wakes` shows what
+   happened to each wake-up.
 3. **Is it the right handle in the right room?** `mycelium agent ls -r <room>`
    lists the room's members.
 4. **Is it an engine?** Engines only answer when they're in the room. Check

@@ -890,14 +890,17 @@ class Runner:
                 before = (agent.status, agent.detail, agent.intro)
                 # Not mid-turn: what herdr reads as idle, or can't read at all.
                 ready = found[0] in ("idle", "running")
+                if found[0] == "working":
+                    # A conversation exists once it has been seen working.
+                    self.bridge.registry.note_chats({agent.pane})
                 if found[0] == "blocked":
-                    self._mark_waiting(agent, self._at_first_run(agent))
-                elif ready and (held := self._at_first_run(agent)):
+                    self._mark_waiting(agent, self._held_on(agent))
+                elif ready and (held := self._held_on(agent)):
                     self._mark_waiting(agent, held)
                 else:
                     agent.status, agent.detail = found
                     agent.waiting_since = agent.waiting_note = None
-                    if ready:
+                    if ready or (found[0] == "working" and self._wakes_while_working(agent)):
                         self._hand_intro(agent)
                 if (agent.status, agent.detail, agent.intro) != before:
                     changed = True
@@ -1083,7 +1086,7 @@ class Runner:
         )
         self._said_passed(agent, started.passed)
         if agent.status == "blocked":
-            self._mark_waiting(agent, self._at_first_run(agent))
+            self._mark_waiting(agent, self._held_on(agent))
         with self._lock:
             self.state.agents[key] = agent
             self.state.save(self._state_path)
@@ -1172,19 +1175,38 @@ class Runner:
         known = agents.by_id(agent.framework)
         return (known.herdr_kind if known else None) or agent.framework
 
-    def _at_first_run(self, agent: Tracked) -> str | None:
-        """What a not-yet-introduced ``agent`` waits on at its CLI's first-run screen.
+    def _held_on(self, agent: Tracked) -> str | None:
+        """What a not-yet-introduced ``agent`` waits on: its CLI's first-run
+        screen, or a conversation to be opened in it.
 
         A screen like Codex's welcome reads as idle to herdr, so an introduction
-        handed over there would be lost. Only looked for while the introduction
-        is still held: one handed over means the agent was past it.
+        handed over there would be lost, and so would one typed into an agent
+        that opens with no chat in it (until it has been seen working). Only
+        looked for while the introduction is still held: one handed over means
+        the agent was past it.
         """
         if agent.intro is None:
             return None
         passed: list[str] = []
         waiting = self.host.first_run(agent.pane, self._kind_of(agent), passed)
         self._said_passed(agent, passed)
-        return waiting
+        return waiting or self._no_chat_yet(agent)
+
+    def _wakes_while_working(self, agent: Tracked) -> bool:
+        """Whether ``agent``'s CLI takes a message while it works, as a follow-up
+        in the conversation it has open, so its introduction needn't wait for
+        an idle that doesn't come."""
+        return agents.of_kind(self._kind_of(agent)).wakes_while_working
+
+    def _no_chat_yet(self, agent: Tracked) -> str | None:
+        """Why ``agent``, which opens with no conversation, can't take its
+        introduction yet, said for the person; ``None`` once it has been seen
+        working, or when its CLI is a conversation from the start."""
+        say = agents.of_kind(self._kind_of(agent)).no_chat_yet
+        if say is None:
+            return None
+        mapped = self.bridge.registry.get(agent.room, agent.handle)
+        return None if mapped is not None and mapped.chatted else say
 
     def _said_passed(self, agent: Tracked, passed: list[str]) -> None:
         """Say in the runner's log what was answered for the person on the way."""
@@ -1284,11 +1306,15 @@ class Runner:
                 intro=intro_prompt(room, handle, has_notes=self.has_notes(room, handle)),
                 adopted=True,
             )
+            if agent.status == "working":
+                self.bridge.registry.note_chats({pane})
             if agent.status == "blocked":
                 self._mark_waiting(agent)
-            elif agent.status == "idle" and (held := self._at_first_run(agent)):
+            elif agent.status == "idle" and (held := self._held_on(agent)):
                 self._mark_waiting(agent, held)
-            elif agent.status == "idle":
+            elif agent.status == "idle" or (
+                agent.status == "working" and self._wakes_while_working(agent)
+            ):
                 self._hand_intro(agent)
             with self._lock:
                 self.state.agents[key] = agent

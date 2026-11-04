@@ -307,7 +307,9 @@ class MemberPresence:
     ``done``) — set on a herdr member, or overlaid onto a slim/lease member that is
     *also* mapped to a live herdr pane. ``wake_pending`` is True when a room mention
     is queued for this handle but held back until it goes idle (the hold-until-idle
-    doorbell), so the UI can show "tagged, waking when free".
+    doorbell), so the UI can show "tagged, waking when free". A Cursor agent's
+    wake isn't held for idle while it works, so the flag clears once it is
+    delivered as a follow-up.
     """
 
     kind: str
@@ -705,9 +707,13 @@ class RoomChannelManager:
         message recorded in a room is held to it on the way in
         (``persister`` → :meth:`_asked_adapter`), whichever path wrote it, so a
         mention from the app, from ``respond``, from a worker or from an engine
-        rings the same way. A handle with no herdr pane isn't rung; a
-        registered agent that nothing is running is logged as unreached.
-        ``True`` when a wake was queued.
+        rings the same way. A registered agent with no herdr pane yet is rung
+        all the same: its pane may be a few seconds from showing up (just
+        added), so the wake waits in the hold queue for it, and is dropped,
+        saying why, if none ever does. Any other handle with no pane isn't
+        rung: a person or an engine is reached some other way, and an agent on
+        an ``await`` lease already has the turn. ``True`` when a wake was
+        queued.
 
         An ``interrupt`` also stops a working agent's turn, when the sender may
         (:mod:`app.services.interrupts`); otherwise it rings as a ``mention``.
@@ -715,19 +721,11 @@ class RoomChannelManager:
         name = handle.lstrip("@").lower()
         status = self.herdr_status(room, name)
         if status is None:
-            if self._unreachable_agent(room, name):
-                from app.services import wake_log
-
-                # Not lost: the agent reads it on its next `await`. Nothing
-                # could be woken with it now, which is what the log says.
-                wake_log.dropped(
-                    room,
-                    {"handle": name, "reason": reason, "from": sender, "episode": episode},
-                    "nothing is running it: no herdr pane reports it and it isn't awaiting",
-                    outcome="unreached",
-                )
-            return False
-        if reason == "interrupt":
+            if not self._unreachable_agent(room, name):
+                return False
+            # Nothing is running to stop, so an interrupt is a mention.
+            reason = "mention" if reason == "interrupt" else reason
+        elif reason == "interrupt":
             from app.services import interrupts, pauses
 
             # A paused agent stays paused: the @! waits for its resume like
@@ -775,10 +773,12 @@ class RoomChannelManager:
     def _unreachable_agent(self, room: str, handle: str) -> bool:
         """Whether ``handle`` is a registered agent that a mention can't reach
         right now: no herdr pane reports it and it holds no ``await`` lease. A
-        person or an engine is reached some other way, and isn't one."""
-        from app.services.principals import classify_sender
+        person or an engine is reached some other way, and so is an agent that
+        runs elsewhere (A2A). Its wake is queued for a pane that may yet appear
+        (:meth:`ring_asked`)."""
+        from app.services.principals import classify_sender, is_resident
 
-        if classify_sender(room, handle) != "agent":
+        if classify_sender(room, handle) != "agent" or not is_resident(room, handle):
             return False
         return handle not in self.members(room)
 
@@ -787,12 +787,14 @@ class RoomChannelManager:
 
         A ``filed`` notice carrying ``for`` is a row put on the board for
         someone; if that someone lives in herdr, they hear about it now rather
-        than on their next look at the board. ``True`` when a wake was queued.
+        than on their next look at the board. A registered agent whose pane
+        hasn't shown up yet is rung too, as in :meth:`ring_asked`. ``True`` when
+        a wake was queued.
         """
         if notice.get("subkind") != "filed" or not notice.get("for"):
             return False
         name = str(notice["for"]).lstrip("@").lower()
-        if self.herdr_status(room, name) is None:
+        if self.herdr_status(room, name) is None and not self._unreachable_agent(room, name):
             return False
         self.enqueue_herdr_wake(
             room,
@@ -832,7 +834,10 @@ class RoomChannelManager:
         shows its handle ``idle``/``done`` (ready to take a turn). A ``working``/
         ``blocked`` handle keeps its wake queued until it frees up, however long
         its turn runs: a mention for an agent on a long task reaches it when the
-        task ends, not never. A wake is dropped only once it's older than
+        task ends, not never. The exception is an agent whose chat stays
+        ``working`` for the whole conversation (:func:`principals.wakes_while_working`):
+        its wake goes in as a follow-up while it works, and is held only while it
+        is ``blocked``. A wake is dropped only once it's older than
         ``hold_ttl_s`` and no herdr pane reports its agent any more, so nothing
         is left to deliver it to. Presence is refreshed by the sync bridge every
         few seconds, so the backend's view of "idle" is near-live.
@@ -849,7 +854,7 @@ class RoomChannelManager:
         queue = self._herdr_wakes.get(room)
         if not queue:
             return []
-        from app.services import pauses
+        from app.services import pauses, principals
 
         now = time.monotonic()
         live = self._live_herdr(room)
@@ -876,7 +881,9 @@ class RoomChannelManager:
             if mine is not None and w["handle"] not in mine:
                 held.append(w)  # another machine's agent: that runner takes it
                 continue
-            if status in {"idle", "done", "unknown"}:
+            if status in {"idle", "done", "unknown"} or (
+                status == "working" and principals.wakes_while_working(room, w["handle"])
+            ):
                 released.append(w)
             else:  # working/blocked (or presence briefly gone) → keep holding
                 held.append(w)

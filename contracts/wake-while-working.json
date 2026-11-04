@@ -1,0 +1,16 @@
+{
+  "_comment": [
+    "Frozen contract for the agent families whose wakes are handed over while the",
+    "agent is `working`, as a follow-up in the chat it has open, rather than held",
+    "until it is idle. A Cursor chat stays `working` for the whole conversation, so",
+    "holding for idle would hold its Channel mentions for good; Claude Code and the",
+    "rest go idle between turns and keep the hold.",
+    "The hub reads the manifest's `adapter` (or `framework`) against `adapters`",
+    "(fastapi-backend/app/services/principals.py WAKE_WHILE_WORKING); the CLI marks",
+    "each kind with `wakes_while_working` and records it under its manifest family",
+    "(mycelium-cli/src/mycelium/integrations/agents/base.py).",
+    "Asserted by fastapi-backend/tests/test_room_channels.py and",
+    "mycelium-cli/tests/test_agent_kinds.py."
+  ],
+  "adapters": ["cursor"]
+}

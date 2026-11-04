@@ -74,6 +74,41 @@ def classify_sender(room: str, handle: str) -> str:
     return "unknown"
 
 
+#: Manifest adapters of agents that run somewhere else, reached over their own
+#: protocol, so no herdr pane of this room's will ever report them.
+REMOTE_ADAPTERS = frozenset({"a2a"})
+
+
+def is_resident(room: str, handle: str) -> bool:
+    """Whether ``handle`` is a registered agent that runs on a person's machine,
+    where a herdr pane may come to report it (not an engine, nor a remote A2A agent)."""
+    h = _norm(handle)
+    manifest = _read_agent_manifest(room, h) if h else None
+    if manifest is None:
+        return False
+    return manifest.get("adapter") not in {ENGINE_ADAPTER, *REMOTE_ADAPTERS}
+
+
+#: Manifest families whose agents take a wake while ``working``. Frozen in
+#: ``contracts/wake-while-working.json`` against the CLI's per-kind flag.
+WAKE_WHILE_WORKING = frozenset({"cursor"})
+
+
+def wakes_while_working(room: str, handle: str) -> bool:
+    """Whether ``handle`` is an agent that takes a wake as a follow-up while it
+    is ``working``, rather than only once it is idle.
+
+    An agent CLI that goes idle between turns is held until then, so a wake never
+    lands mid-turn. A Cursor chat in the app stays ``working`` for the whole
+    conversation, so holding for idle would hold its mentions for good.
+    """
+    h = _norm(handle)
+    manifest = _read_agent_manifest(room, h) if h else None
+    if manifest is None or manifest.get("adapter") == ENGINE_ADAPTER:
+        return False
+    return bool({manifest.get("adapter"), manifest.get("framework")} & WAKE_WHILE_WORKING)
+
+
 def delegates_to(room: str, handle: str, candidate: str) -> bool:
     """Whether ``handle`` has granted ``candidate`` the right to act for it.
 

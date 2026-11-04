@@ -315,6 +315,118 @@ def test_a_handle_with_no_herdr_pane_is_not_rung(
     assert manager.pending_herdr_wakes("room-a") == set()
 
 
+def _register(room: str, handle: str, **manifest: str) -> None:
+    """``handle`` registered in ``room`` with a manifest of ``manifest``."""
+    import yaml
+
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    write_memory_file(
+        get_room_dir(room),
+        f"agents/{handle}",
+        yaml.safe_dump({"adapter": "claude_code", "owner": "selina", **manifest}),
+        created_by="selina",
+    )
+
+
+def test_a_cursor_agent_is_woken_while_its_chat_works_and_claude_still_waits(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A Cursor chat stays working for the whole conversation: holding for idle
+    # would hold its mentions for good. Claude Code goes idle between turns.
+    _register("room-a", "cursor-1", adapter="cursor", framework="cursor")
+    _register("room-a", "claude-1", framework="claude")
+    manager.set_herdr_presence("room-a", {"cursor-1": "working", "claude-1": "working"})
+    manager.enqueue_herdr_wake("room-a", "cursor-1")
+    manager.enqueue_herdr_wake("room-a", "claude-1")
+    assert [w["handle"] for w in manager.drain_herdr_wakes("room-a")] == ["cursor-1"]
+    assert manager.pending_herdr_wakes("room-a") == {"claude-1"}  # still held
+    manager.set_herdr_presence("room-a", {"claude-1": "idle"})
+    assert [w["handle"] for w in manager.drain_herdr_wakes("room-a")] == ["claude-1"]
+
+
+def test_a_cursor_agent_that_is_blocked_is_still_held(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # No chat open yet, or a prompt of its own: there's nowhere to hand it.
+    _register("room-a", "cursor-1", adapter="cursor")
+    manager.set_herdr_presence("room-a", {"cursor-1": "blocked"})
+    manager.enqueue_herdr_wake("room-a", "cursor-1")
+    assert manager.drain_herdr_wakes("room-a") == []
+    manager.set_herdr_presence("room-a", {"cursor-1": "working"})
+    assert [w["handle"] for w in manager.drain_herdr_wakes("room-a")] == ["cursor-1"]
+
+
+def test_only_the_families_the_contract_names_are_woken_while_they_work() -> None:
+    import json
+    from pathlib import Path
+
+    from app.services import principals
+
+    contract = json.loads(
+        (Path(__file__).resolve().parents[2] / "contracts" / "wake-while-working.json").read_text()
+    )
+    assert set(contract["adapters"]) == principals.WAKE_WHILE_WORKING
+
+
+def test_a_mention_just_after_an_agent_is_added_waits_for_its_pane(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # Registered, no pane reporting it yet, nothing awaiting: not dropped, queued
+    # for the pane that is a few seconds from showing up.
+    _register("room-a", "cursor-1", adapter="cursor")
+    assert manager.ring_asked("room-a", "cursor-1", "mention", sender="selina") is True
+    assert manager.drain_herdr_wakes("room-a") == []  # no pane yet: held
+    assert manager.pending_herdr_wakes("room-a") == {"cursor-1"}
+    manager.set_herdr_presence("room-a", {"cursor-1": "idle"})
+    [wake] = manager.drain_herdr_wakes("room-a")
+    assert (wake["handle"], wake["reason"], wake["from"]) == ("cursor-1", "mention", "selina")
+
+
+def test_a_wake_for_an_agent_whose_pane_never_shows_up_is_dropped_saying_why(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    from app.services import wake_log
+
+    _register("room-a", "claude-1")
+    assert manager.ring_asked("room-a", "claude-1", "mention", sender="selina") is True
+    assert manager.drain_herdr_wakes("room-a", hold_ttl_s=-1.0) == []
+    (record,) = wake_log.read("room-a")
+    assert (record["agent"], record["outcome"]) == ("claude-1", "dropped")
+    assert "no herdr pane reporting it" in record["why"]
+
+
+def test_an_interrupt_with_nothing_running_rings_as_a_mention(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    _register("room-a", "claude-1")
+    assert manager.ring_asked("room-a", "claude-1", "interrupt", sender="selina") is True
+    manager.set_herdr_presence("room-a", {"claude-1": "idle"})
+    [wake] = manager.drain_herdr_wakes("room-a")
+    assert wake["reason"] == "mention"
+
+
+def test_an_agent_on_an_await_lease_is_not_queued_for_a_pane(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # Its ``await`` already has the turn; a queued wake would only badge it.
+    _register("room-a", "claude-1")
+    manager.refresh_lease("room-a", "claude-1")
+    assert manager.ring_asked("room-a", "claude-1", "mention", sender="selina") is False
+    assert manager.pending_herdr_wakes("room-a") == set()
+
+
+def test_a_row_filed_for_an_agent_before_its_pane_shows_up_waits_for_it(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    _register("room-a", "cursor-1", adapter="cursor")
+    filed = {"subkind": "filed", "key": "work/repro", "title": "Reproduce it", "for": "cursor-1"}
+    assert manager.herdr_wake_assigned("room-a", filed) is True
+    manager.set_herdr_presence("room-a", {"cursor-1": "working"})
+    [wake] = manager.drain_herdr_wakes("room-a")
+    assert (wake["reason"], wake["key"]) == ("assigned", "work/repro")
+
+
 def test_an_addressed_turn_rings_a_herdr_member_as_a_turn(
     manager: room_channels.RoomChannelManager,
 ) -> None:

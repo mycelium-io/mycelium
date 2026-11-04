@@ -167,19 +167,44 @@ def test_a_report_for_a_wake_the_log_never_handed_records_nothing():
     assert _lines() == []
 
 
-def test_a_mention_of_an_agent_nothing_runs_is_unreached(manager, monkeypatch):
+def _register(handle: str) -> None:
+    import yaml
+
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    write_memory_file(
+        get_room_dir(ROOM),
+        f"agents/{handle}",
+        yaml.safe_dump({"adapter": "claude_code", "owner": "hay"}),
+        created_by="hay",
+    )
+
+
+def test_a_mention_of_an_agent_nothing_runs_waits_then_is_dropped_saying_why(manager, monkeypatch):
     from app.services import principals
 
-    monkeypatch.setattr(
-        principals, "classify_sender", lambda _r, h: "agent" if h == "builder" else "user"
-    )
-    for handle in ("builder", "julia"):
-        manager.ring_asked(ROOM, handle, "mention", sender="hay")
-    (record,) = wake_log.read(ROOM)  # a person is reached some other way
+    _register("builder")
+    monkeypatch.setattr(principals, "load_user", lambda h: {"handle": h} if h == "julia" else None)
+    rung = {h: manager.ring_asked(ROOM, h, "mention", sender="hay") for h in ("builder", "julia")}
+    # An agent just added may be seconds from showing up in herdr, so its wake
+    # waits for a pane; a person is reached some other way.
+    assert rung == {"builder": True, "julia": False}
+    assert wake_log.read(ROOM) == []
+    assert manager.drain_herdr_wakes(ROOM, hold_ttl_s=-1.0) == []
+    (record,) = wake_log.read(ROOM)
     assert record["agent"] == "builder"
     # Not lost: it reads the message on its next await. Nothing could be woken.
-    assert record["outcome"] == "unreached"
-    assert "nothing is running it" in record["why"]
+    assert record["outcome"] == "dropped"
+    assert "no herdr pane reporting it" in record["why"]
+
+
+def test_a_mention_for_an_agent_whose_pane_shows_up_soon_is_delivered(manager):
+    _register("builder")
+    assert manager.ring_asked(ROOM, "builder", "mention", sender="hay")
+    manager.set_herdr_presence(ROOM, {"builder": "idle"})
+    (wake,) = manager.drain_herdr_wakes(ROOM)
+    assert wake["handle"] == "builder"
+    assert wake_log.read(ROOM) == []  # held, then handed: nothing dropped
 
 
 def test_the_log_reads_newest_first_and_by_agent():

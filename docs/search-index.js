@@ -961,6 +961,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#herdr-cursor-agent",
+    "t": "Cursor Agent",
+    "s": "Agents › Persistent Agents (herdr)",
+    "x": "A Cursor Agent pane opens with no chat in it, and a wake-up typed there is lost. So a Cursor agent shows as blocked until you open an Agent chat in its pane and send it one message. Its introduction, and any wake-up for it, are held until then. Once a chat exists, wake-ups go into that same chat as follow-ups, even while it is working. Other agents are woken only when they're idle, so a wake-up never lands mid-turn. ",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#herdr-configuration",
     "t": "Configuration",
     "s": "Agents › Persistent Agents (herdr)",

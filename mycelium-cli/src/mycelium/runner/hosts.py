@@ -375,6 +375,14 @@ class HerdrHost:
             return Started(
                 ref=pane, workspace=workspace, status="blocked", intro_pending=True, passed=passed
             )
+        from mycelium.integrations.agents import of_kind
+
+        if of_kind(kind).no_chat_yet:
+            # It opens with no conversation in it, and a prompt typed there is
+            # lost: its introduction waits until it has been seen working.
+            return Started(
+                ref=pane, workspace=workspace, status="blocked", intro_pending=True, passed=passed
+            )
         hooks.step(STEP_INTRO, pane)
         self.bridge.prompt(pane, intro, wait=False)
         return Started(ref=pane, workspace=workspace, passed=passed)

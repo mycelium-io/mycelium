@@ -249,9 +249,10 @@ Mycelium skill:
 mycelium skill print > ~/.claude/skills/mycelium/SKILL.md
 ```
 
-**Cursor.** `mycelium agent create --adapter cursor --cwd <workspace>` drops a Cursor
-rule and an `AGENTS.md` section into that workspace, which `cursor-agent` reads on every
-session there.
+**Cursor.** A Cursor agent hears Channel @mentions once it has an Agent chat open in
+its herdr pane, even while that chat is working. Until you open one and send it a
+message, the agent shows as blocked and its first prompt is held, since a prompt typed
+into an empty pane is lost. Claude Code is the better-tested path.
 
 ## Earlier Evaluation
 

@@ -41,7 +41,7 @@ from mycelium.filesystem import get_mycelium_dir
 from mycelium.runner.log import ms, slow
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Collection
 
 #: herdr agent lifecycle states that mean "safe to wake now" — the agent is idle
 #: and will observe a fresh lifecycle change. ``working``/``blocked`` are held
@@ -203,6 +203,10 @@ class HerdrPaneMapping:
     #: The agent CLI's own session in this pane, as herdr last reported it, so a
     #: restart or a rename resumes its conversation rather than starting a new one.
     session: str | None = None
+    #: Its agent has been seen working in this pane, so a conversation exists
+    #: there. An agent that opens with none (:attr:`AgentKind.no_chat_yet`) is
+    #: handed nothing until then.
+    chatted: bool = False
 
     @property
     def key(self) -> str:
@@ -355,6 +359,7 @@ class HerdrRegistry:
             managed=bool(entry.get("managed", False)),
             cwd=entry.get("cwd") or None,
             session=entry.get("session") or None,
+            chatted=bool(entry.get("chatted", False)),
         )
 
     def all(self) -> list[HerdrPaneMapping]:
@@ -393,8 +398,28 @@ class HerdrRegistry:
         session = mapping.session or (before.get("session") if same else None)
         if session:
             entry["session"] = session
+        # Not kept from before, unlike the folder and session: a start or a
+        # restart in this pane may open a conversation of its own, which is
+        # seen working again before anything is typed into it.
+        if mapping.chatted:
+            entry["chatted"] = True
         data[mapping.key] = entry
         self._save(data)
+
+    def note_chats(self, panes: Collection[str]) -> None:
+        """Record that the agent in each of ``panes`` was seen working, which
+        means a conversation exists there. Once recorded it stays."""
+        if not panes:
+            return
+        data = self._load()
+        changed = False
+        for entry in data.values():
+            if isinstance(entry, dict) and str(entry.get("pane")) in panes:
+                if not entry.get("chatted"):
+                    entry["chatted"] = True
+                    changed = True
+        if changed:
+            self._save(data)
 
     def note_sessions(self, worked: dict[str, str], seen: dict[str, str] | None = None) -> None:
         """Record, for each mapped pane, the session its agent last worked in.
@@ -1024,8 +1049,12 @@ class HerdrBridge:
 
         Only wakes an ``idle``/``done`` agent: a ``working``/``blocked`` agent is
         left alone so its message holds on the durable cursor (waking mid-turn
-        would race the current turn — see the design doc's "wake-while-working").
-        A stale mapping (no agent at the pane) also fails soft.
+        would race the current turn). The exception is an agent whose chat stays
+        ``working`` for the whole conversation (``AgentKind.wakes_while_working``):
+        it is woken while it works, as a follow-up in that chat, but never
+        before a chat exists (``AgentKind.no_chat_yet``), since a prompt typed
+        into an empty pane is lost. A stale mapping (no agent at the pane) also
+        fails soft.
 
         ``wait=False`` hands the prompt over and returns at once, rather than
         waiting for the turn it starts to settle, so one caller can wake several
@@ -1039,8 +1068,27 @@ class HerdrBridge:
                 status=None,
                 detail=f"no live agent at pane {mapping.pane} (stale mapping?)",
             )
+        from mycelium.integrations.agents import of_kind
+
         status = str(agent.get("agent_status") or "unknown")
-        if status not in _WAKEABLE_STATES:
+        known = of_kind(mapping.kind or agent.get("agent"))
+        chatted = mapping.chatted
+        if status == "working" and not chatted:
+            self.registry.note_chats({mapping.pane})
+            chatted = True
+        if known.no_chat_yet and not chatted:
+            return WakeResult(
+                ok=False,
+                pane=mapping.pane,
+                status=status,
+                detail=(
+                    f"{known.name} has no chat open in {mapping.pane} yet, so a prompt typed "
+                    "there would be lost: holding until one is open"
+                ),
+            )
+        if status not in _WAKEABLE_STATES and not (
+            status == "working" and known.wakes_while_working
+        ):
             return WakeResult(
                 ok=False,
                 pane=mapping.pane,

@@ -27,6 +27,19 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class Cursor(AgentKind):
     adapter: ClassVar[str] = "cursor"
+    # Its Agent chat stays ``working`` for the whole conversation, so a wake
+    # goes in as a follow-up rather than waiting for an idle that doesn't come.
+    wakes_while_working: ClassVar[bool] = True
+    # It opens with no Agent chat in it, and a prompt typed there is lost.
+    no_chat_yet: ClassVar[str | None] = (
+        "no Cursor Agent chat is open in its pane yet. Open one there and send it a "
+        "message: its introduction and anything it was tagged in are held until then"
+    )
+
+    def blocked_hint(self) -> str | None:
+        return (
+            "Cursor Agent has no chat open in this pane yet, or is asking before it runs a command."
+        )
 
 
 class CursorIntegration(ResidentIntegration):
@@ -41,6 +54,16 @@ class CursorIntegration(ResidentIntegration):
             cwd_path = Path(manifest.cwd)
             if cwd_path.exists():
                 uninstall_workspace_assets(cwd_path, verbose=False)
+
+    def wake_help(self, manifest: AgentManifest, *, room: str) -> str:
+        return (
+            "[dim]Cursor hears a Channel @mention in the Agent chat open in its herdr pane,\n"
+            "even while that chat is working. Until a chat is open there (send it one\n"
+            "message), the agent stays blocked and its first wake is held:[/dim]\n"
+            f"  mycelium room wakes --room {room}\n"
+            "[dim]Address it from the command line:[/dim]\n"
+            f'  mycelium agent invoke {manifest.handle} "..."'
+        )
 
     def will_destroy_runtime(self, manifest: AgentManifest, *, full: bool) -> bool:
         # ``full`` edits the person's working tree (AGENTS.md may be committed),

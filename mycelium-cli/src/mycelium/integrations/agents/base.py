@@ -57,6 +57,17 @@ class AgentKind:
     #: Whether Mycelium can read this CLI's session file for the rendered view
     #: (a converter in this package); a CLI without one shows its terminal only.
     renders: ClassVar[bool] = False
+    #: Whether a wake is handed over while it is ``working``, as a follow-up in
+    #: the conversation it has open. A CLI that goes idle between turns is
+    #: woken only then, so a wake never lands mid-turn; one whose chat stays
+    #: ``working`` for the whole conversation would otherwise never hear one.
+    #: Frozen in ``contracts/wake-while-working.json`` with the hub's copy.
+    wakes_while_working: ClassVar[bool] = False
+    #: What to tell a person when it has started with no conversation in it: a
+    #: prompt typed then is lost, so its introduction and wakes wait until it
+    #: has been seen working. ``None`` for a CLI that is a conversation from
+    #: the moment it starts.
+    no_chat_yet: ClassVar[str | None] = None
 
     def session_path(self, folder: str | None, session: str) -> Path | None:  # noqa: ARG002 - a CLI with a converter finds it
         """The file this CLI keeps ``session`` in, begun in ``folder``; ``None``
@@ -250,9 +261,16 @@ class ResidentIntegration(Integration):
         lines.append(
             "\n[dim]Seed the agent's brain (optional):[/dim]\n"
             f'  mycelium memory set {manifest.notes_key} "..." --room {room}\n'
+            f"{self.wake_help(manifest, room=room)}"
+        )
+        return lines
+
+    def wake_help(self, manifest: AgentManifest, *, room: str) -> str:
+        """How the agent comes to hear it was addressed, as the lines ``describe``
+        ends on."""
+        return (
             "[dim]Keep the agent woken so it can answer:[/dim]\n"
             f'  mycelium await --loop --room {room} --handle {manifest.handle} --exec "..."\n'
             "[dim]Or address it (it picks up on its next await):[/dim]\n"
             f'  mycelium agent invoke {manifest.handle} "..."'
         )
-        return lines
