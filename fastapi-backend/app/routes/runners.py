@@ -45,7 +45,7 @@ from app.schemas import (
     RunnerRead,
     refusals,
 )
-from app.services import actor
+from app.services import actor, principals
 from app.services.agent_registry import norm_handle, write_agent_manifest
 from app.services.filesystem import (
     canonical_room_name,
@@ -92,18 +92,29 @@ def _runner_or_404(runner_id: str, request: Request | None = None) -> RunnerRead
     return runner
 
 
-def refuse_anothers_runner(runner_id: str | None, request: Request | None) -> None:
+def refuse_anothers_runner(
+    runner_id: str | None, request: Request | None, *, room: str | None = None
+) -> None:
     """404 when a verified caller names a runner that is someone else's.
 
     For the calls a runner makes as itself (its long-poll, its reports, its
     goodbye, its herdr push and wake drain), where an id the hub hasn't heard
     of keeps the answer it had. Without a token nothing is checked.
+
+    With ``room``, an agent of the runner's owner counts as the owner: one
+    whose manifest in that room names the owner, the grant ``may_act_as``
+    reads. ``mycelium herdr sync`` run in an agent's pane carries that agent's
+    token, not its person's, and is still that person's machine pushing.
     """
-    if not runner_id or actor.current_principal(request) is None:
+    principal = actor.current_principal(request)
+    if not runner_id or principal is None:
         return
     runner = registry.get(runner_id)
-    if runner is not None and not _yours(runner, request):
-        raise HTTPException(status_code=404, detail="Runner not found")
+    if runner is None or _yours(runner, request):
+        return
+    if room and runner.owner and principals.delegates_to(room, principal.handle, runner.owner):
+        return
+    raise HTTPException(status_code=404, detail="Runner not found")
 
 
 def adapter_for(framework: str) -> str:

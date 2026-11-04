@@ -296,10 +296,11 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody, request: 
     roster. Entries lapse on their TTL, so a stopped bridge / closed pane clears
     itself without an explicit delete. With sign-in on, a ``source`` naming
     another person's runner is not found: that push would replace its agents.
+    The runner's person and their own agents in this room may push for it.
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    refuse_anothers_runner(body.source, request)
+    refuse_anothers_runner(body.source, request, room=room_name)
     normalized: dict[str, str | dict] = {
         h: ({"status": v.status, "title": v.title} if isinstance(v, HerdrAgentState) else v)
         for h, v in body.statuses.items()
@@ -344,11 +345,12 @@ async def drain_herdr_wakes(
     reach the host's herdr socket — then runs the actual ``herdr agent prompt``.
     With ``source``, only the wakes for the agents that machine's push reports
     are handed over; the rest wait for their own machine. With sign-in on, a
-    ``source`` naming another person's runner is not found.
+    ``source`` naming another person's runner is not found; the runner's
+    person and their own agents in this room may drain it.
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    refuse_anothers_runner(source, request)
+    refuse_anothers_runner(source, request, room=room_name)
     wakes = room_channels.manager.drain_herdr_wakes(room_name, source=source)
     # Each carries the digest its agent is told (``prompt``), built now rather
     # than when it was queued, so what it says is current when it's typed.

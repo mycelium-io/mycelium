@@ -428,3 +428,46 @@ async def test_bob_cannot_push_or_drain_as_julias_machine(
     )
     assert drained.status_code == 404
     assert await _drain(hub, JULIA) == [JULIA_AGENT]
+
+
+async def _member_token(hub: Hub, person: str) -> dict[str, str]:
+    """The token ``person``'s agent holds once it has redeemed its join code."""
+    made = await hub.post(person, f"/api/rooms/{ROOM}/joins", {"handle": AGENT_OF[person]})
+    assert made.status_code == 201, made.text
+    redeemed = await hub.client.post("/api/joins/redeem", json={"code": made.json()["code"]})
+    assert redeemed.status_code == 200, redeemed.text
+    return {"Authorization": f"Bearer {redeemed.json()['token']}"}
+
+
+@pytest.mark.asyncio
+async def test_a_persons_agent_can_sync_for_their_machine_and_no_one_elses(
+    hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """``mycelium herdr sync`` run in an agent's pane carries the agent's token,
+    not its person's. It is still that person's machine pushing, so their own
+    agent may; another person's agent may not."""
+    _live_room(monkeypatch)
+    for person in (JULIA, BOB):
+        await hub.launch(person)
+    julias_agent, bobs_agent = await _member_token(hub, JULIA), await _member_token(hub, BOB)
+    presence = f"/api/rooms/{ROOM}/sessions/herdr-presence"
+    wakes = f"/api/rooms/{ROOM}/sessions/herdr-wakes"
+    body = {"statuses": {JULIA_AGENT: {"status": "idle", "title": None}}, "ttl_s": 90}
+
+    pushed = await hub.client.post(
+        presence, json={**body, "source": JULIA_RUNNER}, headers=julias_agent
+    )
+    assert pushed.status_code == 204, pushed.text
+    room_channels.manager.enqueue_herdr_wake(ROOM, JULIA_AGENT, reason="assigned", key="work/x")
+    taken = await hub.client.get(wakes, params={"source": JULIA_RUNNER}, headers=julias_agent)
+    assert taken.status_code == 200, taken.text
+    assert [w["handle"] for w in taken.json()["wakes"]] == [JULIA_AGENT]
+
+    refused = await hub.client.post(
+        presence, json={**body, "source": JULIA_RUNNER}, headers=bobs_agent
+    )
+    assert refused.status_code == 404
+    room_channels.manager.enqueue_herdr_wake(ROOM, JULIA_AGENT, reason="assigned", key="work/y")
+    stolen = await hub.client.get(wakes, params={"source": JULIA_RUNNER}, headers=bobs_agent)
+    assert stolen.status_code == 404
+    assert await _drain(hub, JULIA) == [JULIA_AGENT]
