@@ -102,7 +102,6 @@ function rowsOf(entries: SessionEntry[]): Row[] {
   return rows;
 }
 
-const isTool = (row: Row) => row.sessionUpdate === "tool_call" || row.sessionUpdate === "reads";
 
 /** How close to the top, in pixels, asks for the page before. */
 const EARLIER_SLACK_PX = 400;
@@ -237,16 +236,28 @@ function EarlierLine({ earlier, onRetry }: { earlier: Earlier; onRetry: () => vo
  */
 const Rows = memo(function Rows({ rows }: { rows: Row[] }) {
   return rows.map((row, i) => (
-    // Tool calls in a row sit close together; anything else gets room.
-    <div
-      key={row._meta.id}
-      data-entry={row._meta.id}
-      className={i === 0 ? "" : isTool(row) && isTool(rows[i - 1]) ? "mt-0.5" : "mt-2.5"}
-    >
+    <div key={row._meta.id} data-entry={row._meta.id} className={gapBefore(row, rows[i - 1])}>
       <SameRow row={row} />
     </div>
   ));
 });
+
+/**
+ * A one-line row: a tool call, folded reads, a thought or a wake. Each starts
+ * with its icon at the list's left edge, as everything else starts its text
+ * there, and a run of them reads as one block.
+ */
+const isLine = (row: Row) =>
+  row.sessionUpdate === "tool_call" ||
+  row.sessionUpdate === "reads" ||
+  row.sessionUpdate === "agent_thought" ||
+  (row.sessionUpdate === "user_message" && row._meta.from === "wake");
+
+/** The space above a row: lines in a run sit close; a reply, a prompt or a plan gets room around it. */
+function gapBefore(row: Row, prev: Row | undefined): string {
+  if (!prev) return "";
+  return isLine(row) && isLine(prev) ? "mt-1" : "mt-4";
+}
 
 /** What about a row can change once it's written: a call's status and result, a sub-agent's steps, a plan's. */
 function rowRev(row: Row): string {
@@ -312,7 +323,8 @@ function Prompt({ text, queued, nested }: { text: string; queued?: boolean; nest
   const long = lines.length > PROMPT_LINES || text.length > PROMPT_LINES * 120;
   const shown = long && !all ? lines.slice(0, PROMPT_LINES).join("\n").slice(0, PROMPT_LINES * 120) : text;
   return (
-    <div className={cn("rounded-lg bg-hairline px-3 py-2 text-label text-text", nested && "bg-transparent px-0 py-0")}>
+    // The bubble reaches past the left edge, so its text starts on it.
+    <div className={cn("-mx-3 rounded-lg bg-hairline px-3 py-2 text-label text-text", nested && "mx-0 bg-transparent px-0 py-0")}>
       {queued && <span className="mr-2 text-micro text-faint">queued</span>}
       <span className="break-words whitespace-pre-wrap">{shown}</span>
       {long && (
@@ -349,16 +361,17 @@ function Fold({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-micro text-faint hover:text-muted-foreground"
+        className="flex h-7 items-center gap-2 text-micro text-faint hover:text-muted-foreground"
       >
-        <Icon className="size-3.5" aria-hidden />
+        <Icon className="size-3.5 flex-shrink-0" aria-hidden />
         {label}
         <ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} aria-hidden />
       </button>
       {open && (
+        // Its rule runs down from the icon, and its text lines up with the label.
         <p
           className={cn(
-            "mt-1 ml-5 border-l border-border pl-3 text-micro whitespace-pre-wrap text-muted-foreground",
+            "mt-0.5 mb-1 ml-[7px] border-l border-border pl-[14px] text-micro whitespace-pre-wrap text-muted-foreground",
             mono && "font-mono",
             italic && "italic",
           )}
@@ -376,8 +389,9 @@ const STEP_ICON = { pending: Circle, in_progress: CircleDot, completed: CircleCh
 function PlanView({ plan }: { plan: Plan }) {
   const done = plan.entries.filter((e) => e.status === "completed").length;
   return (
-    <div className="rounded-lg border border-border px-3 py-2">
-      <p className="mb-1 flex items-center gap-1.5 text-micro text-faint">
+    // Its box (border and padding) reaches past the left edge, so its icons start on it.
+    <div className="-mx-[13px] rounded-lg border border-border px-3 py-2">
+      <p className="mb-1 flex items-center gap-2 text-micro text-faint">
         <ListChecks className="size-3.5" aria-hidden />
         <span className="tabular">
           {done}/{plan.entries.length}
@@ -456,7 +470,9 @@ function ToolRow({ call }: { call: ToolCall }) {
   const removed = diffs.reduce((n, d) => n + d.removed, 0);
   const steps = sub?.entries.filter((e) => e.sessionUpdate === "tool_call").length ?? 0;
   return (
-    <div className={cn("rounded-md border", open ? "border-border" : "border-transparent")}>
+    // Its hover and its open card (border and padding) reach past the left
+    // edge, so its icon starts on it.
+    <div className={cn("-mx-[9px] rounded-md border", open ? "border-border" : "border-transparent")}>
       <button
         type="button"
         aria-expanded={open}
@@ -486,9 +502,13 @@ function ToolRow({ call }: { call: ToolCall }) {
       {open && (
         <div className="space-y-2 px-2 pt-1 pb-2">
           {sub ? (
-            <div className="space-y-2 border-l border-border pl-3">
-              {rowsOf(sub.entries).map((row) => (
-                <RowView key={row._meta.id} row={row} nested />
+            // The sub-agent's own rows, spaced as the list is, under a rule
+            // from the call's icon.
+            <div className="ml-[6px] border-l border-border pl-[14px]">
+              {rowsOf(sub.entries).map((row, i, rows) => (
+                <div key={row._meta.id} className={gapBefore(row, rows[i - 1])}>
+                  <RowView row={row} nested />
+                </div>
               ))}
             </div>
           ) : null}
@@ -542,14 +562,15 @@ function ReadsRow({ calls }: { calls: ToolCall[] }) {
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left hover:bg-hairline"
+        className="-mx-2 flex h-7 w-[calc(100%+1rem)] items-center gap-2 rounded-md px-2 text-left hover:bg-hairline"
       >
         <FileText className="size-3.5 flex-shrink-0 text-muted-foreground" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-label text-text/90">Read {calls.length} files</span>
         <ChevronRight className={cn("size-3 text-faint transition-transform", open && "rotate-90")} aria-hidden />
       </button>
       {open && (
-        <div className="ml-5">
+        // Each read's icon lines up with the label above it.
+        <div className="mt-1 space-y-1 pl-[22px]">
           {calls.map((c) => (
             <ToolRow key={c._meta.id} call={c} />
           ))}
