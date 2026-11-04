@@ -9,9 +9,11 @@ const createEngine = vi.fn();
 const createMemories = vi.fn();
 const registerA2aAgent = vi.fn();
 const adoptRunnerAgent = vi.fn();
+const resumeAgentSession = vi.fn();
 const createInvite = vi.fn();
 vi.mock("@/lib/api", () => ({
   adoptRunnerAgent: (...a: unknown[]) => adoptRunnerAgent(...a),
+  resumeAgentSession: (...a: unknown[]) => resumeAgentSession(...a),
   createEngine: (...a: unknown[]) => createEngine(...a),
   createInvite: (...a: unknown[]) => createInvite(...a),
   createMemories: (...a: unknown[]) => createMemories(...a),
@@ -228,6 +230,46 @@ describe("AddMemberDialog", () => {
       }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent("Sent to julia-mbp.");
+  });
+
+  it("resumes an earlier session, as the member it was started as", async () => {
+    resumeAgentSession.mockReset().mockResolvedValue({ id: "j2", status: "queued" });
+    const machine = laptop();
+    machine.machine!.unenrolled = [];
+    machine.frameworks = [
+      {
+        id: "claude",
+        name: "Claude Code",
+        installed: true,
+        launchable: true,
+        sessions: [
+          {
+            id: "s1",
+            folder: "/Users/julia/code/shop",
+            last_used: "2026-11-03T12:00:00Z",
+            branch: "main",
+            member: { room: "checkout", handle: "scout" },
+          },
+        ],
+      } as Runner["frameworks"][number],
+    ];
+    machines = [machine];
+    open("running");
+    fireEvent.click(screen.getByRole("radio", { name: "scout in checkout" }));
+    expect(screen.getByLabelText("Handle")).toHaveValue("scout");
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+    // Not paired with the machine, so nothing is signed and the machine asks.
+    await waitFor(() =>
+      expect(resumeAgentSession).toHaveBeenCalledWith("r1", {
+        room: "atlas",
+        framework: "claude",
+        session: "s1",
+        folder: "/Users/julia/code/shop",
+        handle: "scout",
+        created_by: "julia",
+        signature: undefined,
+      }),
+    );
   });
 
   it("says so when every running agent is in a room", () => {

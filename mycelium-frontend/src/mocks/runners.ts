@@ -32,41 +32,10 @@ const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).t
 /**
  * A machine's worth of earlier sessions: a couple of hundred across ten
  * folders, newest first, the way someone who uses an agent CLI every day has
- * them. The titles are made up, in the checkout story.
+ * them. Some were started for room members who have since been removed. Like
+ * the real scan, they carry no titles: only the desktop app on the machine
+ * reads those.
  */
-// Each title is one plain request, an action on one part of the checkout,
-// so a couple of hundred of them are all different.
-const ACTIONS = ["Fix", "Write tests for", "Review", "Explain", "Speed up", "Clean up", "Document", "Debug"];
-const PARTS = [
-  "the double charge on a network timeout",
-  "Apple Pay behind its switch",
-  "the tax line on large orders",
-  "the refund webhook",
-  "the receipt email",
-  "the one-page address form",
-  "the delivery date on the basket",
-  "the card form on Safari 17",
-  "the refund path in #504",
-  "the Node 24 upgrade",
-  "idempotency keys on charges",
-  "coupon stacking with sale prices",
-  "the slow start of checkout",
-  "the refund policy for double charges",
-  "failed payment alerts",
-  "the PayPal button removal",
-  "the checkout analytics events",
-  "the wallet screen layout",
-  "the stock check before payment",
-  "guest checkout",
-  "the order confirmation page",
-  "gift card balances",
-  "the shipping rate lookup",
-  "saved cards for returning customers",
-  "the fraud check threshold",
-  "the abandoned basket email",
-  "the currency switcher",
-];
-
 function mockSessions(): AgentSessionSummary[] {
   const folders = [
     ["checkout", ["main", "fix/double-charge", "feat/apple-pay", "fix/tax-rounding"]],
@@ -80,6 +49,12 @@ function mockSessions(): AgentSessionSummary[] {
     ["coupons", ["main", "feat/stacking"]],
     ["notes", [null]],
   ] as const;
+  // Members no room has any more, which the runner once started.
+  const removed = [
+    { room: "checkout", handle: "scout" },
+    { room: "checkout", handle: "apple-pay" },
+    { room: "storefront", handle: "copywriter" },
+  ];
   const out: AgentSessionSummary[] = [];
   let minutes = 20;
   for (let i = 0; i < 214; i++) {
@@ -88,9 +63,8 @@ function mockSessions(): AgentSessionSummary[] {
       id: `s${(i * 2654435761 >>> 0).toString(16).padStart(8, "0")}`,
       folder: `/Users/morgan/code/${folder}`,
       last_used: iso(minutes),
-      messages: 4 + ((i * 37) % 180),
       branch: branches[i % branches.length],
-      title: `${ACTIONS[i % ACTIONS.length]} ${PARTS[Math.floor(i / ACTIONS.length) % PARTS.length]}`,
+      member: i % 9 === 4 ? removed[i % removed.length] : null,
     });
     minutes += 25 + ((i * 53) % 400);
   }

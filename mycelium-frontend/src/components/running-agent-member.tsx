@@ -8,6 +8,9 @@ import { Laptop } from "lucide-react";
 import { adoptRunnerAgent, resumeAgentSession, type Framework, type MachineUnenrolled, type Runner } from "@/lib/api";
 import { EarlierSessions, sessionKey, type EarlierSession } from "@/components/earlier-sessions";
 import { runnerName, useRunnerJob, useRunners, useRunnersRevalidate } from "@/lib/runners";
+import { signFor } from "@/lib/device-key";
+import { useThisMachine } from "@/lib/desktop";
+import { useSessionTitles } from "@/lib/session-titles";
 import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button } from "@/components/ui/button";
@@ -104,6 +107,9 @@ export function RunningAgentMember({
   const candidates = useMemo(() => runningAgents(connected), [connected]);
   const earlier = useMemo(() => earlierSessions(connected), [connected]);
   const unsupported = useMemo(() => sessionsUnsupported(connected), [connected]);
+  // Titles are read on the machine the sessions are on, by the app there.
+  const thisMachine = useThisMachine();
+  const titles = useSessionTitles(earlier.some((s) => s.runner.id === thisMachine));
 
   const [pick, setPick] = useState<string | null>(null);
   const [handle, setHandle] = useState<string | null>(null);
@@ -118,7 +124,12 @@ export function RunningAgentMember({
   const chosen = chosenPast ? undefined : (candidates.find((c) => key(c) === pick) ?? candidates[0]);
   const chosenAny = chosen ?? chosenPast ?? earlier[0] ?? null;
   const past = chosenPast ?? (chosen ? null : (earlier[0] ?? null));
-  const handleShown = handle ?? (past ? handleFor(past.session.folder) : (chosen?.agent.suggested_handle ?? ""));
+  // A session started for a member comes back as that member, by default.
+  const handleShown =
+    handle ??
+    (past
+      ? (past.session.member?.handle ?? handleFor(past.session.folder))
+      : (chosen?.agent.suggested_handle ?? ""));
   const trimmed = normHandle(handleShown);
   const canSubmit = !!chosenAny && handleValid(handleShown) && !submitting;
   const choose = (k: string) => {
@@ -144,6 +155,14 @@ export function RunningAgentMember({
     try {
       const by = principal.trim() || undefined;
       if (past) {
+        const job = {
+          room: roomName,
+          handle: trimmed,
+          framework: past.framework.id,
+          session: past.session.id,
+          cwd: past.session.folder,
+        };
+        const signature = await signFor(past.runner, { kind: "resume", job });
         const made = await resumeAgentSession(past.runner.id, {
           room: roomName,
           framework: past.framework.id,
@@ -151,6 +170,7 @@ export function RunningAgentMember({
           folder: past.session.folder,
           handle: trimmed,
           created_by: by,
+          signature,
         });
         revalidateRoom();
         setQueued({ runner: past.runner, job: made.id, handle: trimmed, resumed: true });
@@ -283,6 +303,7 @@ export function RunningAgentMember({
           {earlier.length > 0 && (
             <EarlierSessions
               sessions={earlier}
+              titles={titles}
               picked={past ? pastKey(past) : null}
               onPick={choose}
             />

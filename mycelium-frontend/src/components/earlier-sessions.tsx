@@ -13,14 +13,18 @@
  *
  * A session is told apart by its own words, its title, which only the
  * desktop app reads, on the machine the session is on. Listed from anywhere
- * else it has none, and the picker says where to see them.
+ * else it has none, and the picker says where to see them. A session the
+ * runner started for a room member reads as that member instead
+ * ("coder in checkout"), from the runner's own record, since those all
+ * begin alike.
  */
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, GitBranch, Laptop, MessageSquare, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, GitBranch, Laptop, Search } from "lucide-react";
 import type { AgentSessionSummary, Framework, Runner } from "@/lib/api";
 import { Ago } from "@/lib/relative-time";
 import { runnerName } from "@/lib/runners";
+import { titleKey } from "@/lib/session-titles";
 import { tildePath } from "@/components/launch-agent-dialog";
 import { cn } from "@/lib/utils";
 
@@ -36,18 +40,34 @@ export const sessionKey = (s: EarlierSession) => `past:${s.runner.id}:${s.framew
 /** How many of a folder's sessions show before "Show more". */
 const PER_FOLDER = 5;
 
-function matches(s: EarlierSession, words: string[]): boolean {
-  const text = `${s.session.title ?? ""} ${s.session.folder} ${s.session.branch ?? ""} ${s.framework.name}`.toLowerCase();
+/** A session's title, when the desktop app here has read it. */
+const titleOf = (s: EarlierSession, titles: ReadonlyMap<string, string>) =>
+  titles.get(titleKey(s.framework.id, s.session.id)) ?? null;
+
+function matches(s: EarlierSession, words: string[], titles: ReadonlyMap<string, string>): boolean {
+  const member = s.session.member;
+  const text = [
+    titleOf(s, titles) ?? "",
+    member ? `${member.handle} ${member.room}` : "",
+    s.session.folder,
+    s.session.branch ?? "",
+    s.framework.name,
+  ]
+    .join(" ")
+    .toLowerCase();
   return words.every((w) => text.includes(w));
 }
 
 export function EarlierSessions({
   sessions,
+  titles,
   picked,
   onPick,
 }: {
   /** Newest first. */
   sessions: EarlierSession[];
+  /** Their titles by `titleKey`, for those on the machine the desktop app runs on. */
+  titles: ReadonlyMap<string, string>;
   picked: string | null;
   onPick: (key: string) => void;
 }) {
@@ -59,10 +79,10 @@ export function EarlierSessions({
 
   const folders = useMemo(() => {
     const by = new Map<string, EarlierSession[]>();
-    for (const s of sessions) if (matches(s, words)) by.set(s.session.folder, [...(by.get(s.session.folder) ?? []), s]);
+    for (const s of sessions) if (matches(s, words, titles)) by.set(s.session.folder, [...(by.get(s.session.folder) ?? []), s]);
     return [...by];
     // eslint-disable-next-line react-hooks/exhaustive-deps -- words is derived from typed
-  }, [sessions, typed]);
+  }, [sessions, typed, titles]);
   const shownCount = folders.reduce((n, [, list]) => n + list.length, 0);
   // Until someone folds or opens one, only the newest folder is open.
   const isOpen = (folder: string, i: number) => finding || (open ? open.has(folder) : i === 0);
@@ -73,7 +93,8 @@ export function EarlierSessions({
       else next.add(folder);
       return next;
     });
-  const titled = sessions.some((s) => s.session.title);
+  // Untitled because the titles are on another machine, or this isn't the app.
+  const titled = sessions.some((s) => titleOf(s, titles));
   const manyClis = new Set(sessions.map((s) => s.framework.id)).size > 1;
   const manyMachines = new Set(sessions.map((s) => s.runner.id)).size > 1;
 
@@ -129,13 +150,16 @@ export function EarlierSessions({
                   {shown.map((s) => {
                     const k = sessionKey(s);
                     const active = picked === k;
+                    const title = titleOf(s, titles);
+                    const member = s.session.member;
+                    const name = member ? `${member.handle} in ${member.room}` : title;
                     return (
                       <button
                         key={k}
                         type="button"
                         role="radio"
                         aria-checked={active}
-                        aria-label={s.session.title ?? `${s.framework.name} session in ${tildePath(folder)}`}
+                        aria-label={name ?? `${s.framework.name} session in ${tildePath(folder)}`}
                         onClick={() => onPick(k)}
                         className={cn(
                           "block w-full rounded-md border px-2.5 py-1.5 text-left transition-colors",
@@ -144,16 +168,25 @@ export function EarlierSessions({
                       >
                         <span className="flex items-baseline gap-2">
                           <span className={cn("min-w-0 flex-1 truncate text-label", active ? "text-text" : "text-text/90")}>
-                            {s.session.title ?? "Untitled session"}
+                            {member ? (
+                              <>
+                                <span className="font-mono">{member.handle}</span>
+                                <span className="text-muted-foreground"> in {member.room}</span>
+                              </>
+                            ) : (
+                              (title ?? "Untitled session")
+                            )}
                           </span>
                           <span className="flex-shrink-0 text-micro text-faint">
                             <Ago at={s.session.last_used} />
                           </span>
                         </span>
                         {/* What tells two apart, each with its own mark rather than a
-                            string of dots: the branch, the length, and the CLI and
-                            machine only when there's more than one of either. */}
+                            string of dots: the title under a member's name, the
+                            branch, and the CLI and machine only when there's more
+                            than one of either. */}
                         <span className="flex min-w-0 items-center gap-3 text-micro text-faint">
+                          {member && title && <span className="min-w-0 truncate">{title}</span>}
                           {manyClis && <span className="flex-shrink-0">{s.framework.name}</span>}
                           {s.session.branch && (
                             <span className="flex min-w-0 items-center gap-1">
@@ -161,12 +194,6 @@ export function EarlierSessions({
                               <span className="truncate">{s.session.branch}</span>
                             </span>
                           )}
-                          {s.session.messages ? (
-                            <span className="flex flex-shrink-0 items-center gap-1" title={`${s.session.messages} messages`}>
-                              <MessageSquare className="size-3" aria-hidden />
-                              {s.session.messages}
-                            </span>
-                          ) : null}
                           {manyMachines && (
                             <span className="flex flex-shrink-0 items-center gap-1">
                               <Laptop className="size-3" aria-hidden />
