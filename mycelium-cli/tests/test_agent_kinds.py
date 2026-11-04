@@ -119,6 +119,32 @@ def test_an_older_codex_without_auto_review_picks_the_sandbox_and_asks_on_reques
     assert args[:4] == ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
 
 
+CURSOR_HELP = (
+    "  -f, --force                  Force allow commands unless explicitly denied\n"
+    "  --auto-review                Use Auto-review (Smart Auto): a server classifier\n"
+    "  --trust                      Trust the current workspace without prompting"
+)
+
+
+def test_cursor_trusts_the_folder_it_was_started_in_and_runs_in_auto_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _installed(tmp_path, monkeypatch, **{"cursor-agent": CURSOR_HELP})
+    args = agents.of_kind("cursor").launch_args()
+    assert args == ["--trust", "--auto-review"]
+    # Never the flags that run every command.
+    assert not {"--force", "-f", "--yolo"} & set(args)
+
+
+def test_an_older_cursor_starts_with_only_the_flags_it_has(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _installed(tmp_path, monkeypatch, **{"cursor-agent": "  --trust   Trust the current workspace"})
+    assert agents.of_kind("cursor").launch_args() == ["--trust"]
+    _installed(tmp_path, monkeypatch, **{"cursor-agent": "  -p, --print"})
+    assert agents.of_kind("cursor").launch_args() == []
+
+
 def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

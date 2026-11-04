@@ -28,6 +28,22 @@ if TYPE_CHECKING:
 class Cursor(AgentKind):
     adapter: ClassVar[str] = "cursor"
 
+    def launch_args(self) -> list[str]:
+        args: list[str] = []
+        # It opens on a "Workspace Trust Required" box in a folder it hasn't run
+        # in, which its host reads as idle, so an introduction typed there is
+        # lost to it. It's started only in a folder the person chose and
+        # approved on this machine, so that folder is trusted as they said.
+        if self.offers("--trust"):
+            args.append("--trust")
+        # And it runs in its own Auto-review, which runs the actions its
+        # classifier finds safe and asks about the rest, rather than asking
+        # before every command it hasn't been allowed. Never --force. Where
+        # the account can't use Auto-review, Cursor keeps its allowlist.
+        if self.offers("--auto-review"):
+            args.append("--auto-review")
+        return args
+
 
 class CursorIntegration(ResidentIntegration):
     name = "cursor"
