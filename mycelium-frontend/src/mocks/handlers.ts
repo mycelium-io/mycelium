@@ -38,7 +38,6 @@ import {
   isLearnScenario,
   learnOnLaunch,
   learnOnMessage,
-  learnOnSwarm,
   learnOnTask,
   learnOnThreadRead,
 } from "./learn";
@@ -120,11 +119,6 @@ const MOCK_PROTOCOLS: Protocol[] = [
     roles: ["author", "reviewer"],
   },
   { name: "round-robin", description: "Every member speaks in turn, for a fixed number of rounds.", roles: [] },
-  {
-    name: "swarm",
-    description: "A team kicks off a task: each member checks in, then the lead splits the work.",
-    roles: ["lead"],
-  },
 ].map((p) => ({ ...p, source: "builtin" as const }));
 
 /** A graph edge's `raw` markdown, synthesized for display — the fixtures only
@@ -1151,15 +1145,6 @@ export async function handleMock(req: Request): Promise<Response | null> {
       const minutes = Number(body.ttl_minutes ?? 10);
       const expires = new Date(Date.now() + minutes * 60_000).toISOString();
       return json({ code: "k7mq-2xpa-9vtd", room: roomName, handle, expires_at: expires }, 201);
-    }
-
-    case "swarms": {
-      // POST /swarms — a team put on a task. Only a Learn take plays one; the
-      // default fixtures have no workers to run it.
-      if (sub.length !== 1 || method !== "POST") return null;
-      const started = isLearnScenario() ? learnOnSwarm(fx, roomName) : null;
-      if (!started) return json({ detail: "The mock runs no swarms in this room." }, 501);
-      return json({ room: roomName, ...started, job: null }, 201);
     }
 
     case "agents": {

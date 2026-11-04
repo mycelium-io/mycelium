@@ -192,10 +192,6 @@ export type SignedJob =
       kind: "launch";
       job: { room: string; handle: string; framework: string; cwd: string | null; worktree: boolean };
     }
-  | {
-      kind: "swarm";
-      job: { room: string; task: string; framework: string; cwd: string | null; size: number; worktree: boolean };
-    }
   | { kind: "restart"; job: { all: boolean; agents: { handle: string; room: string }[] } }
   | { kind: "resume"; job: { room: string; handle: string; framework: string; session: string; cwd: string } };
 

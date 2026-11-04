@@ -13,7 +13,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Kbd } from "@/components/ui/kbd";
 import { Monogram } from "@/components/ui/monogram";
 import { AgentCardHover } from "@/components/agent-card";
-import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { shortAge } from "@/components/activity-rail";
 import { NowProvider, useNow } from "@/lib/relative-time";
 import { useRoomAgents, useRoomBoard, useRoomClosedTasks, useRoomWaiting } from "@/lib/room-data";
@@ -75,7 +74,6 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
   const { items: waiting, refresh: refreshWaiting } = useRoomWaiting(roomName, you);
   const { agents } = useRoomAgents(roomName);
   const agentHandles = useMemo(() => new Set(agents.map(a => a.handle)), [agents]);
-  const [swarmTask, setSwarmTask] = useState<string | null>(null);
   const [filing, setFiling] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -166,7 +164,6 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
         now={new Date().toISOString()}
         placeholder="Hand something off to the room…"
         onCapture={capture}
-        onSwarm={text => setSwarmTask(text)}
       />
 
       <ScrollArea className="min-h-0 flex-1">
@@ -220,11 +217,6 @@ export function RoomBoard({ roomName, onOpenThread, onOpenMessage }: Props) {
           </div>
         </NowProvider>
       </ScrollArea>
-
-      {/* Mounted only while open, so each opening starts from what was typed. */}
-      {swarmTask !== null && (
-        <StartSwarmDialog open onClose={() => setSwarmTask(null)} roomName={roomName} initialTask={swarmTask} />
-      )}
     </div>
   );
 }

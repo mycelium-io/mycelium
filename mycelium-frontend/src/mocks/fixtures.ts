@@ -2605,7 +2605,6 @@ export function usageKpis(days: number) {
     },
     flows: {
       review: { resolved: n(14), rejected: n(2) },
-      swarm: { resolved: n(5), rejected: n(1) },
       gated: { resolved: n(3), rejected: n(1) },
     },
     negotiations: { converged: n(6), rejected: n(1) },

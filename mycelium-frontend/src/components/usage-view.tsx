@@ -63,7 +63,6 @@ export function waysOf(usage: UsageKpis): Way[] {
   ];
   const named: Record<string, string> = {
     review: "Review",
-    swarm: "Split",
     gated: "Gated",
     "fan-out": "Fan-out",
     "round-robin": "Round robin",
@@ -195,7 +194,7 @@ function WaysOfWorking({ usage }: { usage: UsageKpis }) {
         </table>
       </div>
       <Note>
-        Review, Split and Settle each run inside a task, so their tasks are also counted in Tasks resolved. Catch up
+        Review and Settle each run inside a task, so their tasks are also counted in Tasks resolved. Catch up
         isn&apos;t counted yet.
       </Note>
     </Pane>

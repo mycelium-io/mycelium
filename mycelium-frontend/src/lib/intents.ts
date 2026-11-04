@@ -10,7 +10,7 @@
  * nobody has to know an engine's name or its grammar to use it.
  */
 
-export type IntentId = "task" | "review" | "split" | "settle" | "catch-up";
+export type IntentId = "task" | "review" | "settle" | "catch-up";
 
 export interface IntentRole {
   /** The role's name in the summon, in order. */
@@ -60,15 +60,6 @@ export const INTENTS: Intent[] = [
     minGroup: 0,
     summon: ({ roles }, note) =>
       `@conductor review @${roles.author} @${roles.reviewer}${colon(note) || ": the task above"}`,
-  },
-  {
-    id: "split",
-    label: "Split",
-    when: "The task is big enough for several agents at once.",
-    then: "Each agent says what it would take, then the first one splits the task into parts, one each.",
-    roles: [],
-    minGroup: 2,
-    summon: ({ group }, note) => `@conductor swarm ${handles(group)}${colon(note) || ": the task above"}`,
   },
   {
     id: "settle",

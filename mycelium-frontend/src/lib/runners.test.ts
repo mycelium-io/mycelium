@@ -153,7 +153,5 @@ describe("runner helpers", () => {
     };
     expect(describeJob({ ...base, kind: "launch", spec: { handle: "scout" } })).toBe("Start @scout");
     expect(describeJob({ ...base, kind: "stop", spec: { handle: "scout" } })).toBe("Stop @scout");
-    expect(describeJob({ ...base, kind: "scan", spec: {} })).toBe("Scan for agent CLIs");
-    expect(describeJob({ ...base, kind: "swarm", spec: { room: "atlas" } })).toBe("Start a swarm in atlas");
-  });
+    expect(describeJob({ ...base, kind: "scan", spec: {} })).toBe("Scan for agent CLIs");  });
 });

@@ -143,7 +143,7 @@ export function hostOf(runner: Pick<Runner, "host">): HostCopy {
   return HOSTS[id] ?? { name: id, where: `${id}`, start: `Start ${id} there` };
 }
 
-/** Whether a runner starts agents in herdr, which is what a swarm needs. */
+/** Whether a runner starts agents in herdr. */
 export function startsInHerdr(runner: Pick<Runner, "host">): boolean {
   return (runner.host || "herdr") === "herdr";
 }
@@ -167,8 +167,6 @@ export function describeJob(job: RunnerJob): string {
       return `Interrupt ${handle ?? "an agent"}`;
     case "scan":
       return "Scan for agent CLIs";
-    case "swarm":
-      return typeof spec.room === "string" ? `Start a swarm in ${spec.room}` : "Start a swarm";
     case "restart": {
       if (spec.all) return "Restart every stopped agent";
       const agents = Array.isArray(spec.agents) ? (spec.agents as { handle?: string }[]) : [];

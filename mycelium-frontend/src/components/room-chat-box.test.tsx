@@ -51,7 +51,6 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
   createTask: (...args: unknown[]) => createTask(...args),
   writeFields: (...args: unknown[]) => writeFields(...args),
-  startSwarm: vi.fn(),
   fetchRunners: async () => [LAPTOP],
   fetchRunnerJob: vi.fn().mockResolvedValue({ id: "job1", status: "queued", error: null }),
   launchRunnerAgent: (...args: unknown[]) => launchRunnerAgent(...args),
@@ -647,7 +646,7 @@ describe("<RoomChatBox /> commands", () => {
     await userEvent.type(box, "/");
 
     expect(await screen.findByRole("button", { name: /\/task.*command/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /\/swarm.*command/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\/memory.*command/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\/summarize-room/ })).toBeInTheDocument();
 
     await userEvent.clear(box);
@@ -675,19 +674,6 @@ describe("<RoomChatBox /> commands", () => {
     });
     expect(sendRoomMessage).not.toHaveBeenCalled();
     expect((box as HTMLTextAreaElement).value).toBe("");
-  });
-
-  it("opens the swarm dialog for /swarm, with the task filled in", async () => {
-    renderWithSWR(<RoomChatBox roomName="demo" />);
-    const box = await textarea();
-    await userEvent.click(box);
-    await userEvent.type(box, "/swarm write the 2.0 release notes{Enter}");
-
-    expect(await screen.findByRole("dialog", { name: "Start a swarm" })).toBeInTheDocument();
-    expect(screen.getByLabelText("What should the team work on?")).toHaveValue(
-      "write the 2.0 release notes",
-    );
-    expect(sendRoomMessage).not.toHaveBeenCalled();
   });
 
   it("opens the new-memory editor for a /memory with nothing to write yet, where its key points", async () => {
