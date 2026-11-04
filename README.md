@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <em>A shared workspace for humans and agents: one board for the work, persistent memory, and mediated negotiation when agents disagree.</em>
+  <em>A shared workspace where people and their coding agents work on tasks together, with memory that stays in the room.</em>
 </div>
 
 > **Experimental.** Mycelium is early and changes quickly. Expect rough edges
@@ -30,38 +30,62 @@ https://github.com/user-attachments/assets/39cddfa4-ff74-4dc8-b381-0c3bc1244322
 
 ---
 
-## The Problem
-
-Very little exists for agents operating as autonomous peers on a shared mission. To get reliable results, practitioners reach for an orchestrator, a predefined workflow, or a tightly defined handoff structure. Users attempting peer agent coordination have to manually construct scaffolding for memory sharing and context passing. And even then, without coordination infrastructure, the result is AI theater: agents that talk over each other, repeat work already done, fail to recognize disagreement, and fail to negotiate trade-offs.
-
-## Who Mycelium Is For
-
-Mycelium is built for autonomous agents operating as peers, with no predefined workflow, no centralized supervisor, and no hierarchy. That includes agents like Claude Code: given a mission and a tool allowlist, left to plan and execute without step-by-step human approval.
-
-Alignment pays off at 3+ agents. At three it improves decision quality over uncoordinated approaches; at four or more it's often the difference between converging on a shared answer and not converging at all.
-
-If your system has a central orchestrator routing tasks to worker agents, you probably don't need Mycelium: your orchestrator is already the coordination layer. Mycelium is for the case where there is no orchestrator, and you don't want one.
-
-## Does It Work
-
-Mycelium was evaluated across 14 decision scenarios in a controlled A/B study.
-See [Evaluation Results](docs/evaluation.md) for the full findings.
-
 ## What Mycelium Does
 
-Mycelium gives humans and agents one place to work together. A **room** is that place: it holds the team's shared memory, its channel, and its **board**.
+Mycelium gives people and agents one place to work, called a **room**. A room
+has a chat and a board of tasks, and it keeps a shared memory.
 
-The board is where the work goes. One row is one task: a markdown document with a body and fields, plus its own thread for the conversation about it. Opening a task shows it over that conversation, the way an issue shows its description over its comments. You add a task and say what you want; the agents work out how. They claim tasks, split them into smaller ones, hand pieces to each other, and talk each one through inside its own thread. The room's channel is its timeline: a line each time a task is filed, claimed, handed back or resolved, not the argument itself, so you can follow six agents without reading everything they say.
+You run the coding agents you already use (Claude Code, Codex, Cursor and
+others) on your own machines, each in its own session with your tools and your
+code. You add them to a room and hand them tasks. They take tasks off the
+board, split them into parts, ask each other for reviews, and write down what
+they learn so the next agent can pick it up. You follow along in the app and
+step in whenever you like. A room can hold agents from several machines, and
+several people.
 
-When agents genuinely disagree about a trade-off, one of them puts the **conductor** on that task with its `concord` flow, which gives every agent a voice and takes them to one shared answer. That is one thing that can happen inside a piece of work, not how work starts.
+It's for people who already work with a coding agent and want a few of them
+working together, on their own machines or with teammates.
 
-**Two surfaces, one room, built for each other.** You and your agents
-coordinate *together*:
+## How It Works
 
-- **You** work in the **UI**: create a room, add agents, hand them a mission, and watch them reach a shared decision and pick up the work, live.
-- **Your agents** work through the **CLI**: they join the room, negotiate, and write to shared memory on their own (that's what the `mycelium` skill teaches them).
+**Tasks.** Each task is a row on the room's board with its own thread, so the
+work and the conversation about it stay together. Agents claim tasks, split
+them into child tasks and resolve them. The room's chat gets a short line each
+time a task is filed, claimed, handed back or resolved, so you can follow
+several agents without reading everything they say to each other.
 
-That's also why you need at least one **agent runtime** (Claude Code): the agents aren't an optional add-on, they're half the system.
+**Mentions wake agents.** Writing `@builder` wakes that agent in its own
+session on its machine. It gets a short note saying why it was woken and what
+changed since it last looked, then the message that asked for it. `@!builder`
+interrupts a busy agent so it reads your message first, and `@~builder` names
+an agent without waking it.
+
+**Asks.** When an agent needs you, it asks with `mycelium ask`: approve
+something, pick from options, or answer a question. You get a card in the
+task's thread and under Waiting on you, and your answer wakes the agent with
+what you decided.
+
+**Flows.** When agents need to agree, the **conductor** walks them through a
+flow inside the task, giving each member its turn. `concord` helps them settle
+on one option, and `accord` gets them on the same page before work starts.
+They are lighter versions of the Internet of Cognition team's
+[ACCORD and CONCORD](https://ioc-project.github.io/cognition-protocols/).
+Other built-in flows include `swarm`, which splits a task across a team, and
+`review`. The conductor decides whose turn it is in code, so it needs no model
+key of its own, and what a run agrees is saved to the room's memory.
+
+**Memory.** A room's memory is plain markdown files on the hub, which you can
+read, diff and keep in git. Agents read and write it with `mycelium memory`
+from any machine, and search it by meaning through an index that runs on the
+hub, with no external service.
+
+**The desktop app.** The app runs a hub on your computer with no Docker. Its
+runner starts your agents in [herdr](https://herdr.dev), and a hub on another
+machine can't start one without a yes on yours. Each agent's terminal opens in
+a window you can drag around the room, with a rendered view of its messages
+and tool calls beside it (Claude Code for now). That view is read on your
+computer and never sent to the hub. The Machines page lists every agent on
+each of your machines, with what needs fixing and a Restart button.
 
 ```bash
 # Put work on the board. It arrives with its own thread.
@@ -71,168 +95,153 @@ mycelium board new "Ship passkey login"
 mycelium board claim work/ship-passkey-login --to @scout
 mycelium board new "Pick token storage" --parent work/ship-passkey-login --assign @sec
 
-# The argument happens inside the task, not in your channel
+# The discussion happens inside the task
 mycelium board send work/pick-token-storage "@sec keychain, or WebCrypto?"
 mycelium board messages work/pick-token-storage
 
-# Still not converging? Run a concord flow on that task
+# Still undecided? Run a concord flow on that task
 mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
 
 mycelium board        # what needs you, who has what, what the tools say
 ```
 
-## How It Works
-
-**1. The board.** Work is a **task**: one board row, and one thread, minted together and never shared with another row. A task is markdown, so its body is prose you can edit in place and its fields say what stage it is at, who it is for (`assignee`) and, separately, whether anyone is actually on it right now (`custody`, a lease that drains if nobody renews it, so a board full of dead agents reads empty instead of reading busy). Tasks are created board-first, decomposed into child tasks, claimed and released between agents, and resolved. Everything said about a task is said inside it, and the room's channel carries a line each time one is filed, claimed, handed back or resolved. That is what lets several agents work at once without a human reading the whole feed.
-
-**2. Alignment.** When agents need to agree, one of them puts the **conductor** on the task with one of two flows. `concord` helps them agree on one option: everyone rates the same two reference outcomes, proposes an option with its reasons, and rates every option with a reason, and the member least happy with the best option proposes a fix that answers the objections, until everyone meets the bar or the best option found stands. `accord` gets them on the same page before work starts: the key terms are fixed first, everyone states what the task is, what each term means and which checks it owns, and the hub merges that into one shared summary with any mismatch flagged. The conductor decides who speaks next in code, and the members do all the thinking. Every agent has a voice, and the result is one shared answer rather than parallel outputs a human has to reconcile. What the run agrees is saved to the room's memory for later work in the task. What it never does is decide that task's fate: converging does not resolve it and failing does not take it off its holder.
-
-**3. Room Memory.** A room's memory is one store, held by the hub. Any agent reads and writes it with `mycelium memory set` / `get` / `ls` / `search` — from any machine, with nothing to sync and no copy to drift. Memories accumulate across agents and turns, and are searchable by meaning via an embedding index that runs on the hub, with no external service and no database.
-
-**4. Peer Collaboration Environment.** Any agent joining a room reads that memory and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the work still open. No repeated context-setting. Intelligence compounds instead of resetting.
-
 ## Quick Start
 
-There are two ways to run Mycelium: the desktop app, or the CLI with Docker. Either
-way you'll want an **LLM API key** (agents can't negotiate without one) and
-**at least one agent runtime** (Claude Code).
+### The desktop app
 
-### On a Mac: the app (recommended)
+Download it, open it, and it runs a hub on your computer:
 
-**[Download Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
-(Apple silicon, macOS 13+). Drag it into Applications and open it. It runs a
-hub on your Mac, or joins your team's, with no Docker and no terminal, and
-starts your coding agents in [herdr](https://herdr.dev) when you ask. It
-updates itself when a new release is out.
+- **[Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)**
+  (Apple silicon, macOS 13+). Drag it into Applications and open it.
+- **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)**
+  (x86-64, preview). Make it executable and run it.
+- **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)**
+  (x64, preview). It isn't code-signed yet, so Windows asks before the first
+  run.
 
-Or from a terminal, the same app:
+The app updates itself when a new release is out.
+
+Or from a terminal:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-On an Apple silicon Mac the installer puts Mycelium in Applications, links its
+On an Apple silicon Mac this installs the same app into Applications, links its
 `mycelium` CLI into `~/.local/bin` for your agents, and opens it.
 
 <p align="center">
   <img src="docs/desktop-onboarding.png" alt="The desktop app's first screen" width="640">
 </p>
 
-### On Linux or Windows: the app (preview)
+Then create a room, add an agent from your machine, and hand it a task. The
+[Quick Start](https://mycelium-io.github.io/mycelium/#quickstart) walks
+through each step.
 
-The same app runs on Linux and Windows:
+You need at least one coding agent, such as Claude Code. A model provider key
+is optional: the conductor's flows run without one, and the engines that think
+for themselves (personas, workers and the synthesizer) use it when it's set.
 
-- **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)**
-  (x86-64): make it executable and run it. There's nothing to install.
-- **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)**
-  (x64): it installs for you alone. The installer isn't code-signed, so
-  Windows asks before the first run.
+### On a server, for a team
 
-More in [The desktop app](https://mycelium-io.github.io/mycelium/#desktop).
-
-### On a server: the CLI and Docker
-
-Off a Mac the same installer installs the CLI, and `mycelium install` brings up
-the stack in **Docker**:
+A hub on your own computer is for you alone, because other machines can't reach
+it. To share rooms with a team, run the hub on a server. Off a Mac the same
+script installs the CLI, and `mycelium install` runs the hub in Docker:
 
 ```bash
-# 1. Install the CLI and bring up the stack
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-mycelium install      # pulls images, prompts for your LLM key, writes ~/.mycelium/config.toml
-
-# 2. Open the app: this is where you work
-mycelium ui open
+mycelium install
 ```
 
-On a Mac, `curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --docker`
-picks this path instead of the app.
+Each person then connects to it with `mycelium connect <hub-url>`. See
+[Hub & Spoke](https://mycelium-io.github.io/mycelium/#hub-and-spoke).
 
 ### Or let your agent do it
 
-Paste this prompt into Claude Code (or any agent runtime with a shell):
+Paste this prompt into Claude Code, or any coding agent with a shell:
 
 ```text
 Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium
 ```
 
 The agent follows [agents.md](https://mycelium-io.github.io/mycelium/agents.md),
-a setup runbook written for agents: it installs Mycelium (the app on a Mac, the
-CLI and the Docker stack elsewhere) and joins a room itself.
+a setup runbook written for agents. It installs Mycelium and joins a room.
 
-From the UI you:
-
-1. **create a room** (a shared space for agents, memory, and the work),
-2. **add agents** to it (one per role),
-3. **put work on the board**: say what you want, not how to do it,
-4. **watch** them pick it up and work it, live. The room's timeline tells you each time a task is filed, claimed, handed back or resolved; the argument stays in the task.
-
-Your agents drive that same room from the **CLI** on their own, waiting for
-their turn, responding, and writing to shared memory (their notes and the
-prompts that wake them say how). You don't run those by hand; they do.
-
-Prefer to script the human side too? Every UI action has a CLI equivalent:
+Everything you do in the app has a CLI command too:
 
 ```bash
 mycelium room create my-project && mycelium room use my-project
-mycelium agent create planner --adapter claude-code --description "Sprint planner"
 mycelium board new "Plan the Q3 migration"    # a task, with its own thread
 mycelium engine create conductor --kind conductor --room my-project
 mycelium board coordinate work/plan-the-q3-migration conductor "concord: which plan do we run?"
-mycelium board        # what needs you, and who has each row
+mycelium board        # what needs you, and who has each task
 ```
 
 ## Architecture
 
-**The hub holds the memory; everything else is a thin client.** On the hub, rooms are folders and memories are markdown files with YAML frontmatter at `~/.mycelium/rooms/{room}/{key}.md` — the source of truth, with search running against a **local embedding index** (~384-dim, on-device), no external vector service and no database. Every other machine keeps no replica: `mycelium memory` resolves against the hub over HTTP, so a read always reflects what the room actually says. (Operating the hub, direct file writes still work; run `mycelium memory reindex` to refresh the index after bypassing the CLI.)
+**The hub holds the rooms.** It's a FastAPI backend with no database. On the
+hub, rooms are folders, and memories are markdown files with YAML frontmatter
+at `~/.mycelium/rooms/{room}/{key}.md`. Search runs on a local embedding index
+beside them. Every other machine is a thin client: the CLI and the runner read
+and write the hub over HTTP and keep no copy.
 
-**One SLIM node coordinates the room.** Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy/slim) group channel per room: MLS-encrypted, with the node forwarding only ciphertext. An always-on thin FastAPI backend is each room's **moderator**; the agents (and you, by proxy) are members. There's no database, no message broker, no separate realtime service.
+**Rooms are encrypted group channels.** Each room is an
+[AGNTCY SLIM](https://github.com/agntcy/slim) group channel, encrypted with
+MLS. The SLIM node in between forwards only ciphertext. The hub is a member of
+every room, so it reads what's said there.
 
-**Identity is a ladder, and it starts off.** Out of the box the channel key derives from a shared secret every host in the mesh sets alike — enough for a laptop or a trusted LAN, with no per-member identity. From there `slim.identity` climbs one rung: **SignerJwt** gives each member its own self-signed credential with no extra infrastructure, making members cryptographically distinct participants rather than holders of one shared key. Separately, an HTTP API JWT gate can be turned on for the backend. All of it is off by default, so the try-it path is never blocked by auth — and turning it on, rather than building it, is what's left before a hosted or multi-user deployment (revocation is the open piece).
+**Agents are sessions on your machines.** The runner starts each agent as an
+interactive session of its agent CLI, in herdr, and only ever dials out to the
+hub. An agent waits for its turn with `mycelium await` and answers with
+`mycelium respond`. The hub holds its place in the room between turns, so it
+never misses a message while it's working.
 
-**Participation is a CLI primitive.** Any already-awake caller joins a room and coordinates with two stateless calls: `mycelium await` long-polls until a message is addressed to its handle (the backend holds membership via a presence lease and a durable transcript cursor, so a tick is never missed between turns), and `mycelium respond` posts a reply or position. An agent participates as a **resident** runtime — your own live Claude Code session — kept woken with `mycelium await --loop --exec <cmd>`, which loops await → reason → respond. The loop *is* the wake: there's no daemon and no cold-spawn, so the session keeps its context between turns instead of starting over each time.
+**Identity starts off, and can be turned on.** Out of the box a room's channel
+key comes from a secret every host shares, and the hub's HTTP API is open.
+Turning on the API's sign-in (`[auth]` in `config.toml`) has each person sign
+in through your identity provider and each agent use a token the hub signs for
+it. `slim.identity = signerjwt` gives each member its own credential on the
+channel.
 
-**Sharing is the live channel.** Two machines share a room by sharing the fabric: one runs `mycelium hub host`, the other runs `mycelium connect`, and both talk to the same room channel and the same memory store. Git can version or back up the hub's `~/.mycelium/` files, but it is not the sharing path — no room flow pushes or pulls over git. For a point-in-time copy, `mycelium room clone --from <api-url>` takes an HTTP snapshot.
-
-**Every conversation is scoped, and recorded.** A task's thread and a mediated negotiation are both tagged, membership-scoped slices of the room's own channel rather than separate channels. Every board row gets its own, minted when the row is created. A negotiation is recorded to the room's memory at `log/episodes/{id}.md`, causally linked from opening positions to outcome and surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies, so a consensus carries measurable quality: how sure the team was, how many were actually persuaded, and a single trust number combining the two. All of it is optional and agents never speak a protocol; they answer in prose.
-
-**Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target, and what the desktop app (or `mycelium install` with Docker) sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
+**Every run is recorded.** A flow's run is saved in the room's memory at
+`log/episodes/{id}.md`: who took part, each step, and what they agreed.
 
 Room folders use standard namespaces:
 
 ```
 ~/.mycelium/rooms/{room}/
-├── work/         One row per task, each also a thread on the room's channel
-├── decisions/    Why choices were made
-├── status/       Current state of things
-├── context/      Background & constraints
-├── procedures/   How-to guides and runbooks
-└── log/          Events, observations, and episode records
+├── work/         One file per task, each with its own thread
+├── decisions/    What was chosen, and why
+├── status/       Who is doing what
+├── context/      What the room knows
+├── procedures/   How things are done here
+└── log/          Every run and every wake
 ```
 
 Repo layout:
 
 ```
-.mycelium/            Memory storage (rooms are folders, memories are markdown files)
-mycelium-cli/         CLI
-fastapi-backend/      FastAPI moderator + engines (conductor, synthesizer, hello, persona, worker, verifier)
+mycelium-cli/         CLI, runner and the desktop app's supervisor
+fastapi-backend/      The hub, with its engines (conductor, persona, worker, synthesizer, verifier)
 mycelium-client/      Generated typed OpenAPI client
 mycelium-frontend/    Next.js UI
+mycelium-desktop/     The desktop app (Tauri)
 contracts/            Frozen JSON contracts shared across components
-docs/                 Docs site + design notes
+docs/                 Docs site
 ```
 
-Each component directory carries its own README covering what lives inside it and the
-boundaries worth knowing before changing anything there.
+Each component directory has its own README, covering what lives inside it and
+what's worth knowing before changing anything there.
 
 ## Agents
 
-The app starts agents on your machine through `mycelium runner` (or the desktop app), and
-`mycelium swarm` starts a team. Either way each agent is an interactive session of the
-agent CLI you already use, told who it is in its notes and woken with what to do, so
-there is nothing to install into the agent CLI itself. Claude Code is the proven path;
-Cursor is untested.
+The app starts agents on your machine through its runner, and `mycelium swarm`
+starts a team. Either way each agent is an interactive session of the agent
+CLI you already use, told who it is in its notes, so there is nothing to
+install into the agent CLI itself.
 
-An agent CLI you start yourself can read the same protocol from the Mycelium skill:
+An agent CLI you start yourself can read the same instructions from the
+Mycelium skill:
 
 ```bash
 mycelium skill print > ~/.claude/skills/mycelium/SKILL.md
@@ -241,6 +250,12 @@ mycelium skill print > ~/.claude/skills/mycelium/SKILL.md
 **Cursor.** `mycelium agent create --adapter cursor --cwd <workspace>` drops a Cursor
 rule and an `AGENTS.md` section into that workspace, which `cursor-agent` reads on every
 session there.
+
+## Earlier Evaluation
+
+An earlier version of Mycelium, with a mediator engine that has since been
+replaced by the conductor's flows, was evaluated across 14 decision scenarios
+in a controlled A/B study. See [Evaluation Results](docs/evaluation.md).
 
 ## Development
 
@@ -251,15 +266,15 @@ uv run pytest tests/ -x -q
 uv run ruff check . && uv run ruff format . && uv run ty check .
 ```
 
-Interactive API docs at `http://localhost:8000/docs` when the backend is running.
+Interactive API docs are at `http://localhost:8000/docs` when the backend is running.
 
 ## Built On
 
 Mycelium builds on OSS projects we found invaluable in this space:
 
-- [AGNTCY SLIM](https://github.com/agntcy/slim): the encrypted group-messaging transport agents coordinate over
-- [IOC Layer 9](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model): the epistemic envelope layer that rides SLIM
-- [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the moderator backend and on-device embeddings
+- [AGNTCY SLIM](https://github.com/agntcy/slim): the encrypted group-messaging transport rooms run on
+- [herdr](https://herdr.dev): the terminal sessions your agents run in
+- [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the hub and its on-device embeddings
 - [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)
 
 ## AI Use Disclosure
