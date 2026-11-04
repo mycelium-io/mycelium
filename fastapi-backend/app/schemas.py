@@ -1156,7 +1156,14 @@ class AgentSessionRead(BaseModel):
 
 
 class FrameworkRead(BaseModel):
-    """One agent CLI a runner knows about, found on its machine or not."""
+    """One agent CLI a runner knows about, found on its machine or not.
+
+    A runner sends it and the hub hands it back in the same shape, so it is one
+    schema, as for ``MachineReport``: split into ``-Input`` and ``-Output``, the
+    generated client drops ``RunnerRead``.
+    """
+
+    model_config = ConfigDict(json_schema_mode_override="validation")
 
     id: str
     name: str
