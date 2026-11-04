@@ -23,8 +23,8 @@
  * recorder's business and not the caller's.
  */
 
-import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { mkdir, readFile } from "node:fs/promises";
+import { dirname, extname } from "node:path";
 import { OVERLAY_DEFAULTS, installOverlay } from "./cursor.mjs";
 import { defaultFormat, findEncoder, startEncoder } from "./encode.mjs";
 import { frameOf, policyOf, preparePage, seedStorage } from "./engine.mjs";
@@ -160,6 +160,9 @@ export async function record(eng, spec, ctx) {
   /** @type {ReturnType<typeof startSpool> | null} */
   let spool = null;
   try {
+    // As a screenshot does: ffmpeg won't make the folder, and dies writing to
+    // it before the first frame, which surfaces only as a broken pipe.
+    await mkdir(dirname(ctx.out), { recursive: true });
     await page.goto(spec.url, { waitUntil: spec.waitUntil ?? "domcontentloaded", timeout: spec.timeout ?? 30_000 });
     // Waits, hidden selectors and extra CSS, but not the actions: those are the
     // take, and they have to happen with the camera rolling.
@@ -481,6 +484,23 @@ export function makeCursor(page, opts) {
         await sleep(timing.dwellMs);
         await zoomOut();
       }
+      return p;
+    },
+
+    /**
+     * Travel to the middle of `locator`, press, carry the pointer `dx`, `dy`
+     * at a hand's pace with the press still drawn, and let go there.
+     */
+    async drag(locator, dx, dy, o = {}) {
+      const p = await pointOf(locator, o);
+      await glideTo(p.x, p.y);
+      await page.evaluate(() => window.__shotkit?.press(true)).catch(() => {});
+      opts.sounds?.push({ at: Date.now(), kind: "click" });
+      await page.mouse.down();
+      await sleep(timing.pressMs);
+      await glideTo(p.x + dx, p.y + dy, timing.moveMs * 1.5);
+      await page.mouse.up();
+      await page.evaluate(() => window.__shotkit?.press(false)).catch(() => {});
       return p;
     },
 
