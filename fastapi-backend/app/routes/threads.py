@@ -12,6 +12,8 @@ has one answers with that one.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
@@ -78,32 +80,33 @@ async def start_thread(
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     handle = actor.bind_delegated_actor(request, room_name, body.handle, field="handle")
-    if (existing := threads.thread_of_message(room_name, body.from_)) is not None:
-        response.status_code = 200
-        return _read(room_name, existing)
-    message = threads.message_in_room(room_name, body.from_)
-    if message is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No message {body.from_!r} in the channel of room {room_name!r} "
-            "to start a thread from",
+    async with _writing(room_name):
+        if (existing := threads.thread_of_message(room_name, body.from_)) is not None:
+            response.status_code = 200
+            return _read(room_name, existing)
+        message = threads.message_in_room(room_name, body.from_)
+        if message is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No message {body.from_!r} in the channel of room {room_name!r} "
+                "to start a thread from",
+            )
+        title = threads.title_of(message.content if isinstance(message.content, str) else "")
+        written = await upsert_memories(
+            room_name,
+            MemoryBatchCreate(
+                items=[
+                    MemoryCreate(
+                        key=threads.free_key(room_name, title),
+                        value=title,
+                        created_by=handle,
+                        meta={threads.FROM_META: body.from_},
+                    )
+                ]
+            ),
+            system={EPISODE_META: tasks.mint_episode_urn(room_name)},
         )
-    title = threads.title_of(message.content if isinstance(message.content, str) else "")
-    written = await upsert_memories(
-        room_name,
-        MemoryBatchCreate(
-            items=[
-                MemoryCreate(
-                    key=threads.free_key(room_name, title),
-                    value=title,
-                    created_by=handle,
-                    meta={threads.FROM_META: body.from_},
-                )
-            ]
-        ),
-        system={EPISODE_META: tasks.mint_episode_urn(room_name)},
-    )
-    return written[0]
+        return written[0]
 
 
 @router.post(
@@ -126,20 +129,34 @@ async def thread_task(
         raise HTTPException(status_code=422, detail=f"{key!r} is not a thread")
     handle = actor.bind_delegated_actor(request, room_name, body.handle, field="handle")
     thread = _read(room_name, key)
-    for task_key, meta, _content in list_memory_files(
-        get_room_dir(room_name), prefix=f"{tasks.WORK_NAMESPACE}/", limit=None
-    ):
-        related = meta.get(THREAD_RELATION)
-        if related == key or (isinstance(related, list) and key in related):
-            response.status_code = 200
-            return _read(room_name, task_key)
-    title = str(thread.value) if isinstance(thread.value, str) else key
-    if isinstance(thread.value, dict):
-        title = str(thread.value.get("text") or key).splitlines()[0]
-    return await tasks.create_task(
-        room_name,
-        title,
-        content=f"From the thread [[{key}]].",
-        created_by=handle,
-        meta={THREAD_RELATION: key},
-    )
+    async with _writing(room_name):
+        for task_key, meta, _content in list_memory_files(
+            get_room_dir(room_name), prefix=f"{tasks.WORK_NAMESPACE}/", limit=None
+        ):
+            related = meta.get(THREAD_RELATION)
+            if related == key or (isinstance(related, list) and key in related):
+                response.status_code = 200
+                return _read(room_name, task_key)
+        title = str(thread.value) if isinstance(thread.value, str) else key
+        if isinstance(thread.value, dict):
+            title = str(thread.value.get("text") or key).splitlines()[0]
+        return await tasks.create_task(
+            room_name,
+            title,
+            content=f"From the thread [[{key}]].",
+            created_by=handle,
+            # A task of the same name already on the board keeps its row.
+            key=threads.free_key(room_name, title, namespace=tasks.WORK_NAMESPACE),
+            meta={THREAD_RELATION: key},
+        )
+
+
+#: One writer at a time per room for what these routes check and then write
+#: (is there a thread for this message, is this key free, does this thread
+#: have a task), so two at once can't both pass the check and the second
+#: overwrite the first.
+_writers: dict[str, asyncio.Lock] = {}
+
+
+def _writing(room: str) -> asyncio.Lock:
+    return _writers.setdefault(room, asyncio.Lock())

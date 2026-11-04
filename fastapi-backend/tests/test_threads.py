@@ -8,6 +8,7 @@ thread of its own like any memory, never shows on the board, and the light
 memory list says what has been said in it, worked out from the history.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -76,6 +77,52 @@ async def test_a_thread_is_named_after_its_message_and_started_once(client, room
     assert again.status_code == 200
     assert again.json()["key"] == thread["key"]
     assert again.json()["episode"] == thread["episode"]
+
+
+async def test_starts_at_once_land_in_one_thread_and_never_take_another_s(
+    client, room, monkeypatch
+):
+    from app.routes import memory
+
+    write = memory.upsert_memories
+
+    async def slow_write(*args, **kwargs):
+        # A write that yields before it lands, as one waiting on the disk or an
+        # embedding does, so the starts below overlap there.
+        await asyncio.sleep(0.02)
+        return await write(*args, **kwargs)
+
+    monkeypatch.setattr(memory, "upsert_memories", slow_write)
+    alert = _say(1, "operator", ALERT)
+    # Another message whose first line is the same: its thread needs a key of its own.
+    again = _say(2, "builder", ALERT)
+    started = await asyncio.gather(
+        *(_start(client, alert, handle=h) for h in ("reviewer", "builder", "operator")),
+        _start(client, again),
+    )
+    assert sorted(r.status_code for r in started) == [200, 200, 201, 201]
+    on_alert = {r.json()["key"] for r in started[:3]}
+    assert len(on_alert) == 1
+    other = started[3].json()["key"]
+    assert other not in on_alert
+    listed = (await client.get(f"/api/rooms/{ROOM}/memory/summaries")).json()
+    froms = {s["key"]: s["meta"]["from"] for s in listed if s["key"].startswith("threads/")}
+    assert froms == {next(iter(on_alert)): alert, other: again}
+
+
+async def test_a_task_from_a_thread_leaves_a_task_of_the_same_name_alone(client, room):
+    key = (await _start(client, _say(1, "operator", ALERT))).json()["key"]
+    title = "Adding an alert for when payments start failing."
+    board = await client.post(
+        f"/api/rooms/{ROOM}/tasks", json={"title": title, "handle": "builder"}
+    )
+    first = board.json()["key"]
+    made = (
+        await client.post(f"/api/rooms/{ROOM}/threads/{key}/task", json={"handle": "builder"})
+    ).json()
+    assert made["key"] != first
+    kept = (await client.get(f"/api/rooms/{ROOM}/memory/{first}")).json()
+    assert "relates-to" not in (kept.get("meta") or {})
 
 
 async def test_a_thread_needs_a_message_in_the_room_s_own_channel(client, room):

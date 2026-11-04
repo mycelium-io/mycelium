@@ -72,12 +72,13 @@ def thread_of_message(room: str, message_id: str) -> str | None:
     return None
 
 
-def free_key(room: str, title: str) -> str:
-    """A ``threads/`` key for ``title`` that no memory in the room has yet."""
+def free_key(room: str, title: str, *, namespace: str = THREADS_NAMESPACE) -> str:
+    """A key in ``namespace`` for ``title`` that no memory in the room has yet,
+    so a write there makes a memory rather than replacing one."""
     from app.services.filesystem import get_room_dir, read_memory_file
     from app.services.tasks import slugify
 
-    base = f"{THREADS_NAMESPACE}/{slugify(title)}"
+    base = f"{namespace}/{slugify(title)}"
     key, n = base, 2
     while read_memory_file(get_room_dir(room), key) is not None:
         key, n = f"{base}-{n}", n + 1
