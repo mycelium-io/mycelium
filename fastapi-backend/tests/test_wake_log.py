@@ -180,7 +180,9 @@ def _register(handle: str) -> None:
     )
 
 
-def test_a_mention_of_an_agent_nothing_runs_waits_then_is_dropped_saying_why(manager, monkeypatch):
+def test_a_mention_of_an_agent_nothing_runs_says_so_at_once_and_waits_for_a_pane(
+    manager, monkeypatch
+):
     from app.services import principals
 
     _register("builder")
@@ -189,13 +191,15 @@ def test_a_mention_of_an_agent_nothing_runs_waits_then_is_dropped_saying_why(man
     # An agent just added may be seconds from showing up in herdr, so its wake
     # waits for a pane; a person is reached some other way.
     assert rung == {"builder": True, "julia": False}
-    assert wake_log.read(ROOM) == []
-    assert manager.drain_herdr_wakes(ROOM, hold_ttl_s=-1.0) == []
+    # Said when it is queued, so it's there even where no runner ever drains the room.
     (record,) = wake_log.read(ROOM)
     assert record["agent"] == "builder"
     # Not lost: it reads the message on its next await. Nothing could be woken.
-    assert record["outcome"] == "dropped"
-    assert "no herdr pane reporting it" in record["why"]
+    assert record["outcome"] == "unreached"
+    assert "nothing is running it" in record["why"]
+    # Expiring unclaimed adds no second line for the same thing.
+    assert manager.drain_herdr_wakes(ROOM, hold_ttl_s=-1.0) == []
+    assert len(wake_log.read(ROOM)) == 1
 
 
 def test_a_mention_for_an_agent_whose_pane_shows_up_soon_is_delivered(manager):
@@ -204,7 +208,7 @@ def test_a_mention_for_an_agent_whose_pane_shows_up_soon_is_delivered(manager):
     manager.set_herdr_presence(ROOM, {"builder": "idle"})
     (wake,) = manager.drain_herdr_wakes(ROOM)
     assert wake["handle"] == "builder"
-    assert wake_log.read(ROOM) == []  # held, then handed: nothing dropped
+    assert [r["outcome"] for r in wake_log.read(ROOM)] == ["unreached"]  # nothing dropped
 
 
 def test_the_log_reads_newest_first_and_by_agent():

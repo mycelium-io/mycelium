@@ -383,17 +383,35 @@ def test_a_mention_just_after_an_agent_is_added_waits_for_its_pane(
     assert (wake["handle"], wake["reason"], wake["from"]) == ("cursor-1", "mention", "selina")
 
 
-def test_a_wake_for_an_agent_whose_pane_never_shows_up_is_dropped_saying_why(
+def test_a_wake_for_an_agent_that_never_shows_up_is_said_once_and_gives_no_roster_member(
     manager: room_channels.RoomChannelManager,
 ) -> None:
     from app.services import wake_log
 
     _register("room-a", "claude-1")
     assert manager.ring_asked("room-a", "claude-1", "mention", sender="selina") is True
+    # Nothing says it is there, so the roster doesn't grow a member for it.
+    assert "claude-1" not in manager.presence("room-a")
     assert manager.drain_herdr_wakes("room-a", hold_ttl_s=-1.0) == []
     (record,) = wake_log.read("room-a")
-    assert (record["agent"], record["outcome"]) == ("claude-1", "dropped")
-    assert "no herdr pane reporting it" in record["why"]
+    assert (record["agent"], record["outcome"]) == ("claude-1", "unreached")
+    assert "nothing is running it" in record["why"]
+
+
+def test_an_agent_that_lapses_after_being_seen_still_shows_its_tag_and_is_dropped_saying_why(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    from app.services import wake_log
+
+    _register("room-a", "claude-1")
+    manager.ring_asked("room-a", "claude-1", "mention", sender="selina")
+    manager.set_herdr_presence("room-a", {"claude-1": "working"})
+    assert manager.drain_herdr_wakes("room-a") == []  # held; a pane has reported it
+    manager.set_herdr_presence("room-a", {"claude-1": "working"}, ttl_s=-1.0)  # lapsed
+    assert manager.presence("room-a")["claude-1"].wake_pending is True
+    assert manager.drain_herdr_wakes("room-a", hold_ttl_s=-1.0) == []
+    outcomes = [r["outcome"] for r in wake_log.read("room-a")]
+    assert outcomes == ["dropped", "unreached"]
 
 
 def test_an_interrupt_with_nothing_running_rings_as_a_mention(
@@ -422,6 +440,7 @@ def test_a_row_filed_for_an_agent_before_its_pane_shows_up_waits_for_it(
     _register("room-a", "cursor-1", adapter="cursor")
     filed = {"subkind": "filed", "key": "work/repro", "title": "Reproduce it", "for": "cursor-1"}
     assert manager.herdr_wake_assigned("room-a", filed) is True
+    assert "cursor-1" not in manager.presence("room-a")
     manager.set_herdr_presence("room-a", {"cursor-1": "working"})
     [wake] = manager.drain_herdr_wakes("room-a")
     assert (wake["reason"], wake["key"]) == ("assigned", "work/repro")

@@ -25,6 +25,7 @@ Design rules (mirrors the package docstring):
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import logging
@@ -32,6 +33,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -318,6 +320,21 @@ def build_mention_prompt(room: str, handle: str) -> str:
     )
 
 
+#: Held across each read-modify-write of the registry file. The runner's sync
+#: threads (one per room) and its refresh all edit it, so two edits at once
+#: would otherwise lose one. Across processes, a write is atomic (:meth:`HerdrRegistry._save`).
+_REGISTRY_LOCK = threading.RLock()
+
+
+def _locked(method):  # noqa: ANN001, ANN202 - wraps methods of every signature
+    @functools.wraps(method)
+    def held(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        with _REGISTRY_LOCK:
+            return method(*args, **kwargs)
+
+    return held
+
+
 class HerdrRegistry:
     """JSON-file registry of ``handle -> pane`` mappings under ``~/.mycelium/herdr``.
 
@@ -347,7 +364,11 @@ class HerdrRegistry:
 
     def _save(self, data: dict[str, dict]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        # Written beside and moved over it, so a reader in another process
+        # never sees half a file (which reads as an empty registry).
+        scratch = self._path.with_name(f"{self._path.name}.{os.getpid()}.{threading.get_ident()}")
+        scratch.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        scratch.replace(self._path)
 
     @staticmethod
     def _mapping(room: str, handle: str, entry: dict) -> HerdrPaneMapping:
@@ -378,6 +399,7 @@ class HerdrRegistry:
             return None
         return self._mapping(room, h, entry)
 
+    @_locked
     def set(self, mapping: HerdrPaneMapping) -> None:
         """Write ``mapping``. A folder or session it doesn't say is kept from
         before, for the same pane and the same kind of agent.
@@ -406,6 +428,7 @@ class HerdrRegistry:
         data[mapping.key] = entry
         self._save(data)
 
+    @_locked
     def note_chats(self, panes: Collection[str]) -> None:
         """Record that the agent in each of ``panes`` was seen working, which
         means a conversation exists there. Once recorded it stays."""
@@ -421,6 +444,7 @@ class HerdrRegistry:
         if changed:
             self._save(data)
 
+    @_locked
     def note_sessions(self, worked: dict[str, str], seen: dict[str, str] | None = None) -> None:
         """Record, for each mapped pane, the session its agent last worked in.
 
@@ -448,6 +472,7 @@ class HerdrRegistry:
         if changed:
             self._save(data)
 
+    @_locked
     def remove(self, room: str, handle: str) -> bool:
         data = self._load()
         key = f"{room}/{handle.lstrip('@')}"

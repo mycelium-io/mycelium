@@ -308,6 +308,27 @@ def test_seeing_a_pane_working_is_remembered_as_a_chat(
     assert mapped is not None and mapped.chatted is False
 
 
+def test_edits_to_the_registry_from_several_threads_are_none_of_them_lost(
+    isolated_home: Path,
+) -> None:
+    import threading
+
+    reg = HerdrRegistry()
+    handles = [f"agent-{n}" for n in range(24)]
+    for n, handle in enumerate(handles):
+        reg.set(HerdrPaneMapping(room="design", handle=handle, pane=f"w1:p{n}", kind="cursor"))
+    threads = [
+        threading.Thread(target=reg.note_chats, args=({f"w1:p{n}"},)) for n in range(len(handles))
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert all(m.chatted for m in reg.all()) and len(reg.all()) == len(handles)
+    # No scratch file is left beside it.
+    assert [p.name for p in reg.path.parent.iterdir() if p.name != reg.path.name] == []
+
+
 def test_a_wake_never_reads_or_presses_anything_in_a_codex_that_quotes_its_welcome(
     monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ) -> None:

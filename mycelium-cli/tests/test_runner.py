@@ -1201,6 +1201,56 @@ def test_a_cursor_agent_with_no_chat_open_isnt_introduced_until_it_works(
     assert len(herdr.of("agent prompt")) == 1
 
 
+def test_a_cursor_that_never_read_as_ready_still_waits_for_a_chat_before_its_introduction(
+    make_runner, cursor_herdr: Herdr, hub: Hub
+):
+    # It started but herdr read it idle at the first-run stage (``came_up``): the
+    # same hold applies, so the empty pane is never typed into.
+    herdr = cursor_herdr
+    herdr.start_leaves = "idle"
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "cursor"})
+    r.refresh()
+    assert herdr.of("agent prompt") == []
+    agent = r.hello_body()["agents"][0]
+    assert agent["status"] == "blocked"
+    assert "no Cursor Agent chat is open" in agent["detail"]
+
+    herdr.live["w9:p1"] = "working"
+    r.refresh()
+    assert len(herdr.of("agent prompt")) == 1
+
+
+def test_adopting_a_cursor_pane_waits_for_a_chat_then_takes_its_introduction_while_it_works(
+    make_runner, cursor_herdr: Herdr, hub: Hub
+):
+    herdr = cursor_herdr
+    r = make_runner()
+    idle = _already_running(herdr)
+    result = r.adopt({"room": "eng", "handle": "shop", "pane": idle, "framework": "cursor"})
+    assert result["introduced"] is False
+    assert herdr.of("agent prompt") == []
+    assert r.hello_body()["agents"][0]["status"] == "blocked"
+
+    # A pane already in a conversation (working) is introduced as a follow-up.
+    working = _already_running(herdr, "working")
+    result = r.adopt({"room": "eng", "handle": "tool", "pane": working, "framework": "cursor"})
+    assert result["introduced"] is True
+    assert [p[2] for p in herdr.of("agent prompt")] == [working]
+    mapped = r.bridge.registry.get("eng", "tool")
+    assert mapped is not None and mapped.chatted is True
+
+
+def test_a_claude_pane_that_is_working_is_still_not_introduced_until_idle(
+    make_runner, herdr: Herdr, hub: Hub
+):
+    # Only a CLI whose chat stays working takes its introduction mid-turn.
+    r = make_runner()
+    pane = _already_running(herdr, "working")
+    assert r.adopt({"room": "eng", "handle": "shop", "pane": pane})["introduced"] is False
+    assert herdr.of("agent prompt") == []
+
+
 def test_an_agent_that_goes_idle_between_turns_is_still_introduced_at_once(
     make_runner, herdr: Herdr, hub: Hub
 ):

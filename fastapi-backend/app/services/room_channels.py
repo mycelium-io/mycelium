@@ -503,10 +503,11 @@ class RoomChannelManager:
         # idle yet. Surface it even on a handle with no other presence (its herdr
         # overlay may have lapsed while the wake is still held) so the tag stays
         # visible until it lands.
+        unseen = {w["handle"] for w in self._herdr_wakes.get(room, []) if w.get("unseen")}
         for h in self.pending_herdr_wakes(room):
             if h in out:
                 out[h].wake_pending = True
-            else:
+            elif h not in unseen:
                 out[h] = MemberPresence(kind="herdr", wake_pending=True)
         return out
 
@@ -599,6 +600,7 @@ class RoomChannelManager:
         sender: str | None = None,
         episode: str | None = None,
         why: str | None = None,
+        unseen: bool = False,
     ) -> None:
         """Ring the doorbell for a herdr-present handle in ``room``.
 
@@ -622,6 +624,11 @@ class RoomChannelManager:
         ``sender`` and ``episode`` say who rang last and where. What they said
         isn't kept here: when the wake is delivered, the digest it carries is
         built from the transcript then (``wake_digest``), so it is current.
+
+        ``unseen`` marks a wake for a registered agent no pane has reported yet
+        (:meth:`ring_asked`): the wake log has already said nothing could be
+        woken with it, so expiring unclaimed adds no second line, and it gives
+        the roster no member, since nothing says the agent is there.
         """
         queue = self._herdr_wakes.setdefault(room, [])
         entry: dict = {"handle": handle, "ts": time.monotonic(), "reason": reason}
@@ -635,9 +642,13 @@ class RoomChannelManager:
             entry["episode"] = episode
         if why:
             entry["why"] = why
+        if unseen:
+            entry["unseen"] = True
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
+                if unseen:
+                    w["unseen"] = True
                 # The reason only moves up: a turn or an assignment outranks a
                 # mention, and an interrupt outranks them all. Who rang and
                 # where move with it, so a wake never names the sender of a
@@ -709,11 +720,11 @@ class RoomChannelManager:
         mention from the app, from ``respond``, from a worker or from an engine
         rings the same way. A registered agent with no herdr pane yet is rung
         all the same: its pane may be a few seconds from showing up (just
-        added), so the wake waits in the hold queue for it, and is dropped,
-        saying why, if none ever does. Any other handle with no pane isn't
-        rung: a person or an engine is reached some other way, and an agent on
-        an ``await`` lease already has the turn. ``True`` when a wake was
-        queued.
+        added), so the wake waits in the hold queue for it, and the wake log
+        says at once that nothing could be woken with it yet. Any other handle
+        with no pane isn't rung: a person or an engine is reached some other
+        way, and an agent on an ``await`` lease already has the turn. ``True``
+        when a wake was queued.
 
         An ``interrupt`` also stops a working agent's turn, when the sender may
         (:mod:`app.services.interrupts`); otherwise it rings as a ``mention``.
@@ -725,6 +736,7 @@ class RoomChannelManager:
                 return False
             # Nothing is running to stop, so an interrupt is a mention.
             reason = "mention" if reason == "interrupt" else reason
+            self._note_unreached(room, name, reason, sender=sender, episode=episode)
         elif reason == "interrupt":
             from app.services import interrupts, pauses
 
@@ -732,8 +744,35 @@ class RoomChannelManager:
             # any other ask.
             if pauses.is_paused(room, name) or not interrupts.request(room, name, sender, status):
                 reason = "mention"
-        self.enqueue_herdr_wake(room, name, reason=reason, sender=sender, episode=episode)
+        self.enqueue_herdr_wake(
+            room, name, reason=reason, sender=sender, episode=episode, unseen=status is None
+        )
         return True
+
+    def _note_unreached(
+        self,
+        room: str,
+        handle: str,
+        reason: str,
+        *,
+        sender: str | None = None,
+        episode: str | None = None,
+        key: str | None = None,
+    ) -> None:
+        """Say in the wake log that a wake for ``handle`` can't be handed to anyone yet.
+
+        Not lost: the wake waits for its pane, and the agent reads what it was
+        asked on its next ``await``. Written when it is queued, so the log
+        tells why an agent wasn't woken even where no runner ever drains the room.
+        """
+        from app.services import wake_log
+
+        wake_log.dropped(
+            room,
+            {"handle": handle, "reason": reason, "from": sender, "episode": episode, "key": key},
+            "nothing is running it: no herdr pane reports it and it isn't awaiting",
+            outcome="unreached",
+        )
 
     def ring_subscribed(self, room: str, record: TranscriptRecord) -> list[str]:
         """Ring the doorbell of each herdr-present handle ``record`` falls under
@@ -776,11 +815,9 @@ class RoomChannelManager:
         person or an engine is reached some other way, and so is an agent that
         runs elsewhere (A2A). Its wake is queued for a pane that may yet appear
         (:meth:`ring_asked`)."""
-        from app.services.principals import classify_sender, is_resident
+        from app.services.principals import is_resident
 
-        if classify_sender(room, handle) != "agent" or not is_resident(room, handle):
-            return False
-        return handle not in self.members(room)
+        return is_resident(room, handle) and handle not in self.members(room)
 
     def herdr_wake_assigned(self, room: str, notice: dict[str, str]) -> bool:
         """Ring the herdr-present handle a newly filed row was given to.
@@ -794,8 +831,13 @@ class RoomChannelManager:
         if notice.get("subkind") != "filed" or not notice.get("for"):
             return False
         name = str(notice["for"]).lstrip("@").lower()
-        if self.herdr_status(room, name) is None and not self._unreachable_agent(room, name):
-            return False
+        unseen = self.herdr_status(room, name) is None
+        if unseen:
+            if not self._unreachable_agent(room, name):
+                return False
+            self._note_unreached(
+                room, name, "assigned", sender=notice.get("by"), key=notice.get("key")
+            )
         self.enqueue_herdr_wake(
             room,
             name,
@@ -803,6 +845,7 @@ class RoomChannelManager:
             key=notice.get("key"),
             title=notice.get("title"),
             sender=notice.get("by"),
+            unseen=unseen,
         )
         return True
 
@@ -864,6 +907,8 @@ class RoomChannelManager:
         held: list[dict] = []
         for w in queue:
             status = live.get(w["handle"], (None,))[0]
+            if status is not None:
+                w.pop("unseen", None)  # a pane has reported it: it is known now
             if w["handle"] in paused:
                 held.append(w)
                 continue
@@ -876,7 +921,8 @@ class RoomChannelManager:
                     f"held {minutes} min with no herdr pane reporting it "
                     "(no runner syncing this room)"
                 )
-                wake_log.dropped(room, w, why)
+                if not w.get("unseen"):  # an unseen one's log line is already written
+                    wake_log.dropped(room, w, why)
                 continue
             if mine is not None and w["handle"] not in mine:
                 held.append(w)  # another machine's agent: that runner takes it
