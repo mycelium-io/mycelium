@@ -7,7 +7,7 @@
 // room's prose and the task's argument remain separate.
 
 import { act } from "react";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -147,6 +147,36 @@ describe("<EventStream /> and the threads inside the room", () => {
     // falls back to the conversation, by URN rather than by the short id it shows.
     await userEvent.click(await screen.findByRole("button", { name: "Open task t3aa11bb" }));
     expect(onOpenThread).toHaveBeenCalledWith(THREAD);
+  });
+
+  it("draws a reply in a message's thread on that message's line, never as a row of its own", async () => {
+    const parent = { ...said("adding an alert for failing payments", LIVE, "operator"), id: "h6" };
+    vi.mocked(fetchMessages).mockResolvedValue({ messages: [parent] });
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
+      {
+        key: "threads/adding-an-alert-for-failing-payments",
+        title: "adding an alert for failing payments",
+        version: 1,
+        created_by: "reviewer",
+        updated_at: CREATED,
+        episode: THREAD,
+        meta: { from: "h6" },
+        thread: { replies: 1, repliers: ["risk"], last_reply: "what counts as failing?", last_reply_at: CREATED },
+      },
+    ]);
+    renderWithSWR(<EventStream roomName={ROOM} onOpenThread={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: /1 reply/ })).toHaveTextContent("what counts as failing?");
+    const reads = vi.mocked(fetchMemorySummaries).mock.calls.length;
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(ping("risk", "m-2"));
+    });
+
+    // Nothing drawn for it in the channel; the list is read again for the line.
+    expect(screen.queryByText("t3aa11bb")).toBeNull();
+    await waitFor(() => expect(vi.mocked(fetchMemorySummaries).mock.calls.length).toBeGreaterThan(reads));
   });
 
   it("names the task a thread belongs to when the room knows of one", async () => {

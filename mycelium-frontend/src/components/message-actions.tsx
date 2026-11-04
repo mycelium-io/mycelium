@@ -26,7 +26,7 @@ import {
   Quote,
 } from "lucide-react";
 import { createTask, createThread } from "@/lib/api";
-import type { MessageThread } from "@/lib/room-data";
+import { useRoomRevalidate, type MessageThread } from "@/lib/room-data";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
   insertIntoComposer,
@@ -150,19 +150,23 @@ function Bar({
   useKeyAction("message.quote", quote);
   useKeyAction("message.copy", copy);
 
-  // A thread starts empty, named after the message, and opens where a task's
-  // thread opens; the first reply is typed there.
+  // A thread starts empty, named by the hub after the message, and opens where
+  // a task's thread opens; the first reply is typed there. The room's list is
+  // read again at once, so the line under the message and the open thread's
+  // header don't wait for the write's push.
+  const revalidate = useRoomRevalidate(roomName);
   const [starting, setStarting] = useState(false);
+  const [threadError, setThreadError] = useState<string | null>(null);
   const startThread = async () => {
     if (!messageId) return;
     setStarting(true);
+    setThreadError(null);
     try {
-      const made = await createThread(roomName, {
-        from: messageId,
-        title: taskTitle(content),
-        handle: principal.trim() || "user",
-      });
+      const made = await createThread(roomName, { from: messageId, handle: principal.trim() || "user" });
+      revalidate();
       onOpenThread?.(made.episode);
+    } catch (e) {
+      setThreadError(e instanceof Error ? e.message : "Couldn't start the thread");
     } finally {
       setStarting(false);
     }
@@ -214,8 +218,10 @@ function Bar({
           to start one, or as it is to open the one this message has. */}
       {threads && messageId && (
         <IconButton
-          label={thread ? "Open the thread" : "Start a thread"}
-          className="size-7"
+          label={
+            thread ? "Open the thread" : threadError ? `Couldn't start the thread: ${threadError}` : "Start a thread"
+          }
+          className={threadError && !thread ? "size-7 text-red" : "size-7"}
           disabled={starting}
           onClick={() => (thread ? onOpenThread?.(thread.episode) : void startThread())}
         >

@@ -3875,6 +3875,221 @@
         }
       }
     },
+    "/api/rooms/{room_name}/threads": {
+      "post": {
+        "tags": [
+          "threads"
+        ],
+        "summary": "Start Thread",
+        "description": "Start a thread from a message in the room's channel, named after its first line.\n\nA message that already has a thread answers with it (200), so two people\nstarting one at once land in the same conversation.",
+        "operationId": "start_thread_api_rooms__room_name__threads_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/threads/{key}/task": {
+      "post": {
+        "tags": [
+          "threads"
+        ],
+        "summary": "Thread Task",
+        "description": "File a task from a thread, pointing back at it (``relates-to``).\n\nThe thread keeps its own conversation; the task gets one of its own. A\nthread that has a task already answers with it (200).",
+        "operationId": "thread_task_api_rooms__room_name__threads__key__task_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadTask"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/board": {
       "get": {
         "tags": [
@@ -7800,7 +8015,7 @@
           "memory"
         ],
         "summary": "List Memory Summaries",
-        "description": "List memories in a room as a list shows them: titles and frontmatter, no text.\n\nPaged and cached like the full list, newest first. A memory's text is\nread one memory at a time (``GET /memory/{key}``).",
+        "description": "List memories in a room as a list shows them: titles and frontmatter, no text.\n\nPaged and cached like the full list, newest first. A memory's text is\nread one memory at a time (``GET /memory/{key}``). A thread started from a\nmessage also says what has been said in it (``thread``), so the cache\nstamp follows the room's history as well as its memories.",
         "operationId": "list_memory_summaries_api_rooms__room_name__memory_summaries_get",
         "parameters": [
           {
@@ -19457,6 +19672,17 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadRepliesRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a thread started from a message (``threads/``): what has been said in it, worked out from the room's history when the list is read"
           }
         },
         "type": "object",
@@ -23863,6 +24089,86 @@
         ],
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
+      },
+      "ThreadCreate": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "From",
+            "description": "The id of the message in the room's channel to start it from"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "Who is starting it, recorded as its author"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "handle"
+        ],
+        "title": "ThreadCreate"
+      },
+      "ThreadRepliesRead": {
+        "properties": {
+          "replies": {
+            "type": "integer",
+            "title": "Replies",
+            "default": 0
+          },
+          "last_reply_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reply At"
+          },
+          "repliers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Repliers",
+            "description": "The newest few, newest first"
+          },
+          "last_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reply",
+            "description": "The newest reply's first line"
+          }
+        },
+        "type": "object",
+        "title": "ThreadRepliesRead",
+        "description": "What a thread started from a message has had said in it, for the line under\nthat message. Worked out on read, never stored."
+      },
+      "ThreadTask": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "Who is filing it, recorded as the task's author"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "ThreadTask"
       },
       "TransclusionRead": {
         "properties": {

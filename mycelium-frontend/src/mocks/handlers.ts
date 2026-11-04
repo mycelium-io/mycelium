@@ -219,9 +219,27 @@ function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
 }
 
 /** A memory as `GET /memory/summaries` lists it: named, with no text. */
-function memorySummary(room: string, memory: MockMemory): MemorySummary {
+function memorySummary(room: string, memory: MockMemory, messages: MockMessage[]): MemorySummary {
   const read = memoryRead(room, memory) as unknown as Memory & { created_at: string };
-  return { ...memorySummaryOf(read), created_at: read.created_at };
+  const summary: MemorySummary = { ...memorySummaryOf(read), created_at: read.created_at };
+  if (memory.key.startsWith("threads/") && memory.episode) summary.thread = threadReplies(messages, memory.episode);
+  return summary;
+}
+
+/** What's been said in a thread, as the hub works it out on read: replies,
+ *  the newest few who replied (newest first), and the newest reply. */
+function threadReplies(messages: MockMessage[], episode: string): NonNullable<MemorySummary["thread"]> {
+  const said = messages
+    .filter((m) => m.episode === episode && (m.message_type === "broadcast" || m.message_type === "l9_exchange"))
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const last = said.at(-1);
+  const repliers = [...new Set([...said].reverse().map((m) => m.sender_handle))].slice(0, 3);
+  return {
+    replies: said.length,
+    repliers,
+    last_reply: last ? (last.content.split("\n").find((l) => l.trim())?.trim() ?? null) : null,
+    last_reply_at: last?.created_at ?? null,
+  };
 }
 
 /** A room with no A2A bridge: no bridged members, no traffic — but still served
@@ -748,7 +766,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
           fx.memories
             .filter((m) => !prefix || m.key.startsWith(prefix))
             .slice(offset, offset + limit)
-            .map((m) => memorySummary(roomName, m)),
+            .map((m) => memorySummary(roomName, m, fx.messages)),
         );
       }
       // GET /memory/:key — the key is a path, so it spans the remaining segments.
@@ -855,9 +873,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
         // before the count, as the backend counts it — `total` is what is older
         // than the cursor, which is how a reader knows it has reached the start.
         const before = searchParams.get("before");
+        // `?id=` reads one message by its id (or the start of it).
+        const id = searchParams.get("id");
         if (episode && isLearnScenario()) learnOnThreadRead(fx, roomName, episode);
         const scoped = fx.messages.filter(
-          (m) => (!episode || m.episode === episode) && olderThan(m.created_at, before),
+          (m) =>
+            (!id || m.id.startsWith(id)) &&
+            (!episode || m.episode === episode) &&
+            olderThan(m.created_at, before),
         );
         const ordered = [...scoped].reverse();
         const messages = limit > 0 ? ordered.slice(0, limit) : ordered;
@@ -1049,24 +1072,50 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "threads": {
-      // POST /threads — a thread started from a message (MOCK of a proposed
-      // route): a `threads/` memory naming the message, with a thread of its
-      // own like a task's, and on no board, so no `filed` notice.
-      if (sub.length !== 1 || method !== "POST") return null;
+      if (method !== "POST") return null;
       const body = await readJson(req);
+      const by = String(body.handle ?? "user");
+      // POST /threads/{key}/task — a task filed from a thread, pointing back
+      // at it (`relates-to`); one that has a task answers with it.
+      if (sub.length > 2 && sub[sub.length - 1] === "task") {
+        const threadKey = sub.slice(1, -1).map(decodeURIComponent).join("/");
+        const thread = fx.memories.find((m) => m.key === threadKey);
+        if (!thread) return notFound(`thread ${threadKey} not found (mock)`);
+        const made = fx.memories.find((m) => m.key.startsWith("work/") && m.meta?.["relates-to"] === threadKey);
+        if (made) return json(memoryRead(roomName, made), 200);
+        const title = memText(thread).split("\n")[0] || threadKey;
+        const row: MockMemory = {
+          key: `work/${slug(title)}`,
+          value: `${title}\n\nFrom the thread [[${threadKey}]].`,
+          meta: { kind: "action", status: "open", "relates-to": threadKey },
+          created_by: by,
+          updated_by: by,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/work/${title}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+        };
+        fx.memories.push(row);
+        publish(roomName, memoryChangedFrame(row.key, 1, by));
+        return json(memoryRead(roomName, row), 201);
+      }
+      // POST /threads — a thread started from a message in the channel: a
+      // `threads/` memory naming the message, named after its first line, with
+      // a thread of its own like a task's, and on no board, so no `filed` notice.
+      if (sub.length !== 1) return null;
       const from = String(body.from ?? "");
-      const title = String(body.title ?? "").trim();
-      if (!from || !title) return json({ detail: "A thread needs the message it's from and a title." }, 422);
       const existing = fx.memories.find((m) => m.key.startsWith("threads/") && m.meta?.from === from);
       if (existing) return json(memoryRead(roomName, existing), 200);
-      const by = String(body.handle ?? "user");
+      const message = fx.messages.find((m) => m.id === from && !m.episode);
+      if (!message) return notFound(`No message ${from} in the channel to start a thread from (mock)`);
+      const line = message.content.split("\n").find((l) => l.trim())?.trim() ?? "Thread";
+      const title = line.length > 80 ? `${line.slice(0, 80).replace(/\s+\S*$/, "")}…` : line;
       let key = `threads/${slug(title)}`;
       for (let n = 2; fx.memories.some((m) => m.key === key); n++) key = `threads/${slug(title)}-${n}`;
       const row: MockMemory = {
         key,
         value: title,
         content_text: title,
-        meta: { kind: "thread", from },
+        meta: { from },
         created_by: by,
         updated_by: by,
         version: 1,

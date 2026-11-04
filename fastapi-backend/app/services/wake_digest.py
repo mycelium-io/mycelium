@@ -148,7 +148,15 @@ def _where(room: str, episode: str | None) -> tuple[str, str] | None:
 
 
 def _place(room: str, where: tuple[str, str] | None) -> str:
-    return f'"{where[1]}" ({where[0]})' if where else f"the room ({room})"
+    return f'{_kind(where)}"{where[1]}" ({where[0]})' if where else f"the room ({room})"
+
+
+def _kind(where: tuple[str, str]) -> str:
+    """``thread `` for a thread started from a message, which no one holds, so
+    a wake doesn't read it as a task; nothing for a task's own thread."""
+    from app.services.threads import is_message_thread
+
+    return "thread " if is_message_thread(where[0]) else ""
 
 
 def _rows(room: str) -> list[tuple[str, dict, str]]:
@@ -468,7 +476,7 @@ def _named(where: tuple[str, str]) -> str:
 def _in(room: str, record: Any) -> str:
     """Where ``record`` was said, for a box's header."""
     where = _where(room, record_episode(record))
-    return f"in {_named(where)}" if where else "in the room"
+    return f"in {_kind(where)}{_named(where)}" if where else "in the room"
 
 
 def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:

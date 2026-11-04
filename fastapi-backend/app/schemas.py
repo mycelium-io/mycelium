@@ -599,6 +599,16 @@ class MemoryRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ThreadRepliesRead(BaseModel):
+    """What a thread started from a message has had said in it, for the line under
+    that message. Worked out on read, never stored."""
+
+    replies: int = 0
+    last_reply_at: datetime | None = None
+    repliers: list[str] = Field(default_factory=list, description="The newest few, newest first")
+    last_reply: str | None = Field(None, description="The newest reply's first line")
+
+
 class MemorySummaryRead(BaseModel):
     """A memory as a list shows it: what it's called and its frontmatter, not its text.
 
@@ -626,6 +636,13 @@ class MemorySummaryRead(BaseModel):
     expandable: bool = False
     created_at: datetime
     updated_at: datetime
+    thread: ThreadRepliesRead | None = Field(
+        None,
+        description=(
+            "On a thread started from a message (``threads/``): what has been said "
+            "in it, worked out from the room's history when the list is read"
+        ),
+    )
 
 
 class MemorySearchRequest(BaseModel):

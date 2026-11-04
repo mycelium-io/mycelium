@@ -9,7 +9,15 @@ import {
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import { useCachedChannelPage, useChannelPage, useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
+import {
+  useCachedChannelPage,
+  useChannelPage,
+  useMessageSearch,
+  useMessageThreadsByEpisode,
+  useRoomMemories,
+  useRoomSettings,
+  type ThreadOwner,
+} from "@/lib/room-data";
 import { boardMovesInChat } from "@/lib/room-settings";
 import {
   NOTICE_TYPE,
@@ -524,6 +532,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // off the room's shared reads, so none of it costs a request of its own.
   const feed = useFeedContext(roomName, { onOpenThread, onOpenMemory });
   const { threads, rowNames, refreshFlags } = feed;
+  const messageThreads = useMessageThreadsByEpisode(roomName);
+  const { refresh: refreshMemories } = useRoomMemories(roomName);
   // Which board moves the room shows in its chat (a room setting).
   const { settings: roomSettings } = useRoomSettings(roomName);
   const boardMoves = useMemo(() => boardMovesInChat(roomSettings), [roomSettings]);
@@ -707,6 +717,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       return;
     }
     setResponding((prev) => settleActivity(prev, event.sender));
+    // A reply in a thread started from a message: the line under that message
+    // says so, and it reads what's been said off the room's memory list.
+    if (event.type === PING_TYPE && event.thread && messageThreads.has(event.thread)) {
+      refreshMemories();
+    }
     setEvents((prev) => {
       if (event.amends) return foldAmendment(prev, event);
       // A catch-up may have read it from the hub before its live frame landed.
@@ -756,15 +771,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return out;
   }, [events, roomName]);
 
+  // A ping from a thread started from a message draws nothing of its own, in
+  // the chat or on the rail: the line under that message is where it reads.
   const inChannel = useMemo(
     () =>
       events.filter(
         (e) =>
           CHANNEL_VIEW_TYPES.has(e.type) &&
           (!inAThread(e, roomName) || e.conductor?.event === "open") &&
-          !isVerifierCheck(e),
+          !isVerifierCheck(e) &&
+          !(e.type === PING_TYPE && e.thread && messageThreads.has(e.thread)),
       ),
-    [events, roomName],
+    [events, roomName, messageThreads],
   );
 
   const candidates = useMemo(

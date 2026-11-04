@@ -786,7 +786,7 @@ export function MessageRow({
           )}
           {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
           {startedThread && (
-            <ThreadReplies roomName={roomName} thread={startedThread} onOpen={ctx.onOpenThread} />
+            <ThreadReplies thread={startedThread} onOpen={ctx.onOpenThread} />
           )}
         </div>
         <MessageActions

@@ -1197,7 +1197,7 @@ const checkout: RoomFixture = {
     {
       key: "threads/when-should-the-payment-alert-fire",
       value: "When should the payment alert fire?",
-      meta: { kind: "thread", from: "h6" },
+      meta: { from: "h6" },
       created_by: "reviewer",
       version: 1,
       updated_at: iso(70),

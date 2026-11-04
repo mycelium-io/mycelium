@@ -310,15 +310,15 @@ export async function deleteRoom(roomName: string): Promise<void> {
   await apiFetch<void>(roomApiPath(roomName), { method: "DELETE" });
 }
 
-/** Put a task on a room's board, with its thread minted (the app's `board new`). */
 /**
- * Start a thread from a message: a `threads/` memory naming the message it
- * came from, bound to a thread of its own as a task's row is, but on no board.
- * (MOCK: the hub has no such route yet; the mock hub answers it.)
+ * Start a thread from a message in the room's channel: a `threads/` memory
+ * naming the message, named by the hub after its first line, with a thread of
+ * its own like a task's, but on no board. A message that has one answers with
+ * it. Throws `ApiError`.
  */
 export async function createThread(
   roomName: string,
-  data: { from: string; title: string; handle: string },
+  data: { from: string; handle: string },
 ): Promise<Memory & { episode: string }> {
   return apiFetch<Memory & { episode: string }>(`${roomApiPath(roomName)}/threads`, {
     method: "POST",
@@ -327,6 +327,24 @@ export async function createThread(
   });
 }
 
+/** File a task from a thread, pointing back at it (`relates-to`); a thread
+ *  that has one answers with it. Throws `ApiError`. */
+export async function createThreadTask(
+  roomName: string,
+  key: string,
+  handle: string,
+): Promise<Memory & { episode: string }> {
+  return apiFetch<Memory & { episode: string }>(
+    `${roomApiPath(roomName)}/threads/${encodeMemoryKeyPath(key)}/task`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ handle }),
+    },
+  );
+}
+
+/** Put a task on a room's board, with its thread minted (the app's `board new`). */
 export async function createTask(
   roomName: string,
   data: {
@@ -507,6 +525,19 @@ export interface MemorySummary {
   expandable?: boolean;
   meta?: Record<string, unknown> | null;
   episode?: string | null;
+  /** On a thread started from a message: what's been said in it, worked out
+   *  by the hub when the list is read. */
+  thread?: ThreadReplies | null;
+}
+
+/** What a thread started from a message has had said in it. */
+export interface ThreadReplies {
+  replies: number;
+  last_reply_at?: string | null;
+  /** The newest few, newest first. */
+  repliers: string[];
+  /** The newest reply's first line. */
+  last_reply?: string | null;
 }
 
 /** Every memory in a room (or under `prefix`) as a list shows it, newest
@@ -1311,6 +1342,8 @@ export interface MessageQuery {
   before?: string | null;
   /** Only messages created at or after this stamp: what a view missed. */
   since?: string | null;
+  /** One message, by its id (or the start of it). */
+  id?: string | null;
 }
 
 export async function fetchMessages(
@@ -1320,6 +1353,7 @@ export async function fetchMessages(
 ): Promise<MessagesResponse> {
   const params = new URLSearchParams();
   if (limit) params.set("limit", String(limit));
+  if (query.id) params.set("id", query.id);
   if (query.episode) params.set("episode", query.episode);
   if (query.before) params.set("before", query.before);
   if (query.since) params.set("since", query.since);

@@ -36,7 +36,9 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     Promise.resolve(room.memories.find((m) => m.key === key) ?? null),
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
   fetchSkills: vi.fn().mockResolvedValue([]),
+  createThreadTask: (...args: unknown[]) => createThreadTask(...args),
 }));
+const createThreadTask = vi.fn().mockResolvedValue({ key: "work/payment-alert", episode: "urn:e:task" });
 
 vi.mock("@/components/current-user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/components/current-user")>()),
@@ -249,6 +251,43 @@ describe("<ThreadView />", () => {
       es.emit({ message_type: "broadcast", sender_handle: "risk", content: "one more thing", episode: THREAD });
     });
     await waitFor(() => expect(fetchMessages.mock.calls.length).toBe(reads + 1));
+  });
+
+  it("opens a message's thread on the message it was started from, and files a task from it", async () => {
+    room.memories = [
+      {
+        key: "threads/when-should-the-payment-alert-fire",
+        value: "When should the payment alert fire?",
+        version: 1,
+        created_by: "reviewer",
+        updated_at: "2026-08-04T09:00:00+00:00",
+        episode: THREAD,
+        meta: { from: "h6" },
+      },
+    ];
+    const parent = {
+      id: "h6",
+      sender_handle: "operator",
+      message_type: "broadcast",
+      content: "adding an alert for when payments start failing",
+      created_at: "2026-08-04T09:00:00+00:00",
+    };
+    fetchMessages.mockImplementation(async (_room: string, _limit: number, query?: { id?: string }) =>
+      query?.id ? { messages: [parent], total: 1 } : NEWEST_FIRST,
+    );
+    renderWithSWR(<ThreadView roomName="atlas" target={{ episode: THREAD }} onClose={vi.fn()} />);
+
+    const origin = await screen.findByTestId("thread-origin");
+    expect(origin).toHaveTextContent("operator");
+    expect(origin).toHaveTextContent("adding an alert for when payments start failing");
+    expect(screen.getByText("When should the payment alert fire?")).toBeInTheDocument();
+    // The thread is about a message, not a memory to edit.
+    expect(screen.queryByRole("button", { name: "Edit task" })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Make a task" }));
+    await waitFor(() =>
+      expect(createThreadTask).toHaveBeenCalledWith("atlas", "threads/when-should-the-payment-alert-fire", "julia"),
+    );
   });
 
   it("is one scroll region — the task's body and its conversation share it", async () => {

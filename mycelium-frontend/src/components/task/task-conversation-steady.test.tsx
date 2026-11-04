@@ -23,6 +23,7 @@ vi.mock("@/lib/room-data", () => ({
   useRoomAgents: () => ({ agents: [{ handle: "builder", adapter: "claude_code" }] }),
   useRoomVerifierFlags: () => ({ byMessage: new Map(), refresh: vi.fn() }),
   useRoomThreads: () => new Map(),
+  useMessageThreads: () => new Map(),
   useRoomRowNames: () => new Map(),
 }));
 vi.mock("@/components/message-actions", () => ({ MessageActions: () => null }));
