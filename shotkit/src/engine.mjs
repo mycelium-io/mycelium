@@ -114,12 +114,15 @@ export class Engine {
     return pending;
   }
 
-  contextOptions({ width, height, scale, theme, reducedMotion = true, storageState }) {
+  contextOptions({ width, height, scale, theme, reducedMotion = true, storageState, grant = [] }) {
     return {
       // A saved login (cookies + localStorage per origin), loaded as the
       // context is created. Playwright reads the file itself; shotkit never
       // parses or logs it.
       ...(storageState ? { storageState } : {}),
+      // Browser permissions the page is given up front, for a flow that needs
+      // one headless can't ask for, like `clipboard-write` for a copy button.
+      ...(grant.length ? { permissions: grant } : {}),
       viewport: { width, height },
       deviceScaleFactor: scale,
       colorScheme: theme,
@@ -134,7 +137,7 @@ export class Engine {
   /** A pooled context. Shared between one-shot captures; sessions get their own. */
   async context(frame, policy) {
     const browser = await this.start(policy);
-    const key = `${policyKey(policy)}:${frame.width}x${frame.height}@${frame.scale}:${frame.theme}:${frame.reducedMotion !== false}:${storageStateKey(frame.storageState)}`;
+    const key = `${policyKey(policy)}:${frame.width}x${frame.height}@${frame.scale}:${frame.theme}:${frame.reducedMotion !== false}:${storageStateKey(frame.storageState)}:${(frame.grant ?? []).join(",")}`;
     let ctx = this.contexts.get(key);
     if (ctx) return ctx;
     ctx = await browser.newContext(this.contextOptions(frame));
@@ -303,6 +306,7 @@ export function frameOf(opts) {
     scale: opts.scale ?? 2,
     theme: opts.theme ?? "dark",
     reducedMotion: opts.reducedMotion !== false,
+    ...(opts.grant?.length ? { grant: [...opts.grant].sort() } : {}),
     ...(opts.storageState ? { storageState: requireStorageState(opts.storageState) } : {}),
   };
 }

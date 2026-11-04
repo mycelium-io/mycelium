@@ -17,7 +17,7 @@ import { splitHighlightedLines, guessLanguage } from "../src/code.mjs";
 import { parse, UsageError } from "../src/args.mjs";
 import { policyArgs, policyKey } from "../src/network.mjs";
 import { resolveViewport, viewportList } from "../src/viewports.mjs";
-import { locate, parseAction } from "../src/actions.mjs";
+import { locate, parseAction, parseDrag } from "../src/actions.mjs";
 import { backdrop, palette } from "../src/theme.mjs";
 import { ART_RENDERING, CANVAS_VARS, VEIL, canvasDocument } from "../src/canvas.mjs";
 import { CANVAS_PIXELATED } from "../src/project.mjs";
@@ -28,6 +28,7 @@ import { startPump } from "../src/pump.mjs";
 import { TILT_PRESETS, driftAt, isStaged, parseStageSize, parseTilt, stageDocument } from "../src/stage.mjs";
 import { startSpool } from "../src/restage.mjs";
 import { rng } from "../src/audio/dsp.mjs";
+import { readStalls, selfTime } from "../src/profile.mjs";
 import { limit, lufs, samplePeakDb, truePeakDb } from "../src/audio/master.mjs";
 import { readCues, writeCues } from "../src/audio/cues.mjs";
 import { renderFoley } from "../src/audio/foley.mjs";
@@ -224,6 +225,14 @@ test("--responsive expands to the breakpoint ladder", () => {
 test("an action splits on its first colon only", () => {
   assert.deepEqual(parseAction("fill:#q=a:b"), { verb: "fill", arg: "#q=a:b" });
   assert.deepEqual(parseAction("reload"), { verb: "reload", arg: "" });
+});
+
+test("a drag argument splits into a target and an offset on its last @", () => {
+  assert.deepEqual(parseDrag("#map@-40,25"), { target: "#map", dx: -40, dy: 25 });
+  assert.deepEqual(parseDrag("[data-x='a@b']@10, 0"), { target: "[data-x='a@b']", dx: 10, dy: 0 });
+  assert.throws(() => parseDrag("#map"), /drag:<selector>@<dx>,<dy>/);
+  assert.throws(() => parseDrag("#map@10"), /drag:<selector>@<dx>,<dy>/);
+  assert.throws(() => parseDrag("#map@1,2,3"), /drag:<selector>@<dx>,<dy>/);
 });
 
 test("a zoom argument splits into a target and a factor", () => {
@@ -775,6 +784,37 @@ test("a flow that loops, misnames itself, or has a typo'd field is refused by na
   assert.throws(() => loadFlows(dir), /named by its file/);
 });
 
+test("a profile counts only the stalls after the measured steps began, over the threshold", () => {
+  const raw = [
+    { at: 100, ms: 90 },   // before the click: setup, not counted
+    { at: 1004, ms: 70 },
+    { at: 1200, ms: 40 },  // under the threshold
+    { at: 1500, ms: 120.6 },
+  ];
+  assert.deepEqual(readStalls(raw, 1000), {
+    stalls: [{ at: 4, ms: 70 }, { at: 500, ms: 121 }],
+    total: 191,
+    longest: 121,
+  });
+});
+
+test("a CPU profile's self time sums by frame, leaving out idle and bookkeeping", () => {
+  const frame = (functionName, url = "", lineNumber = 0) => ({ functionName, url, lineNumber, columnNumber: 0 });
+  const profile = {
+    nodes: [
+      { id: 1, callFrame: frame("(root)") },
+      { id: 2, callFrame: frame("render", "http://x/_next/static/a.js", 9) },
+      { id: 3, callFrame: frame("(idle)") },
+      { id: 4, callFrame: frame("", "http://x/_next/static/b.js?v=1", 0) },
+    ],
+    samples: [2, 2, 3, 4, 2],
+    timeDeltas: [1000, 2000, 50000, 500, 1000],
+  };
+  assert.deepEqual(selfTime(profile), [
+    { at: "render a.js:10", ms: 4 },
+    { at: "(anonymous) b.js:1", ms: 0.5 },
+  ]);
+});
 
 process.stdout.write(failures ? `\n${failures} failing\n` : "\nall passing\n");
 process.exit(failures ? 1 : 0);
