@@ -4,9 +4,9 @@
 """Where a worker's tools work: a checkout on the hub, one per member.
 
 A room that runs workers has one repository on the hub, at
-``<data dir>/workspaces/<room>/repo``: a clone of the repository its swarm was
-started on, or an empty one when it was given none. Each worker works in its
-own git worktree of it (``<room>/<handle>``, on branch ``swarm/<handle>``), so
+``<data dir>/workspaces/<room>/repo``: a clone of the repository it was given,
+or an empty one when it was given none. Each worker works in its
+own git worktree of it (``<room>/<handle>``, on branch ``worker/<handle>``), so
 two members editing at once never share a checkout, and every part's work is a
 branch the others can read, review and merge from their own.
 
@@ -33,8 +33,9 @@ logger = logging.getLogger(__name__)
 WORKSPACES = "workspaces"
 #: The shared repository inside a room's workspace.
 REPO = "repo"
-#: A member's branch is this prefix plus its handle.
-BRANCH_PREFIX = "swarm/"
+#: A member's branch is this prefix plus its handle. A checkout made before the
+#: prefix changed keeps the branch it was made on (:func:`checkout_for`).
+BRANCH_PREFIX = "worker/"
 #: How long a clone may take before it is given up on.
 CLONE_TIMEOUT_S = 300.0
 #: How long any other git call may take.
@@ -153,7 +154,7 @@ def prepare(room: str, repo: str | None = None) -> Path:
                 if have != wanted:
                     raise WorkspaceError(
                         f"this room already works on {have or 'its own repository'}; "
-                        "start the swarm in another room to use a different one"
+                        "use another room to work on a different one"
                     )
                 try:
                     _git("fetch", "--quiet", "origin", cwd=shared, timeout=CLONE_TIMEOUT_S)
@@ -191,7 +192,22 @@ def checkout_for(room: str, handle: str) -> Checkout:
         base = _git("rev-parse", "--abbrev-ref", "HEAD", cwd=shared).stdout.strip() or "main"
         if not path.exists():
             _git("worktree", "add", "--quiet", "-B", branch, str(path), base, cwd=shared)
+        else:
+            # The branch it is on, which an older checkout named differently.
+            branch = _git("rev-parse", "--abbrev-ref", "HEAD", cwd=path).stdout.strip() or branch
     return Checkout(path=path, branch=branch, base=base, origin=origin_of(room))
+
+
+def branch_of(room: str, handle: str) -> str:
+    """The branch ``handle`` works on in ``room``: its checkout's, once it has one."""
+    name = _UNSAFE.sub("-", handle).strip("-") or "member"
+    path = _root(room) / name
+    if path.exists():
+        try:
+            return _git("rev-parse", "--abbrev-ref", "HEAD", cwd=path).stdout.strip()
+        except WorkspaceError:
+            pass
+    return f"{BRANCH_PREFIX}{name}"
 
 
 def identity(handle: str) -> dict[str, str]:

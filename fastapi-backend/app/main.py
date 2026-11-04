@@ -61,7 +61,6 @@ from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
 from app.routes.subscriptions import router as subscriptions_router
-from app.routes.swarms import router as swarms_router
 from app.routes.tasks import router as tasks_router
 from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
@@ -426,7 +425,6 @@ app.include_router(assignments_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(fields_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(tasks_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(board_router, prefix="/api", responses=GATE_REFUSALS)
-app.include_router(swarms_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api", responses=GATE_REFUSALS)

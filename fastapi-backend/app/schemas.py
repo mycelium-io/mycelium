@@ -1118,7 +1118,6 @@ RunnerJobKind = Literal[
     "launch",
     "stop",
     "scan",
-    "swarm",
     "restart",
     "pair",
     "interrupt",
@@ -1325,7 +1324,6 @@ class RunnerPairingRead(BaseModel):
         default_factory=list, description="Folders it covers; empty: every root"
     )
     clis: list[str] = Field(default_factory=list, description="Agent CLIs it covers; empty: any")
-    swarms: bool = False
 
 
 class PairingOutcome(BaseModel):

@@ -139,7 +139,7 @@ def check_manifest_write(room: str, handle: str, body: dict[str, Any], principal
     """Raise :class:`ManifestRefusedError` if ``principal`` may not write this manifest.
 
     For the routes that build a manifest themselves (engines, A2A agents, a
-    runner's launch and adopt, a swarm), so every way a person writes one is
+    runner's launch and adopt), so every way a person writes one is
     held to :func:`grant_change_refusal`.
     """
     content = yaml.safe_dump(body, sort_keys=False, default_flow_style=False)

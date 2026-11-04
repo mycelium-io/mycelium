@@ -5,8 +5,7 @@
 
 Through the app, node-free: hello and heartbeat, the long-poll handing out jobs
 in order, starting an agent (manifest and notes land before the job is queued),
-the checks that refuse a launch before anything is written, and a swarm whose
-members run on a machine.
+and the checks that refuse a launch before anything is written.
 """
 
 from __future__ import annotations
@@ -208,12 +207,6 @@ async def test_a_machine_without_herdr_starts_nothing(client, room):
     assert "herdr" in resp.json()["detail"]
     assert _manifest(room, "scout") == {}
 
-    swarm = await client.post(
-        f"/api/rooms/{room}/swarms", json={"task": "x", "size": 2, "runner": RUNNER}
-    )
-    assert swarm.status_code == 422
-    assert "herdr" in swarm.json()["detail"]
-
 
 @pytest.mark.asyncio
 async def test_a_framework_herdr_cannot_start_is_refused(client, room):
@@ -372,51 +365,6 @@ async def test_stop_names_an_agent_the_runner_runs(client, room, runner):
     assert resp.json()["spec"] == {"room": room, "handle": "scout"}
 
 
-@pytest.mark.asyncio
-async def test_a_swarm_on_a_runner_queues_one_job_and_posts_no_kickoff(client, room, runner):
-    from app.services import persister
-
-    resp = await client.post(
-        f"/api/rooms/{room}/swarms",
-        json={
-            "task": "Fix the flaky auth tests",
-            "size": 2,
-            "runner": RUNNER,
-            "cwd": "/Users/julia/code/api",
-            "worktree": True,
-            "created_by": "julia",
-        },
-    )
-    assert resp.status_code == 201, resp.text
-    body = resp.json()
-    assert body["members"] == ["agent-1", "agent-2"]
-    assert body["job"]
-
-    assert _manifest(room, "conductor")["kind"] == "conductor"
-    for handle in body["members"]:
-        m = _manifest(room, handle)
-        assert (m["runner"], m["framework"]) == (RUNNER, "claude")
-
-    job = (await client.get(f"/api/runners/{RUNNER}/jobs/{body['job']}")).json()
-    assert job["kind"] == "swarm"
-    assert job["spec"]["team"] == ["agent-1", "agent-2"]
-    assert job["spec"]["key"] == body["key"]
-    assert job["spec"]["worktree"] is True
-    # The runner posts the kickoff once its members are listening.
-    said = [m for m in persister.prose_messages(room) if m.episode == body["episode"]]
-    assert not any("@conductor" in (m.content or "") for m in said)
-
-
-@pytest.mark.asyncio
-async def test_a_swarm_on_a_runner_refuses_a_repository(client, room, runner):
-    resp = await client.post(
-        f"/api/rooms/{room}/swarms",
-        json={"task": "x", "runner": RUNNER, "repo": "https://github.com/o/r"},
-    )
-    assert resp.status_code == 422
-    assert "folder" in resp.json()["detail"]
-
-
 # ── a machine's agents ────────────────────────────────────────────────────────
 
 MACHINE = {
@@ -515,7 +463,6 @@ PAIRING = {
     "expires_at": "2026-12-30T00:00:00Z",
     "folders": ["/Users/julia/code"],
     "clis": ["opencode"],
-    "swarms": False,
 }
 
 
