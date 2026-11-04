@@ -19,7 +19,9 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
+from app.routes.runners import runner_manifest
 from app.services import room_channels, runners
+from app.services.agent_registry import write_agent_manifest
 from app.services.joins import joins
 from app.services.persister import RoomPersister
 from tests.issuer import SignedInHub, generate_key, sign
@@ -471,3 +473,34 @@ async def test_a_persons_agent_can_sync_for_their_machine_and_no_one_elses(
     stolen = await hub.client.get(wakes, params={"source": JULIA_RUNNER}, headers=bobs_agent)
     assert stolen.status_code == 404
     assert await _drain(hub, JULIA) == [JULIA_AGENT]
+
+
+@pytest.mark.asyncio
+async def test_letting_julia_act_as_bobs_agent_doesnt_make_it_hers(
+    hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """``allow_from`` lets julia act as bob's agent; it doesn't make bob's agent
+    julia's, so it still can't sync for her machine."""
+    _live_room(monkeypatch)
+    for person in (JULIA, BOB):
+        await hub.launch(person)
+    manifest = runner_manifest(
+        framework="claude", runner=BOB_RUNNER, cwd=None, description="", owner=BOB
+    )
+    await write_agent_manifest(
+        ROOM, BOB_AGENT, {**manifest, "allow_from": [JULIA]}, created_by=BOB, principal=BOB
+    )
+    bobs_agent = await _member_token(hub, BOB)
+
+    pushed = await hub.client.post(
+        f"/api/rooms/{ROOM}/sessions/herdr-presence",
+        json={"statuses": {BOB_AGENT: "idle"}, "ttl_s": 90, "source": JULIA_RUNNER},
+        headers=bobs_agent,
+    )
+    assert pushed.status_code == 404
+    drained = await hub.client.get(
+        f"/api/rooms/{ROOM}/sessions/herdr-wakes",
+        params={"source": JULIA_RUNNER},
+        headers=bobs_agent,
+    )
+    assert drained.status_code == 404
