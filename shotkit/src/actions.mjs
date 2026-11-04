@@ -90,6 +90,21 @@ const splitPair = (arg) => {
 };
 
 /**
+ * `drag:<sel>@<dx>,<dy>`: press on the middle of `<sel>` and carry the pointer
+ * that many pixels before letting go. Split on the last `@`, the way `zoom:`
+ * reads its factor, so a selector can hold one too.
+ */
+export function parseDrag(arg) {
+  const text = String(arg ?? "");
+  const cut = text.lastIndexOf("@");
+  const [dx, dy, extra] = cut > 0 ? text.slice(cut + 1).split(",").map((n) => Number(n.trim())) : [];
+  if (cut <= 0 || extra !== undefined || !Number.isFinite(dx) || !Number.isFinite(dy)) {
+    throw new Error(`expected drag:<selector>@<dx>,<dy>, got "drag:${text}"`);
+  }
+  return { target: text.slice(0, cut), dx, dy };
+}
+
+/**
  * The recorder's hook into this vocabulary. When one is present the same verbs
  * are performed *cinematically* — the pointer travels to the target, the press
  * is visible, the camera can follow — so a take and a screenshot are driven by
@@ -99,6 +114,7 @@ const splitPair = (arg) => {
  * @property {number} typeDelay per-character delay for visible typing
  * @property {(l:any, o?:any) => Promise<any>} glide move to a target
  * @property {(l:any, o?:any) => Promise<any>} click travel, press, release
+ * @property {(l:any, dx:number, dy:number, o?:any) => Promise<any>} [drag] travel, press, carry, release
  * @property {(arg:string, o?:any) => Promise<any>} zoom push in
  * @property {() => Promise<any>} zoomOut pull back to 1x
  * @property {(ms?:number) => Promise<void>} dwell a beat, so the result reads
@@ -157,7 +173,7 @@ function stepError(e, n, raw) {
  * One step.
  * @returns {Promise<any>} what an `eval` gave back, so a script can read the page and say so
  */
-async function runAction(page, raw, { timeout, cursor, baseUrl }) {
+export async function runAction(page, raw, { timeout, cursor, baseUrl }) {
   const { verb, arg } = parseAction(raw);
   switch (verb) {
     case "click":
@@ -168,6 +184,24 @@ async function runAction(page, raw, { timeout, cursor, baseUrl }) {
       if (cursor) await cursor.click(await locate(page, arg), { timeout, dblclick: true });
       else await (await locate(page, arg)).dblclick({ timeout });
       return;
+    case "drag": {
+      const { target, dx, dy } = parseDrag(arg);
+      const from = await locate(page, target);
+      if (cursor?.drag) {
+        await cursor.drag(from, dx, dy, { timeout });
+        return;
+      }
+      const box = await from.boundingBox({ timeout });
+      if (!box) throw new Error(`nothing to drag: "${target}" isn't on screen`);
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      // In steps, so the page sees a drag rather than a jump.
+      await page.mouse.move(x + dx, y + dy, { steps: 12 });
+      await page.mouse.up();
+      return;
+    }
     case "hover":
       if (cursor) await cursor.glide(await locate(page, arg), { timeout });
       else await (await locate(page, arg)).hover({ timeout });
@@ -292,6 +326,7 @@ async function runAction(page, raw, { timeout, cursor, baseUrl }) {
 export const ACTION_HELP = `
   click:<sel>          click an element        hover:<sel>        hover it
   dblclick:<sel>       double click            focus:<sel>        focus it
+  drag:<sel>@<dx>,<dy> press on it, move that many pixels, let go
   fill:<sel>=<text>    set an input            select:<sel>=<v>   pick an option
   check:<sel>          tick a checkbox         uncheck:<sel>      untick it
   press:<key>          keyboard key            typekeys:<text>    type into focus
