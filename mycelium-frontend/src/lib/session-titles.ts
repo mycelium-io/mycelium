@@ -28,9 +28,9 @@ const NONE: ReadonlyMap<string, string> = new Map();
 export function useSessionTitles(ask: boolean): ReadonlyMap<string, string> {
   const invoke = appInvoke();
   const { data } = useSWR(
-    ask && invoke ? "agent-sessions" : null,
+    ask && invoke ? "earlier-sessions" : null,
     async () => {
-      const got = (await appInvoke()!("agent_sessions")) as LocalSession[] | null;
+      const got = (await appInvoke()!("earlier_sessions")) as LocalSession[] | null;
       const titles = new Map<string, string>();
       for (const s of Array.isArray(got) ? got : []) {
         const title = typeof s?.title === "string" ? s.title.trim() : "";
