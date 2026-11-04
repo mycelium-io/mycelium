@@ -59,6 +59,7 @@ import {
   type EpisodeSummary,
   type WaitingItem,
   type MemorySummary,
+  type ThreadReplies,
   type NetworkStatus,
   type PresenceMember,
   type Protocol,
@@ -459,6 +460,15 @@ export function useMessageSearch(room: string, query: string, limit = 50) {
  * whole conversation is the read. `hasOlder` is exact: the room answers with
  * how many messages matched, not just the page it returned.
  */
+/** One message by its id, the one a thread was started from. Parked while `id` is null. */
+export function useRoomMessage(room: string, id: string | null) {
+  const { data, isLoading } = useSWR(
+    room && id ? (["room", room, "messages", "id", id] as const) : null,
+    () => fetchMessages(room, 1, { id }),
+  );
+  return { message: data?.messages[0] ?? null, loading: isLoading };
+}
+
 export function useThreadMessages(
   room: string,
   episode: string | null,
@@ -530,6 +540,65 @@ export function useRoomThreads(room: string): Map<string, ThreadOwner> {
     }
     return index;
   }, [memories]);
+}
+
+/** A thread started from a message: its memory, its episode, what it's called,
+ *  what's been said in it, and the task made from it, if one was. */
+export interface MessageThread {
+  key: string;
+  episode: string;
+  title: string;
+  /** The id of the message it was started from. */
+  from: string;
+  replies: ThreadReplies;
+  task: { key: string; title: string; episode: string | null } | null;
+}
+
+const NO_REPLIES: ThreadReplies = { replies: 0, repliers: [] };
+
+/** The relation a task made from a thread points back at it with. */
+const THREAD_RELATION = "relates-to";
+
+function messageThreadsOf(memories: MemorySummary[]): MessageThread[] {
+  const tasks = new Map<string, MemorySummary>();
+  for (const memory of memories) {
+    const related = memory.meta?.[THREAD_RELATION];
+    if (!memory.key.startsWith("work/")) continue;
+    for (const key of Array.isArray(related) ? related : [related]) {
+      if (typeof key === "string" && key.startsWith("threads/")) tasks.set(key, memory);
+    }
+  }
+  const found: MessageThread[] = [];
+  for (const memory of memories) {
+    const from = memory.meta?.from;
+    if (!memory.key.startsWith("threads/") || !memory.episode || typeof from !== "string") continue;
+    const task = tasks.get(memory.key);
+    found.push({
+      key: memory.key,
+      episode: memory.episode,
+      title: memoryTitle(memory),
+      from,
+      replies: memory.thread ?? NO_REPLIES,
+      task: task ? { key: task.key, title: memoryTitle(task), episode: task.episode ?? null } : null,
+    });
+  }
+  return found;
+}
+
+/**
+ * The threads started from messages, by the message each came from: a
+ * `threads/` memory whose `from` names the message. Off the room's memory list,
+ * which carries what's been said in each, so it costs no request of its own.
+ */
+export function useMessageThreads(room: string): Map<string, MessageThread> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => new Map(messageThreadsOf(memories).map((t) => [t.from, t])), [memories]);
+}
+
+/** The same threads, by their own episode: what a ping or an open thread names. */
+export function useMessageThreadsByEpisode(room: string): Map<string, MessageThread> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => new Map(messageThreadsOf(memories).map((t) => [t.episode, t])), [memories]);
 }
 
 /** What a row is called, and the thread that opens it. */

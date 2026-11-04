@@ -6,11 +6,13 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const createTask = vi.fn().mockResolvedValue({ key: "work/ship-it", episode: "urn:e:t9" });
+const createThread = vi.fn().mockResolvedValue({ key: "threads/stripe-payments-are-merged", episode: "urn:e:th1" });
 const copyText = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   createTask: (...args: unknown[]) => createTask(...args),
+  createThread: (...args: unknown[]) => createThread(...args),
 }));
 vi.mock("@/lib/clipboard", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/clipboard")>()),
@@ -24,6 +26,7 @@ vi.mock("@/components/current-user", async (importOriginal) => ({
 import { KeymapProvider, useKeyScope } from "@/components/keymap-provider";
 import { MessageActions } from "@/components/message-actions";
 import { COMPOSER_INSERT_EVENT, type ComposerInsert } from "@/lib/message-actions";
+import type { MessageThread } from "@/lib/room-data";
 
 // The room page declares its keys live; a message's keys are among them.
 function InRoom() {
@@ -31,7 +34,12 @@ function InRoom() {
   return null;
 }
 
-function Row(props: { onOpenThread?: (episode: string) => void; time?: string }) {
+function Row(props: {
+  onOpenThread?: (episode: string) => void;
+  time?: string;
+  threads?: boolean;
+  thread?: MessageThread | null;
+}) {
   return (
     <KeymapProvider>
       <InRoom />
@@ -51,7 +59,67 @@ function inserts(): ComposerInsert[] {
 
 beforeEach(() => {
   createTask.mockClear();
+  createThread.mockClear();
   copyText.mockClear();
+});
+
+describe("<MessageActions /> threads", () => {
+  const started: MessageThread = {
+    key: "threads/stripe-payments-are-merged",
+    episode: "urn:e:th1",
+    title: "stripe payments are merged",
+    from: "m1",
+    replies: { replies: 2, repliers: ["reviewer"] },
+    task: null,
+  };
+
+  it("orders the bar reply, quote, task, thread, then copy and link", () => {
+    render(<Row threads />);
+    fireEvent.mouseEnter(screen.getByTestId("row"));
+    const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent);
+    expect(names.slice(0, 6)).toEqual([
+      "Reply to @builder",
+      "Quote",
+      "Make a task",
+      "Start a thread",
+      "Copy text",
+      "Copy link",
+    ]);
+  });
+
+  it("starts a thread from the message and opens it", async () => {
+    const onOpenThread = vi.fn();
+    render(<Row threads onOpenThread={onOpenThread} />);
+    fireEvent.mouseEnter(screen.getByTestId("row"));
+    await userEvent.click(screen.getByRole("button", { name: "Start a thread" }));
+    await waitFor(() => expect(onOpenThread).toHaveBeenCalledWith("urn:e:th1"));
+    expect(createThread).toHaveBeenCalledWith("demo", { from: "m1", handle: "julia" });
+  });
+
+  it("opens the thread a message already has, starting none", async () => {
+    const onOpenThread = vi.fn();
+    render(<Row threads thread={started} onOpenThread={onOpenThread} />);
+    fireEvent.mouseEnter(screen.getByTestId("row"));
+    await userEvent.click(screen.getByRole("button", { name: "Open the thread" }));
+    expect(onOpenThread).toHaveBeenCalledWith("urn:e:th1");
+    expect(createThread).not.toHaveBeenCalled();
+  });
+
+  it("says why when a thread can't be started", async () => {
+    createThread.mockRejectedValueOnce(new Error("No message m1 in the channel"));
+    render(<Row threads />);
+    fireEvent.mouseEnter(screen.getByTestId("row"));
+    await userEvent.click(screen.getByRole("button", { name: "Start a thread" }));
+    expect(
+      await screen.findByRole("button", { name: "Couldn't start the thread: No message m1 in the channel" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no thread inside one", () => {
+    render(<Row />);
+    fireEvent.mouseEnter(screen.getByTestId("row"));
+    expect(screen.queryByRole("button", { name: "Start a thread" })).toBeNull();
+  });
 });
 
 describe("<MessageActions />", () => {
@@ -68,7 +136,7 @@ describe("<MessageActions />", () => {
     const seen = inserts();
     render(<Row />);
     fireEvent.mouseEnter(screen.getByTestId("row"));
-    await userEvent.click(screen.getByRole("button", { name: "Reply" }));
+    await userEvent.click(screen.getByRole("button", { name: "Reply to @builder" }));
     await userEvent.click(screen.getByRole("button", { name: "Quote" }));
     // A message in the channel, so the room's own composer takes them; each
     // says the row it came from, for a thread open in two places.

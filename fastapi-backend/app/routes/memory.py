@@ -42,6 +42,7 @@ from app.schemas import (
     MemorySummaryRead,
     SubscriptionCreate,
     SubscriptionRead,
+    ThreadRepliesRead,
     refusals,
 )
 from app.services import (
@@ -602,9 +603,29 @@ async def list_memory_summaries(
     """List memories in a room as a list shows them: titles and frontmatter, no text.
 
     Paged and cached like the full list, newest first. A memory's text is
-    read one memory at a time (``GET /memory/{key}``).
+    read one memory at a time (``GET /memory/{key}``). A thread started from a
+    message also says what has been said in it (``thread``), so the cache
+    stamp follows the room's history as well as its memories.
     """
-    return _listed(room_name, request, prefix, limit, offset, _memory_summary_from_file)
+    from app.services import threads
+    from app.services.persister import TRANSCRIPT_FILENAME, _stat_stamp
+
+    said: dict[str, dict[str, Any]] | None = None
+
+    def build(room: str, key: str, meta: dict, content: str) -> MemorySummaryRead:
+        nonlocal said
+        summary = _memory_summary_from_file(room, key, meta, content)
+        if threads.is_message_thread(key) and summary.episode:
+            # One pass over the history for the page, and only for a page holding one.
+            if said is None:
+                said = threads.replies(room)
+            summary.thread = ThreadRepliesRead(**said.get(summary.episode, {}))
+        return summary
+
+    # Checked before the history is stamped: looking a room's folder up makes it.
+    _require_room(room_name)
+    history = _stat_stamp(get_room_dir(room_name) / TRANSCRIPT_FILENAME)
+    return _listed(room_name, request, prefix, limit, offset, build, salt=str(history))
 
 
 def _listed(
@@ -614,15 +635,19 @@ def _listed(
     limit: int,
     offset: int,
     build: Any,
+    *,
+    salt: str = "",
 ) -> Response:
     """A page of a room's memories, newest first, each made by ``build``, with
-    an ETag so a caller that has it already gets a 304."""
+    an ETag (from the newest write, and ``salt``) so a caller that has it
+    already gets a 304."""
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
     file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
 
     latest_ts = max((str(meta.get("updated_at", "")) for _, meta, _ in file_entries), default="")
-    etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
+    stamp = f"{latest_ts}{salt}"
+    etag = '"' + hashlib.md5(stamp.encode()).hexdigest() + '"' if latest_ts else '"empty"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 

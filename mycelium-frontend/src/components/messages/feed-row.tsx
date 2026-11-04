@@ -8,10 +8,12 @@ import { AtSign, Braces, Copy, Link2, MessageSquare, Reply, TextQuote } from "lu
 import type { VerifierFlag } from "@/lib/api";
 import type { Event } from "@/lib/room-events";
 import {
+  useMessageThreads,
   useRoomAgents,
   useRoomRowNames,
   useRoomThreads,
   useRoomVerifierFlags,
+  type MessageThread,
   type RowNaming,
   type ThreadOwner,
 } from "@/lib/room-data";
@@ -43,6 +45,7 @@ import { AgentCardHover } from "@/components/agent-card";
 import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
 import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
 import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
+import { ThreadReplies } from "@/components/messages/thread-replies";
 import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
 import { Monogram } from "@/components/ui/monogram";
@@ -138,6 +141,8 @@ export interface FeedContext {
   /** The room's threads by short id, for linking a thread id quoted in a
    *  message to its task. Leaves out the thread the list is of. */
   threadIds?: ReadonlyMap<string, ThreadTarget>;
+  /** Threads started from a message, by that message's id; drawn under it. */
+  messageThreads?: ReadonlyMap<string, MessageThread>;
   rowNames: Map<string, RowNaming>;
   flagsByMessage: Map<string, VerifierFlag[]>;
   refreshFlags: () => void;
@@ -160,6 +165,7 @@ export function useFeedContext(
 ): FeedContext {
   const { agents } = useRoomAgents(roomName);
   const threads = useRoomThreads(roomName);
+  const messageThreads = useMessageThreads(roomName);
   const rowNames = useRoomRowNames(roomName);
   const { byMessage: flagsByMessage, refresh: refreshFlags } = useRoomVerifierFlags(roomName);
   const threadIds = useMemo(() => {
@@ -179,6 +185,7 @@ export function useFeedContext(
       agentOwners: new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
       threads,
       threadIds,
+      messageThreads,
       rowNames,
       flagsByMessage,
       refreshFlags,
@@ -186,7 +193,7 @@ export function useFeedContext(
       onOpenMemory,
       episode,
     }),
-    [roomName, agents, threads, threadIds, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
+    [roomName, agents, threads, threadIds, messageThreads, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
   );
 }
 
@@ -697,6 +704,9 @@ export function MessageRow({
   const color = isAgent ? undefined : "var(--avatar-neutral)";
   const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
   const flags = ev.messageId ? flagsByMessage.get(ev.messageId) : undefined;
+  // A thread started from this message, in the channel; inside a thread it's
+  // the thread's own message, so nothing is drawn under it there.
+  const startedThread = ev.messageId && !ctx.episode ? ctx.messageThreads?.get(ev.messageId) : undefined;
   return (
     <MessageMenu
       roomName={roomName}
@@ -775,6 +785,9 @@ export function MessageRow({
             </span>
           )}
           {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
+          {startedThread && (
+            <ThreadReplies thread={startedThread} onOpen={ctx.onOpenThread} />
+          )}
         </div>
         <MessageActions
           roomName={roomName}
@@ -787,6 +800,8 @@ export function MessageRow({
           // Every message says when on hover, in the bar, the first under a
           // name too, with its day when that isn't today.
           time={shortStamp(ev.at) || ev.time.slice(0, 5)}
+          threads={!ctx.episode}
+          thread={startedThread ?? null}
         />
       </div>
     </MessageMenu>

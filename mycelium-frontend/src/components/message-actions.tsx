@@ -12,8 +12,21 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { AtSign, Braces, Check, Copy, Link2, ListTodo, Loader2, MoreHorizontal, Reply, TextQuote } from "lucide-react";
-import { createTask } from "@/lib/api";
+import {
+  AtSign,
+  Braces,
+  Check,
+  Copy,
+  Link2,
+  ListPlus,
+  Loader2,
+  MessageSquare,
+  MessageSquarePlus,
+  MoreHorizontal,
+  Quote,
+} from "lucide-react";
+import { createTask, createThread } from "@/lib/api";
+import { useRoomRevalidate, type MessageThread } from "@/lib/room-data";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
   insertIntoComposer,
@@ -42,6 +55,11 @@ interface Props {
   onOpenThread?: (episode: string) => void;
   /** The message's clock time, shown at the bar's start. */
   time?: string;
+  /** In the channel: the thread started from this message, if there is one.
+   *  Inside a thread there's no thread of a thread, so neither is passed. */
+  thread?: MessageThread | null;
+  /** In the channel: starts a thread from this message. */
+  threads?: boolean;
 }
 
 /** How long a copy button shows its check. */
@@ -104,6 +122,8 @@ function Bar({
   wire,
   onOpenThread,
   time,
+  thread = null,
+  threads = false,
   menuOpen,
   onMenuOpen,
   onViewRaw,
@@ -130,6 +150,28 @@ function Bar({
   useKeyAction("message.quote", quote);
   useKeyAction("message.copy", copy);
 
+  // A thread starts empty, named by the hub after the message, and opens where
+  // a task's thread opens; the first reply is typed there. The room's list is
+  // read again at once, so the line under the message and the open thread's
+  // header don't wait for the write's push.
+  const revalidate = useRoomRevalidate(roomName);
+  const [starting, setStarting] = useState(false);
+  const [threadError, setThreadError] = useState<string | null>(null);
+  const startThread = async () => {
+    if (!messageId) return;
+    setStarting(true);
+    setThreadError(null);
+    try {
+      const made = await createThread(roomName, { from: messageId, handle: principal.trim() || "user" });
+      revalidate();
+      onOpenThread?.(made.episode);
+    } catch (e) {
+      setThreadError(e instanceof Error ? e.message : "Couldn't start the thread");
+    } finally {
+      setStarting(false);
+    }
+  };
+
   const makeTask = async () => {
     setMaking(true);
     setTaskError(null);
@@ -155,12 +197,37 @@ function Bar({
       className="absolute -top-3.5 right-4 z-10 flex items-center gap-px rounded-lg border border-border2 bg-elevated p-0.5 shadow-md"
     >
       {time && <span className="px-1.5 text-micro tabular text-faint">{time}</span>}
-      <IconButton label="Reply" action="message.reply" className="size-7" onClick={reply}>
-        <Reply />
+      {/* Reply names the sender in the composer, so it's drawn as the @ it
+          types; an arrow read as "reply in a thread", which this isn't. */}
+      <IconButton label={`Reply to @${sender}`} action="message.reply" className="size-7" onClick={reply}>
+        <AtSign />
       </IconButton>
       <IconButton label="Quote" action="message.quote" className="size-7" onClick={quote}>
-        <TextQuote />
+        <Quote />
       </IconButton>
+      {/* What to do with the message next, then what to take from it. */}
+      <IconButton
+        label={taskError ? `Couldn't make the task: ${taskError}` : "Make a task"}
+        className={taskError ? "size-7 text-red" : "size-7"}
+        disabled={making}
+        onClick={() => void makeTask()}
+      >
+        {making ? <Loader2 className="animate-spin" /> : <ListPlus />}
+      </IconButton>
+      {/* A thread is drawn as the app draws one, a speech bubble; with a plus
+          to start one, or as it is to open the one this message has. */}
+      {threads && messageId && (
+        <IconButton
+          label={
+            thread ? "Open the thread" : threadError ? `Couldn't start the thread: ${threadError}` : "Start a thread"
+          }
+          className={threadError && !thread ? "size-7 text-red" : "size-7"}
+          disabled={starting}
+          onClick={() => (thread ? onOpenThread?.(thread.episode) : void startThread())}
+        >
+          {starting ? <Loader2 className="animate-spin" /> : thread ? <MessageSquare /> : <MessageSquarePlus />}
+        </IconButton>
+      )}
       <Divider />
       <IconButton
         label={copied === "text" ? "Copied" : "Copy text"}
@@ -180,15 +247,6 @@ function Bar({
         </IconButton>
       )}
       <Divider />
-      <IconButton
-        label={taskError ? `Couldn't make the task: ${taskError}` : "Make a task"}
-        className={taskError ? "size-7 text-red" : "size-7"}
-        disabled={making}
-        onClick={() => void makeTask()}
-      >
-        {making ? <Loader2 className="animate-spin" /> : <ListTodo />}
-      </IconButton>
-      <Divider />
       <Popover open={menuOpen} onOpenChange={onMenuOpen}>
         <Tooltip content="More">
           <PopoverTrigger aria-label="More" className={iconButtonClass("sm", "size-7")}>
@@ -204,7 +262,7 @@ function Bar({
               onMenuOpen(false);
             }}
           >
-            <AtSign />
+            <Copy />
             Copy @{sender}
           </button>
           {wire && (
