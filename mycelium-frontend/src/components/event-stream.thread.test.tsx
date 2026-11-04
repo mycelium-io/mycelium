@@ -13,14 +13,14 @@ import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
-import { fetchWireHistory, fetchMessages, fetchMemories } from "@/lib/api";
+import { fetchWireHistory, fetchMessages, fetchMemorySummaries } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),
   fetchVerifierFlags: vi.fn().mockResolvedValue([]),
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemorySummaries: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchRoomSettings: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
@@ -75,7 +75,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [] });
     vi.mocked(fetchWireHistory).mockResolvedValue([]);
-    vi.mocked(fetchMemories).mockResolvedValue([]);
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([]);
   });
 
   it("keeps a thread's prose out of the channel and shows the ping instead", async () => {
@@ -150,10 +150,10 @@ describe("<EventStream /> and the threads inside the room", () => {
   });
 
   it("names the task a thread belongs to when the room knows of one", async () => {
-    vi.mocked(fetchMemories).mockResolvedValue([
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
       {
         key: "work/flip-reads-behind-a-flag",
-        value: { title: "flip reads behind a flag" },
+        title: "flip reads behind a flag",
         version: 1,
         created_by: "conductor",
         updated_at: CREATED,
@@ -178,13 +178,13 @@ describe("<EventStream /> and the threads inside the room", () => {
     // board asserting something nobody wrote.
     const bound = (key: string, title: string) => ({
       key,
-      value: { title },
+      title,
       version: 1,
       created_by: "conductor",
       updated_at: CREATED,
       episode: THREAD,
     });
-    vi.mocked(fetchMemories).mockResolvedValue([
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
       bound("work/flip-reads-behind-a-flag", "flip reads behind a flag"),
       bound("work/retire-the-legacy-store", "retire the legacy store"),
     ]);

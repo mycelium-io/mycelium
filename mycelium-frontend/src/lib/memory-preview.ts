@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import type { Memory } from "@/lib/api";
+import type { Memory, MemorySummary } from "@/lib/api";
 
 /** Plain text for a memory's value: prose as written, anything else as JSON. */
 export function memoryValueText(value: unknown): string {
@@ -25,7 +25,9 @@ export function firstLine(text: string): string {
  *  first line of its prose, read whichever way the store hands the body over
  *  (`{text:…}`, a bare string, or `content_text`), else its key. One derivation,
  *  so a task named on the board and named in the channel never disagree (#889). */
-export function memoryTitle(memory: Memory): string {
+export function memoryTitle(memory: Memory | MemorySummary): string {
+  // A list's entry comes named: the hub works the title out by this same rule.
+  if ("title" in memory) return memory.title || memory.key;
   const value = memory.value;
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const title = (value as Record<string, unknown>).title;

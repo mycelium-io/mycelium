@@ -59,13 +59,16 @@ import { handleVoice } from "./voice";
 import { VERIFIER, handleVerifierFlags, verifierSettingsRead } from "./verifier";
 import type {
   A2aBridgeState,
+  Memory,
   MemoryGraph,
   MemoryGraphEdge,
   MemoryLink,
+  MemorySummary,
   Protocol,
   Schedule,
   ScheduleRun,
 } from "@/lib/api";
+import { memoryTitle } from "@/lib/memory-preview";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -218,6 +221,26 @@ function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
     room_name: memory.room_name ?? room,
     created_at: updated,
     updated_at: updated,
+  };
+}
+
+/** A memory as `GET /memory/summaries` lists it: named, with no text. */
+function memorySummary(room: string, memory: MockMemory): MemorySummary {
+  const read = memoryRead(room, memory) as unknown as Memory & { created_at: string };
+  const value = read.value;
+  return {
+    key: read.key,
+    title: memoryTitle(read),
+    structured: !!value && typeof value === "object" && !("text" in (value as object)),
+    created_by: read.created_by,
+    updated_by: read.updated_by ?? null,
+    version: read.version,
+    tags: read.tags ?? null,
+    meta: read.meta ?? null,
+    episode: read.episode ?? null,
+    expandable: Boolean(read.expandable),
+    created_at: read.created_at,
+    updated_at: read.updated_at,
   };
 }
 
@@ -736,6 +759,18 @@ export async function handleMock(req: Request): Promise<Response | null> {
         return new Response(null, { status: 204 });
       }
       if (method !== "GET") return null;
+      // GET /memory/summaries?prefix=&limit=&offset= — the list without text.
+      if (sub.length === 2 && sub[1] === "summaries") {
+        const prefix = searchParams.get("prefix");
+        const offset = Number(searchParams.get("offset") ?? "0");
+        const limit = Number(searchParams.get("limit") ?? "100");
+        return json(
+          fx.memories
+            .filter((m) => !prefix || m.key.startsWith(prefix))
+            .slice(offset, offset + limit)
+            .map((m) => memorySummary(roomName, m)),
+        );
+      }
       // GET /memory/:key — the key is a path, so it spans the remaining segments.
       if (sub.length > 1) {
         const key = sub.slice(1).map(decodeURIComponent).join("/");

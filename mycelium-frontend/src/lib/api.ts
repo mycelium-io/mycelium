@@ -507,18 +507,48 @@ export const MEMORIES_PAGE_LIMIT = 1000;
  *  have more, so a caller showing a count says "the newest" rather than "all". */
 export const MEMORIES_MAX = 5000;
 
-/** Every memory in a room (or under `prefix`), newest first, up to `MEMORIES_MAX`. */
+/** Every memory in a room (or under `prefix`), newest first, up to `MEMORIES_MAX`,
+ *  each with its whole text. A list wants {@link fetchMemorySummaries}. */
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
+  return pagedMemories<Memory>(`${roomApiPath(roomName)}/memory`, prefix);
+}
+
+/** A memory as a list shows it: what it's called and its frontmatter, without
+ *  its text. Read one memory ({@link fetchMemory}) for its value. */
+export interface MemorySummary {
+  key: string;
+  /** What it's called, worked out on the hub the way `memoryTitle` does. */
+  title: string;
+  /** Its value is structured data with no `text`, not prose. */
+  structured?: boolean;
+  version: number;
+  created_by: string;
+  updated_by?: string | null;
+  created_at?: string;
+  updated_at: string;
+  tags?: string[] | null;
+  expandable?: boolean;
+  meta?: Record<string, unknown> | null;
+  episode?: string | null;
+}
+
+/** Every memory in a room (or under `prefix`) as a list shows it, newest
+ *  first, up to `MEMORIES_MAX`: titles and frontmatter, no text. */
+export async function fetchMemorySummaries(roomName: string, prefix?: string): Promise<MemorySummary[]> {
+  return pagedMemories<MemorySummary>(`${roomApiPath(roomName)}/memory/summaries`, prefix);
+}
+
+async function pagedMemories<T extends { key: string }>(path: string, prefix?: string): Promise<T[]> {
   // Pages are offsets into a newest-first list, so a write between two calls
   // shifts the next page by one: keyed, a memory read twice is kept once.
-  const byKey = new Map<string, Memory>();
+  const byKey = new Map<string, T>();
   for (let offset = 0; offset < MEMORIES_MAX; offset += MEMORIES_PAGE_LIMIT) {
     const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT), offset: String(offset) });
     if (prefix) params.set("prefix", prefix);
-    const page = await apiFetch<Memory[]>(`${roomApiPath(roomName)}/memory?${params}`, {
+    const page = await apiFetch<T[]>(`${path}?${params}`, {
       cache: "no-store",
       fallback: [],
-      guard: isArray as (d: unknown) => d is Memory[],
+      guard: isArray as (d: unknown) => d is T[],
     });
     for (const memory of page) if (!byKey.has(memory.key)) byKey.set(memory.key, memory);
     if (page.length < MEMORIES_PAGE_LIMIT) break;

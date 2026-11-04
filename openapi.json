@@ -7897,6 +7897,124 @@
         }
       }
     },
+    "/api/rooms/{room_name}/memory/summaries": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "List Memory Summaries",
+        "description": "List memories in a room as a list shows them: titles and frontmatter, no text.\n\nPaged and cached like the full list, newest first. A memory's text is\nread one memory at a time (``GET /memory/{key}``).",
+        "operationId": "list_memory_summaries_api_rooms__room_name__memory_summaries_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Key prefix filter",
+              "title": "Prefix"
+            },
+            "description": "Key prefix filter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemorySummaryRead"
+                  },
+                  "title": "Response List Memory Summaries Api Rooms  Room Name  Memory Summaries Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/memory/search": {
       "post": {
         "tags": [
@@ -19352,6 +19470,109 @@
           "similarity"
         ],
         "title": "MemorySearchResult"
+      },
+      "MemorySummaryRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "What it's called: a structured value's ``title``, else the first line of its text (a heading's marker dropped, at most 120 characters), else its key"
+          },
+          "structured": {
+            "type": "boolean",
+            "title": "Structured",
+            "description": "Its value is structured data with no ``text``, not prose",
+            "default": false
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta",
+            "description": "As on ``MemoryRead``"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "As on ``MemoryRead``"
+          },
+          "expandable": {
+            "type": "boolean",
+            "title": "Expandable",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "created_by",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MemorySummaryRead",
+        "description": "A memory as a list shows it: what it's called and its frontmatter, not its text.\n\nRead one memory for its value; this is for lists of many, where the text\nof every one would be most of what's sent."
       },
       "MentionGroup": {
         "properties": {

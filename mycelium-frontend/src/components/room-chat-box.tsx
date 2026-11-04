@@ -11,7 +11,6 @@ import {
   createMemories,
   launchRunnerAgent,
   type EngineKind,
-  type Memory,
   type Runner,
 } from "@/lib/api";
 import { signFor } from "@/lib/device-key";
@@ -222,7 +221,7 @@ function detectTrigger(prefix: string, cursor: number): Trigger | null {
   return null;
 }
 
-function memoryKey(m: Memory): string {
+function memoryKey(m: { key: string }): string {
   return m.key;
 }
 

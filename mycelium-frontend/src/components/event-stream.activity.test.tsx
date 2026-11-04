@@ -15,14 +15,14 @@ import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
-import { fetchWireHistory, fetchMessages, fetchMemories } from "@/lib/api";
+import { fetchWireHistory, fetchMessages, fetchMemorySummaries } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),
   fetchVerifierFlags: vi.fn().mockResolvedValue([]),
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemorySummaries: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchRoomSettings: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
@@ -42,7 +42,7 @@ const at = (offsetMs = 0) => new Date(T0 + offsetMs).toISOString();
 
 const row = (key: string, title: string, episode: string | null) => ({
   key,
-  value: { title },
+  title,
   version: 3,
   created_by: "conductor",
   updated_at: at(),
@@ -115,7 +115,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [] });
     vi.mocked(fetchWireHistory).mockResolvedValue([]);
-    vi.mocked(fetchMemories).mockResolvedValue([
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
       row(TASK, TITLE, THREAD),
       row(OTHER_TASK, OTHER_TITLE, null),
     ]);
@@ -259,7 +259,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     // The rail shows three at a time, so date order would let the one row that
     // is asking for a human sit behind "N more".
     const keys = ["a", "b", "c", "d"];
-    vi.mocked(fetchMemories).mockResolvedValue([
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
       ...keys.map(k => row(`work/${k}`, `task ${k}`, null)),
       row(TASK, TITLE, THREAD),
     ]);
@@ -287,7 +287,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
 
   it("holds the rail to a fixed height however many tasks are moving", async () => {
     const keys = ["a", "b", "c", "d", "e", "f"];
-    vi.mocked(fetchMemories).mockResolvedValue(keys.map(k => row(`work/${k}`, `task ${k}`, null)));
+    vi.mocked(fetchMemorySummaries).mockResolvedValue(keys.map(k => row(`work/${k}`, `task ${k}`, null)));
     await stream(keys.map((k, i) => knowledge(1, "claude-web", i * 100, `work/${k}`)));
 
     expect(await screen.findByText("6 tasks")).toBeInTheDocument();
@@ -300,7 +300,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
   });
 
   it("says a blocked task's reason and counts what's live in the header", async () => {
-    vi.mocked(fetchMemories).mockResolvedValue([
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
       { ...row(TASK, TITLE, THREAD), meta: { assignment_note: "waiting on the merchant ID" } },
       row(OTHER_TASK, OTHER_TITLE, null),
     ]);
@@ -358,7 +358,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     // A coordination phase opens its own episode and records no back-link, so
     // there are no details to reach — the conversation is all there is.
     const onOpenThread = vi.fn();
-    vi.mocked(fetchMemories).mockResolvedValue([]);
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([]);
     renderWithSWR(
       <EventStream roomName={ROOM} onOpenThread={onOpenThread} onOpenMemory={vi.fn()} />,
     );

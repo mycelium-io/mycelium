@@ -7,7 +7,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
 import { memoryHref } from "@/lib/memory-routes";
-import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import {
+  useRoomEpisodes,
+  useRoomMembers,
+  useRoomMemories,
+  useRoomMemory,
+  useRoomRevalidate,
+} from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
 import { Findable } from "@/components/findable";
 import { FlowPanel } from "@/components/flow-panel";
@@ -73,8 +79,10 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   // so the pane opens with the task itself (its body and fields) above the
   // conversation about it, the way an issue shows its description over its
   // comments. Absent for a negotiation thread bound to no row.
+  // The list names the row; its body is read for this one task alone.
   const { memories, loading: memoriesLoading } = useRoomMemories(roomName);
-  const task = memories.find(m => m.episode === target.episode) ?? null;
+  const listed = memories.find(m => m.episode === target.episode) ?? null;
+  const { memory: task } = useRoomMemory(roomName, listed?.key ?? null, listed?.version);
   // A run the conductor walked in this thread left a record carrying its
   // flow: the latest one is drawn at the top of the pane, the earlier ones are
   // reachable from it. The floor held on the thread is a live fact off the
@@ -105,7 +113,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   // room's memories have said which, it is taken to be a task's.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const latest = useConversationFollow(scroller, {
-    startAt: task || memoriesLoading ? "start" : "end",
+    startAt: listed || memoriesLoading ? "start" : "end",
     resetKey: target.episode,
   });
 
@@ -125,7 +133,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
 
   // Edit the task in place, and open it as a tab of its own, only where the
   // pane is a task (a negotiation thread is no memory to edit or open).
-  const taskActions = task && (
+  const taskActions = listed && (
     <>
       {/* A plain toggle with a revalidate on save: the pane is narrow and
           transient, so it keeps less chrome than the full page does. */}
@@ -146,7 +154,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           <button
             type="button"
             onClick={() => {
-              onOpenMemory(task.key);
+              onOpenMemory(listed.key);
               onClose();
             }}
             aria-label="Open the task"
@@ -156,7 +164,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           </button>
         ) : (
           <Link
-            href={memoryHref(roomName, task.key)}
+            href={memoryHref(roomName, listed.key)}
             aria-label="Open task full screen"
             className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
           >

@@ -18,9 +18,9 @@ const choices: unknown[] = [];
 const voice = { speech: false };
 vi.mock("@/lib/api", () => ({
   // Every memory in the room: a board row and a note, each with its thread.
-  fetchMemories: vi.fn(async () => [
-    { key: "work/zoom", value: { text: "Zoom and pan images\n\nbody" }, episode: THREAD },
-    { key: "context/chat-buddy", value: "Talking with the chat buddy", episode: NOTE_THREAD },
+  fetchMemorySummaries: vi.fn(async () => [
+    { key: "work/zoom", title: "Zoom and pan images", episode: THREAD },
+    { key: "context/chat-buddy", title: "Talking with the chat buddy", episode: NOTE_THREAD },
   ]),
   fetchVoiceStatus: vi.fn(async () => ({ state: "ready", speech: voice.speech })),
   fetchSpeech: vi.fn(async (text: string, _signal?: AbortSignal, choice?: unknown) => {

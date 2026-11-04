@@ -9,10 +9,14 @@ import { act } from "react";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 import { layOut } from "@/test/scroll";
+import { summaryOf } from "@/test/memory-summary";
+import type { Memory } from "@/lib/api";
 
 const fetchMessages = vi.fn();
 const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
-const fetchMemories = vi.fn();
+/** What the room holds: the list names each one, and each is read by its key.
+ *  Each read answers in one step, as a stubbed fetch does. */
+const room: { memories: Memory[] } = { memories: [] };
 
 // The real module underneath, so a read the composer starts making later
 // falls through to it rather than failing every test here.
@@ -27,7 +31,9 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchProtocols: vi.fn().mockResolvedValue([]),
   fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchEpisodes: vi.fn().mockResolvedValue([]),
-  fetchMemories: (...args: unknown[]) => fetchMemories(...args),
+  fetchMemorySummaries: () => Promise.resolve(room.memories.map(summaryOf)),
+  fetchMemory: (_room: string, key: string) =>
+    Promise.resolve(room.memories.find((m) => m.key === key) ?? null),
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
   fetchSkills: vi.fn().mockResolvedValue([]),
 }));
@@ -61,13 +67,14 @@ const TASK = {
   content_text: "the reads have to flip behind a flag",
   version: 1,
   created_by: "julia",
+  updated_at: "2026-08-04T09:00:00+00:00",
   episode: THREAD,
 };
 
 describe("<ThreadView />", () => {
   beforeEach(() => {
     fetchMessages.mockReset().mockResolvedValue(NEWEST_FIRST);
-    fetchMemories.mockReset().mockResolvedValue([]);
+    room.memories = [];
     sendRoomMessage.mockClear();
     resetStreamHub();
     FakeEventSource.reset();
@@ -248,7 +255,7 @@ describe("<ThreadView />", () => {
     // Two nested scroll areas cause inconsistent wheel behavior depending on
     // pointer position; the task reads as one column instead, the way an
     // issue body runs into its comments.
-    fetchMemories.mockResolvedValue([TASK]);
+    room.memories = [TASK];
     renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
     );
@@ -284,7 +291,7 @@ describe("<ThreadView />", () => {
   });
 
   it("opens a task's thread on the task, and follows replies once the reader is at the bottom", async () => {
-    fetchMemories.mockResolvedValue([TASK]);
+    room.memories = [TASK];
     renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
     );

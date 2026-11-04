@@ -110,6 +110,12 @@ describe("previewCardTop", () => {
 });
 
 describe("memoryTitle", () => {
+  it("takes a list entry's title as the hub named it, else its key", () => {
+    const listed = { key: "work/refunds", version: 1, created_by: "builder", updated_at: "" };
+    expect(memoryTitle({ ...listed, title: "Refund the double charge" })).toBe("Refund the double charge");
+    expect(memoryTitle({ ...listed, title: "" })).toBe("work/refunds");
+  });
+
   it("uses an explicit title on a structured value", () => {
     expect(memoryTitle(mem({ value: { title: "Ship the board", status: "open" } }))).toBe(
       "Ship the board",
