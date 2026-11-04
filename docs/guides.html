@@ -569,6 +569,7 @@
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key &quot;&lt;your key&gt;&quot;
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
 <span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
+      <p>When no model is set, the engines suggest <code>mycelium install --force</code> in the room. That also works: it reinstalls the hub and asks for the model and key again.</p>
       <p><code>llm.base_url</code> sets the address for a provider the hub can&#x27;t find on its own, like Ollama or a company gateway.</p>
       <p>Set this on the hub&#x27;s machine. A spoke&#x27;s model setting does nothing. The key is saved in <code>~/.mycelium/config.toml</code> on that machine, readable only by you, and passed to the hub when it starts. Anything running inside the hub can read it, including <a href="engines.html#worker">workers</a>. After you save it, the desktop app never shows the key again. It shows only the last four characters so you can tell which key is in use.</p>
       <h2 id="models-providers">Providers</h2>

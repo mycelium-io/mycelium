@@ -36,6 +36,10 @@ mycelium config apply
 mycelium up
 ```
 
+When no model is set, the engines suggest `mycelium install --force` in the
+room. That also works: it reinstalls the hub and asks for the model and key
+again.
+
 `llm.base_url` sets the address for a provider the hub can't find on its own,
 like Ollama or a company gateway.
 
