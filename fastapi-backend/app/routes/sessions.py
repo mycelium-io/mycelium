@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
+from app.routes.runners import refuse_anothers_runner
 from app.routes.subscriptions import read as read_subscription
 from app.schemas import (
     CoordinationSessionRead,
@@ -286,17 +287,19 @@ def _floor_entry(room_name: str, floor: Floor) -> dict[str, object]:
 
 
 @router.post("/herdr-presence", status_code=204, responses=refusals(404))
-async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
+async def push_herdr_presence(room_name: str, body: HerdrPresenceBody, request: Request):
     """Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).
 
     The backend runs containerized and can't see the host's herdr socket, so the
     host-side bridge polls ``herdr agent list`` and pushes the current per-handle
     state here. This is a presence/UI surface only — it never enters an engine's
     roster. Entries lapse on their TTL, so a stopped bridge / closed pane clears
-    itself without an explicit delete.
+    itself without an explicit delete. With sign-in on, a ``source`` naming
+    another person's runner is not found: that push would replace its agents.
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    refuse_anothers_runner(body.source, request)
     normalized: dict[str, str | dict] = {
         h: ({"status": v.status, "title": v.title} if isinstance(v, HerdrAgentState) else v)
         for h, v in body.statuses.items()
@@ -325,6 +328,7 @@ NEEDS_A_MESSAGE = frozenset({"mention", "turn", "interrupt", "subscribed"})
 )
 async def drain_herdr_wakes(
     room_name: str,
+    request: Request,
     source: Annotated[
         str | None,
         Query(
@@ -339,10 +343,12 @@ async def drain_herdr_wakes(
     herdr-present-but-not-joined handle. The bridge — the only actor that can
     reach the host's herdr socket — then runs the actual ``herdr agent prompt``.
     With ``source``, only the wakes for the agents that machine's push reports
-    are handed over; the rest wait for their own machine.
+    are handed over; the rest wait for their own machine. With sign-in on, a
+    ``source`` naming another person's runner is not found.
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    refuse_anothers_runner(source, request)
     wakes = room_channels.manager.drain_herdr_wakes(room_name, source=source)
     # Each carries the digest its agent is told (``prompt``), built now rather
     # than when it was queued, so what it says is current when it's typed.

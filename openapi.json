@@ -4382,7 +4382,7 @@
           "runners"
         ],
         "summary": "Runner Hello",
-        "description": "A runner dialing in, or its heartbeat: what it found on its machine, and what it runs.",
+        "description": "A runner dialing in, or its heartbeat: what it found on its machine, and what it runs.\n\nWith a verified token the runner is its caller's: ``owner`` is the token's\nhandle, and an id another person's runner holds is refused.",
         "operationId": "runner_hello_api_runners_post",
         "requestBody": {
           "content": {
@@ -4417,6 +4417,16 @@
           },
           "503": {
             "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -4473,6 +4483,16 @@
           },
           "503": {
             "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -6877,7 +6897,7 @@
           "sessions"
         ],
         "summary": "Push Herdr Presence",
-        "description": "Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).\n\nThe backend runs containerized and can't see the host's herdr socket, so the\nhost-side bridge polls ``herdr agent list`` and pushes the current per-handle\nstate here. This is a presence/UI surface only \u2014 it never enters an engine's\nroster. Entries lapse on their TTL, so a stopped bridge / closed pane clears\nitself without an explicit delete.",
+        "description": "Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).\n\nThe backend runs containerized and can't see the host's herdr socket, so the\nhost-side bridge polls ``herdr agent list`` and pushes the current per-handle\nstate here. This is a presence/UI surface only \u2014 it never enters an engine's\nroster. Entries lapse on their TTL, so a stopped bridge / closed pane clears\nitself without an explicit delete. With sign-in on, a ``source`` naming\nanother person's runner is not found: that push would replace its agents.",
         "operationId": "push_herdr_presence_api_rooms__room_name__sessions_herdr_presence_post",
         "parameters": [
           {
@@ -6953,7 +6973,7 @@
           "sessions"
         ],
         "summary": "Drain Herdr Wakes",
-        "description": "Drain pending herdr wake requests for a room (the sync bridge polls this).\n\nReturns and clears the queue the backend filled when a tag mentioned a\nherdr-present-but-not-joined handle. The bridge \u2014 the only actor that can\nreach the host's herdr socket \u2014 then runs the actual ``herdr agent prompt``.\nWith ``source``, only the wakes for the agents that machine's push reports\nare handed over; the rest wait for their own machine.",
+        "description": "Drain pending herdr wake requests for a room (the sync bridge polls this).\n\nReturns and clears the queue the backend filled when a tag mentioned a\nherdr-present-but-not-joined handle. The bridge \u2014 the only actor that can\nreach the host's herdr socket \u2014 then runs the actual ``herdr agent prompt``.\nWith ``source``, only the wakes for the agents that machine's push reports\nare handed over; the rest wait for their own machine. With sign-in on, a\n``source`` naming another person's runner is not found.",
         "operationId": "drain_herdr_wakes_api_rooms__room_name__sessions_herdr_wakes_get",
         "parameters": [
           {

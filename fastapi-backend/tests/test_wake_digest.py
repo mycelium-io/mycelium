@@ -344,7 +344,10 @@ def test_a_delivered_wake_says_its_agent_is_responding(monkeypatch, tmp_path):
 
     import asyncio
 
-    body = asyncio.run(sessions.drain_herdr_wakes(ROOM))
+    from starlette.requests import Request
+
+    anonymous = Request({"type": "http", "method": "GET", "path": "/", "headers": []})
+    body = asyncio.run(sessions.drain_herdr_wakes(ROOM, anonymous))
     assert body["wakes"][0]["prompt"].startswith("mycelium wake for @builder")
     assert signals == [(ROOM, "builder", "responding")]
 
