@@ -2381,7 +2381,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-memory",
     "t": "mycelium memory work",
     "s": "CLI Reference",
-    "x": "Show what's been built: filters to work/* memories as a table.",
+    "x": "Show the room's tasks: filters to work/* memories, one per task, as a table.",
     "k": "cmd",
     "p": "Reference"
   },

@@ -846,7 +846,7 @@ def memory_status(room: str | None = None, limit: int = 20, as_json: bool = Fals
 
 @doc_ref(
     usage="mycelium memory work",
-    desc="Show what's been built: filters to <code>work/*</code> memories as a table.",
+    desc="Show the room's tasks: filters to <code>work/*</code> memories, one per task, as a table.",
     group="memory",
 )
 @app.command(name="work")
@@ -854,7 +854,7 @@ def memory_status(room: str | None = None, limit: int = 20, as_json: bool = Fals
 @paged("limit")
 @emits_json("as_json")
 def memory_work(room: str | None = None, limit: int = 20, as_json: bool = False) -> None:
-    """Show what's been built (filters to work/* memories)."""
+    """Show the room's tasks (filters to work/* memories, one per task)."""
     _list_by_category("work", room, limit, as_json=as_json)
 
 
@@ -917,7 +917,6 @@ def memory_sync(
     """Sync room files from the backend API, fetching all memories and writing local copies.
 
     Use this to pull the latest room state from a remote backend instance.
-    Hooks call this on session start/end to keep local files current.
 
     Examples:
         mycelium sync           # fetch all memories + reindex
