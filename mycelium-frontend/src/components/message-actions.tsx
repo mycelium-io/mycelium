@@ -201,25 +201,7 @@ function Bar({
       <IconButton label="Quote" action="message.quote" className="size-7" onClick={quote}>
         <Quote />
       </IconButton>
-      <Divider />
-      <IconButton
-        label={copied === "text" ? "Copied" : "Copy text"}
-        action="message.copy"
-        className="size-7"
-        onClick={copy}
-      >
-        {copied === "text" ? <Check /> : <Copy />}
-      </IconButton>
-      {link && (
-        <IconButton
-          label={copied === "link" ? "Copied" : "Copy link"}
-          className="size-7"
-          onClick={() => void copyText(link).then(() => setCopied("link"))}
-        >
-          {copied === "link" ? <Check /> : <Link2 />}
-        </IconButton>
-      )}
-      <Divider />
+      {/* What to do with the message next, then what to take from it. */}
       <IconButton
         label={taskError ? `Couldn't make the task: ${taskError}` : "Make a task"}
         className={taskError ? "size-7 text-red" : "size-7"}
@@ -238,6 +220,24 @@ function Bar({
           onClick={() => (thread ? onOpenThread?.(thread.episode) : void startThread())}
         >
           {starting ? <Loader2 className="animate-spin" /> : thread ? <MessageSquare /> : <MessageSquarePlus />}
+        </IconButton>
+      )}
+      <Divider />
+      <IconButton
+        label={copied === "text" ? "Copied" : "Copy text"}
+        action="message.copy"
+        className="size-7"
+        onClick={copy}
+      >
+        {copied === "text" ? <Check /> : <Copy />}
+      </IconButton>
+      {link && (
+        <IconButton
+          label={copied === "link" ? "Copied" : "Copy link"}
+          className="size-7"
+          onClick={() => void copyText(link).then(() => setCopied("link"))}
+        >
+          {copied === "link" ? <Check /> : <Link2 />}
         </IconButton>
       )}
       <Divider />
