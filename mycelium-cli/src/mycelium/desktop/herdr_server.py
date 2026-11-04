@@ -109,22 +109,35 @@ def parse_ps(output: str) -> list[Server]:
     return found
 
 
-def running() -> list[Server]:
-    """The herdr servers running on this machine (none on Windows)."""
+def _listed() -> list[Server] | None:
+    """The herdr servers running on this machine, or ``None`` when they can't
+    be listed: on Windows, or when ``ps`` fails."""
     if sys.platform == "win32":
-        return []
+        return None
     try:
-        out = subprocess.run(
+        done = subprocess.run(
             ["ps", "-axo", "pid=,lstart=,command="],  # noqa: S607 - ps is the system's
             capture_output=True,
             text=True,
             env={**os.environ, "LC_ALL": "C"},
             timeout=5,
             check=False,
-        ).stdout
+        )
     except (OSError, subprocess.SubprocessError):
-        return []
-    return parse_ps(out)
+        return None
+    return parse_ps(done.stdout) if done.returncode == 0 else None
+
+
+def running() -> list[Server]:
+    """The herdr servers running on this machine (none on Windows)."""
+    return _listed() or []
+
+
+def any_running() -> bool | None:
+    """Whether any herdr server process is running here, answering or not;
+    ``None`` when this machine can't say."""
+    found = _listed()
+    return None if found is None else bool(found)
 
 
 def _same(a: Path, b: Path) -> bool:
