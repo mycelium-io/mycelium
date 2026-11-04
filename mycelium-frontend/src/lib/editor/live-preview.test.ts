@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { forceParsing } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { livePreview } from "@/lib/editor/live-preview";
@@ -17,8 +17,11 @@ afterEach(() => {
 /** An unfocused editor, so every line is drawn rather than shown as source. */
 function preview(doc: string) {
   const state = EditorState.create({ doc, extensions: [markdown({ base: markdownLanguage }), livePreview()] });
-  ensureSyntaxTree(state, doc.length, 5000);
   view = new EditorView({ state, parent: document.body });
+  // Parse the whole note and hand the tree to the view. A state keeps the tree
+  // it was made with (a parse that stops after ~20ms, cut short on a busy
+  // machine), so parsing the state alone left the view drawing a partial tree.
+  forceParsing(view, doc.length, 5000);
   return view;
 }
 

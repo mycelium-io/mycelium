@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { javascript } from "@codemirror/lang-javascript";
-import { ensureSyntaxTree, indentUnit, LanguageDescription } from "@codemirror/language";
+import { forceParsing, indentUnit, LanguageDescription } from "@codemirror/language";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, keymap, runScopeHandlers } from "@codemirror/view";
 import { insertLink, markdownKeys } from "@/lib/editor/markdown-keys";
@@ -32,8 +32,10 @@ function editor(doc: string) {
     selection,
     extensions: [markdownKeys(md.language), history(), keymap.of([...defaultKeymap, ...historyKeymap]), md, indentUnit.of("  ")],
   });
-  ensureSyntaxTree(state, text.length, 5000);
   view = new EditorView({ state, parent: document.body });
+  // Parse the whole note into the view's state; a state keeps the tree it was
+  // made with, which a busy machine can leave partial (see live-preview.test).
+  forceParsing(view, text.length, 5000);
   return view;
 }
 
@@ -124,7 +126,7 @@ describe("Enter", () => {
   it("starts a plain, unindented line after a code block's closing fence", () => {
     const code = "```ts\nconst total = items.reduce((a, b) => a + b.price, 0); // cents\n```";
     const v = editor(`${code}|`);
-    ensureSyntaxTree(v.state, v.state.doc.length, 5000);
+    forceParsing(v, v.state.doc.length, 5000);
     press(v, "Enter");
     expect(text(v)).toBe(`${code}\n|`);
   });

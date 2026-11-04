@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { forceParsing } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { htmlToMarkdown, pasteAsMarkdown } from "@/lib/editor/paste-html";
@@ -63,8 +63,9 @@ describe("pasting", () => {
       selection: { anchor: at },
       extensions: [markdown({ base: markdownLanguage }), pasteAsMarkdown],
     });
-    ensureSyntaxTree(state, doc.length, 5000);
     view = new EditorView({ state, parent: document.body });
+    // The whole tree, in the view's state (see live-preview.test).
+    forceParsing(view, doc.length, 5000);
     const event = new Event("paste", { bubbles: true, cancelable: true }) as ClipboardEvent;
     Object.defineProperty(event, "clipboardData", {
       value: { getData: (type: string) => (type === "text/html" ? html : "") },

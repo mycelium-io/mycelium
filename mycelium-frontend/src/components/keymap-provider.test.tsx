@@ -263,13 +263,16 @@ describe("<KeymapProvider />", () => {
       useKeyAction("tab.close", close);
       return null;
     }
-    setDesktopApp(true);
     try {
       const { rerender } = render(
         <KeymapProvider>
           <Dock />
         </KeymapProvider>,
       );
+      // After the first render: the client settings load once per file, on
+      // first use, and set the desktop flag from the page as they do, so set
+      // before it this would be undone when this test runs first.
+      setDesktopApp(true);
       // jsdom is not a Mac, so `mod` is Ctrl. False: the default was prevented.
       const press = (init: KeyboardEventInit = {}) =>
         fireEvent.keyDown(document.body, { key: "w", ctrlKey: true, ...init });
