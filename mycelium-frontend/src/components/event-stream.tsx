@@ -3,13 +3,13 @@
 
 "use client";
 
-import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   fetchWireHistory,
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import { useChannelPage, useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
+import { useCachedChannelPage, useChannelPage, useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
 import { boardMovesInChat } from "@/lib/room-settings";
 import {
   NOTICE_TYPE,
@@ -47,6 +47,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JumpToLatest } from "@/components/jump-to-latest";
 import { useFollowLatest } from "@/components/messages/use-follow-latest";
+import { useBatchedRows } from "@/components/messages/use-batched-rows";
 import {
   FeedRow,
   RAISE_UP_TYPES,
@@ -373,10 +374,17 @@ const CHANNEL_PAGE = 200;
  *  amendment already folded into a message on screen would otherwise unfold
  *  itself into a second copy. An event with no id is kept — there is nothing to
  *  compare it by, and dropping it would lose a row to save a duplicate. */
-/** How many of the newest rows a room's channel draws in its first frame, and
- *  how many more each frame after, until it has drawn them all. */
-const FIRST_ROWS = 12;
-const ROWS_PER_FRAME = 10;
+/** The channel's newest page: its events, and whether the room has more before them. */
+interface ChannelPage {
+  page: Event[];
+  more: boolean;
+}
+
+/** Where reading back starts from, after `page`. */
+function readBackFrom({ page, more }: ChannelPage) {
+  const cursor = oldestAt(page);
+  return { cursor, exhausted: !more || cursor === null, loading: false };
+}
 
 const byTime = (a: Event, b: Event) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0);
 
@@ -492,8 +500,9 @@ interface Props {
 }
 
 export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, focusMessageId = null, onFocusConsumed, openFind = 0, onCountChange }: Props) {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  // A room opened again starts from the page it had, in this first render.
+  const seed = useCachedChannelPage<ChannelPage>(roomName);
+  const [events, setEvents] = useState<Event[]>(() => (seed ? [...seed.page].sort(byTime) : []));
   const connected = useRoomConnected(roomName);
 
   // Surface connection state to status bar; one home for the signal.
@@ -524,9 +533,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // whether both reads have run out, and whether one is in flight. Refs rather
   // than state because the scroll handler reads them on every wheel tick and
   // must not be re-bound to see the current values.
-  const older = useRef({ cursor: null as string | null, exhausted: false, loading: false });
+  const [seedBack] = useState(() => (seed ? readBackFrom(seed) : null));
+  const older = useRef(seedBack ?? { cursor: null as string | null, exhausted: false, loading: false });
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [reachedStart, setReachedStart] = useState(false);
+  const [reachedStart, setReachedStart] = useState(seedBack?.exhausted ?? false);
 
   // Two reads, one feed.
   //
@@ -562,24 +572,19 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
 
   // The newest page comes from the app's cache (`useChannelPage`), so a room
   // opened again draws what it had at once, then takes the fresh page when it
-  // lands. The channel is drawn anew for each room, so this runs per room.
-  const { page: newest, error: newestError } = useChannelPage(roomName, () => readPage(null));
-  const [drawnPage, setDrawnPage] = useState<typeof newest>(undefined);
-  if (newest && newest !== drawnPage) {
-    // Adjusting state to a new read while rendering, as React suggests over an effect.
-    setDrawnPage(newest);
-    const page = [...newest.page].sort(byTime);
-    setEvents((prev) => (prev.length === 0 ? page : withFresh(prev, page)));
-    if (!historyLoaded) setHistoryLoaded(true);
-  }
-  if (newestError && !historyLoaded && !newest) setHistoryLoaded(true);
-  // Reading back starts from the first page drawn, whichever read it was.
-  useEffect(() => {
-    if (!drawnPage || older.current.cursor !== null || older.current.exhausted) return;
-    older.current.cursor = oldestAt(drawnPage.page);
-    older.current.exhausted = !drawnPage.more || older.current.cursor === null;
-    setReachedStart(older.current.exhausted);
-  }, [drawnPage]);
+  // lands. Reading back starts from the first page drawn, whichever read it was.
+  const { loaded: historyLoaded, error: newestError } = useChannelPage(
+    roomName,
+    () => readPage(null),
+    (page, first) => {
+      const sorted = [...page.page].sort(byTime);
+      setEvents((prev) => (prev.length === 0 ? sorted : withFresh(prev, sorted)));
+      if (!first) return;
+      older.current = readBackFrom(page);
+      setReachedStart(older.current.exhausted);
+    },
+    seed,
+  );
   useEffect(() => {
     if (newestError) logFetchError("fetchMessages")(newestError);
   }, [newestError]);
@@ -1081,19 +1086,12 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // here once its thread prose and churn are placed elsewhere). A live message
   // must not pull the view off a hit the reader stepped to, or off a message
   // they arrived at from search; what they just sent takes them back down.
-  // The newest rows draw first, since they're what's on screen, and the rest
-  // follow a batch a frame. Building a room's whole channel in one commit held
-  // the window for a beat on every switch; a batch a frame keeps it answering.
-  // A find or a message to stand on needs every row, so those draw them all.
-  const [drawCount, setDrawCount] = useState(FIRST_ROWS);
-  const drawAll = Boolean(highlight || (findOpen && query.trim()));
-  const drawn = drawAll || drawCount >= visible.length ? visible : visible.slice(-drawCount);
-  useEffect(() => {
-    if (!historyLoaded || drawn.length >= visible.length) return;
-    const frame = requestAnimationFrame(() => startTransition(() => setDrawCount((n) => n + ROWS_PER_FRAME)));
-    return () => cancelAnimationFrame(frame);
-  }, [historyLoaded, drawn.length, visible.length]);
-  const skipped = visible.length - drawn.length;
+  // The newest rows draw first, the rest a batch a frame. A find or a message
+  // to stand on needs every row, so those draw them all.
+  const { drawn, skipped, done: allDrawn } = useBatchedRows(visible, {
+    ready: historyLoaded,
+    all: Boolean(highlight || (findOpen && query.trim())),
+  });
 
   const newestPending = pending[pending.length - 1]?.id ?? null;
   const rowIds = useMemo(() => (historyLoaded ? drawn.map((e) => e.id) : null), [historyLoaded, drawn]);
@@ -1102,7 +1100,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     holding: Boolean(highlight || activeId),
     // While rows are still drawing in, the view can look short of full; it
     // isn't, so reading back waits until every row it has is drawn.
-    onNearTop: drawn.length === visible.length ? loadOlder : undefined,
+    onNearTop: allDrawn ? loadOlder : undefined,
     sent: newestPending,
     resetKey: roomName,
   });
