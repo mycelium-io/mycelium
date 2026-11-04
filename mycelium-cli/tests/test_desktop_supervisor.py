@@ -742,3 +742,53 @@ def test_a_hub_that_exits_without_the_marker_is_a_crash(tmp_path: Path):
     run_until(sup, lambda: crashing.state == "failed")
     details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
     assert not any("restarting to apply" in d for d in details)
+
+
+def test_a_herdr_that_was_already_running_and_stops_is_started_again(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """After an update the new app finds herdr left running by the old one and
+    takes it as running. When that one stops, the app starts its own rather
+    than going on calling it running with nothing there."""
+    monkeypatch.setattr(sv, "WATCH_S", 0.02)
+    monkeypatch.setattr(sv, "GONE_S", 0.1)
+    there = threading.Event()
+    there.set()
+    events = Events()
+    herdr = comp("herdr", SLEEP, external=there.is_set, outlives=True, replaced_when_gone=True)
+
+    def taken_then_gone() -> bool:
+        if herdr.state == "running" and herdr.proc is None:
+            there.clear()  # taken as running, then it stops
+        return herdr.proc is not None
+
+    try:
+        run_until(hub(events, [herdr]), taken_then_gone)
+        assert any("stopped; starting it" in str(e.get("line")) for e in events.all)
+    finally:
+        if herdr.proc is not None:
+            herdr.proc.kill()
+            herdr.proc.wait()
+
+
+def test_a_herdr_gone_only_briefly_is_not_started_again():
+    """A restart of herdr's server takes it away for a moment; only one gone
+    for GONE_S is replaced, so a second server never races the first."""
+    answers = [False]
+    herdr = comp("herdr", SLEEP, external=lambda: answers[0], replaced_when_gone=True)
+    sup = hub(Events(), [herdr])
+    t = 100.0
+    seen = []
+    for _ in range(3):
+        seen.append(sup._gone(herdr, now=t))
+        t += sv.WATCH_S
+    assert seen == [False, False, False]  # gone 30s so far, under GONE_S
+    answers[0] = True  # back
+    assert sup._gone(herdr, now=t) is False
+    answers[0] = False
+    for _ in range(4):
+        t += sv.WATCH_S
+        last = sup._gone(herdr, now=t)
+    assert last is True  # gone GONE_S since it last answered
+    # Checked only every WATCH_S, never on every tick.
+    assert sup._gone(herdr, now=t + 1) is False
