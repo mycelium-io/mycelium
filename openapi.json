@@ -17014,7 +17014,7 @@
         "title": "FloorEntryRead",
         "description": "A thread's floor that a run of hub code holds, named by its task."
       },
-      "FrameworkRead-Input": {
+      "FrameworkRead": {
         "properties": {
           "id": {
             "type": "string",
@@ -17095,90 +17095,7 @@
           "command"
         ],
         "title": "FrameworkRead",
-        "description": "One agent CLI a runner knows about, found on its machine or not."
-      },
-      "FrameworkRead-Output": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "command": {
-            "type": "string",
-            "title": "Command"
-          },
-          "path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Path"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version"
-          },
-          "installed": {
-            "type": "boolean",
-            "title": "Installed",
-            "default": false
-          },
-          "launchable": {
-            "type": "boolean",
-            "title": "Launchable",
-            "description": "herdr can start it in a pane",
-            "default": false
-          },
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "sessions": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/AgentSessionRead"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sessions",
-            "description": "Its earlier sessions there, newest first; none when it can't list them"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "command"
-        ],
-        "title": "FrameworkRead",
-        "description": "One agent CLI a runner knows about, found on its machine or not."
+        "description": "One agent CLI a runner knows about, found on its machine or not.\n\nA runner sends it and the hub hands it back in the same shape, so it is one\nschema, as for ``MachineReport``: split into ``-Input`` and ``-Output``, the\ngenerated client drops ``RunnerRead``."
       },
       "HTTPValidationError": {
         "properties": {
@@ -22170,7 +22087,7 @@
           },
           "frameworks": {
             "items": {
-              "$ref": "#/components/schemas/FrameworkRead-Input"
+              "$ref": "#/components/schemas/FrameworkRead"
             },
             "type": "array",
             "title": "Frameworks"
@@ -22538,7 +22455,7 @@
           },
           "frameworks": {
             "items": {
-              "$ref": "#/components/schemas/FrameworkRead-Output"
+              "$ref": "#/components/schemas/FrameworkRead"
             },
             "type": "array",
             "title": "Frameworks"
