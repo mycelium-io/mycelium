@@ -1100,7 +1100,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   const follow = useFollowLatest(scroller, {
     rows: rowIds,
     holding: Boolean(highlight || activeId),
-    onNearTop: loadOlder,
+    // While rows are still drawing in, the view can look short of full; it
+    // isn't, so reading back waits until every row it has is drawn.
+    onNearTop: drawn.length === visible.length ? loadOlder : undefined,
     sent: newestPending,
     resetKey: roomName,
   });
