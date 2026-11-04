@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
-  Check,
   Clock,
   Eye,
   FileText,
@@ -46,6 +45,7 @@ import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
 import { RenameAgentDialog } from "@/components/rename-agent-dialog";
+import { InviteDialog } from "@/components/invite-dialog";
 import { AgentScreenWindow } from "@/components/agent-screen-window";
 import { useAgentOpener } from "@/components/agent-opener";
 import { Button } from "@/components/ui/button";
@@ -514,27 +514,26 @@ export function AgentsPanel({
   );
 }
 
-/** Copy a link that invites a person into this room: it opens the desktop app
- *  when they have it, and offers the download or the browser when they don't. */
+/** Show the link that invites a person into this room: it opens the desktop
+ *  app when they have it, and offers the download or the browser when they don't. */
 function InviteButton({ roomName }: { roomName: string }) {
-  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
   const hub = useHubAddress();
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink(hub, roomName));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // Clipboard blocked: nothing to undo, the button just doesn't confirm.
-    }
-  };
   return (
-    <Tooltip content="Copy a link that invites someone to this room">
-      <Button variant="ghost" size="xs" className="ml-auto" onClick={copy}>
-        {copied ? <Check className="size-3 text-green" /> : <UserPlus className="size-3" />}
-        {copied ? "Copied" : "Invite"}
-      </Button>
-    </Tooltip>
+    <>
+      <Tooltip content="Get a link that invites someone to this room">
+        <Button variant="ghost" size="xs" className="ml-auto" onClick={() => setOpen(true)}>
+          <UserPlus className="size-3" />
+          Invite
+        </Button>
+      </Tooltip>
+      <InviteDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        roomName={roomName}
+        link={inviteLink(hub, roomName)}
+      />
+    </>
   );
 }
 
