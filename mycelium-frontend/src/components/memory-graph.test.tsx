@@ -576,7 +576,10 @@ describe("<MemoryGraph />", () => {
           });
 
           expect(writes).not.toHaveBeenCalled(); // still pending
-          act(() => void vi.runAllTimers());
+          // Past the save's 250ms debounce, rather than every timer: in one
+          // full-suite run, runAllTimers found one that kept rescheduling
+          // itself and gave up after 10,000.
+          act(() => void vi.advanceTimersByTime(1000));
           expect(writes).toHaveBeenCalledTimes(1);
           expect(stored(data)).toHaveProperty("decisions/a");
         } finally {

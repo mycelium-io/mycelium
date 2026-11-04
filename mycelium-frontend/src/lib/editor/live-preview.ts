@@ -432,8 +432,10 @@ const inlinePreview = ViewPlugin.fromClass(
       const moved =
         u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || released(u) || reparsed;
       if (!moved) return;
-      // Pressed, only an edit, a scroll or a parse redraws, and with the lines it started with.
-      if (pressed && !u.docChanged && !u.viewportChanged && !reparsed) return;
+      // Pressed, only an edit or a scroll redraws, and with the lines it
+      // started with. A parse waits for the release, which draws the whole
+      // tree: redrawn mid-drag, the text could move under the selection.
+      if (pressed && !u.docChanged && !u.viewportChanged) return;
       this.decorations = build(u.view, pressed ? (this.held ?? undefined) : undefined);
     }
   },
@@ -530,11 +532,11 @@ const tableField = StateField.define<{ focused: boolean; decorations: Decoration
     const pressed = tr.state.field(pressedField);
     const releasedNow = tr.startState.field(pressedField) && !pressed;
     // A table doesn't swap between drawn and source under a held button (see `pressedField`).
-    // A table the parser reached since the last draw is drawn too.
+    // A table the parser reached since the last draw is drawn too, once the button is up.
     const reparsed = syntaxTree(tr.startState) !== syntaxTree(tr.state);
-    const moved = tr.docChanged || reparsed || releasedNow || (!pressed && (told || tr.selection));
+    const moved = tr.docChanged || releasedNow || (!pressed && (reparsed || told || tr.selection));
     if (!moved) return told ? { ...value, focused } : value;
-    if (!tr.docChanged && !reparsed && pressed) return { ...value, focused };
+    if (!tr.docChanged && pressed) return { ...value, focused };
     return { focused, decorations: tables(tr.state, focused) };
   },
   provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),

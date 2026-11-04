@@ -173,10 +173,13 @@ describe("MemoryEditor", () => {
 
   it("forgets the kept edit once it is saved", async () => {
     const user = userEvent.setup();
-    renderEditor();
+    const { onSaved } = renderEditor();
     fireEvent.change(screen.getByTestId("md-editor"), { target: { value: "Saved for real" } });
     await user.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(createMemories).toHaveBeenCalled());
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    // Past the 400ms pause after typing that keeps a draft: a save that
+    // finished inside it must not have the draft written after it.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 500)));
     expect(localStorage.length).toBe(0);
   });
 

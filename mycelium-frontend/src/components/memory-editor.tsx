@@ -131,7 +131,8 @@ export function MemoryEditor({
     }
     pending.current = { body: text, tags, expandable, baseVersion: memory.version };
     const t = setTimeout(() => {
-      if (pending.current) saveDraft(slot, pending.current);
+      // A save can finish inside the pause; what it saved isn't a draft.
+      if (pending.current && !saved.current) saveDraft(slot, pending.current);
     }, 400);
     return () => clearTimeout(t);
   }, [stored, dirty, slot, text, tags, expandable, memory.version]);

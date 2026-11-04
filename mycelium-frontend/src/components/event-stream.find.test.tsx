@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -50,8 +50,16 @@ async function openFind(lines: [string, string?][]) {
 
 const findBar = () => screen.getByLabelText("Find in the channel");
 
-/** Wait out the pause after typing that the channel marks and counts on. */
-const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+/**
+ * Wait out the pause after typing that the channel marks and counts on: until
+ * the bar says a count or "No matches", which it leaves unsaid until then. Not
+ * a fixed sleep: the pause's timer starts in an effect after the last key's
+ * render, and on a busy machine that came more than a sleep's margin late.
+ */
+const settle = () =>
+  waitFor(() => expect(within(status() as HTMLElement).getByText(/^(\d+\/\d+|No matches)$/)).toBeInTheDocument(), {
+    timeout: 4000,
+  });
 
 /** Type a query into the find bar and let the channel catch up with it. */
 async function typeQuery(text: string) {
