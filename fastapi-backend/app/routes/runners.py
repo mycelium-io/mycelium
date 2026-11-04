@@ -40,6 +40,7 @@ from app.schemas import (
     RunnerJobReport,
     RunnerPair,
     RunnerRead,
+    RunnerSessionResume,
     refusals,
 )
 from app.services import actor
@@ -56,6 +57,7 @@ from app.services.runners import (
     check_cwd,
     check_framework,
     check_ready,
+    framework_of,
     registry,
 )
 
@@ -488,6 +490,90 @@ async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Reques
     }
     logger.info("runner %s: adopt %s as @%s in %s", runner_id, payload.pane, handle, payload.room)
     return registry.enqueue(runner_id, "adopt", spec, created_by=me)
+
+
+@router.post(
+    "/{runner_id}/resume",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
+async def resume_session(
+    runner_id: str, payload: RunnerSessionResume, request: Request
+) -> RunnerJobRead:
+    """Bring an earlier agent session on this runner's machine into a room.
+
+    The session is one the runner's scan lists for that agent CLI, in that
+    folder. The member and its notes are written here first, as for a launch,
+    so a start that fails leaves an agent that can be started again; the
+    runner then asks the person at the machine and resumes the session in its
+    own pane, as the member.
+    """
+    runner = _runner_or_404(runner_id, request)
+    # The body names the room, so the request's path isn't where it's spelled.
+    payload.room = canonical_room_name(payload.room)
+    if not room_exists(payload.room):
+        raise HTTPException(status_code=404, detail="Room not found")
+    handle = norm_handle(payload.handle)
+    if not handle or not _HANDLE_RE.match(handle):
+        raise HTTPException(
+            status_code=422,
+            detail="Handle must be a lowercase slug (a-z, 0-9, '-', '_') starting alphanumeric.",
+        )
+    try:
+        check_ready(runner)
+        check_framework(runner, payload.framework)
+        cwd = check_cwd(runner, payload.folder)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    framework = framework_of(runner, payload.framework)
+    listed = (framework.sessions if framework else None) or []
+    if not any(s.id == payload.session and s.folder == payload.folder for s in listed):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{runner.label} doesn't list that session in {payload.folder}. It may be "
+            "in use, or gone; scan the machine again to see its sessions now.",
+        )
+    exists, _ = existing_runner_of(payload.room, handle)
+    if exists:
+        raise HTTPException(
+            status_code=409,
+            detail=f"@{handle} is already a member of {payload.room}. Pick another handle.",
+        )
+
+    me = actor.bind_optional_actor(request, payload.created_by, field="created_by")
+    await write_agent_manifest(
+        payload.room,
+        handle,
+        runner_manifest(
+            framework=payload.framework,
+            runner=runner_id,
+            cwd=cwd,
+            description=f"An earlier session on {runner.label}, brought into the room",
+            owner=me or runner.owner,
+        ),
+        created_by=me or "web-ui",
+        principal=actor.principal_handle(request),
+    )
+    instructions = (payload.instructions or "").strip()
+    if instructions:
+        await write_notes(payload.room, handle, instructions, created_by=me or "web-ui")
+
+    spec = {
+        "room": payload.room,
+        "handle": handle,
+        "framework": payload.framework,
+        "session": payload.session,
+        "cwd": cwd,
+    }
+    logger.info(
+        "runner %s: resume a %s session as @%s in %s",
+        runner_id,
+        payload.framework,
+        handle,
+        payload.room,
+    )
+    return registry.enqueue(runner_id, "resume", spec, created_by=me, signature=payload.signature)
 
 
 @router.post(

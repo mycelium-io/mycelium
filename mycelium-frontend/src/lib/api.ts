@@ -1531,6 +1531,27 @@ export interface Framework {
   launchable: boolean;
   /** Why an installed framework can't be started, or anything else worth saying. */
   note: string | null;
+  /** Its earlier sessions on the machine, newest first, when its integration
+   *  can list and resume them; absent when it can't. Never anything said in
+   *  one: a session is named by where and when, not by its words. */
+  sessions?: AgentSessionSummary[] | null;
+}
+
+/**
+ * An earlier agent session on a machine, as its runner's scan reports it to
+ * the hub. It carries nothing the session said: its title is read only by the
+ * desktop app on that machine (`lib/session-titles.ts`).
+ */
+export interface AgentSessionSummary {
+  /** The CLI's own id for it, which resumes it. */
+  id: string;
+  folder: string;
+  last_used: string;
+  /** The git branch it was working on, when it was in a repository. */
+  branch?: string | null;
+  /** The member the runner started it as, from the runner's own record,
+   *  when it was started for a room. */
+  member?: { room: string; handle: string } | null;
 }
 
 export type RunnerAgentStatus =
@@ -1792,6 +1813,28 @@ export async function adoptRunnerAgent(
   data: { room: string; pane: string; handle: string; created_by?: string },
 ): Promise<RunnerJob> {
   return apiFetch<RunnerJob>(`${runnerApiPath(id)}/adopt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Bring an earlier agent session on a machine into a room: the machine asks
+ *  first, then resumes it in its own pane as the member named. Throws `ApiError`. */
+export async function resumeAgentSession(
+  id: string,
+  data: {
+    room: string;
+    framework: string;
+    session: string;
+    folder: string;
+    handle: string;
+    created_by?: string;
+    /** From a device paired with the machine: resumes without asking there. */
+    signature?: DeviceSignature;
+  },
+): Promise<RunnerJob> {
+  return apiFetch<RunnerJob>(`${runnerApiPath(id)}/resume`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

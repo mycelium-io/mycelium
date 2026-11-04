@@ -1115,14 +1115,55 @@ RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
 RunnerJobKind = Literal[
-    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "rename", "pause"
+    "launch",
+    "stop",
+    "scan",
+    "swarm",
+    "restart",
+    "pair",
+    "interrupt",
+    "adopt",
+    "rename",
+    "pause",
+    "resume",
 ]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
 
+class SessionMemberRead(BaseModel):
+    """The member an earlier session was, from the runner's own record."""
+
+    room: str
+    handle: str
+
+
+class AgentSessionRead(BaseModel):
+    """An earlier agent session on a runner's machine, that could be brought into a room.
+
+    Where and when it was, never what was said in it: a title or anything else
+    from inside the session stays on the machine, so a field the runner sends
+    beyond these is dropped here.
+    """
+
+    id: str = Field(..., min_length=1, max_length=128, description="The agent CLI's own id")
+    folder: str
+    last_used: datetime
+    branch: str | None = Field(None, description="The git branch it was on")
+    member: SessionMemberRead | None = Field(
+        None, description="The member it was, when the runner started it for one"
+    )
+
+
 class FrameworkRead(BaseModel):
-    """One agent CLI a runner knows about, found on its machine or not."""
+    """One agent CLI a runner knows about, found on its machine or not.
+
+    A runner sends it and the hub hands it back in the same shape, so it is one
+    schema, as for ``MachineReport``: split into ``-Input`` and ``-Output``, the
+    generated client drops ``RunnerRead``.
+    """
+
+    model_config = ConfigDict(json_schema_mode_override="validation")
 
     id: str
     name: str
@@ -1132,6 +1173,10 @@ class FrameworkRead(BaseModel):
     installed: bool = False
     launchable: bool = Field(False, description="herdr can start it in a pane")
     note: str | None = None
+    sessions: list[AgentSessionRead] | None = Field(
+        None,
+        description="Its earlier sessions there, newest first; none when it can't list them",
+    )
 
 
 class RunnerAgentRead(BaseModel):
@@ -1436,6 +1481,27 @@ class RunnerAgentAdopt(BaseModel):
     )
     handle: str = Field(..., min_length=1, max_length=64)
     created_by: str | None = None
+
+
+class RunnerSessionResume(BaseModel):
+    """Bring an earlier agent session on a runner's machine into a room as
+    ``handle``, resumed with its conversation. The runner asks the person
+    there first, as for a launch."""
+
+    room: str = Field(..., min_length=1)
+    handle: str = Field(..., min_length=1, max_length=64)
+    framework: str = Field(..., min_length=1, description="A framework id from the runner's scan")
+    session: str = Field(
+        ..., min_length=1, max_length=128, description="A session from that framework's list"
+    )
+    folder: str = Field(..., min_length=1, description="The session's folder, as listed")
+    instructions: str | None = Field(
+        None, description="How the agent should work; saved as its notes, which it reads first"
+    )
+    created_by: str | None = None
+    signature: DeviceSignature | None = Field(
+        None, description="From a device paired with the machine: starts without asking there"
+    )
 
 
 # ── Join codes ───────────────────────────────────────────────────────────────

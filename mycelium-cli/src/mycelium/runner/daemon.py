@@ -118,8 +118,9 @@ from mycelium_backend_client.models import (
 
 #: Jobs that start something on this machine, or type into a terminal on it
 #: (``adopt`` introduces an agent someone already has running; ``rename`` ends
-#: one and starts it again under a new handle), and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "rename"})
+#: one and starts it again under a new handle; ``resume`` starts one in an
+#: earlier session of its CLI's), and so wait for a yes here.
+ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "rename", "resume"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
 #: How long a paused agent has to stop working before it's told why, and how
@@ -564,8 +565,23 @@ class Runner:
 
     def scan(self) -> list[frameworks.Found]:
         self.herdr = self.host.available()
-        self.found = frameworks.scan(self.host.kinds() if self.herdr else None, host=self.host.name)
+        found = frameworks.scan(self.host.kinds() if self.herdr else None, host=self.host.name)
+        from mycelium.runner.sessions import read_members
+
+        self.found = frameworks.with_sessions(
+            found, roots=self.roots, busy=self._busy_sessions(), members=read_members()
+        )
         return self.found
+
+    def _busy_sessions(self) -> set[str]:
+        """The sessions an agent here is in, a member or not: they show as
+        running, never as earlier sessions to bring in again."""
+        busy = {m.session for m in self.bridge.registry.all() if m.session}
+        try:
+            busy |= {s for a in self.bridge.list_agents() if (s := session_of(a))}
+        except HerdrError:
+            pass
+        return busy
 
     def hello_body(self) -> dict[str, Any]:
         with self._lock:
@@ -916,6 +932,30 @@ class Runner:
             raise JobError(f"{cwd} is not a folder on {self.label}.")
         return path
 
+    def resumable(self, spec: dict[str, Any]) -> tuple[agents.AgentKind, Path, str]:
+        """The agent CLI, folder and session a ``resume`` job names, once this
+        machine can bring that session into a room; else why not, before anyone
+        is asked. The session must be one its CLI lists in that folder here, so
+        a job can't start a CLI in whatever session id it names."""
+        known = self.framework(str(spec.get("framework")))
+        cwd = self.folder(spec.get("cwd"))
+        session = str(spec.get("session") or "")
+        if not self.host.resumes:
+            raise JobError(f"{self.host.name} can't bring an earlier session into a room.")
+        if not session or not known.resume_args(session):
+            raise JobError(f"{known.name}'s earlier sessions can't be brought into a room.")
+        if not any(
+            s.get("id") == session and Path(str(s.get("folder"))).expanduser().resolve() == cwd
+            for s in known.list_sessions() or []
+        ):
+            raise JobError(f"{known.name} has no such session in {_tilde(cwd)} on {self.label}.")
+        return known, cwd, session
+
+    def resume(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+        """Start @``handle`` in an earlier session of its agent CLI's, where it left off."""
+        _known, cwd, session = self.resumable(spec)
+        return self.launch({**spec, "cwd": str(cwd)}, job_id, session=session)
+
     def pane_env(self, room: str, handle: str) -> dict[str, str]:
         # A host that tells an agent who it is by a join code takes no
         # environment; the code gives it its token.
@@ -973,11 +1013,14 @@ class Runner:
     def has_notes(self, room: str, handle: str) -> bool:
         return self.notes(room, handle) is not None
 
-    def launch(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+    def launch(
+        self, spec: dict[str, Any], job_id: str | None = None, *, session: str | None = None
+    ) -> dict[str, Any]:
         """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is.
 
         ``job_id`` is the hub's job when the start runs as one, under the pane
-        lock: its steps are reported on it as they're reached.
+        lock: its steps are reported on it as they're reached. ``session`` is an
+        earlier session of its CLI's to start it in (:meth:`resume`).
         """
         if not self.herdr:
             raise JobError(
@@ -1021,6 +1064,7 @@ class Runner:
                 env=self.pane_env(room, handle),
                 intro=intro,
                 hooks=_JobStart(self, job_id) if job_id else None,
+                session=session,
             )
         except HostError as e:
             seen = next((f for f in self.found if f.id == known.id), None)
@@ -1509,9 +1553,10 @@ class Runner:
             return
         if kind == "swarm" and not paired.limits.swarms:
             raise pairing.Refused("this pairing doesn't allow swarms")
-        same = (
-            ("room", "handle", "framework") if kind == "launch" else ("room", "task", "framework")
-        )
+        same = {
+            "launch": ("room", "handle", "framework"),
+            "resume": ("room", "handle", "framework", "session"),
+        }.get(str(kind), ("room", "task", "framework"))
         if any(str(fields.get(k)) != str(spec.get(k)) for k in same):
             raise different
         if bool(fields.get("worktree")) != bool(spec.get("worktree")):
@@ -1532,6 +1577,8 @@ class Runner:
         kind, spec = job.get("kind"), job.get("spec") or {}
         if kind == "launch":
             return self.launch(spec, job_id=str(job["id"]) if job.get("id") else None)
+        if kind == "resume":
+            return self.resume(spec, job_id=str(job["id"]) if job.get("id") else None)
         if kind == "adopt":
             return self.adopt(spec)
         if kind == "stop":
@@ -1655,7 +1702,19 @@ class Runner:
         cwd = self.folder(spec.get("cwd"))
         room = str(spec.get("room"))
         where = f"Room {room} on {hub}. Asked for by {'@' + asked_by if asked_by else 'someone on that hub'}."
-        if kind == "launch":
+        if kind == "resume":
+            # Asked only once this machine could do it: its CLI, host and listing.
+            known, cwd, session = self.resumable(spec)
+            handle = str(spec.get("handle"))
+            title = f"Bring an earlier {known.name} session into {room} as @{handle}?"
+            message = (
+                f"Its session {session[:8]} in {_tilde(cwd)} would start again where it left "
+                f"off, as @{handle}, keeping its conversation. Mycelium would tell it which "
+                f"room it's in.\n\n{where}"
+            )
+            if notes := self.notes(room, handle):
+                message += f"\n\nIts instructions:\n{_clip(notes, NOTES_PREVIEW)}"
+        elif kind == "launch":
             handle = str(spec.get("handle"))
             title = f"Start @{handle} on {self.label}?"
             message = f"{known.name} would start as @{handle}, working in {_tilde(cwd)}.\n\n{where}"

@@ -5389,6 +5389,109 @@
         }
       }
     },
+    "/api/runners/{runner_id}/resume": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Resume Session",
+        "description": "Bring an earlier agent session on this runner's machine into a room.\n\nThe session is one the runner's scan lists for that agent CLI, in that\nfolder. The member and its notes are written here first, as for a launch,\nso a start that fails leaves an agent that can be started again; the\nrunner then asks the person at the machine and resumes the session in its\nown pane, as the member.",
+        "operationId": "resume_session_api_runners__runner_id__resume_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerSessionResume"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runners/{runner_id}/agents/{room_name}/{handle}/stop": {
       "post": {
         "tags": [
@@ -13615,6 +13718,57 @@
         "title": "AgentRenameRead",
         "description": "What a rename moved, or that it waits for a yes on the machine running the agent."
       },
+      "AgentSessionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id",
+            "description": "The agent CLI's own id"
+          },
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "last_used": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Used"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch",
+            "description": "The git branch it was on"
+          },
+          "member": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionMemberRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member it was, when the runner started it for one"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "folder",
+          "last_used"
+        ],
+        "title": "AgentSessionRead",
+        "description": "An earlier agent session on a runner's machine, that could be brought into a room.\n\nWhere and when it was, never what was said in it: a title or anything else\nfrom inside the session stays on the machine, so a field the runner sends\nbeyond these is dropped here."
+      },
       "AgentsControl": {
         "properties": {
           "by": {
@@ -16917,6 +17071,21 @@
               }
             ],
             "title": "Note"
+          },
+          "sessions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgentSessionRead"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessions",
+            "description": "Its earlier sessions there, newest first; none when it can't list them"
           }
         },
         "type": "object",
@@ -16926,7 +17095,7 @@
           "command"
         ],
         "title": "FrameworkRead",
-        "description": "One agent CLI a runner knows about, found on its machine or not."
+        "description": "One agent CLI a runner knows about, found on its machine or not.\n\nA runner sends it and the hub hands it back in the same shape, so it is one\nschema, as for ``MachineReport``: split into ``-Input`` and ``-Output``, the\ngenerated client drops ``RunnerRead``."
       },
       "HTTPValidationError": {
         "properties": {
@@ -21995,7 +22164,7 @@
           "kind": {
             "type": "string",
             "title": "Kind",
-            "description": "One of launch, stop, scan, swarm, restart, pair, interrupt, adopt, rename, pause, or newer"
+            "description": "One of launch, stop, scan, swarm, restart, pair, interrupt, adopt, rename, pause, resume, or newer"
           },
           "spec": {
             "additionalProperties": true,
@@ -22358,6 +22527,84 @@
         ],
         "title": "RunnerRead",
         "description": "A runner as the app sees it."
+      },
+      "RunnerSessionResume": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "framework": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Framework",
+            "description": "A framework id from the runner's scan"
+          },
+          "session": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session",
+            "description": "A session from that framework's list"
+          },
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Folder",
+            "description": "The session's folder, as listed"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions",
+            "description": "How the agent should work; saved as its notes, which it reads first"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSignature"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From a device paired with the machine: starts without asking there"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle",
+          "framework",
+          "session",
+          "folder"
+        ],
+        "title": "RunnerSessionResume",
+        "description": "Bring an earlier agent session on a runner's machine into a room as\n``handle``, resumed with its conversation. The runner asks the person\nthere first, as for a launch."
       },
       "RunnerSyncRead": {
         "properties": {
@@ -23074,6 +23321,25 @@
         "type": "object",
         "title": "SearchScopeRead",
         "description": "How the server read the query's scoping tokens.\n\nEchoed back so a caller draws its scope chips from the interpretation the\nsearch actually ran under, rather than re-parsing the string itself."
+      },
+      "SessionMemberRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle"
+        ],
+        "title": "SessionMemberRead",
+        "description": "The member an earlier session was, from the runner's own record."
       },
       "SkillCreate": {
         "properties": {

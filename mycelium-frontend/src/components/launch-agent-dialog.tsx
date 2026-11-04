@@ -288,22 +288,16 @@ export function handleValid(value: string): boolean {
   return HANDLE_RE.test(normHandle(value));
 }
 
-/** Who the member is: its avatar as the room will draw it, and its `@handle`. */
-export function IdentityRow({
-  value,
-  onChange,
-  hint = "How the room addresses it, and how it signs what it posts.",
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  hint?: string;
-}) {
+/** Who the member is: its avatar as the room will draw it, and its `@handle`.
+ *  The `@` and the avatar say what the field is, so it carries no help text;
+ *  only a handle that won't do says why, under the field. */
+export function IdentityRow({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const trimmed = normHandle(value);
   const bad = trimmed.length > 0 && !HANDLE_RE.test(trimmed);
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-start gap-3">
       <Monogram handle={trimmed || "?"} className="size-10 text-label" kind={trimmed ? "agent" : "person"} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 self-center">
         <label htmlFor="member-handle" className="sr-only">
           Handle
         </label>
@@ -326,15 +320,8 @@ export function IdentityRow({
             className="w-full bg-transparent py-2 pl-0.5 font-mono text-ui text-text outline-none placeholder:text-faint"
           />
         </div>
+        {bad && <p className="mt-1 text-micro text-red">Lowercase letters, digits, - and _.</p>}
       </div>
-      <p
-        className={cn(
-          "hidden w-44 text-micro leading-snug sm:block",
-          bad ? "text-red" : "text-muted-foreground",
-        )}
-      >
-        {bad ? "Lowercase letters, digits, - and _." : hint}
-      </p>
     </div>
   );
 }

@@ -298,6 +298,17 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     const by = typeof body.created_by === "string" ? body.created_by : null;
     return json(queueJob(runner.id, "adopt", spec, by), 201);
   }
+  if (sub === "resume" && method === "POST") {
+    // Proposed: an earlier session resumed as a member, queued like a launch.
+    const body = await readJson(req);
+    const framework = runner.frameworks.find((f) => f.id === body.framework);
+    if (!framework?.sessions?.some((s) => s.id === body.session)) {
+      return json({ detail: `No such earlier session on ${runner.label}.` }, 422);
+    }
+    const spec = { room: String(body.room ?? ""), handle: String(body.handle ?? ""), framework: framework.id, root: String(body.folder ?? "") };
+    const by = typeof body.created_by === "string" ? body.created_by : null;
+    return json(queueJob(runner.id, "launch", spec, by), 201);
+  }
   if (sub === "agents" && method === "POST") {
     if (a !== undefined && b !== undefined && c === "stop") {
       const spec = { room: decodeURIComponent(a), handle: decodeURIComponent(b) };
