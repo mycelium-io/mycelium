@@ -68,6 +68,20 @@ async def client():
 
 
 @pytest.fixture
+def signed_in_hub(monkeypatch):
+    """Sign-in on, as a shared hub runs it, with real tokens through the real gate.
+
+    Yields a :class:`tests.issuer.SignedInHub`: ``signed_in_hub.headers("julia")``
+    is the ``Authorization`` header of julia's token from the test issuer, her
+    handle under ``preferred_username`` and an opaque ``sub``.
+    """
+    from tests import issuer
+
+    yield issuer.sign_in_hub(monkeypatch)
+    issuer.sign_out_hub()
+
+
+@pytest.fixture
 def as_principal():
     """Act as a verified principal for the rest of the test.
 

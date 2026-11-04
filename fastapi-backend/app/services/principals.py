@@ -96,6 +96,19 @@ def delegates_to(room: str, handle: str, candidate: str) -> bool:
     return any(_norm(entry) == actor_handle for entry in allow_from)
 
 
+def owned_by(room: str, handle: str, person: str) -> bool:
+    """Whether ``handle``'s manifest in ``room`` names ``person`` as its owner.
+
+    Only ``owner``, never ``allow_from``: ``allow_from`` lets someone act *as*
+    the agent, which says nothing about whose the agent is.
+    """
+    agent, who = _norm(handle), _norm(person)
+    if not agent or not who:
+        return False
+    manifest = _read_agent_manifest(room, agent)
+    return manifest is not None and _norm(manifest.get("owner")) == who
+
+
 def _grants(manifest: dict[str, Any] | None) -> tuple[str | None, frozenset[str]]:
     """Who a manifest lets act as its agent: its ``owner`` and ``allow_from``."""
     manifest = manifest or {}
