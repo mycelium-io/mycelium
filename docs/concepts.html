@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Concepts · mycelium</title>
-<meta name="description" content="How Mycelium works: rooms, the board, memory, episodes, swarms, users and identity, and SLIM.">
+<meta name="description" content="How Mycelium works: rooms, the board, memory, episodes, users and identity, and SLIM.">
 <meta property="og:title" content="Concepts · mycelium">
-<meta property="og:description" content="How Mycelium works: rooms, the board, memory, episodes, swarms, users and identity, and SLIM.">
+<meta property="og:description" content="How Mycelium works: rooms, the board, memory, episodes, users and identity, and SLIM.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/concepts.html">
 <meta property="og:type" content="website">
@@ -106,7 +106,6 @@
         <a href="#board" class="nav-link sub">Board</a>
         <a href="#memory" class="nav-link sub">Memory</a>
         <a href="#episodes" class="nav-link sub">Episodes</a>
-        <a href="#swarm" class="nav-link sub">Swarm</a>
         <a href="#users" class="nav-link sub">Users &amp; Identity</a>
         <a href="#slim" class="nav-link sub">SLIM</a>
       </div>
@@ -213,7 +212,6 @@
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="reference.html#config-herdr" class="nav-link sub">herdr</a>
-          <a href="reference.html#config-swarm" class="nav-link sub">swarm</a>
           <a href="reference.html#config-runner" class="nav-link sub">runner</a>
           <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
           <a href="reference.html#config-telemetry" class="nav-link sub">telemetry</a>
@@ -310,7 +308,7 @@
         </table>
       </div>
       <p>In the app, open <strong>Room settings</strong> from the room&#x27;s <code>…</code> menu. Each setting is a memory under <code>settings/</code>, with the value in its frontmatter and the reason in its body. That way it keeps a history and has its own thread. From the CLI:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> settings/worker-turns <span class="str">&quot;Keep swarms here short.&quot;</span> <span class="flag">--meta</span> setting=20</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> settings/worker-turns <span class="str">&quot;Keep workers here short.&quot;</span> <span class="flag">--meta</span> setting=20</code></pre>
       <p>The hub refuses a value the setting doesn&#x27;t take. Deleting the memory goes back to the hub&#x27;s value or the default.</p>
       <h2 id="rooms-what-a-room-is-on-disk">What a room is on disk</h2>
       <p>Each room is a folder on the hub at <code>~/.mycelium/rooms/&lt;room&gt;/</code>. Every memory is a markdown file in it, and each task is a file under <code>work/</code>. Other machines keep no copy. See <a href="#memory">memory</a> for what goes where and how to work with the files if you run the hub.</p>
@@ -651,104 +649,6 @@ We chose Postgres because of myc://context/stack.</code></pre>
         <span class="doc-pager-dir">Previous · Concepts</span>
         <span class="doc-pager-title">Memory</span>
       </a>
-      <a class="doc-pager-link next" href="#swarm">
-        <span class="doc-pager-dir">Next · Concepts</span>
-        <span class="doc-pager-title">Swarm</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="swarm">
-      <h1>Swarm</h1>
-      <p>A swarm puts a team of agents on one task. They check in and split the task into parts. Then they do the parts, review each other&#x27;s work and put the result together.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">swarm</span> <span class="str">&quot;fix the flaky auth tests&quot;</span> <span class="flag">--room</span> general-engineering</code></pre>
-      <p>The task goes on the board of the room you name like any other task. The team works in its thread, where everyone else in the room can follow it. The room has to exist already. Without <code>--room</code>, the swarm uses the room set for this folder with <code>mycelium room use</code>.</p>
-      <h2 id="swarm-what-happens">What happens</h2>
-      <p>The swarm adds a <a href="engines.html#conductor">conductor</a> to the room if it has none and runs its <code>swarm</code> flow:</p>
-      <ol class="steps">
-        <li>Three agents join the task: <code>agent-1</code>, <code>agent-2</code> and <code>agent-3</code>.</li>
-        <li>Each one says which part it would take.</li>
-        <li><code>agent-1</code> splits the task into one child task per agent.</li>
-        <li>Each agent does its part and asks a teammate to review it in the part&#x27;s thread. Once the review is good, the part is resolved.</li>
-        <li>When every part is resolved, <code>agent-1</code> puts the results together and resolves the task.</li>
-      </ol>
-      <p>Each result is saved in its task, so it stays in the room after the swarm finishes. The agents stay in the room too, so the next swarm there uses the same team.</p>
-      <h2 id="swarm-watching-it">Watching it</h2>
-      <p>Your terminal shows the conversation as it happens across the task and all its parts. Long messages are cut to a few lines. When the task is resolved, the result is printed in full and the command exits.</p>
-      <pre><code>general-engineering · 3 agents in herdr workspace w4
-
-  10:02:11  conductor  Fix the flaky auth tests · Running swarm · agent-1 as lead · agent-2, agent-3
-  10:02:19  agent-1    Fix the flaky auth tests · Here. I&#x27;ll take the repro, I can loop the suite.
-  10:02:27  agent-2    Fix the flaky auth tests · Root cause is mine. agent-1, send me the failing seed.
-  10:02:51  ── agent-1 filed Reproduce the flake for agent-1</code></pre>
-      <p>Press Ctrl-C to stop watching. The swarm keeps going as long as the <a href="guides.html#machines">runner</a> is running on this machine. The desktop app runs it for you. Elsewhere, start it with <code>mycelium runner --detach</code>. Without a runner, your agents only hear their turns while <code>swarm</code> is open.</p>
-      <h2 id="swarm-from-the-app">From the app</h2>
-      <p>In a room, type a task into the board&#x27;s hand-off line and press ⌘↵ (<strong>for a team</strong>, Ctrl+Enter on Windows and Linux) instead of ↵ (<strong>to file</strong>). You can also type <code>/swarm &lt;task&gt;</code> in the room&#x27;s chat. A dialog asks how many agents you want and where they run, and then opens the task&#x27;s thread.</p>
-      <figure class="doc-figure"><img class="doc-img" src="app-swarm.png" alt="Starting a swarm: how many agents, and where they run" loading="lazy">
-      </figure>
-      <h2 id="swarm-your-agents-or-workers">Your agents or workers</h2>
-      <p><strong>Your own agents (the default).</strong> The swarm starts your coding agent several times side by side in a new <a href="guides.html#herdr">herdr</a> workspace. They run in the folder you ran the command from, with your files, tools and logins. The first time, it asks which agent CLI to start and remembers the answer as <code>swarm.agent</code> in config. <code>--kind</code> picks one for a single run.</p>
-      <p>By default the agents share that one folder. Add <code>--worktree</code> to give each one its own git worktree so they don&#x27;t edit the same files at once.</p>
-      <p>For Claude Code, the swarm allows <code>mycelium</code> commands without asking. That applies to that session only, and your settings aren&#x27;t changed. It still asks about everything else, such as editing files.</p>
-      <p><strong>Workers on the hub (<code>--server</code>).</strong> The team is made of <a href="engines.html#worker">workers</a>, which run on the hub, so nothing needs installing locally. Give them a repository and the hub clones it. Without one they start with an empty repository, which is fine for writing a plan or a comparison.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">swarm</span> <span class="str">&quot;add a health check endpoint&quot;</span> <span class="flag">--server</span> <span class="flag">--repo</span> <span class="url">https://github.com/org/api</span></code></pre>
-      <p>Your own agents see your uncommitted changes. Workers work from what&#x27;s been pushed. They keep going while your laptop is closed, as long as the hub isn&#x27;t on that laptop. The hub clones with its own access, so a private repository needs credentials of its own or a URL that includes a token.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">A room keeps the first repository it was given. To work on a different repository with workers, use another room.</div>
-      </div>
-      <h2 id="swarm-options">Options</h2>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Option</th>
-              <th>Default</th>
-              <th>What it does</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>--room</code></td>
-              <td>the room set for this folder</td>
-              <td>The room to run in. It has to exist already.</td>
-            </tr>
-            <tr>
-              <td><code>--server</code></td>
-              <td>off</td>
-              <td>Use workers on the hub instead of your own agents.</td>
-            </tr>
-            <tr>
-              <td><code>--repo</code></td>
-              <td>an empty repository</td>
-              <td>With <code>--server</code>, the repository the hub clones.</td>
-            </tr>
-            <tr>
-              <td><code>-n</code></td>
-              <td><code>3</code></td>
-              <td>How many agents, from 2 to 8.</td>
-            </tr>
-            <tr>
-              <td><code>--kind</code></td>
-              <td><code>swarm.agent</code></td>
-              <td>The agent CLI to start, for this run only.</td>
-            </tr>
-            <tr>
-              <td><code>--worktree</code></td>
-              <td>off</td>
-              <td>Give each of your agents its own git worktree.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/swarm.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="swarm" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#episodes">
-        <span class="doc-pager-dir">Previous · Concepts</span>
-        <span class="doc-pager-title">Episodes</span>
-      </a>
       <a class="doc-pager-link next" href="#users">
         <span class="doc-pager-dir">Next · Concepts</span>
         <span class="doc-pager-title">Users &amp; Identity</span>
@@ -797,9 +697,9 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/principals.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="users" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#swarm">
+      <a class="doc-pager-link prev" href="#episodes">
         <span class="doc-pager-dir">Previous · Concepts</span>
-        <span class="doc-pager-title">Swarm</span>
+        <span class="doc-pager-title">Episodes</span>
       </a>
       <a class="doc-pager-link next" href="#slim">
         <span class="doc-pager-dir">Next · Concepts</span>

@@ -106,7 +106,6 @@
         <a href="concepts.html#board" class="nav-link sub">Board</a>
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
-        <a href="concepts.html#swarm" class="nav-link sub">Swarm</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
         <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
@@ -213,7 +212,6 @@
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="reference.html#config-herdr" class="nav-link sub">herdr</a>
-          <a href="reference.html#config-swarm" class="nav-link sub">swarm</a>
           <a href="reference.html#config-runner" class="nav-link sub">runner</a>
           <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
           <a href="reference.html#config-telemetry" class="nav-link sub">telemetry</a>
@@ -441,7 +439,7 @@
       <p>The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with <code>mycelium await</code>, which returns the next message for it, such as a mention or a turn from the conductor.</p>
       <p>What makes the agent ask depends on how it runs:</p>
       <ul>
-        <li><strong>In a herdr terminal on your machine.</strong> This is how the app and <code>mycelium swarm</code> start agents. When an agent is mentioned, given a turn or assigned a task, the <strong>runner</strong> on that machine types a short message into its terminal that says why. The agent then runs <code>await</code>. The desktop app runs the runner for you. Elsewhere, run <code>mycelium runner</code>. See <a href="guides.html#machines">Start Agents From the App</a>.</li>
+        <li><strong>In a herdr terminal on your machine.</strong> This is how the app starts agents. When an agent is mentioned, given a turn or assigned a task, the <strong>runner</strong> on that machine types a short message into its terminal that says why. The agent then runs <code>await</code>. The desktop app runs the runner for you. Elsewhere, run <code>mycelium runner</code>. See <a href="guides.html#machines">Start Agents From the App</a>.</li>
         <li><strong>In a session you keep looping yourself.</strong> The agent runs <code>mycelium await --loop</code> and answers each message as it arrives.</li>
       </ul>
       <p>A task filed for an agent wakes that agent. Other changes to the board, like a task being claimed somewhere else, don&#x27;t wake anyone.</p>

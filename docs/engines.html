@@ -106,7 +106,6 @@
         <a href="concepts.html#board" class="nav-link sub">Board</a>
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
-        <a href="concepts.html#swarm" class="nav-link sub">Swarm</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
         <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
@@ -213,7 +212,6 @@
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="reference.html#config-herdr" class="nav-link sub">herdr</a>
-          <a href="reference.html#config-swarm" class="nav-link sub">swarm</a>
           <a href="reference.html#config-runner" class="nav-link sub">runner</a>
           <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
           <a href="reference.html#config-telemetry" class="nav-link sub">telemetry</a>
@@ -330,7 +328,7 @@
       <h1>Conductor</h1>
       <p>The conductor runs a <strong>flow</strong> inside a task. A flow is a set sequence of turns. For example, one member proposes something and another approves or rejects it. A rejection sends it back for another try. The conductor makes sure each member speaks when it&#x27;s their turn and only then.</p>
       <p>It doesn&#x27;t use a model. The members do all the thinking. The conductor only decides who goes next, based on the flow and on how the last member answered.</p>
-      <p>In the app, the <strong>Review</strong> and <strong>Split</strong> choices under <strong>+</strong> in a task&#x27;s thread run conductor flows. From the command line:</p>
+      <p>In the app, the <strong>Review</strong> choice under <strong>+</strong> in a task&#x27;s thread runs a conductor flow. From the command line:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> conductor <span class="flag">--kind</span> conductor <span class="flag">--room</span> sprint-plan
 
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/rotate-signing-key conductor \
@@ -366,11 +364,6 @@
               <td><code>round-robin</code></td>
               <td>none</td>
               <td>The members named speak one after another for two rounds. Each one sees what the others said.</td>
-            </tr>
-            <tr>
-              <td><code>swarm</code></td>
-              <td>lead</td>
-              <td>Each member says which part it would take. Then the lead splits the task into one child task per member. The app&#x27;s <strong>Split</strong> and <a href="concepts.html#swarm"><code>mycelium swarm</code></a> run this.</td>
             </tr>
             <tr>
               <td><code>concord</code></td>
@@ -524,7 +517,7 @@ constraint (pricing): A discount of at most 15%.</code></pre>
 
     <section class="doc-section" id="worker">
       <h1>Worker</h1>
-      <p>A worker is a coding agent the hub runs for you. Unlike the other engines, it does the work itself. Give it a task and it does the task, asks another member to review it and makes the changes the review asks for. It can read and edit files and run commands. When you run <a href="concepts.html#swarm"><code>mycelium swarm --server</code></a>, the team is made of workers.</p>
+      <p>A worker is a coding agent the hub runs for you. Unlike the other engines, it does the work itself. Give it a task and it does the task, asks another member to review it and makes the changes the review asks for. It can read and edit files and run commands.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-1 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> agent-2 <span class="flag">--kind</span> worker <span class="flag">--room</span> launch-plan
 
@@ -544,9 +537,9 @@ constraint (pricing): A discount of at most 15%.</code></pre>
         <li><strong>Every part of a task it split up is resolved.</strong> It combines the parts, posts the result and resolves the task.</li>
       </ul>
       <h2 id="worker-where-it-works">Where it works</h2>
-      <p>Each room with workers has a git repository on the hub. When a swarm is started with a repository, this is a clone of it. Otherwise it starts empty. Each worker gets its own copy on its own branch, such as <code>swarm/agent-1</code> or <code>swarm/agent-2</code>, and commits its work there. At the end, the worker that split up the task merges the branches.</p>
+      <p>Each room with workers has a git repository on the hub, which starts empty. Each worker gets its own copy on its own branch, such as <code>worker/agent-1</code> or <code>worker/agent-2</code>, and commits its work there. At the end, the worker that split up the task merges the branches.</p>
       <p>On a hub on your own machine, the repository is at <code>~/.mycelium/workspaces/&lt;room&gt;/repo</code>. You can look at the branches there or push them somewhere:</p>
-      <pre><code><span class="cmd">git</span> <span class="flag">-C</span> ~/.mycelium/workspaces/&lt;room&gt;/repo log swarm/agent-1</code></pre>
+      <pre><code><span class="cmd">git</span> <span class="flag">-C</span> ~/.mycelium/workspaces/&lt;room&gt;/repo log worker/agent-1</code></pre>
       <p>Use the branches in <code>repo/</code> rather than the workers&#x27; own folders beside it. Those folders only work from inside the hub.</p>
       <h2 id="worker-reviews">Reviews</h2>
       <p>Every part of a task is reviewed by another worker before it&#x27;s resolved. Workers review in a circle in order of their handles, which shares the reviewing out. Agent-1&#x27;s work goes to agent-2, and the last worker&#x27;s goes back to agent-1. A room with a single worker has no one to review it.</p>
