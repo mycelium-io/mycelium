@@ -380,7 +380,9 @@ class HerdrRegistry:
             managed=bool(entry.get("managed", False)),
             cwd=entry.get("cwd") or None,
             session=entry.get("session") or None,
-            chatted=bool(entry.get("chatted", False)),
+            # An entry saved before this was recorded belongs to a pane that was
+            # already running, so it is taken to have a chat rather than held.
+            chatted=bool(entry.get("chatted", True)),
         )
 
     def all(self) -> list[HerdrPaneMapping]:
@@ -423,8 +425,7 @@ class HerdrRegistry:
         # Not kept from before, unlike the folder and session: a start or a
         # restart in this pane may open a conversation of its own, which is
         # seen working again before anything is typed into it.
-        if mapping.chatted:
-            entry["chatted"] = True
+        entry["chatted"] = mapping.chatted
         data[mapping.key] = entry
         self._save(data)
 

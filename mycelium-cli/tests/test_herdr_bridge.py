@@ -308,6 +308,21 @@ def test_seeing_a_pane_working_is_remembered_as_a_chat(
     assert mapped is not None and mapped.chatted is False
 
 
+def test_a_registry_entry_saved_before_chats_were_recorded_counts_as_chatted(
+    isolated_home: Path,
+) -> None:
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="design", handle="old", pane="w1:p1", kind="cursor"))
+    fresh = reg.get("design", "old")
+    assert fresh is not None and fresh.chatted is False
+    data = json.loads(reg.path.read_text())
+    for entry in data.values():
+        entry.pop("chatted")
+    reg.path.write_text(json.dumps(data))
+    legacy = reg.get("design", "old")
+    assert legacy is not None and legacy.chatted is True
+
+
 def test_edits_to_the_registry_from_several_threads_are_none_of_them_lost(
     isolated_home: Path,
 ) -> None:
