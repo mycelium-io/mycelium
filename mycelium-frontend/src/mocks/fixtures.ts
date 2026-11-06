@@ -1800,6 +1800,16 @@ const CHECKOUT_LINK_EDGES: MemoryGraphEdge[] = [
   { source: "decisions/apple-pay-launch", target: "work/launch-checklist", kind: "wikilink", resolved: false, error: "not_found" },
 ];
 checkout.links = buildMockGraph(checkout.memories, CHECKOUT_LINK_EDGES);
+// A message Morgan just sent to two agents, one of them mid-turn: where its
+// mentions stand shows under it (MOCK of messages that cross). Stamped from
+// now, not the room's fixed clock, since that line shows for recent messages.
+checkout.messages.push({
+  id: "x-cross",
+  sender_handle: "operator",
+  message_type: "broadcast",
+  content: "@builder keep #504 and close #506, they fix the same bug. @reviewer review #504 only.",
+  created_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+});
 
 // ── subscription-pricing: an in-progress negotiation, nothing compiled yet ────
 

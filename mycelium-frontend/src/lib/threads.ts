@@ -258,6 +258,8 @@ export function noticeLabel(
       return "Floor";
     case "check":
       return "Verifier";
+    case "interrupted":
+      return "Interrupted";
     default:
       return subkind;
   }

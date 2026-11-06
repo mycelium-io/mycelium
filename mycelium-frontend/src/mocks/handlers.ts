@@ -184,6 +184,26 @@ function publishNotice(fx: RoomFixture, room: string, data: Parameters<typeof no
   publish(room, frame);
 }
 
+/** Where each member a message mentions stands, kept per message for the server's life (MOCK). */
+type MockWake = { handle: string; status: "working" | "idle" | "blocked" | "done" | null; wake: "held" | "read" | "interrupted"; at?: string | null };
+const wakeStore = globalThis as typeof globalThis & { __myceliumMentionWakes?: Map<string, MockWake[]> };
+function mentionWakes(room: string, message: { id: string; content: string }): MockWake[] {
+  const store = (wakeStore.__myceliumMentionWakes ??= new Map());
+  const key = `${room}/${message.id}`;
+  let wakes = store.get(key);
+  if (!wakes) {
+    const handles = [...new Set([...message.content.matchAll(/(?:^|[^\w@~!])@([A-Za-z0-9][\w-]*)/g)].map((m) => m[1]))];
+    // The mock room's agents: builder is mid-turn, the others have read it.
+    wakes = handles.map((handle) =>
+      handle === "builder"
+        ? { handle, status: "working", wake: "held" }
+        : { handle, status: "idle", wake: "read", at: new Date(Date.now() - 60_000).toISOString() },
+    );
+    store.set(key, wakes);
+  }
+  return wakes;
+}
+
 /** A task's key fragment, as `services/tasks.py:slugify` makes it. */
 function slug(title: string): string {
   const s = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "");
@@ -850,6 +870,32 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // GET /messages/search — the find bar's History.
       if (sub[1] === "search" && method === "GET") {
         return json(mockMessageSearch(fx, searchParams.get("q") ?? "", Number(searchParams.get("limit") ?? "20")));
+      }
+      // GET /messages/{id}/mentions, POST /messages/{id}/interrupt — MOCK of a
+      // proposed read and verb: where each member a message mentioned stands,
+      // and the sender turning a held mention into an interrupt, once.
+      if (sub[1] && (sub[2] === "mentions" || sub[2] === "interrupt")) {
+        const message = fx.messages.find((m) => m.id === sub[1]);
+        if (!message) return notFound(`message ${sub[1]} not found (mock)`);
+        const wakes = mentionWakes(roomName, message);
+        if (sub[2] === "mentions" && method === "GET") return json(wakes);
+        if (sub[2] === "interrupt" && method === "POST") {
+          const body = await readJson(req);
+          const handle = String(body.handle ?? "").replace(/^@/, "");
+          const by = String(body.by ?? "");
+          const wake = wakes.find((w) => w.handle === handle);
+          if (by !== message.sender_handle) return json({ detail: "Only who sent a message can interrupt with it." }, 403);
+          if (!wake) return json({ detail: `The message doesn't mention @${handle}.` }, 422);
+          if (wake.wake === "interrupted") return json({ detail: `@${handle} was already interrupted with this message.` }, 409);
+          if (wake.wake === "read") return json({ detail: `@${handle} already read it.` }, 409);
+          if (wake.status !== "working") return json({ detail: `@${handle} isn't working; it reads this next.` }, 409);
+          wake.wake = "interrupted";
+          wake.at = new Date().toISOString();
+          const quote = message.content.split("\n")[0].slice(0, 200);
+          publishNotice(fx, roomName, { subkind: "interrupted", key: `message/${message.id}`, title: quote, by, for: handle });
+          return json(wake);
+        }
+        return null;
       }
       if (sub[1] === "wire" && method === "GET") {
         const limit = Number(searchParams.get("limit") ?? "200");

@@ -230,6 +230,9 @@ function inAThread(event: Event, room: string): boolean {
  * subject, one place, in order.
  */
 function isActivity(event: Event): boolean {
+  // MOCK: a mention turned into an interrupt is about a message, not a task, so
+  // it is a line in the chat and never a rail row.
+  if (event.type === NOTICE_TYPE && event.raw.subkind === "interrupted") return false;
   return event.type === PING_TYPE || event.type === "l9_knowledge" || event.type === NOTICE_TYPE;
 }
 
