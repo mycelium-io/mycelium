@@ -23,13 +23,16 @@ Each script's header comment states its prerequisites and where its output
 lands. Read that before running — several need a running backend or a font
 installed, and fail unhelpfully without them.
 
-Everything here is linted and type-checked, against the repo-root `ruff.toml`.
-Run it from the repo root, exactly as CI does:
+Everything here is linted and type-checked, against the repo-root `ruff.toml`,
+with the ruff and ty versions `mycelium-cli` has locked. Run it from the repo
+root, exactly as CI does (after `uv sync --group dev` in `mycelium-cli`):
 
 ```bash
-uv run --no-project --with ruff ruff check --config ruff.toml scripts
-uv run --no-project --with ruff ruff format --check --config ruff.toml scripts
-uv run --no-project --with ty ty check --python-version 3.12 scripts
+ruff_version=$(cd mycelium-cli && uv run ruff --version | awk '{print $2}')
+ty_version=$(cd mycelium-cli && uv run ty --version | awk '{print $2}')
+uv run --no-project --with "ruff==$ruff_version" ruff check --config ruff.toml scripts
+uv run --no-project --with "ruff==$ruff_version" ruff format --check --config ruff.toml scripts
+uv run --no-project --with "ty==$ty_version" ty check --python-version 3.12 scripts
 ```
 
 `--no-project` is deliberate. A script here declares no dependencies — it is
