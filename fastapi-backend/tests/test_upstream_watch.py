@@ -278,6 +278,55 @@ def test_a_ref_no_row_mentions_is_forgotten(shop):
     assert watch.load_seen(ROOM) == {}
 
 
+class DeletingPulls(Pulls):
+    """Deletes the room while the sweep waits on its refresh, as a person
+    deleting it in the app at that moment would."""
+
+    async def fetch(self, refs: list[Ref], ctx: object) -> list[FetchOutcome]:
+        import shutil
+
+        from app.services.filesystem import room_path
+
+        shutil.rmtree(room_path(ROOM))
+        return await super().fetch(refs, ctx)
+
+
+def _gone() -> bool:
+    from app.services.filesystem import list_room_names, room_exists
+
+    return not room_exists(ROOM) and ROOM not in list_room_names()
+
+
+def test_a_room_deleted_during_its_first_sweep_stays_deleted(shop):
+    # A first sweep always writes what the room saw, so this is the write
+    # that brought deleted rooms back.
+    assert _sweep(DeletingPulls()) == []
+    assert _gone()
+
+
+def test_a_room_deleted_with_a_change_waiting_stays_deleted_and_hears_nothing(shop):
+    pulls = Pulls()
+    _sweep(pulls)
+    deleting = DeletingPulls()
+    deleting.answers["PR-1"] = _pr(pr="MERGED", ci="SUCCESS")
+
+    assert _sweep(deleting) == []
+    assert shop == []
+    assert _gone()
+
+
+def test_saving_into_a_room_already_gone_writes_nothing(shop):
+    """Deleted after the sweep checked it was there: the write fails on the
+    missing folder rather than making it."""
+    import shutil
+
+    from app.services.filesystem import room_path
+
+    shutil.rmtree(room_path(ROOM))
+    watch._save_seen(ROOM, {"toy:pull_request:PR-1": {"state": "pending"}})
+    assert _gone()
+
+
 def test_a_link_said_in_the_rows_thread_counts(shop, monkeypatch):
     from types import SimpleNamespace
 
