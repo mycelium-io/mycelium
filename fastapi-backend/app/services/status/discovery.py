@@ -29,7 +29,13 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from app.services.filesystem import EPISODE_META, get_room_dir, list_memory_files, system_meta
+from app.services.filesystem import (
+    EPISODE_META,
+    list_memory_files,
+    room_exists,
+    room_path,
+    system_meta,
+)
 
 if TYPE_CHECKING:
     from app.services.status.runtime import StatusRuntime
@@ -78,7 +84,11 @@ def discover(room_name: str, runtime: StatusRuntime) -> list[DiscoveredRefs]:
             if origin not in found[ref]:
                 found[ref].append(origin)
 
-    room_dir = get_room_dir(room_name)
+    # A room deleted since it was listed has nothing to discover, and looking it
+    # up must not make its folder again: a room is its folder.
+    if not room_exists(room_name):
+        return []
+    room_dir = room_path(room_name)
     threads: dict[str, str] = {}
     for namespace in LIVE_NAMESPACES:
         for key, meta, content in list_memory_files(room_dir, prefix=namespace, limit=SCAN_LIMIT):

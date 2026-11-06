@@ -376,3 +376,42 @@ def test_an_upstream_notice_wakes_nobody():
 
     record = _upstream("work/apple-pay", "Turn on Apple Pay", "review_requested", 1, who="builder")
     assert not asks(record.content, "builder")
+
+
+class DeletingPulls(Pulls):
+    """The toy provider, with the room deleted while its answer is out: a
+    person deleting it while a sweep waits on GitHub."""
+
+    async def fetch(self, refs: list[Ref], ctx: object) -> list[FetchOutcome]:
+        import shutil
+
+        from app.services.filesystem import room_path
+
+        shutil.rmtree(room_path(ROOM))
+        return await super().fetch(refs, ctx)
+
+
+@pytest.mark.parametrize("swept_before", [True, False], ids=["seen-before", "first-sweep"])
+def test_a_room_deleted_during_a_sweep_stays_deleted(shop, swept_before):
+    from app.services.filesystem import list_room_names, room_exists
+
+    if swept_before:
+        _swept_before()
+    pulls = DeletingPulls()
+    # An answer that would be news, so the sweep would raise and save in it.
+    pulls.answers["PR-1"] = _pr(created=_created(timedelta(minutes=5)), ci="FAILURE")
+    assert _sweep(pulls) == []
+    assert shop == []
+    assert not room_exists(ROOM)
+    assert ROOM not in list_room_names()
+
+
+def test_a_room_deleted_before_it_is_read_is_not_made_again(shop):
+    import shutil
+
+    from app.services.filesystem import room_exists, room_path
+    from app.services.status import discovery
+
+    shutil.rmtree(room_path(ROOM))
+    assert discovery.discover(ROOM, StatusRuntime(providers={"toy": Pulls()})) == []
+    assert not room_exists(ROOM)
