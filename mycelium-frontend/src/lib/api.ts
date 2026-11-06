@@ -985,31 +985,12 @@ export interface UploadList {
 }
 
 /**
- * A member a sent message mentioned, and where its wake stands. (MOCK: the hub
- * has no such read yet; the mock hub answers it.)
- *
- * `held` is a plain `@` waiting for the member's turn to end, which is the only
- * time the sender can still turn it into an interrupt. `read` is gone past
- * that, and `interrupted` was turned, once, by the sender.
+ * The sender turns a held `@handle` in their message into an interrupt: only
+ * a member that message mentioned, only while its wake is held (working,
+ * unread), once. (MOCK: the hub has no such route yet; the mock hub answers.)
  */
-export interface MentionWake {
-  handle: string;
-  /** The member's live state, as the members read has it. */
-  status: "working" | "idle" | "blocked" | "done" | null;
-  wake: "held" | "read" | "interrupted";
-  /** When it was read or interrupted. */
-  at?: string | null;
-}
-
-export async function fetchMentionWakes(room: string, messageId: string): Promise<MentionWake[]> {
-  return apiFetch<MentionWake[]>(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/mentions`, {
-    fallback: [],
-  });
-}
-
-/** The sender turns a held `@handle` in their message into an interrupt. (MOCK) */
-export async function interruptMention(room: string, messageId: string, handle: string, by: string): Promise<MentionWake> {
-  return apiFetch<MentionWake>(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/interrupt`, {
+export async function interruptMention(room: string, messageId: string, handle: string, by: string): Promise<void> {
+  return apiFetch<void>(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/interrupt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ handle, by }),

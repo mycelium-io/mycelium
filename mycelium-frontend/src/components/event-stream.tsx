@@ -64,6 +64,7 @@ import {
   nameActivity,
   useFeedContext,
 } from "@/components/messages/feed-row";
+import type { Interrupted } from "@/components/messages/mention-wakes";
 import { Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { RespondingNames } from "@/components/agent-opener";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
@@ -230,9 +231,6 @@ function inAThread(event: Event, room: string): boolean {
  * subject, one place, in order.
  */
 function isActivity(event: Event): boolean {
-  // MOCK: a mention turned into an interrupt is about a message, not a task, so
-  // it is a line in the chat and never a rail row.
-  if (event.type === NOTICE_TYPE && event.raw.subkind === "interrupted") return false;
   return event.type === PING_TYPE || event.type === "l9_knowledge" || event.type === NOTICE_TYPE;
 }
 
@@ -250,6 +248,11 @@ function isActivity(event: Event): boolean {
 /** The verifier's notice about a message: drawn under that message, never as a row. */
 function isVerifierCheck(event: Event): boolean {
   return event.type === NOTICE_TYPE && event.raw.subkind === "check";
+}
+
+/** MOCK: a sent mention turned into an interrupt, marked on that message, never a row. */
+function isInterrupt(event: Event): boolean {
+  return event.type === NOTICE_TYPE && event.raw.subkind === "interrupted";
 }
 
 function isAlsoInChat(event: Event, boardMoves: ReadonlySet<string>): boolean {
@@ -783,10 +786,24 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           CHANNEL_VIEW_TYPES.has(e.type) &&
           (!inAThread(e, roomName) || e.conductor?.event === "open") &&
           !isVerifierCheck(e) &&
+          !isInterrupt(e) &&
           !(e.type === PING_TYPE && e.thread && messageThreads.has(e.thread)),
       ),
     [events, roomName, messageThreads],
   );
+
+  // MOCK: who each message's sender interrupted with it, for the ⚡ by its time.
+  const interruptedByMessage = useMemo(() => {
+    const out = new Map<string, Interrupted[]>();
+    for (const e of events) {
+      if (!isInterrupt(e)) continue;
+      const id = String(e.raw.taskKey ?? "").replace(/^message\//, "");
+      const mark = { by: String(e.raw.by ?? ""), handle: String(e.raw.for ?? ""), at: e.at };
+      out.set(id, [...(out.get(id) ?? []), mark]);
+    }
+    return out;
+  }, [events]);
+  const feedCtx = useMemo(() => ({ ...feed, interruptedByMessage }), [feed, interruptedByMessage]);
 
   const candidates = useMemo(
     () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e, boardMoves)),
@@ -1228,7 +1245,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   key={ev.id}
                   ev={ev}
                   prev={visible[skipped + idx - 1]}
-                  ctx={feed}
+                  ctx={feedCtx}
                   pingLine={pingLines.get(ev.id)}
                   run={runs.get(runEpisode(ev) ?? "")}
                   marked={marked}

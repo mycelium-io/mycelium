@@ -22,7 +22,7 @@ import { claimNeedles } from "@/lib/verifier";
 import { agentTag } from "@/lib/agent-label";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import { insertIntoComposer, messagePath, quoteText, replyText } from "@/lib/message-actions";
-import { Ago, useNow } from "@/lib/relative-time";
+import { Ago } from "@/lib/relative-time";
 import { shortStamp } from "@/lib/room-stream";
 import {
   AGREED_ICON,
@@ -45,11 +45,7 @@ import { AgentCardHover } from "@/components/agent-card";
 import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
 import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
 import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
-import { MENTION_WAKES_FOR_MS, MentionWakes } from "@/components/messages/mention-wakes";
-import { useCurrentUser } from "@/components/current-user";
-
-/** A message that asks someone by name: a plain `@handle`, not a silent `@~` one. */
-const mentionsSomeone = (text: string) => /(^|[^\w@~!])@[A-Za-z0-9][\w-]*/.test(text);
+import { InterruptMark, type Interrupted } from "@/components/messages/mention-wakes";
 import { ThreadReplies } from "@/components/messages/thread-replies";
 import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
@@ -148,6 +144,9 @@ export interface FeedContext {
   threadIds?: ReadonlyMap<string, ThreadTarget>;
   /** Threads started from a message, by that message's id; drawn under it. */
   messageThreads?: ReadonlyMap<string, MessageThread>;
+  /** MOCK: who each message's sender interrupted with it, by message id;
+   *  marked on the message, never a line of its own. */
+  interruptedByMessage?: ReadonlyMap<string, Interrupted[]>;
   rowNames: Map<string, RowNaming>;
   flagsByMessage: Map<string, VerifierFlag[]>;
   refreshFlags: () => void;
@@ -454,22 +453,6 @@ export function FeedRow({
     // The icon says what happened and its color how it went; the table is
     // shared with the Stream tab (`lib/event-icons.ts`).
     const icon = noticeIcon(subkind, change, ev.raw.kind as string | undefined);
-    // MOCK: a sent mention turned into an interrupt reads as who interrupted
-    // whom, with the message it was in; there's no thread to open.
-    if (subkind === "interrupted") {
-      return (
-        <SystemNotice
-          time={ev.time}
-          at={ev.at}
-          icon={icon}
-          label={`@${by ?? "someone"}`}
-          labelColor="var(--text)"
-        >
-          <span className="flex-shrink-0">interrupted @{String(ev.raw.for ?? "").replace(/^@/, "")} with</span>
-          <span className="truncate text-text">{ev.content.trim()}</span>
-        </SystemNotice>
-      );
-    }
     const ref = ev.raw.ref as string | undefined;
     const prUrl = ev.raw.url as string | undefined;
     // A filed task reads by who it is for; anything else "by" who did it (a
@@ -725,11 +708,6 @@ export function MessageRow({
   const color = isAgent ? undefined : "var(--avatar-neutral)";
   const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
   const flags = ev.messageId ? flagsByMessage.get(ev.messageId) : undefined;
-  // The reader's own message: where its mentions stand shows under it.
-  const { principal } = useCurrentUser();
-  const me = principal.trim().replace(/^@/, "").toLowerCase();
-  const mine = me !== "" && ev.sender.toLowerCase() === me;
-  const now = useNow();
   // A thread started from this message, in the channel; inside a thread it's
   // the thread's own message, so nothing is drawn under it there.
   const startedThread = ev.messageId && !ctx.episode ? ctx.messageThreads?.get(ev.messageId) : undefined;
@@ -785,6 +763,7 @@ export function MessageRow({
                 </span>
               )}
               <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
+              {ev.messageId && <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />}
             </div>
           )}
           {/* A rating reply leads with its ratings as bars; its prose says the
@@ -811,9 +790,6 @@ export function MessageRow({
             </span>
           )}
           {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
-          {mine && ev.messageId && mentionsSomeone(ev.content) && now - (Date.parse(ev.at) || 0) < MENTION_WAKES_FOR_MS && (
-            <MentionWakes roomName={roomName} messageId={ev.messageId} me={me} />
-          )}
           {startedThread && (
             <ThreadReplies thread={startedThread} onOpen={ctx.onOpenThread} />
           )}

@@ -50,9 +50,11 @@ import {
   isMentionGroup,
   mentionMode,
   type MentionGroupName,
+  parseInterruptMentions,
   parseMentions,
   parseSilentMentions,
 } from "@/lib/mentions";
+import { SENT_TO_WORKING_MS, SentToWorking } from "@/components/messages/mention-wakes";
 import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
 import { composerMentions, type ComposerMentionKind } from "@/lib/composer-mentions";
 import { MentionLayer } from "@/components/mention-layer";
@@ -391,6 +393,14 @@ export function RoomChatBox({
   const [noticeKey, setNoticeKey] = useState<string | null>(null);
   const [launch, setLaunch] = useState<Launch | null>(null);
   const dismissLaunch = useCallback(() => setLaunch(null), []);
+  // MOCK: a plain `@` just went to members mid-turn; said once, briefly.
+  const [toWorking, setToWorking] = useState<{ messageId: string; handles: string[] } | null>(null);
+  const dismissToWorking = useCallback(() => setToWorking(null), []);
+  useEffect(() => {
+    if (!toWorking) return;
+    const t = setTimeout(dismissToWorking, SENT_TO_WORKING_MS);
+    return () => clearTimeout(t);
+  }, [toWorking, dismissToWorking]);
   // Files the next message carries: picked, dropped on the box or pasted.
   const attachments = usePendingUploads(roomName, principal.trim() || "user");
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -414,7 +424,7 @@ export function RoomChatBox({
   // renders; `[[` reads the room's memory keys and `/` its skills. All three
   // are shared reads — opening a room fetches each of them once, however many
   // panels are looking.
-  const { agents, people, others } = useRoomRoster(roomName);
+  const { agents, people, others, presence } = useRoomRoster(roomName);
   const { memories } = useRoomMemories(roomName);
   const memoryKeys = useMemo(() => memories.map(memoryKey), [memories]);
   const { skills } = useRoomSkills(roomName);
@@ -561,6 +571,8 @@ export function RoomChatBox({
         secondary: agentLabel(a),
         tertiary: a.description as string | undefined,
         engine: a.adapter === "engine",
+        // MOCK: mid-turn, so a plain `@` reaches it only when its turn ends.
+        working: presence.get(a.handle.toLowerCase())?.status === "working",
       })),
       ...people.map((p) => ({
         handle: p.handle,
@@ -568,6 +580,7 @@ export function RoomChatBox({
         secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
         tertiary: undefined as string | undefined,
         engine: false,
+        working: false,
       })),
       // Present or holding a task, but neither a person nor an agent here:
       // still someone a message can reach.
@@ -577,9 +590,10 @@ export function RoomChatBox({
         secondary: o.present ? "here" : "holds a task",
         tertiary: undefined as string | undefined,
         engine: false,
+        working: false,
       })),
     ],
-    [agents, people, others, names],
+    [agents, people, others, names, presence],
   );
 
   // The mentions being typed, each colored by whether it reaches a member: the
@@ -678,6 +692,11 @@ export function RoomChatBox({
         secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
         // An engine works only when mentioned, so there's nothing to stop.
         tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
+        working: r.working,
+        // MOCK: a plain `@` to a member mid-turn offers the interrupt beside it.
+        interrupt:
+          r.working && trigger.sigil !== INTERRUPT_MENTION_SIGIL && trigger.sigil !== SILENT_MENTION_SIGIL
+            ?`${INTERRUPT_MENTION_SIGIL}${r.handle}` : undefined,
       }));
       return [...memberRows, ...groupRows];
     }
@@ -878,12 +897,20 @@ export function RoomChatBox({
       attachments.clear();
       // Whoever this names goes to the top of the next `@` list.
       recordMentions(roomName, [...parseMentions(body), ...parseSilentMentions(body)]);
+      // MOCK: who a plain `@` reached mid-turn (an `@!` already interrupts).
+      const interrupting = new Set(parseInterruptMentions(body).map((h) => h.toLowerCase()));
+      const working = parseMentions(body).filter(
+        (h) => !interrupting.has(h.toLowerCase()) && mentionRoster.some((r) => r.working && r.handle.toLowerCase() === h.toLowerCase()),
+      );
+      setToWorking(null);
       void sendPending(roomName, {
         sender: handle,
         content: [text, files.join(" ")].filter(Boolean).join("\n\n"),
         episode,
       }).then((sent) => {
-        if (sent) onSent?.();
+        if (sent === false) return;
+        onSent?.();
+        if (sent && working.length) setToWorking({ messageId: sent, handles: working });
       });
       return;
     }
@@ -983,7 +1010,7 @@ export function RoomChatBox({
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, emojiTable, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
+  }, [content, emojiTable, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments, mentionRoster]);
 
   const attachFrom = (list: FileList | null | undefined) => {
     if (list?.length) attachments.add(Array.from(list));
@@ -1166,6 +1193,16 @@ export function RoomChatBox({
     </StatusLine>
   ) : launch ? (
     <LaunchStatus launch={launch} roomName={roomName} onDismiss={dismissLaunch} />
+  ) : toWorking ? (
+    <StatusLine onDismiss={dismissToWorking}>
+      <SentToWorking
+        roomName={roomName}
+        messageId={toWorking.messageId}
+        handles={toWorking.handles}
+        me={principal.trim() || "user"}
+        onDone={dismissToWorking}
+      />
+    </StatusLine>
   ) : notice ? (
     <StatusLine onDismiss={() => setNotice(null)}>
       {notice}

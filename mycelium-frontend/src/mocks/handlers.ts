@@ -871,15 +871,13 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub[1] === "search" && method === "GET") {
         return json(mockMessageSearch(fx, searchParams.get("q") ?? "", Number(searchParams.get("limit") ?? "20")));
       }
-      // GET /messages/{id}/mentions, POST /messages/{id}/interrupt — MOCK of a
-      // proposed read and verb: where each member a message mentioned stands,
-      // and the sender turning a held mention into an interrupt, once.
-      if (sub[1] && (sub[2] === "mentions" || sub[2] === "interrupt")) {
+      // POST /messages/{id}/interrupt — MOCK of a proposed verb: the sender
+      // turning a held mention into an interrupt, once.
+      if (sub[1] && sub[2] === "interrupt") {
         const message = fx.messages.find((m) => m.id === sub[1]);
         if (!message) return notFound(`message ${sub[1]} not found (mock)`);
         const wakes = mentionWakes(roomName, message);
-        if (sub[2] === "mentions" && method === "GET") return json(wakes);
-        if (sub[2] === "interrupt" && method === "POST") {
+        if (method === "POST") {
           const body = await readJson(req);
           const handle = String(body.handle ?? "").replace(/^@/, "");
           const by = String(body.by ?? "");

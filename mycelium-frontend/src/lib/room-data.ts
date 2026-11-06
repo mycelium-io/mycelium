@@ -29,8 +29,6 @@ import {
   fetchMyPaused,
   fetchMemory,
   fetchMemorySummaries,
-  fetchMentionWakes,
-  type MentionWake,
   fetchMessages,
   fetchNetworkStatus,
   fetchRoom,
@@ -602,24 +600,6 @@ export function useMessageThreadsByEpisode(room: string): Map<string, MessageThr
   const { memories } = useRoomMemories(room);
   return useMemo(() => new Map(messageThreadsOf(memories).map((t) => [t.episode, t])), [memories]);
 }
-
-/**
- * Where each mention in a message the reader sent stands: held for a working
- * member, read, or turned into an interrupt. Asked only for the reader's own
- * messages, and only while one is still held, since nothing else can change.
- */
-export function useMentionWakes(room: string, messageId: string | null) {
-  const { data, mutate } = useSWR(
-    room && messageId ? (["room", room, "mention-wakes", messageId] as const) : null,
-    () => fetchMentionWakes(room, messageId!),
-    {
-      refreshInterval: (latest) => (latest?.some((m) => m.wake === "held") ? 5_000 : 0),
-      revalidateOnFocus: false,
-    },
-  );
-  return { wakes: data ?? NO_WAKES, refresh: mutate };
-}
-const NO_WAKES: MentionWake[] = [];
 
 /** What a row is called, and the thread that opens it. */
 export interface RowNaming {
