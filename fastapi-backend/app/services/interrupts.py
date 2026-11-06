@@ -113,13 +113,31 @@ def _keep(room: str, mark: Interrupted) -> None:
 
 
 def _find(room: str, ref: str) -> Any:
-    """The transcript record ``ref`` names: its id, or the start of it."""
+    """The transcript record ``ref`` names, or the start of one of its ids.
+
+    A message has three: the history read's (what ``respond`` prints), the one
+    it rode the channel under, and the one the send route returned to the
+    client that posted it (what the app holds), so any of them finds it, as
+    amend's lookup does.
+    """
+    from app.services import in_memory_store
     from app.services.persister import load_transcript, read_id
 
     ref = ref.strip().lower()
     if len(ref) < 4:
         raise Refused(422, "Name the message by its id (at least its first 4 characters).")
-    hits = [r for r in load_transcript(room) if str(read_id(r)).startswith(ref)]
+    posted = {
+        m.message_id.lower()
+        for m in in_memory_store.list_messages(room)
+        if m.message_id and str(m.id).startswith(ref)
+    }
+    hits = [
+        r
+        for r in load_transcript(room)
+        if str(read_id(r)).startswith(ref)
+        or (r.message_id or "").lower().startswith(ref)
+        or (r.message_id or "").lower() in posted
+    ]
     if not hits:
         raise Refused(404, f"No message {ref} in {room}.")
     if len({str(read_id(r)) for r in hits}) > 1:
