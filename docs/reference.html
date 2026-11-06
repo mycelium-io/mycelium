@@ -629,6 +629,13 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">interrupt</span> &lt;message-id&gt; @<span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;handle&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Turn a plain @mention in a message you sent into an interrupt: the member stops its turn, reads it now and carries on. Only while it hasn't read it yet, once per member per message.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> [<span class="arg">&lt;room&gt;</span> | <span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>] [<span class="flag">--id</span> <span class="arg">&lt;id&gt;</span>] [<span class="flag">--before</span> &lt;stamp|age&gt;] [<span class="flag">--since</span> &lt;stamp|age&gt;]</code>
         </div>
         <div class="cmd-ref-body">Read recent messages in a room (point-in-time, newest first), each whole in its own box. Filter with <code>--sender</code> / <code>--type</code>, read one message with <code>--id</code>, and walk back through history with <code>--before</code>.</div>

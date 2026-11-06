@@ -55,6 +55,7 @@ from app.services.persister import (
     SummonHook,
     TranscriptRecord,
     bus_frame,
+    envelope_message_id,
     envelope_sender,
     parse_mentions,
     record_episode,
@@ -597,6 +598,8 @@ class RoomChannelManager:
         sender: str | None = None,
         episode: str | None = None,
         why: str | None = None,
+        message: str | None = None,
+        interrupted: str | None = None,
     ) -> None:
         """Ring the doorbell for a herdr-present handle in ``room``.
 
@@ -620,6 +623,11 @@ class RoomChannelManager:
         ``sender`` and ``episode`` say who rang last and where. What they said
         isn't kept here: when the wake is delivered, the digest it carries is
         built from the transcript then (``wake_digest``), so it is current.
+        ``message`` is the wire id of the message that rang, kept with every
+        other that rang the same pending wake, so a sender can tell whether
+        their message is still waiting to be read (:meth:`held_for`).
+        ``interrupted`` is the message an interrupt was made with after it was
+        sent (``interrupts.upgrade``), which the digest says.
         """
         queue = self._herdr_wakes.setdefault(room, [])
         entry: dict = {"handle": handle, "ts": time.monotonic(), "reason": reason}
@@ -633,9 +641,16 @@ class RoomChannelManager:
             entry["episode"] = episode
         if why:
             entry["why"] = why
+        if interrupted:
+            entry["interrupted"] = interrupted
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
+                if message and message not in w.setdefault("messages", []):
+                    w["messages"].append(message)
+                if reason == "interrupt" and not interrupted:
+                    # A fresh `@!` is what this interrupt is now, not a sent one.
+                    w.pop("interrupted", None)
                 # The reason only moves up: a turn or an assignment outranks a
                 # mention, and an interrupt outranks them all. Who rang and
                 # where move with it, so a wake never names the sender of a
@@ -650,7 +665,18 @@ class RoomChannelManager:
         # Its id follows it to the runner and back, so the wake log
         # (:mod:`app.services.wake_log`) records it once, with its outcome.
         entry["id"] = secrets.token_hex(6)
+        if message:
+            entry["messages"] = [message]
         queue.append(entry)
+
+    def held_for(self, room: str, handle: str, message: str) -> bool:
+        """Whether ``handle``'s wake for the message with wire id ``message`` is
+        still held: queued, not yet handed to its runner. Once it's handed over
+        the agent has the message, so there's nothing left to bring forward."""
+        return any(
+            w["handle"] == handle and message in w.get("messages", [])
+            for w in self._herdr_wakes.get(room, [])
+        )
 
     def note_unrecorded_asks(
         self, room: str, *, sender: str, text: str, episode: str | None = None
@@ -698,6 +724,7 @@ class RoomChannelManager:
         *,
         sender: str | None = None,
         episode: str | None = None,
+        message: str | None = None,
     ) -> bool:
         """Ring the herdr doorbell of a handle a message just asked for something.
 
@@ -734,7 +761,9 @@ class RoomChannelManager:
             # any other ask.
             if pauses.is_paused(room, name) or not interrupts.request(room, name, sender, status):
                 reason = "mention"
-        self.enqueue_herdr_wake(room, name, reason=reason, sender=sender, episode=episode)
+        self.enqueue_herdr_wake(
+            room, name, reason=reason, sender=sender, episode=episode, message=message
+        )
         return True
 
     def ring_subscribed(self, room: str, record: TranscriptRecord) -> list[str]:
@@ -1173,6 +1202,7 @@ class RoomChannelManager:
                 reason,
                 sender=envelope_sender(envelope),
                 episode=message.episode if message else None,
+                message=envelope_message_id(envelope),
             )
             hook = self.on_turn
             if reason == "turn" and hook is not None:

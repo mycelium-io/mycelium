@@ -272,6 +272,14 @@ class MessageCreate(BaseModel):
         return self
 
 
+class MessageInterrupted(BaseModel):
+    """A member its sender interrupted with a message after sending it."""
+
+    by: str = Field(..., description="Who sent the message, and so interrupted")
+    handle: str = Field(..., description="The member it interrupted")
+    at: datetime = Field(..., description="When")
+
+
 class MessageRead(BaseModel):
     id: UUID
     # Polymorphic: exactly one of room_name / coordination_session_id is set.
@@ -292,9 +300,25 @@ class MessageRead(BaseModel):
             "None for a message nobody amended."
         ),
     )
+    interrupted: list[MessageInterrupted] | None = Field(
+        None,
+        description=(
+            "Who its sender interrupted with it after sending it, folded in on read. "
+            "None for a message nobody was interrupted with."
+        ),
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class MessageInterrupt(BaseModel):
+    """Turn a plain ``@handle`` in a message you sent into an interrupt."""
+
+    handle: str = Field(..., min_length=1, description="A member the message mentioned")
+    by: str | None = Field(
+        None, description="Who is asking; must be the message's sender. Defaults to the caller."
+    )
 
 
 class MessageAmended(MessageRead):
@@ -2277,6 +2301,16 @@ class ReplyRead(BaseModel):
     room: str
     handle: str
     message_id: str | None = None
+    id: str | None = Field(
+        None, description="Its id in the room's history, the one a message is named by"
+    )
+    working: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Members it mentions who are mid-turn and so read it when their turn ends; "
+            "its sender can interrupt them with it (POST /messages/{id}/interrupt)"
+        ),
+    )
 
 
 # --- Approvals (an agent asks a person to decide) ---------------------------

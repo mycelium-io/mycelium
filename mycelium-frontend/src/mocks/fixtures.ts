@@ -101,6 +101,8 @@ export interface MockMessage {
   episode?: string | null;
   /** A structured line a surface draws instead of the prose (a conductor post's). */
   metadata?: Record<string, unknown> | null;
+  /** Who its sender interrupted with it after sending it (`MessageRead.interrupted`). */
+  interrupted?: { by: string; handle: string; at: string }[] | null;
 }
 
 /** A subscription as the hub sends it (`WakeSubscriptionRead`): the app reads
@@ -1560,7 +1562,8 @@ const checkout: RoomFixture = {
   // await lease. Both are agents in the roster, so the board projects a resident
   // row for each — the presence signal that a live SLIM node would otherwise supply.
   presence: [
-    { handle: "builder", kind: "slim", last_seen: null },
+    // Builder is mid-turn, so a plain `@builder` waits for its turn to end.
+    { handle: "builder", kind: "slim", last_seen: null, status: "working" },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
   ],
   // The verifier couldn't find an approval for #502, which builder called

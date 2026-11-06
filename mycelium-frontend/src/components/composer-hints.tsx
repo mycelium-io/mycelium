@@ -31,6 +31,10 @@ export interface Candidate {
   secondary: string;
   /** Optional trailing description. */
   tertiary?: string;
+  /** A member mid-turn, which a plain `@` reaches only when its turn ends. */
+  working?: boolean;
+  /** What to insert instead to interrupt it (`@!name`), offered beside the row. */
+  interrupt?: string;
 }
 
 /**
@@ -105,17 +109,43 @@ export function CandidateList({
               c.named ? "text-text" : "font-mono text-accent",
             )}
           >
+            {c.working && <WorkingDot />}
             {c.primary}
           </span>
           <span className={cn("min-w-0 truncate text-muted-foreground", dense ? "text-[11px]" : "text-micro")}>
-            {c.tertiary}
+            {c.working ? "Working" : c.tertiary}
           </span>
-          <span className="max-w-40 truncate text-right text-micro text-muted-foreground/70">
+          <span className="flex max-w-40 items-baseline justify-end gap-2 truncate text-right text-micro text-muted-foreground/70">
             {mixedKinds && c.secondary}
+            {c.interrupt && (
+              <span
+                role="button"
+                tabIndex={-1}
+                title={`Interrupt ${c.interrupt.replace("@!", "@")}`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onPick({ ...c, insert: c.interrupt as string });
+                }}
+                className="rounded px-1 font-mono text-accent hover:bg-accent-soft"
+              >
+                @!
+              </span>
+            )}
           </span>
         </button>
       ))}
     </div>
+  );
+}
+
+/** The members panel's working dot, beside a name. */
+export function WorkingDot() {
+  return (
+    <span className="relative mr-1.5 inline-flex size-2 translate-y-[-1px] items-center justify-center align-middle" aria-label="working">
+      <span className="absolute size-2 rounded-full bg-yellow/40 motion-safe:animate-ping" />
+      <span className="size-1.5 rounded-full bg-yellow" />
+    </span>
   );
 }
 

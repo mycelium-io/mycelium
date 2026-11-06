@@ -115,6 +115,30 @@ describe("<EventStream /> and the threads inside the room", () => {
     expect(screen.getByText("and the backfill finished")).toBeInTheDocument();
   });
 
+  it("marks a message its sender interrupted someone with, from history and live, with no row", async () => {
+    const kept = {
+      ...said("@builder keep #504 and close #506", LIVE, "operator"),
+      id: "m-kept",
+      interrupted: [{ by: "operator", handle: "builder", at: CREATED }],
+    };
+    const later = { ...said("@design review #504 only", LIVE, "operator"), id: "m-later" };
+    vi.mocked(fetchMessages).mockResolvedValue({ messages: [later, kept] });
+    renderWithSWR(<EventStream roomName={ROOM} />);
+    expect(
+      await screen.findByRole("img", { name: "Interrupted @builder" }),
+    ).toBeInTheDocument();
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit({ type: "message_interrupted", room_name: ROOM, message_id: "m-later", by: "operator", handle: "design", at: CREATED });
+    });
+
+    expect(await screen.findByRole("img", { name: "Interrupted @design" })).toBeInTheDocument();
+    // Nothing in the room says it but the mark.
+    expect(screen.queryByText(/Interrupted/)).toBeNull();
+  });
+
   it("collapses a burst from one thread into a single rail entry with its count", async () => {
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});

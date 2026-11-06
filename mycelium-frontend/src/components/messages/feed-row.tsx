@@ -45,6 +45,7 @@ import { AgentCardHover } from "@/components/agent-card";
 import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
 import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
 import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
+import { InterruptMark, type Interrupted } from "@/components/messages/mention-wakes";
 import { ThreadReplies } from "@/components/messages/thread-replies";
 import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
@@ -143,6 +144,9 @@ export interface FeedContext {
   threadIds?: ReadonlyMap<string, ThreadTarget>;
   /** Threads started from a message, by that message's id; drawn under it. */
   messageThreads?: ReadonlyMap<string, MessageThread>;
+  /** Who each message's sender interrupted with it, by message id; marked on
+   *  the message, never a line of its own. */
+  interruptedByMessage?: ReadonlyMap<string, Interrupted[]>;
   rowNames: Map<string, RowNaming>;
   flagsByMessage: Map<string, VerifierFlag[]>;
   refreshFlags: () => void;
@@ -736,6 +740,13 @@ export function MessageRow({
               </span>
             </AgentCardHover>
           )}
+          {/* A message under its sender's name has no time of its own to sit
+              beside, so its ⚡ sits where the name's avatar would. */}
+          {grouped && ev.messageId && (
+            <span className="flex h-5 items-center justify-center">
+              <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />
+            </span>
+          )}
         </div>
         <div className="min-w-0 flex-1">
           {!grouped && (
@@ -759,6 +770,7 @@ export function MessageRow({
                 </span>
               )}
               <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
+              {ev.messageId && <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />}
             </div>
           )}
           {/* A rating reply leads with its ratings as bars; its prose says the

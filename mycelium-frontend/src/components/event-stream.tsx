@@ -64,6 +64,7 @@ import {
   nameActivity,
   useFeedContext,
 } from "@/components/messages/feed-row";
+import { INTERRUPTED_FRAME, type Interrupted } from "@/components/messages/mention-wakes";
 import { Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { RespondingNames } from "@/components/agent-opener";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
@@ -633,6 +634,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // handle's next message ends it too, whether or not the ending frame arrived;
   // and an entry nobody has heard from within its TTL expires on the tick below.
   const [responding, setResponding] = useState<Responding[]>([]);
+  // Interrupts made with sent messages since the history was read, by message id.
+  const [liveInterrupts, setLiveInterrupts] = useState<ReadonlyMap<string, Interrupted[]>>(() => new Map());
   useEffect(() => {
     if (responding.length === 0) return;
     const tick = setInterval(() => setResponding((prev) => expireActivity(prev, Date.now())), 1_000);
@@ -710,6 +713,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     }
     // A schedule ran or changed: the Schedules tab's business, never a line here.
     if (msg.type === "schedule_changed") return;
+    // A sender interrupted someone with a message already sent: a ⚡ on that
+    // message, never a line of its own.
+    if (msg.type === INTERRUPTED_FRAME) {
+      const id = String(msg.message_id ?? "");
+      const mark = { by: String(msg.by ?? ""), handle: String(msg.handle ?? ""), at: String(msg.at ?? "") };
+      if (id) setLiveInterrupts((prev) => new Map(prev).set(id, [...(prev.get(id) ?? []), mark]));
+      return;
+    }
     const event = parseEvent(msg);
     // The verifier raised a line or someone dismissed one: re-read the flags.
     if (isVerifierCheck(event)) {
@@ -784,6 +795,24 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       ),
     [events, roomName, messageThreads],
   );
+
+  // Who each message's sender interrupted with it, for the ⚡ by its time: what
+  // the history read carries on the message, and what arrived live since.
+  const interruptedByMessage = useMemo(() => {
+    const out = new Map<string, Interrupted[]>();
+    const add = (id: string, mark: Interrupted) => {
+      const seen = out.get(id) ?? [];
+      if (!seen.some((m) => m.handle === mark.handle)) out.set(id, [...seen, mark]);
+    };
+    for (const e of events) {
+      const marks = e.wire?.interrupted;
+      if (!e.messageId || !Array.isArray(marks)) continue;
+      for (const m of marks as Interrupted[]) add(e.messageId, m);
+    }
+    for (const [id, marks] of liveInterrupts) for (const m of marks) add(id, m);
+    return out;
+  }, [events, liveInterrupts]);
+  const feedCtx = useMemo(() => ({ ...feed, interruptedByMessage }), [feed, interruptedByMessage]);
 
   const candidates = useMemo(
     () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e, boardMoves)),
@@ -1225,7 +1254,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   key={ev.id}
                   ev={ev}
                   prev={visible[skipped + idx - 1]}
-                  ctx={feed}
+                  ctx={feedCtx}
                   pingLine={pingLines.get(ev.id)}
                   run={runs.get(runEpisode(ev) ?? "")}
                   marked={marked}

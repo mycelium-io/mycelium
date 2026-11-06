@@ -984,6 +984,24 @@ export interface UploadList {
   max_bytes: number;
 }
 
+/**
+ * The sender turns a plain `@handle` in their message into an interrupt: only
+ * a member that message mentioned, only while it's working and hasn't been
+ * handed the message yet, once. Throws `ApiError` saying why when it can't.
+ */
+export async function interruptMention(
+  room: string,
+  messageId: string,
+  handle: string,
+  by: string,
+): Promise<{ by: string; handle: string; at: string }> {
+  return apiFetch(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/interrupt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ handle, by }),
+  });
+}
+
 /** One member a group mention reaches, as the hub resolves it for delivery. */
 export interface MentionGroupMember {
   handle: string;

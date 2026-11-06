@@ -84,7 +84,7 @@ function serverSnapshot(): PendingMessage[] {
   return NONE;
 }
 
-async function post(entry: PendingMessage): Promise<boolean> {
+async function post(entry: PendingMessage): Promise<string | false> {
   try {
     const stored = await sendRoomMessage(entry.room, {
       sender_handle: entry.sender,
@@ -93,7 +93,7 @@ async function post(entry: PendingMessage): Promise<boolean> {
     });
     patch(entry.id, { state: "sent", messageId: stored?.id ?? null });
     setTimeout(() => forget(entry.id), SENT_TTL_MS);
-    return true;
+    return stored?.id ?? "";
   } catch (err) {
     patch(entry.id, { state: "failed", error: err instanceof Error ? err.message : String(err) });
     return false;
@@ -101,13 +101,14 @@ async function post(entry: PendingMessage): Promise<boolean> {
 }
 
 /**
- * Draw a message and send it. Resolves true once the hub has it, false when it
- * refused it; either way the entry says so, so the caller has nothing to show.
+ * Draw a message and send it. Resolves to the stored message's id once the hub
+ * has it (empty when it named none), false when it refused it; either way the
+ * entry says so, so the caller has nothing to show.
  */
 export function sendPending(
   room: string,
   message: { sender: string; content: string; episode: string | null },
-): Promise<boolean> {
+): Promise<string | false> {
   counter += 1;
   const entry: PendingMessage = {
     id: `pending-${Date.now().toString(36)}-${counter}`,
@@ -125,7 +126,7 @@ export function sendPending(
 }
 
 /** Send a failed one again, where it is. */
-export function retryPending(id: string): Promise<boolean> {
+export function retryPending(id: string): Promise<string | false> {
   const entry = entries.find((e) => e.id === id);
   if (!entry || entry.state !== "failed") return Promise.resolve(false);
   const again = { ...entry, state: "sending" as const, error: null };

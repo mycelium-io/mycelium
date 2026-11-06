@@ -1897,6 +1897,14 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-room",
+    "t": "mycelium room interrupt <message-id> @<handle> [--room <room>] [--as <handle>]",
+    "s": "CLI Reference",
+    "x": "Turn a plain @mention in a message you sent into an interrupt: the member stops its turn, reads it now and carries on. Only while it hasn't read it yet, once per member per message.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-room",
     "t": "mycelium room messages [<room> | --room <room>] [--limit N] [--sender <handle>] [--type <type>] [--id <id>] [--before <stamp|age>] [--since <stamp|age>]",
     "s": "CLI Reference",
     "x": "Read recent messages in a room (point-in-time, newest first), each whole in its own box. Filter with --sender / --type, read one message with --id, and walk back through history with --before.",

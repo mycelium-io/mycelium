@@ -184,6 +184,26 @@ function publishNotice(fx: RoomFixture, room: string, data: Parameters<typeof no
   publish(room, frame);
 }
 
+/** Where each member a message mentions stands, kept per message for the mock server's life. */
+type MockWake = { handle: string; status: "working" | "idle" | "blocked" | "done" | null; wake: "held" | "read" | "interrupted"; at?: string | null };
+const wakeStore = globalThis as typeof globalThis & { __myceliumMentionWakes?: Map<string, MockWake[]> };
+function mentionWakes(room: string, message: { id: string; content: string }): MockWake[] {
+  const store = (wakeStore.__myceliumMentionWakes ??= new Map());
+  const key = `${room}/${message.id}`;
+  let wakes = store.get(key);
+  if (!wakes) {
+    const handles = [...new Set([...message.content.matchAll(/(?:^|[^\w@~!])@([A-Za-z0-9][\w-]*)/g)].map((m) => m[1]))];
+    // The mock room's agents: builder is mid-turn, the others have read it.
+    wakes = handles.map((handle) =>
+      handle === "builder"
+        ? { handle, status: "working", wake: "held" }
+        : { handle, status: "idle", wake: "read", at: new Date(Date.now() - 60_000).toISOString() },
+    );
+    store.set(key, wakes);
+  }
+  return wakes;
+}
+
 /** A task's key fragment, as `services/tasks.py:slugify` makes it. */
 function slug(title: string): string {
   const s = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "");
@@ -850,6 +870,33 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // GET /messages/search — the find bar's History.
       if (sub[1] === "search" && method === "GET") {
         return json(mockMessageSearch(fx, searchParams.get("q") ?? "", Number(searchParams.get("limit") ?? "20")));
+      }
+      // POST /messages/{id}/interrupt — the sender turning a plain mention of a
+      // working member into an interrupt, once, as the hub does
+      // (`services/interrupts.py:upgrade`), with its refusals.
+      if (sub[1] && sub[2] === "interrupt") {
+        if (method !== "POST") return null;
+        const message = fx.messages.find((m) => m.id.startsWith(sub[1]));
+        if (!message) return notFound(`No message ${sub[1]} in ${roomName}.`);
+        const wakes = mentionWakes(roomName, message);
+        const body = await readJson(req);
+        const handle = String(body.handle ?? "").replace(/^@/, "");
+        const by = String(body.by ?? "");
+        const short = message.id.slice(0, 8);
+        const wake = wakes.find((w) => w.handle === handle);
+        const no = (status: number, detail: string) => json({ detail }, status);
+        if (by !== message.sender_handle) return no(403, `Only @${message.sender_handle}, who sent ${short}, can interrupt with it.`);
+        if (!wake) return no(422, `${short} doesn't mention @${handle}. To ask it now, send a message with @!${handle}.`);
+        if (wake.wake === "interrupted") return no(409, `@${handle} was already interrupted with ${short}. It's once per member per message.`);
+        if (wake.wake === "read") return no(409, `@${handle} has ${short} already, so there's nothing to interrupt it for.`);
+        if (wake.status !== "working") return no(409, `@${handle} isn't working right now, so it reads ${short} next without being stopped.`);
+        wake.wake = "interrupted";
+        const mark = { by, handle, at: new Date().toISOString() };
+        // Kept on the message, as the hub keeps it beside the transcript, so a
+        // history read carries it; and said live, with no line in the room.
+        message.interrupted = [...(message.interrupted ?? []), mark];
+        publish(roomName, { type: "message_interrupted", room_name: roomName, message_id: message.id, ...mark });
+        return json(mark, 201);
       }
       if (sub[1] === "wire" && method === "GET") {
         const limit = Number(searchParams.get("limit") ?? "200");
