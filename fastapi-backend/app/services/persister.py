@@ -454,7 +454,12 @@ def record_episode(record: TranscriptRecord) -> str | None:
 
 def read_id(record: TranscriptRecord) -> uuid.UUID:
     """The id the room's history read gives ``record`` (``MessageRead.id``)."""
-    return uuid.uuid5(_MESSAGE_ID_NS, record.message_id or f"{record.recorded_at}:{record.sender}")
+    return read_id_of(record.message_id or f"{record.recorded_at}:{record.sender}")
+
+
+def read_id_of(wire_id: str) -> uuid.UUID:
+    """The history read's id for the message the wire knows as ``wire_id``."""
+    return uuid.uuid5(_MESSAGE_ID_NS, wire_id)
 
 
 def record_from(

@@ -144,8 +144,8 @@ export interface FeedContext {
   threadIds?: ReadonlyMap<string, ThreadTarget>;
   /** Threads started from a message, by that message's id; drawn under it. */
   messageThreads?: ReadonlyMap<string, MessageThread>;
-  /** MOCK: who each message's sender interrupted with it, by message id;
-   *  marked on the message, never a line of its own. */
+  /** Who each message's sender interrupted with it, by message id; marked on
+   *  the message, never a line of its own. */
   interruptedByMessage?: ReadonlyMap<string, Interrupted[]>;
   rowNames: Map<string, RowNaming>;
   flagsByMessage: Map<string, VerifierFlag[]>;
@@ -739,6 +739,13 @@ export function MessageRow({
                 />
               </span>
             </AgentCardHover>
+          )}
+          {/* A message under its sender's name has no time of its own to sit
+              beside, so its ⚡ sits where the name's avatar would. */}
+          {grouped && ev.messageId && (
+            <span className="flex h-5 items-center justify-center">
+              <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />
+            </span>
           )}
         </div>
         <div className="min-w-0 flex-1">

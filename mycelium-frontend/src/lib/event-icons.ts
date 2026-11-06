@@ -39,7 +39,6 @@ import {
   TimerOff,
   TriangleAlert,
   Undo2,
-  Zap,
   UserPlus,
   Vote,
   Workflow,
@@ -72,8 +71,6 @@ export const NOTICE_ICONS: Record<string, EventIcon> = {
   quiet: { Icon: Clock, tone: QUIET, label: "Gone quiet" },
   floor: { Icon: Megaphone, tone: ACCENT, label: "Turn to speak" },
   check: { Icon: CircleAlert, tone: YELLOW, label: "Verifier" },
-  // MOCK: a sent mention turned into an interrupt; not in the frozen set yet.
-  interrupted: { Icon: Zap, tone: ACCENT, label: "Interrupted" },
 };
 
 /** What happened to a linked pull request, by `upstream` change. */

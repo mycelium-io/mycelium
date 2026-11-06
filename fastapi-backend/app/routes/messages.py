@@ -25,6 +25,8 @@ from app.schemas import (
     MessageAmend,
     MessageAmended,
     MessageCreate,
+    MessageInterrupt,
+    MessageInterrupted,
     MessageListResponse,
     MessageRead,
     MessageSearchHit,
@@ -288,9 +290,63 @@ async def list_messages(
     page = filtered[offset : offset + limit]
 
     return MessageListResponse(
-        messages=_with_decisions(channel, [MessageRead.model_validate(m) for m in page]),
+        messages=_with_interrupts(
+            channel, _with_decisions(channel, [MessageRead.model_validate(m) for m in page])
+        ),
         total=total,
     )
+
+
+def _with_interrupts(room: str, messages: list[MessageRead]) -> list[MessageRead]:
+    """Each message on the page with who its sender interrupted with it, for
+    the app's ⚡. Kept beside the transcript, never in it: the text is as sent."""
+    from app.services import interrupts
+
+    if ":session:" in room or not messages:
+        return messages
+    marks = interrupts.interrupted(room)
+    if not marks:
+        return messages
+    return [
+        m.model_copy(
+            update={
+                "interrupted": [
+                    MessageInterrupted.model_validate(x.wire()) for x in marks[str(m.id)]
+                ]
+            }
+        )
+        if str(m.id) in marks
+        else m
+        for m in messages
+    ]
+
+
+@router.post(
+    "/{message_id}/interrupt",
+    response_model=MessageInterrupted,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
+async def interrupt_with_message(
+    room_name: str, message_id: str, payload: MessageInterrupt, request: Request
+) -> MessageInterrupted:
+    """Turn a plain ``@handle`` in a message you sent into an interrupt.
+
+    The member stops its turn, reads the message now and carries on, as with
+    ``@!``. Only the message's sender, only for a member it mentioned, only
+    while that member hasn't been handed it yet and is working, once per
+    member per message, with no undo. The message's text doesn't change.
+    """
+    from app.services import interrupts
+
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    by = actor.bind_delegated_actor(request, room_name, payload.by, field="by")
+    try:
+        mark = await interrupts.upgrade(room_name, message_id, payload.handle, by or "")
+    except interrupts.Refused as e:
+        raise HTTPException(status_code=e.status, detail=e.detail) from e
+    return MessageInterrupted.model_validate(mark.wire())
 
 
 def _with_decisions(room: str, messages: list[MessageRead]) -> list[MessageRead]:

@@ -985,12 +985,17 @@ export interface UploadList {
 }
 
 /**
- * The sender turns a held `@handle` in their message into an interrupt: only
- * a member that message mentioned, only while its wake is held (working,
- * unread), once. (MOCK: the hub has no such route yet; the mock hub answers.)
+ * The sender turns a plain `@handle` in their message into an interrupt: only
+ * a member that message mentioned, only while it's working and hasn't been
+ * handed the message yet, once. Throws `ApiError` saying why when it can't.
  */
-export async function interruptMention(room: string, messageId: string, handle: string, by: string): Promise<void> {
-  return apiFetch<void>(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/interrupt`, {
+export async function interruptMention(
+  room: string,
+  messageId: string,
+  handle: string,
+  by: string,
+): Promise<{ by: string; handle: string; at: string }> {
+  return apiFetch(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/interrupt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ handle, by }),

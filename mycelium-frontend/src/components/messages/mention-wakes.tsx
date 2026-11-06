@@ -4,7 +4,7 @@
 "use client";
 
 /**
- * MOCK: turning a sent `@` into an interrupt.
+ * Turning a sent `@` into an interrupt.
  *
  * A plain `@` reaches a working member only when its turn ends, so a message
  * that changes what it's doing can arrive after it has done it. The composer's
@@ -29,6 +29,10 @@ export interface Interrupted {
   handle: string;
   at: string;
 }
+
+/** The live frame the hub sends when a sender interrupts someone with a
+ *  message already sent (`interrupts._announce`); it draws no row. */
+export const INTERRUPTED_FRAME = "message_interrupted";
 
 /** The line over the composer after a plain `@` went to a working member. */
 export function SentToWorking({

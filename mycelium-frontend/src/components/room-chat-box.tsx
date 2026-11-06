@@ -393,7 +393,7 @@ export function RoomChatBox({
   const [noticeKey, setNoticeKey] = useState<string | null>(null);
   const [launch, setLaunch] = useState<Launch | null>(null);
   const dismissLaunch = useCallback(() => setLaunch(null), []);
-  // MOCK: a plain `@` just went to members mid-turn; said once, briefly.
+  // A plain `@` just went to members mid-turn; said once, briefly.
   const [toWorking, setToWorking] = useState<{ messageId: string; handles: string[] } | null>(null);
   const dismissToWorking = useCallback(() => setToWorking(null), []);
   useEffect(() => {
@@ -571,7 +571,7 @@ export function RoomChatBox({
         secondary: agentLabel(a),
         tertiary: a.description as string | undefined,
         engine: a.adapter === "engine",
-        // MOCK: mid-turn, so a plain `@` reaches it only when its turn ends.
+        // Mid-turn, so a plain `@` reaches it only when its turn ends.
         working: presence.get(a.handle.toLowerCase())?.status === "working",
       })),
       ...people.map((p) => ({
@@ -693,7 +693,7 @@ export function RoomChatBox({
         // An engine works only when mentioned, so there's nothing to stop.
         tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
         working: r.working,
-        // MOCK: a plain `@` to a member mid-turn offers the interrupt beside it.
+        // A plain `@` to a member mid-turn offers the interrupt beside it.
         interrupt:
           r.working && trigger.sigil !== INTERRUPT_MENTION_SIGIL && trigger.sigil !== SILENT_MENTION_SIGIL
             ?`${INTERRUPT_MENTION_SIGIL}${r.handle}` : undefined,
@@ -897,7 +897,7 @@ export function RoomChatBox({
       attachments.clear();
       // Whoever this names goes to the top of the next `@` list.
       recordMentions(roomName, [...parseMentions(body), ...parseSilentMentions(body)]);
-      // MOCK: who a plain `@` reached mid-turn (an `@!` already interrupts).
+      // Who a plain `@` reached mid-turn (an `@!` already interrupts).
       const interrupting = new Set(parseInterruptMentions(body).map((h) => h.toLowerCase()));
       const working = parseMentions(body).filter(
         (h) => !interrupting.has(h.toLowerCase()) && mentionRoster.some((r) => r.working && r.handle.toLowerCase() === h.toLowerCase()),

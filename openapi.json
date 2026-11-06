@@ -2167,6 +2167,118 @@
         }
       }
     },
+    "/api/rooms/{room_name}/messages/{message_id}/interrupt": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Interrupt With Message",
+        "description": "Turn a plain ``@handle`` in a message you sent into an interrupt.\n\nThe member stops its turn, reads the message now and carries on, as with\n``@!``. Only the message's sender, only for a member it mentioned, only\nwhile that member hasn't been handed it yet and is working, once per\nmember per message, with no undo. The message's text doesn't change.",
+        "operationId": "interrupt_with_message_api_rooms__room_name__messages__message_id__interrupt_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageInterrupt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageInterrupted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/messages/search": {
       "get": {
         "tags": [
@@ -19918,6 +20030,21 @@
             "title": "Edited At",
             "description": "When this message was last revised by an amendment, folded in on read. None for a message nobody amended."
           },
+          "interrupted": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MessageInterrupted"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupted",
+            "description": "Who its sender interrupted with it after sending it, folded in on read. None for a message nobody was interrupted with."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -20033,6 +20160,62 @@
         ],
         "title": "MessageCreate"
       },
+      "MessageInterrupt": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Handle",
+            "description": "A member the message mentioned"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is asking; must be the message's sender. Defaults to the caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "MessageInterrupt",
+        "description": "Turn a plain ``@handle`` in a message you sent into an interrupt."
+      },
+      "MessageInterrupted": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "Who sent the message, and so interrupted"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The member it interrupted"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At",
+            "description": "When"
+          }
+        },
+        "type": "object",
+        "required": [
+          "by",
+          "handle",
+          "at"
+        ],
+        "title": "MessageInterrupted",
+        "description": "A member its sender interrupted with a message after sending it."
+      },
       "MessageListResponse": {
         "properties": {
           "messages": {
@@ -20143,6 +20326,21 @@
             ],
             "title": "Edited At",
             "description": "When this message was last revised by an amendment, folded in on read. None for a message nobody amended."
+          },
+          "interrupted": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MessageInterrupted"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupted",
+            "description": "Who its sender interrupted with it after sending it, folded in on read. None for a message nobody was interrupted with."
           },
           "created_at": {
             "type": "string",
@@ -21338,6 +21536,26 @@
               }
             ],
             "title": "Message Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Its id in the room's history, the one a message is named by"
+          },
+          "working": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Working",
+            "description": "Members it mentions who are mid-turn and so read it when their turn ends; its sender can interrupt them with it (POST /messages/{id}/interrupt)"
           }
         },
         "type": "object",

@@ -31,9 +31,9 @@ export interface Candidate {
   secondary: string;
   /** Optional trailing description. */
   tertiary?: string;
-  /** MOCK: a member mid-turn, which a plain `@` reaches only when its turn ends. */
+  /** A member mid-turn, which a plain `@` reaches only when its turn ends. */
   working?: boolean;
-  /** MOCK: what to insert instead to interrupt it (`@!name`), offered beside the row. */
+  /** What to insert instead to interrupt it (`@!name`), offered beside the row. */
   interrupt?: string;
 }
 

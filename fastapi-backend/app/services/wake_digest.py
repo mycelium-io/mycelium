@@ -479,9 +479,21 @@ def _in(room: str, record: Any) -> str:
     return f"in {_kind(where)}{_named(where)}" if where else "in the room"
 
 
-def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
+def _ask_box(
+    room: str,
+    record: Any,
+    now: datetime,
+    limit: int,
+    *,
+    me: str = "",
+    interrupted: bool = False,
+) -> list[str]:
     """One message asking for the agent, as a box: who, when, where and its id,
-    then its text in full, or up to ``limit`` with the command that reads the rest."""
+    then its text in full, or up to ``limit`` with the command that reads the rest.
+
+    ``interrupted`` marks the message its sender interrupted the agent with
+    after sending it. The footer names anyone else it asks who is working, so
+    an agent knows they won't see it yet."""
     # What asked (``asks.py``) always has text, a tick included.
     text = str(record.content.get("content") or "").strip()
     rid = short_id(record)
@@ -489,8 +501,11 @@ def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
     header = (
         f"@{record.sender} · {age(parse_recorded_at(record.recorded_at), now)} · {place} · {rid}"
     )
+    if interrupted:
+        header += " · interrupted you just now"
+    working = _working_others(room, record, me)
     if len(text) <= limit:
-        return box(header, text)
+        return box(header, text, working)
     head = text[:limit]
     # On a line's end where there is one near the limit, so a table or a code
     # block isn't left with half a row.
@@ -502,7 +517,21 @@ def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
         f"cut at {len(head):,} of {len(text):,} characters · read it all: "
         f"mycelium room messages {room} --id {rid}"
     )
-    return box(header, head, footer)
+    return box(header, head, " · ".join(p for p in (working, footer) if p))
+
+
+def _working_others(room: str, record: Any, me: str) -> str:
+    """``also for @a, @b (working; sees it when its turn ends)``: the others a
+    message asks who are mid-turn, so won't see it yet. Empty when none are."""
+    from app.services.asks import asked
+    from app.services.room_channels import manager
+
+    others = [h for h in asked(record.content) if h != me and h != _norm(record.sender)]
+    working = [h for h in others if manager.herdr_status(room, h) == "working"]
+    if not working:
+        return ""
+    names = ", ".join(f"@{h}" for h in working)
+    return f"also for {names} (working; sees it when its turn ends)"
 
 
 def _shown(room: str, me: str) -> dict[str, datetime]:
@@ -619,7 +648,7 @@ def _other_asks(
         size = len(str(record.content.get("content") or "").strip())
         if size <= budget:
             budget -= size
-            lines += ["", *_ask_box(room, record, now, OTHERS_CHARS)]
+            lines += ["", *_ask_box(room, record, now, OTHERS_CHARS, me=_norm(me))]
             continue
         rid = short_id(record)
         place = _in(room, record)
@@ -671,6 +700,12 @@ def build(
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
     window, last, since, asked = _since(handle, records, wake.get(READ_FROM))
+    # The message its sender interrupted it with after sending, when it was one.
+    upgraded = (
+        next((r for r in asked if r.message_id == wake.get("interrupted")), None)
+        if reason == "interrupt" and wake.get("interrupted")
+        else None
+    )
     # What its subscriptions caught, kept apart from what asks it. With no ask,
     # the newest of these is what it answers, so it sets where to reply.
     watched = _watched(room, handle, since)
@@ -718,6 +753,16 @@ def build(
     elif reason == "turn":
         who = f"@{asked[-1].sender}" if asked and asked[-1].sender else sender
         why = f"it's your turn in {_place(room, where)}; {who} is asking"
+    elif reason == "interrupt" and upgraded is not None:
+        # A plain mention its sender turned into an interrupt after sending it:
+        # the message is older than the stop, which is why it says when.
+        sent = age(parse_recorded_at(upgraded.recorded_at), now)
+        why = (
+            f"{sender} interrupted you with a message they sent {sent} in "
+            f"{_place(room, where)}, while you were working, which stops your turn. "
+            "Read it and act on it, then carry on with what you were doing unless it "
+            "says otherwise."
+        )
     elif reason == "interrupt":
         # Its turn was probably stopped to deliver this, so say why: without it an
         # agent reads the stop as "the person stopped me" and waits. Worded as
@@ -777,11 +822,16 @@ def build(
         found, schedule_change = _schedule_lines(room, str(wake["title"]))
         lines += ["", *found]
 
-    # The message that woke it, whole, then what to do about it.
+    # The message that woke it, whole, then what to do about it. An interrupt
+    # made with a message already sent shows that message, whichever came last.
     if asked:
-        lines += ["", *_ask_box(room, asked[-1], now, LATEST_CHARS)]
+        woke = upgraded if upgraded is not None else asked[-1]
+        lines += [
+            "",
+            *_ask_box(room, woke, now, LATEST_CHARS, me=me, interrupted=upgraded is not None),
+        ]
     elif answering and _conversational_text(answering[-1].content):
-        lines += ["", *_ask_box(room, answering[-1], now, LATEST_CHARS)]
+        lines += ["", *_ask_box(room, answering[-1], now, LATEST_CHARS, me=me)]
     lines.append("")
     if reason == "assigned" and wake.get("key"):
         key = wake["key"]
