@@ -21,7 +21,7 @@ describe("<SentToWorking />", () => {
   it("says the member is working and interrupts it with the message just sent", async () => {
     const onDone = vi.fn();
     render(<SentToWorking roomName="checkout" messageId="m-1" handles={["builder"]} me="operator" onDone={onDone} />);
-    expect(screen.getByText(/is working, so it sees this when its turn ends/)).toBeInTheDocument();
+    expect(screen.getByText(/^is working\.$/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Interrupt/ }));
     expect(interruptMention).toHaveBeenCalledWith("checkout", "m-1", "builder", "operator");
     expect(await screen.findByText(/Interrupted @builder/)).toBeInTheDocument();
@@ -40,7 +40,7 @@ describe("<InterruptMark />", () => {
     const { rerender } = render(
       <InterruptMark marks={[{ by: "operator", handle: "builder", at: "2026-11-06T10:00:00Z" }]} />,
     );
-    expect(screen.getByRole("img", { name: "@operator interrupted @builder with this" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Interrupted @builder" })).toBeInTheDocument();
     rerender(<InterruptMark marks={[]} />);
     expect(screen.queryByRole("img")).toBeNull();
   });

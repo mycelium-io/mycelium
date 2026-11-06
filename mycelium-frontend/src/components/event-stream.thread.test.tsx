@@ -125,7 +125,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [later, kept] });
     renderWithSWR(<EventStream roomName={ROOM} />);
     expect(
-      await screen.findByRole("img", { name: "@operator interrupted @builder with this" }),
+      await screen.findByRole("img", { name: "Interrupted @builder" }),
     ).toBeInTheDocument();
     const es = FakeEventSource.latest();
 
@@ -134,7 +134,7 @@ describe("<EventStream /> and the threads inside the room", () => {
       es.emit({ type: "message_interrupted", room_name: ROOM, message_id: "m-later", by: "operator", handle: "design", at: CREATED });
     });
 
-    expect(await screen.findByRole("img", { name: "@operator interrupted @design with this" })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "Interrupted @design" })).toBeInTheDocument();
     // Nothing in the room says it but the mark.
     expect(screen.queryByText(/Interrupted/)).toBeNull();
   });

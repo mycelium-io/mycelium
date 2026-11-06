@@ -77,14 +77,13 @@ export function SentToWorking({
     <span className="inline-flex min-w-0 items-center gap-1.5">
       <WorkingDot />
       <span className="truncate">
-        <span className="text-text">{names}</span> {handles.length > 1 ? "are" : "is"} working, so it sees this when its turn ends.
+        <span className="text-text">{names}</span> {handles.length > 1 ? "are" : "is"} working.
       </span>
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => void interrupt()}
         disabled={sending}
-        title="It stops, reads this, then carries on. The message stays as it is."
         className="inline-flex flex-shrink-0 items-center gap-1 font-medium text-accent hover:underline"
       >
         {sending ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Zap className="size-3" aria-hidden />}
@@ -102,8 +101,8 @@ export function InterruptMark({ marks }: { marks: readonly Interrupted[] | undef
   return (
     <span
       role="img"
-      aria-label={`@${marks[0].by} interrupted ${who} with this`}
-      title={`@${marks[0].by} interrupted ${who} with this`}
+      aria-label={`Interrupted ${who}`}
+      title={`Interrupted ${who}`}
       className="inline-flex flex-shrink-0 items-center text-accent"
     >
       <Zap className="size-3" aria-hidden />

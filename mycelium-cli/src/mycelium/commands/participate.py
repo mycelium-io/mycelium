@@ -778,17 +778,14 @@ def respond(
 
 
 def working_note(room: str, sender: str, message: str | None, working: list[str]) -> list[str]:
-    """What ``respond`` says when members its reply mentions are mid-turn: they
-    see it when their turn ends, and the command that interrupts them with it."""
+    """What ``respond`` says when members its reply mentions are mid-turn
+    (they see it when their turn ends), and the command that interrupts them."""
     if not working or not message:
         return []
     names = " and ".join(f"@{h}" for h in working)
     one = len(working) == 1
     lines = [
-        f"     {names} {'is' if one else 'are'} working right now; "
-        f"{'it sees' if one else 'they see'} this when {'its turn ends' if one else 'their turns end'}.",
-        f"     If this changes what {'it is' if one else 'they are'} doing, interrupt "
-        f"{'it' if one else 'them'}:",
+        f"     {names} {'is' if one else 'are'} working. To interrupt {'it' if one else 'them'}:"
     ]
     lines += [
         f"       mycelium room interrupt {message} @{h} --room {room} --as {sender}"

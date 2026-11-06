@@ -113,7 +113,7 @@ export function CandidateList({
             {c.primary}
           </span>
           <span className={cn("min-w-0 truncate text-muted-foreground", dense ? "text-[11px]" : "text-micro")}>
-            {c.working ? "working · reads it when its turn ends" : c.tertiary}
+            {c.working ? "Working" : c.tertiary}
           </span>
           <span className="flex max-w-40 items-baseline justify-end gap-2 truncate text-right text-micro text-muted-foreground/70">
             {mixedKinds && c.secondary}
@@ -121,7 +121,7 @@ export function CandidateList({
               <span
                 role="button"
                 tabIndex={-1}
-                title={`Interrupt instead: it stops, reads this, then carries on`}
+                title={`Interrupt ${c.interrupt.replace("@!", "@")}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();

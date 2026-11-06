@@ -169,4 +169,4 @@ def test_a_digest_box_names_who_else_is_working(hub):
     hub.set_herdr_presence(ROOM, {"coder": "working", "scout": "idle"})
     (wake,) = [w for w in hub.drain_herdr_wakes(ROOM) if w["handle"] == "scout"]
     digest = wake_digest.build(ROOM, wake, persister.load_transcript(ROOM))
-    assert "also for @coder (working; sees it when its turn ends)" in digest
+    assert "also for @coder (working)" in digest

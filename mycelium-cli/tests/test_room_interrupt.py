@@ -98,15 +98,11 @@ def test_a_refusal_says_the_hub_s_reason(sent, status, detail):
 
 def test_respond_names_the_command_for_a_working_member():
     assert working_note("checkout", "lead", "7c1e9a04", ["builder"]) == [
-        "     @builder is working right now; it sees this when its turn ends.",
-        "     If this changes what it is doing, interrupt it:",
+        "     @builder is working. To interrupt it:",
         "       mycelium room interrupt 7c1e9a04 @builder --room checkout --as lead",
     ]
     two = working_note("checkout", "lead", "7c1e9a04", ["builder", "design"])
-    assert (
-        two[0]
-        == "     @builder and @design are working right now; they see this when their turns end."
-    )
-    assert len(two) == 4
+    assert two[0] == "     @builder and @design are working. To interrupt them:"
+    assert len(two) == 3
     assert working_note("checkout", "lead", "7c1e9a04", []) == []
     assert working_note("checkout", "lead", None, ["builder"]) == []

@@ -521,8 +521,8 @@ def _ask_box(
 
 
 def _working_others(room: str, record: Any, me: str) -> str:
-    """``also for @a, @b (working; sees it when its turn ends)``: the others a
-    message asks who are mid-turn, so won't see it yet. Empty when none are."""
+    """``also for @a, @b (working)``: the others a message asks who are
+    mid-turn, so won't see it until their turn ends. Empty when none are."""
     from app.services.asks import asked
     from app.services.room_channels import manager
 
@@ -531,7 +531,7 @@ def _working_others(room: str, record: Any, me: str) -> str:
     if not working:
         return ""
     names = ", ".join(f"@{h}" for h in working)
-    return f"also for {names} (working; sees it when its turn ends)"
+    return f"also for {names} (working)"
 
 
 def _shown(room: str, me: str) -> dict[str, datetime]:
