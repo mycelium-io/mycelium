@@ -22,6 +22,12 @@ the transcript is the record; whether an ask was answered is worked out from
 it on read and never stored. ``contracts/approvals.json`` freezes the kinds
 and fields, since the CLI and the app each keep a copy.
 
+Any kind can be skipped instead of answered: the person isn't answering this
+one. The answer then carries ``skipped`` and none of its kind's values, only an
+optional note, and leaves the person's waiting list like any answer; the agent
+carries on with its own judgment or asks differently. It's not a declined
+approve or a choose answered with none of its options, which are answers.
+
 Agents never send UI: they fill in a kind the hub knows and the app draws it.
 An answer is final; a new ask is how to try again.
 """
@@ -47,6 +53,8 @@ ASK_KEY = "ask"
 ANSWER_KEY = "answer"
 KINDS = ("approve", "choose", "question")
 DECISIONS = ("approved", "declined")
+#: The answer field that says the person skipped the ask rather than answering it.
+SKIPPED = "skipped"
 #: The optional facts an ask of any kind may carry, in the order the card shows them.
 FACTS = ("happens", "why", "undo", "link")
 #: ``recommend`` on an approve: the agent would go ahead.
@@ -393,9 +401,19 @@ def _shape(
 
 
 def _answered(
-    ask: dict[str, Any], decision: str | None, choices: list[str] | None, text: str | None
+    ask: dict[str, Any],
+    decision: str | None,
+    choices: list[str] | None,
+    text: str | None,
+    *,
+    skipped: bool = False,
 ) -> dict[str, Any]:
     """The answer's values, checked against what its kind takes."""
+    if skipped:
+        # Skipping is instead of answering, so it carries no answer of its own.
+        if decision or choices is not None:
+            raise Refused(422, "A skipped ask takes no decision or choices, only a note")
+        return {SKIPPED: True, **({"text": text} if text else {})}
     kind = str(ask.get("kind") or "approve")
     got: dict[str, Any] = {}
     if kind == "approve":
@@ -435,7 +453,9 @@ def says(answer: dict[str, Any]) -> str:
     question = str(answer.get("question") or "").strip()
     note = str(answer.get("text") or "").strip()
     quoted = f'"{question}"'
-    if answer.get("kind") == "choose":
+    if answer.get(SKIPPED):
+        head = f"Skipped {quoted}"
+    elif answer.get("kind") == "choose":
         chosen = ", ".join(f'"{label}"' for label in answer.get("chosen") or [])
         head = (
             f"Chose {chosen} for {quoted}" if chosen else f"Chose none of the options for {quoted}"
@@ -455,6 +475,7 @@ async def answer(
     decision: str | None = None,
     choices: list[str] | None = None,
     text: str | None = None,
+    skipped: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any], TranscriptRecord]:
     """Answer an ask as ``by``. Returns the folded ask, the answer and its message.
 
@@ -484,7 +505,7 @@ async def answer(
             "for": _norm(hit.ask.get("to")),
             "by": who,
             "at": datetime.now(UTC).isoformat(),
-            **_answered(hit.ask, decision, choices, note),
+            **_answered(hit.ask, decision, choices, note, skipped=skipped),
         }
         record = await _post(
             room,

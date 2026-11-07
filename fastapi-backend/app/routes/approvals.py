@@ -84,7 +84,7 @@ async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPo
 async def answer_ask(
     room_name: str, ask_id: str, body: AskAnswerCreate, request: Request
 ) -> AskAnswered:
-    """Answer an ask: any person in the room may, never an agent, and only once."""
+    """Answer an ask, or skip it: any person in the room may, never an agent, and only once."""
     _room(room_name)
     by = actor.bind_delegated_actor(request, room_name, body.by, field="by")
     try:
@@ -95,6 +95,7 @@ async def answer_ask(
             decision=body.decision,
             choices=body.choices,
             text=body.text if body.text is not None else body.reason,
+            skipped=body.skipped,
         )
     except approvals.Refused as refused:
         raise HTTPException(status_code=refused.status, detail=refused.detail) from None

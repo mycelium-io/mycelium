@@ -13,6 +13,7 @@ import {
   FileText,
   ListChecks,
   MessageCircleQuestion,
+  SkipForward,
   X,
 } from "lucide-react";
 import { answerAsk } from "@/lib/api";
@@ -104,21 +105,24 @@ export function AskCard({
   const who = (handle: string) => (handle.toLowerCase() === me ? "you" : (nameOf(names, handle) ?? handle));
   const Icon = KIND_ICON[ask.kind];
 
-  /** `none` answers a choose with none of its options, whatever is ticked. */
-  const send = async (decision?: Decision, none = false) => {
+  /** `none` answers a choose with none of its options, whatever is ticked.
+   *  `skip` answers nothing: the person isn't answering this one, and only a
+   *  note goes with it (a question's text box is its answer, so not that). */
+  const send = async (decision?: Decision, none = false, skip = false) => {
     if (busy || !me) return;
-    const text = note.trim() || null;
-    if (ask.kind === "question" && !text) return;
-    if (ask.kind === "choose" && !none && (picked.length === 0 || (!ask.multiple && picked.length > 1))) return;
+    const text = skip && ask.kind === "question" ? null : note.trim() || null;
+    if (!skip && ask.kind === "question" && !text) return;
+    if (!skip && ask.kind === "choose" && !none && (picked.length === 0 || (!ask.multiple && picked.length > 1))) return;
     setBusy(true);
     setError(null);
     const choices =
-      ask.kind === "choose" && !none ? ask.options.filter((o) => picked.includes(o.id)).map((o) => o.id) : [];
+      ask.kind === "choose" && !none && !skip ? ask.options.filter((o) => picked.includes(o.id)).map((o) => o.id) : [];
     try {
       await answerAsk(roomName, ask.id, {
         by: me,
+        ...(skip ? { skipped: true } : {}),
         ...(decision ? { decision } : {}),
-        ...(ask.kind === "choose" ? { choices } : {}),
+        ...(ask.kind === "choose" && !skip ? { choices } : {}),
         ...(text ? { text } : {}),
       });
       setSent({
@@ -131,6 +135,7 @@ export function AskCard({
         choices,
         chosen: ask.options.filter((o) => choices.includes(o.id)).map((o) => o.label),
         text,
+        skipped: skip,
       });
       revalidate();
     } catch (e) {
@@ -143,7 +148,6 @@ export function AskCard({
   // Answered: the question, and under it what was answered, each cut to fit
   // the card. It opens to the whole record.
   if (answer && !open) {
-    const declined = answer.kind === "approve" && answer.decision === "declined";
     return (
       <button
         type="button"
@@ -152,11 +156,7 @@ export function AskCard({
         aria-expanded={false}
         className="mt-1.5 grid w-full max-w-2xl grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-label hover:bg-hairline"
       >
-        {declined ? (
-          <X className="size-3.5 self-center text-red" aria-hidden />
-        ) : (
-          <Check className="size-3.5 self-center text-green" aria-hidden />
-        )}
+        <VerdictMark answer={answer} className="self-center" />
         <span className="truncate text-text">{ask.question}</span>
         <span className="flex items-center gap-1 text-micro whitespace-nowrap text-faint">
           {who(answer.by)}
@@ -355,6 +355,17 @@ export function AskCard({
                   )}
                 </>
               )}
+              {/* Not an answer: the agent carries on with its own judgment. */}
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => void send(undefined, false, true)}
+                className="text-muted-foreground"
+              >
+                Skip
+              </Button>
             </span>
           </form>
         )}
@@ -371,8 +382,6 @@ export function AskCard({
 /** What was decided, under the open card. The options above already show
  *  which were picked, ticked, so a pick is named by its numbers alone. */
 function Verdict({ answer }: { answer: AskAnswer }) {
-  const declined = answer.kind === "approve" && answer.decision === "declined";
-  const Mark = declined ? X : Check;
   const ids = answer.choices;
   const said =
     answer.kind === "choose" && ids.length > 0
@@ -380,8 +389,17 @@ function Verdict({ answer }: { answer: AskAnswer }) {
       : verdictOf(answer);
   return (
     <span className="font-medium text-text">
-      <Mark className={cn("mr-1 inline size-3.5 align-[-2px]", declined ? "text-red" : "text-green")} aria-hidden />
+      <VerdictMark answer={answer} className="mr-1 inline align-[-2px]" />
       {said}
     </span>
   );
+}
+
+/** A check for an answer, a cross for a declined approve, and a quiet skip mark
+ *  for an ask that was skipped rather than answered. */
+function VerdictMark({ answer, className }: { answer: AskAnswer; className?: string }) {
+  if (answer.skipped) return <SkipForward className={cn("size-3.5 text-faint", className)} aria-hidden />;
+  const declined = answer.kind === "approve" && answer.decision === "declined";
+  const Mark = declined ? X : Check;
+  return <Mark className={cn("size-3.5", declined ? "text-red" : "text-green", className)} aria-hidden />;
 }

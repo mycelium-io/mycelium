@@ -9,8 +9,9 @@ Three kinds, one card: ``--approve`` (a yes or no on something you'll do),
 ``--multiple``) and ``--question`` (an open question). The ask is a kind the
 hub knows, with known fields, and the app draws it (``POST /rooms/{room}/asks``).
 The answer comes back as a message that wakes you, and ``await`` gives it as
-values (``answer.decision``, ``answer.choices``/``chosen``, ``answer.text``),
-with the question it answers and who answered, rather than prose to read.
+values (``answer.decision``, ``answer.choices``/``chosen``, ``answer.text``,
+or ``answer.skipped`` when the person skipped it), with the question it
+answers and who answered, rather than prose to read.
 Kinds and fields are frozen in ``contracts/approvals.json``.
 """
 
@@ -122,7 +123,9 @@ def ask(
     when the person picked none of the options), and
     ``answer.text`` (the answer to a question, or the note), with
     ``answer.question`` and who answered (``by``) and who you asked (``for``).
-    If someone other than whom you asked answers, take it as input, and ask
+    Any kind can be skipped instead: then ``answer.skipped`` is true and there
+    is no answer, only maybe a note. Carry on with your own judgment, or ask
+    differently. If someone other than whom you asked answers, take it as input, and ask
     again if you need their own word. An answer is final. To try again, ask
     again.
 

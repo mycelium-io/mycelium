@@ -143,6 +143,7 @@ class TestTheContract:
             CONTRACT["payload_keys"]["answer"],
         ) == (approvals.ASK_KEY, approvals.ANSWER_KEY)
         assert CONTRACT["waiting_kind"] == approvals.WAITING_KIND
+        assert CONTRACT["skipped_field"] == approvals.SKIPPED
         fields = CONTRACT["ask_fields"]
         by_kind = {f for names in fields["kind_fields"].values() for f in names}
         assert set(Ask.model_fields) == {
@@ -336,6 +337,30 @@ class TestAnswering:
         assert again.value.status == 409
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("kind", ["approve", "choose", "question"])
+    async def test_any_kind_can_be_skipped_and_it_leaves_the_waiting_list(self, room, kind):
+        ask, _record, _task = await _ask(kind=kind, **SHAPES[kind])
+        folded, answer, record = await approvals.answer(
+            ROOM, ask["id"], by="julia", skipped=True, text="Not mine to call"
+        )
+        assert answer["skipped"] is True
+        assert {"decision", "choices", "chosen"}.isdisjoint(answer)
+        assert answer["text"] == "Not mine to call"
+        assert folded["answer"]["skipped"] is True
+        assert record.content["content"] == f'Skipped "{ask["question"]}"\n\nNote: Not mine to call'
+        assert waiting.waiting(ROOM, "julia", NOW) == []
+        with pytest.raises(approvals.Refused) as again:
+            await approvals.answer(ROOM, ask["id"], by="julia", **ANSWERS[kind])
+        assert again.value.status == 409
+
+    @pytest.mark.asyncio
+    async def test_a_skip_takes_no_answer_of_its_own(self, room):
+        ask, _record, _task = await _ask()
+        with pytest.raises(approvals.Refused) as refused:
+            await approvals.answer(ROOM, ask["id"], by="julia", skipped=True, decision="approved")
+        assert refused.value.status == 422
+
+    @pytest.mark.asyncio
     async def test_another_person_in_the_room_may_answer_and_the_answer_says_so(self, room):
         ask, _record, _task = await _ask()
         _folded, answer, _rec = await approvals.answer(
@@ -484,6 +509,24 @@ class TestAnswering:
 
 
 class TestOverHttp:
+    @pytest.mark.asyncio
+    async def test_ask_then_skip(self, room, client, monkeypatch):
+        from app.routes import approvals as route
+
+        await client.post("/api/rooms", json={"name": ROOM})
+        monkeypatch.setattr(route.principals, "post_rejection_reason", lambda *a, **k: None)
+        asked = await client.post(
+            f"/api/rooms/{ROOM}/asks", json={"handle": "builder", "question": "Merge it?"}
+        )
+        ask_id = asked.json()["ask"]["id"]
+        skipped = await client.post(
+            f"/api/rooms/{ROOM}/asks/{ask_id}/answer", json={"skipped": True, "by": "julia"}
+        )
+        assert skipped.status_code == 200, skipped.text
+        assert skipped.json()["answer"]["skipped"] is True
+        assert skipped.json()["ask"]["answer"]["skipped"] is True
+        assert skipped.json()["answer"].get("decision") is None
+
     @pytest.mark.asyncio
     async def test_ask_then_answer(self, room, client, monkeypatch):
         from app.routes import approvals as route
