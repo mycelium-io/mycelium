@@ -177,6 +177,11 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
             # Correlation key: the same envelope the persister records to the
             # transcript, so a cold read dedups this row against its transcript copy.
             msg.message_id = result.message_id
+            # One id for the message wherever it's read: the one its live frame
+            # and the history read give it, so a client holding the copy it sent,
+            # the live copy and a re-read page can tell they're one message.
+            if result.message_id:
+                msg.id = persister.read_id_of(result.message_id)
             if result.unrecognized:
                 logger.warning(
                     "send_message: @-mentioned handles not present and not registered "

@@ -10,9 +10,10 @@ what ``_read_messages`` returns.
 """
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from app.routes.messages import _read_messages
-from app.services import in_memory_store, message_format, persister
+from app.services import in_memory_store, message_format, persister, room_channels
 from app.services.filesystem import get_room_dir
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content
@@ -170,3 +171,38 @@ def test_a_leading_unstamped_record_inherits_the_first_stamp_that_follows(tmp_pa
     served = _read_messages(room, None)
 
     assert {m.created_at for m in served} == {datetime(2026, 8, 19, 9, 0, tzinfo=UTC)}
+
+
+async def test_a_sent_message_has_one_id_wherever_it_is_read(client, monkeypatch):
+    """What the send route answers, the live frame's ``read_id`` and the history
+    read all name a sent message by one id, so a client that holds it from the
+    live stream and then re-reads the page sees one message, not two."""
+    room = "one-id-room"
+    await client.post("/api/rooms", json={"name": room})
+    frames: list[dict] = []
+
+    async def publish(_channel, *, sender, text, episode=None):
+        env = message_format.build_envelope(
+            kind=Kind.exchange,
+            episode=message_format.live_episode_urn(room),
+            sender=sender,
+            topic=message_format.topic_urn(room),
+            payload_type="message",
+            message_id="w-1",
+        )
+        record = persister.record_from(env, serialize_content(env, extra={"content": text}))
+        persister.append_transcript(room, record)  # recorded, as the persister does
+        frames.append(persister.bus_frame(room, record))
+        return SimpleNamespace(message_id="w-1", unrecognized=[])
+
+    monkeypatch.setattr(room_channels.manager, "is_live", lambda _channel: True)
+    monkeypatch.setattr(room_channels.manager, "publish_human", publish)
+    sent = await client.post(
+        f"/api/rooms/{room}/messages",
+        json={"sender_handle": "operator", "message_type": "broadcast", "content": "ship it"},
+    )
+    assert sent.status_code == 201, sent.text
+
+    read = (await client.get(f"/api/rooms/{room}/messages")).json()["messages"]
+    (message,) = [m for m in read if m["content"] == "ship it"]
+    assert sent.json()["id"] == frames[0]["read_id"] == message["id"]
