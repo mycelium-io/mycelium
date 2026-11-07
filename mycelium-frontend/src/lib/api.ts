@@ -1462,6 +1462,8 @@ export async function answerAsk(
     choices?: string[];
     /** The note on any kind, and the whole answer to a question. */
     text?: string;
+    /** Skip it instead of answering: no decision or choices, at most a note. */
+    skipped?: boolean;
   },
 ): Promise<AskAnswered> {
   return apiFetch<AskAnswered>(`${roomApiPath(roomName)}/asks/${encodeURIComponent(askId)}/answer`, {

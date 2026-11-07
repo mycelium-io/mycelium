@@ -183,6 +183,30 @@ describe("a question", () => {
   });
 });
 
+describe("skipping", () => {
+  it.each([
+    ["an approve", approve],
+    ["a choose", choose],
+  ])("skips %s with its note, and sends no answer of its own", async (_kind, make) => {
+    renderWithSWR(<AskCard roomName="checkout" ask={make()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "not mine to call");
+    await userEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", {
+      by: "operator",
+      skipped: true,
+      text: "not mine to call",
+    });
+    expect(await screen.findByText(/^Skipped/)).toHaveTextContent("not mine to call");
+  });
+
+  it("skips a question without sending its text box as a note", async () => {
+    renderWithSWR(<AskCard roomName="checkout" ask={question({ suggest: "The address form." })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", { by: "operator", skipped: true });
+    expect(await screen.findByText(/^Skipped/)).toBeInTheDocument();
+  });
+});
+
 describe("anyone else in the room", () => {
   it("sees whom it asks, and can answer it for them", async () => {
     principal = "jamie";

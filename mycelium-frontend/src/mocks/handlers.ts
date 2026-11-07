@@ -1034,7 +1034,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const note = text("text") ?? text("reason");
         let decided: Record<string, unknown>;
         let said: string;
-        if (ask.kind === "approve") {
+        if (body.skipped === true) {
+          // Skipped instead of answered: no answer of its own, at most a note.
+          if (body.decision || body.choices !== undefined) {
+            return json({ detail: "A skipped ask takes no decision or choices, only a note" }, 422);
+          }
+          decided = { skipped: true };
+          said = `Skipped "${String(ask.question)}"`;
+        } else if (ask.kind === "approve") {
           if (body.decision !== "approved" && body.decision !== "declined") return json({ detail: "An approve needs a decision." }, 422);
           decided = { decision: body.decision };
           said = `${body.decision === "approved" ? "Approved" : "Declined"} "${String(ask.question)}"`;

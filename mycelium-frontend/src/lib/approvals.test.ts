@@ -10,6 +10,7 @@ import {
   ASK_FIELDS,
   ASK_KINDS,
   DECISIONS,
+  SKIPPED_FIELD,
   PAYLOAD_KEYS,
   WAITING_KIND,
   answerOf,
@@ -50,6 +51,7 @@ describe("contracts/approvals.json", () => {
       CONTRACT.answer_fields,
     );
     expect(WAITING_KIND).toBe(CONTRACT.waiting_kind);
+    expect(SKIPPED_FIELD).toBe(CONTRACT.skipped_field);
     expect(WAITING_KINDS).toContain(CONTRACT.waiting_kind);
   });
 });
@@ -105,7 +107,7 @@ describe("askOf", () => {
 });
 
 describe("verdictOf", () => {
-  const base = { question: "q", for: "operator", by: "operator", at: "", choices: [], chosen: [], text: null };
+  const base = { question: "q", for: "operator", by: "operator", at: "", choices: [], chosen: [], text: null, skipped: false };
   it("says what was decided", () => {
     expect(verdictOf({ ...base, kind: "approve", decision: "approved" })).toBe("Approved");
     expect(verdictOf({ ...base, kind: "approve", decision: "declined" })).toBe("Declined");
@@ -117,6 +119,12 @@ describe("verdictOf", () => {
     );
     expect(verdictOf({ ...base, kind: "question", decision: null, text: "x" })).toBe("Answered");
   });
+
+  it("says Skipped for any kind skipped instead of answered", () => {
+    for (const kind of ASK_KINDS) {
+      expect(verdictOf({ ...base, kind, decision: null, skipped: true })).toBe("Skipped");
+    }
+  });
 });
 
 describe("answerOf", () => {
@@ -124,6 +132,11 @@ describe("answerOf", () => {
     const answer = { ask: "7e21c0a4", kind: "approve", question: "Flip it Friday?", for: "operator", decision: "approved", by: "jamie", at: "t" };
     expect(answerOf({ metadata: { answer } })).toEqual({ ...answer, choices: [], chosen: [], text: null });
     expect(answerOf({ metadata: { conductor: {} } })).toBeNull();
+  });
+
+  it("reads a skip, with its note", () => {
+    const answer = { ask: "7e21c0a4", kind: "approve", question: "Flip it Friday?", for: "operator", by: "jamie", at: "t", skipped: true, text: "Not mine" };
+    expect(answerOf({ metadata: { answer } })).toMatchObject({ skipped: true, decision: null, text: "Not mine" });
   });
 });
 
