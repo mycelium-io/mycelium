@@ -11,6 +11,7 @@ The message's text stays as sent; the interrupt is kept beside it.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -162,6 +163,44 @@ async def test_the_route_and_the_history_read(client, hub):
     (message,) = read["messages"]
     assert message["content"] == MESSAGE, "the text is as sent"
     assert [(m["by"], m["handle"]) for m in message["interrupted"]] == [("operator", "coder")]
+
+
+async def test_the_id_the_send_route_returned_finds_the_message(
+    client, hub, monkeypatch: pytest.MonkeyPatch
+):
+    """The app interrupts with the id ``POST /messages`` gave it, which is not
+    the history read's; the wire id works too."""
+    await client.post("/api/rooms", json={"name": ROOM})
+
+    async def publish(_channel, *, sender, text, episode=None):
+        _send(hub, text, sender)  # recorded and rung, as the persister does
+        return SimpleNamespace(message_id="m-001", unrecognized=[])
+
+    monkeypatch.setattr(hub, "is_live", lambda _channel: True)
+    monkeypatch.setattr(hub, "publish_human", publish)
+    sent = await client.post(
+        f"/api/rooms/{ROOM}/messages",
+        json={"sender_handle": "operator", "message_type": "broadcast", "content": MESSAGE},
+    )
+    assert sent.status_code == 201, sent.text
+    posted = sent.json()["id"]
+    rid = str(persister.read_id_of("m-001"))
+    assert posted != rid, "the two ids differ, or this tests nothing"
+
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/messages/{posted}/interrupt",
+        json={"handle": "coder", "by": "operator"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert [m.handle for m in interrupts.interrupted(ROOM)[rid]] == ["coder"]
+
+    # By its wire id it's the same message, so it is already interrupted.
+    by_wire = await client.post(
+        f"/api/rooms/{ROOM}/messages/m-001/interrupt",
+        json={"handle": "coder", "by": "operator"},
+    )
+    assert by_wire.status_code == 409, by_wire.text
+    assert "already interrupted" in by_wire.json()["detail"]
 
 
 def test_a_digest_box_names_who_else_is_working(hub):
