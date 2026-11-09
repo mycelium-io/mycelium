@@ -220,7 +220,14 @@ interface Props {
    *  agent wrote on this machine, which shouldn't make the page fetch
    *  whatever it names. */
   imagesAsLinks?: boolean;
+  /** One line: bold, code, links and mentions render, and blocks (paragraphs,
+   *  lists, headings) unwrap into the line. For text that must stay a line,
+   *  such as an ask's option. */
+  inline?: boolean;
 }
+
+/** What a line of `inline` markdown keeps; anything else unwraps to its text. */
+const INLINE_ELEMENTS = ["p", "a", "strong", "em", "del", "code", "br"];
 
 /** A thread id that names a task: the id exactly as written, then a small
  *  thread icon that is the link, showing the task on hover and opening its
@@ -271,6 +278,7 @@ export function MarkdownContent({
   threads,
   onOpenThread,
   imagesAsLinks,
+  inline = false,
 }: Props) {
   const marked = useHighlighter(highlight);
 
@@ -411,9 +419,12 @@ export function MarkdownContent({
     [processNode, onLinkClick, brokenLinks],
   );
 
+  const Wrapper = inline ? "span" : "div";
   return (
-    <div className={`markdown-body ${className ?? ""}`}>
+    <Wrapper className={`markdown-body ${inline ? "markdown-inline" : ""} ${className ?? ""}`}>
       <ReactMarkdown
+        allowedElements={inline ? INLINE_ELEMENTS : undefined}
+        unwrapDisallowed={inline}
         // `remark-breaks` turns a single newline into a line break, the way chat
         // apps do. Agents post terminal-style prose with single newlines; without
         // this CommonMark collapses them into one paragraph and every message walls
@@ -425,7 +436,7 @@ export function MarkdownContent({
         urlTransform={url => (url.startsWith("myc://") ? url : defaultUrlTransform(url))}
         components={{
           a: renderAnchor,
-          p: ({ children }) => <p>{processNode(children)}</p>,
+          p: ({ children }) => (inline ? <>{processNode(children)}</> : <p>{processNode(children)}</p>),
           li: ({ children }) => <li>{processNode(children)}</li>,
           strong: ({ children }) => <strong>{processNode(children)}</strong>,
           em: ({ children }) => <em>{processNode(children)}</em>,
@@ -462,6 +473,6 @@ export function MarkdownContent({
       >
         {children}
       </ReactMarkdown>
-    </div>
+    </Wrapper>
   );
 }

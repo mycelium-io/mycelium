@@ -27,6 +27,7 @@ from mycelium.client import answered, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+from mycelium.text_input import takes_text
 
 #: The kinds of ask, as ``contracts/approvals.json`` freezes them.
 KINDS = ("approve", "choose", "question")
@@ -56,17 +57,21 @@ def _recommend(recommend: bool, options: list[str] | None) -> list[str] | str | 
 
 @doc_ref(
     usage=(
-        'mycelium ask [--approve | --choose | --question] "<question>" [--option <text>]... '
+        'mycelium ask [--approve | --choose | --question] ["<question>" | --body <text> | --file <path>] '
+        "[--option <text>]... "
         "[--multiple] [--recommend] [--recommend-option <n>] [--suggest <text>] "
         "[--happens <text>] [--why <text>] [--undo <text>] [--link <url>] [--to <person>] "
         "[--task <id>]"
     ),
     desc=(
         "Ask a person to approve something, pick from options, or answer a question. "
+        "The question is markdown: give it as the argument, <code>--body</code>, or "
+        "<code>--file</code> (<code>-</code> reads stdin). "
         "They answer in the app, and the answer wakes you with what they decided as values."
     ),
     group="board",
 )
+@takes_text("question", "What you're asking, in markdown.", noun="question")
 @in_room()
 @acts_as(fallback=None)
 @emits_json()
@@ -129,8 +134,14 @@ def ask(
     again if you need their own word. An answer is final. To try again, ask
     again.
 
+    The question, the facts (``--happens``, ``--why``, ``--undo``) and the
+    options are markdown, as a message is: the card renders bold, code, links
+    and ``[[memory]]`` links. A long question can span lines; give it with
+    ``--body`` or ``--file``.
+
     Examples:
         mycelium ask --approve "Turn Apple Pay on for everyone on Friday at 9:00" --recommend
+        mycelium ask --approve --file question.md --recommend
         mycelium ask --approve "Merge the checkout PR" --link https://github.com/o/r/pull/7 --undo "Revert the merge"
         mycelium ask --choose "Which payment provider first?" --option "Stripe" --option "Adyen" --recommend-option 1
         mycelium ask --question "What's slowest at checkout?" --suggest "The address form"

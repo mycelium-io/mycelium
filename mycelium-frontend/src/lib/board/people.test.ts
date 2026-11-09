@@ -143,6 +143,13 @@ describe("the people's board words", () => {
     expect(waitingLine(item)).toBe("In the room");
   });
 
+  it("reads an ask's markdown as one plain line", () => {
+    const text = "Turn **Apple Pay** on for the `web` app?\n\n- 212 orders, none charged twice";
+    expect(waitingTitle({ kind: "approve", text, count: 1 })).toBe("Turn Apple Pay on for the web app?");
+    expect(waitingLine({ kind: "approve", title: "Launch", text, count: 1 })).toBe("Turn Apple Pay on for the web app?");
+    expect(waitingTitle({ kind: "approve", text: "## Ship it?\n- with the flag", count: 1 })).toBe("Ship it? with the flag");
+  });
+
   it("gives a waiting item the same shape as any row: its task, then one line", () => {
     expect(waitingTitle({ kind: "ask", title: "Fix it", count: 1 })).toBe("Fix it");
     expect(waitingTitle({ kind: "ask", count: 1 })).toBe("A message in the room");

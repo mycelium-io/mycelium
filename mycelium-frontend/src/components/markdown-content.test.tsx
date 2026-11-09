@@ -7,6 +7,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { MarkdownContent, isExternalHref } from "@/components/markdown-content";
 
+describe("<MarkdownContent inline />", () => {
+  it("keeps inline marks and unwraps blocks into one line", () => {
+    const { container } = render(<MarkdownContent inline>{"# Ship **it**\n\n- with `flag`"}</MarkdownContent>);
+    expect(container.firstElementChild?.tagName).toBe("SPAN");
+    expect(container.querySelector("strong")?.textContent).toBe("it");
+    expect(container.querySelector("code")?.textContent).toBe("flag");
+    expect(container.querySelector("h1, ul, li, p")).toBeNull();
+  });
+});
+
 describe("<MarkdownContent /> links", () => {
   it("opens a link to another site in a new tab", () => {
     render(<MarkdownContent>{"see [the PR](https://github.com/coffee-shop/web/pull/504)"}</MarkdownContent>);

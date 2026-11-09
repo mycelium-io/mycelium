@@ -83,6 +83,29 @@ def test_only_the_question_is_needed(sent: list[dict]) -> None:
     assert "asked @julia to approve, in checkout/work/apple-pay" in result.output
 
 
+QUESTION_MD = "Turn **Apple Pay** on for everyone?\n\n- `apple_pay` flag\n- see [[work/launch]]"
+
+
+def test_a_long_question_can_be_given_with_body(sent: list[dict]) -> None:
+    result = runner.invoke(cli_app, ["ask", "--approve", "--body", QUESTION_MD])
+    assert result.exit_code == 0, result.output
+    assert sent[0]["question"] == QUESTION_MD
+
+
+def test_a_long_question_can_be_given_with_file(sent: list[dict], tmp_path: Path) -> None:
+    path = tmp_path / "question.md"
+    path.write_text(QUESTION_MD + "\n")
+    result = runner.invoke(cli_app, ["ask", "--approve", "--file", str(path)])
+    assert result.exit_code == 0, result.output
+    assert sent[0]["question"].strip() == QUESTION_MD
+
+
+def test_the_question_is_needed_once(sent: list[dict]) -> None:
+    result = runner.invoke(cli_app, ["ask", "--approve", "Merge it", "--body", "Merge it"])
+    assert result.exit_code != 0
+    assert sent == []
+
+
 def test_the_facts_and_who_to_ask_are_sent(sent: list[dict]) -> None:
     result = runner.invoke(
         cli_app,
