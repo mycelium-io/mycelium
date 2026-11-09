@@ -24,7 +24,15 @@ import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useAgentSession } from "@/lib/agent-session";
 import { useIsDesktop } from "@/lib/desktop";
-import { MIN_WINDOW, clampRect, defaultRect, saveRect, savedRect, type WindowRect } from "@/lib/terminal-window";
+import {
+  MIN_WINDOW,
+  clampRect,
+  defaultRect,
+  maxSize,
+  saveRect,
+  savedRect,
+  type WindowRect,
+} from "@/lib/terminal-window";
 import { cn } from "@/lib/utils";
 
 const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
@@ -89,7 +97,8 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Resizing from the corner is the browser's; what it settles on is kept.
+  // Resizing from the corner is the browser's, held inside the window by its
+  // max size below; what it settles on is kept.
   useEffect(() => {
     const el = section.current;
     if (!el) return;
@@ -98,7 +107,7 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
       const height = Math.round(el.offsetHeight);
       setRect((r) => {
         if (r.width === width && r.height === height) return r;
-        const next = { ...r, width, height };
+        const next = clampRect({ ...r, width, height }, viewport());
         saveRect(handle, next);
         return next;
       });
@@ -107,6 +116,7 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
     return () => observer.disconnect();
   }, [handle]);
 
+  const most = maxSize(rect, viewport());
   return createPortal(
     <section
       ref={section}
@@ -119,6 +129,8 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
         height: rect.height,
         minWidth: MIN_WINDOW.width,
         minHeight: MIN_WINDOW.height,
+        maxWidth: most.width,
+        maxHeight: most.height,
       }}
     >
       <header
