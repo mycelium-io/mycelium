@@ -688,6 +688,10 @@ body {
 .markdown-body ol { list-style: decimal; }
 .markdown-body li { margin: 0.15em 0; line-height: 1.55; color: var(--text2); }
 .markdown-body li::marker { color: var(--muted); }
+/* Markdown set inside UI that already picks the text's color, such as an ask
+ * card's question and facts: paragraphs and list items take it. */
+.markdown-body.markdown-ui p, .markdown-body.markdown-ui li { color: inherit; }
+.markdown-body.markdown-ui p { margin: 0.25em 0; }
 /* Headings are document structure, so they descend in size and hold primary
  * contrast the whole way down. Sized in em rather than the UI scale: that scale
  * tops out at 16px for chrome, and a body renders at whatever size its surface

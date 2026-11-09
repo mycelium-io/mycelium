@@ -17,7 +17,8 @@ import {
   X,
 } from "lucide-react";
 import { answerAsk } from "@/lib/api";
-import { linkKind, verdictOf, type ApprovalAsk, type AskAnswer, type AskKind, type Decision } from "@/lib/approvals";
+import { MarkdownContent } from "@/components/markdown-content";
+import { askLine, linkKind, verdictOf, type ApprovalAsk, type AskAnswer, type AskKind, type Decision } from "@/lib/approvals";
 import { useCurrentUser } from "@/components/current-user";
 import { nameOf, useNames } from "@/lib/people";
 import { useRoomRevalidate } from "@/lib/room-data";
@@ -157,7 +158,7 @@ export function AskCard({
         className="mt-1.5 grid w-full max-w-2xl grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-label hover:bg-hairline"
       >
         <VerdictMark answer={answer} className="self-center" />
-        <span className="truncate text-text">{ask.question}</span>
+        <span className="truncate text-text">{askLine(ask.question)}</span>
         <span className="flex items-center gap-1 text-micro whitespace-nowrap text-faint">
           {who(answer.by)}
           {answer.for && answer.for.toLowerCase() !== answer.by.toLowerCase() && ` for ${who(answer.for)}`}
@@ -213,15 +214,26 @@ export function AskCard({
             </button>
           )}
         </div>
-        <p className="mt-1 text-body font-medium text-text">{ask.question}</p>
+        {/* The first paragraph is the question; what follows it is its detail. */}
+        <MarkdownContent
+          className="markdown-ui mt-1 text-body text-text [&>*:first-child]:font-medium"
+          onLinkClick={onOpenMemory}
+        >
+          {ask.question}
+        </MarkdownContent>
         {facts.length > 0 && (
           // Each fact is a paragraph with its label run in, so it wraps as
           // text does at any width, with no column to squeeze it.
           <div className="mt-1.5 space-y-1 text-label text-text">
             {facts.map(([label, value]) => (
-              <p key={label}>
-                <span className="font-medium text-muted-foreground">{label}</span> {value}
-              </p>
+              <div key={label}>
+                <span className="font-medium text-muted-foreground">{label}</span>{" "}
+                {/* The label runs into the first paragraph; a list after it
+                    starts on a line of its own. */}
+                <MarkdownContent className="markdown-ui inline [&>p:first-child]:inline" onLinkClick={onOpenMemory}>
+                  {value}
+                </MarkdownContent>
+              </div>
             ))}
           </div>
         )}
@@ -229,7 +241,7 @@ export function AskCard({
         {ask.kind === "choose" && (
           <div
             role={ask.multiple ? "group" : "radiogroup"}
-            aria-label={ask.question}
+            aria-label={askLine(ask.question)}
             className="mt-2 flex flex-col overflow-hidden rounded-md border border-border bg-bg"
           >
             {ask.options.map((o, i) => {
@@ -259,7 +271,10 @@ export function AskCard({
                       its detail, so neither breaks the sentence. */}
                   <span className="min-w-0 flex-1 text-label">
                     <span className="text-text">
-                      <span className="tabular text-faint">{o.id}.</span> {o.label}
+                      <span className="tabular text-faint">{o.id}.</span>{" "}
+                      <MarkdownContent inline onLinkClick={onOpenMemory}>
+                        {o.label}
+                      </MarkdownContent>
                     </span>
                     {(o.detail || ask.recommend.includes(o.id)) && (
                       <span className="mt-0.5 block text-micro text-muted-foreground">

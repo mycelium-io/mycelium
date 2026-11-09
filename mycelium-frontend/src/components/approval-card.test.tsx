@@ -183,6 +183,56 @@ describe("a question", () => {
   });
 });
 
+describe("markdown", () => {
+  it("renders the question, the facts and the options as markdown", () => {
+    const { container } = renderWithSWR(
+      <AskCard
+        roomName="checkout"
+        ask={choose({
+          question: "Which **provider** first?\n\n- cheaper fees\n- faster payouts",
+          why: "The `stripe` contract ends Friday",
+          options: [
+            { id: "1", label: "**Stripe**, as today", detail: null },
+            { id: "2", label: "Adyen with `3ds`", detail: null },
+          ],
+        })}
+      />,
+    );
+    expect(container.querySelector("strong")?.textContent).toBe("provider");
+    expect(screen.getByText("cheaper fees").tagName).toBe("LI");
+    expect(screen.getByText("stripe").tagName).toBe("CODE");
+    // An option stays one line: inline marks render, and nothing becomes a block.
+    const option = screen.getByText("Stripe").closest("label");
+    expect(option?.querySelector("strong")).not.toBeNull();
+    expect(option?.querySelector("p, ul, li")).toBeNull();
+    expect(screen.getByText("3ds").tagName).toBe("CODE");
+  });
+
+  it("folds to the question as one plain line", () => {
+    renderWithSWR(
+      <AskCard
+        roomName="checkout"
+        ask={approve({
+          question: "Turn **Apple Pay** on for the `web` app?\n\n- 212 orders, none charged twice",
+          answer: {
+            kind: "approve",
+            question: "",
+            for: "operator",
+            by: "operator",
+            at: "",
+            decision: "approved",
+            choices: [],
+            chosen: [],
+            text: null,
+          },
+        })}
+      />,
+    );
+    // Its first paragraph, the question itself; the detail under it opens with the card.
+    expect(screen.getByText("Turn Apple Pay on for the web app?")).toBeInTheDocument();
+  });
+});
+
 describe("skipping", () => {
   it.each([
     ["an approve", approve],

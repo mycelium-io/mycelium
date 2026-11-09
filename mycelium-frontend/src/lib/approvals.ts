@@ -9,6 +9,16 @@
 // has to read (contracts/approvals.json).
 
 import { keyProblem } from "@/lib/memory-location";
+import { plainInline } from "@/lib/speakable";
+
+/** An ask's markdown as one plain line, for a folded card or a waiting row:
+ *  its first paragraph (the question; what follows is detail), with list,
+ *  heading and quote markers dropped, then the inline syntax. */
+export function askLine(text: string): string {
+  const first = text.trim().split(/\n\s*\n/)[0];
+  const lines = first.split("\n").map((l) => l.replace(/^\s*(?:[-*+]|\d+[.)]|#{1,6}|>)\s+/, ""));
+  return plainInline(lines.join("\n"));
+}
 
 // Frozen in contracts/approvals.json; approvals.test.ts holds this copy to it.
 export const PAYLOAD_KEYS = { ask: "ask", answer: "answer" } as const;

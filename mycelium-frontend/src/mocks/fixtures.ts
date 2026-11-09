@@ -1490,6 +1490,30 @@ const checkout: RoomFixture = {
         },
       },
     },
+    // An open approve written in markdown: the card renders it as a message does.
+    {
+      id: "k4",
+      sender_handle: "builder",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Turn Apple Pay on for **everyone** on Friday at 9:00?",
+      created_at: iso(1),
+      metadata: {
+        ask: {
+          id: "c41f7d02",
+          kind: "approve",
+          to: "operator",
+          question:
+            "Turn Apple Pay on for **everyone** on Friday at 9:00?\n\n" +
+            "It's been on for staff since Monday:\n" +
+            "- 212 orders, none charged twice\n" +
+            "- the iPhone test passed on a real card",
+          happens: "The `apple_pay` switch goes on for all customers, and the button shows at checkout.",
+          undo: "Turn `apple_pay` off. See [[work/turn-on-apple-pay]] for the steps.",
+          recommend: "approve",
+        },
+      },
+    },
     // The parts' own threads, so each running part has a latest line.
     { id: "p1", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is up, with the button behind the switch.", created_at: iso(26), episode: APPLE_PAY_THREAD },
     { id: "p2", sender_handle: "reviewer", message_type: "broadcast", content: "approved #502. ci is green, so it can go to staging.", created_at: iso(18), episode: APPLE_PAY_THREAD },

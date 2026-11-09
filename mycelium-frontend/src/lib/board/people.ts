@@ -12,6 +12,7 @@
  */
 
 import type { BoardEpic, BoardPart, BoardRead, PartState, WaitingItem } from "@/lib/api";
+import { askLine } from "@/lib/approvals";
 
 // Frozen in contracts/board-vocabulary.json under `epic`.
 export const PART_STATES: PartState[] = ["done", "blocked", "waiting", "working", "open"];
@@ -177,7 +178,8 @@ export function closedGroup(closedAt: string, now: number): string {
 export function waitingTitle(item: WaitingItem): string {
   // An agent's ask in the room's channel is about no task: its question is
   // what the row is about.
-  if (!item.title && item.kind === "approve" && item.text) return item.text;
+  // An ask is markdown, and the row is one plain line.
+  if (!item.title && item.kind === "approve" && item.text) return askLine(item.text);
   return item.title ?? "A message in the room";
 }
 
@@ -192,6 +194,7 @@ export function waitingLine(item: WaitingItem, you = ""): string {
   }
   if (item.kind === "turn") return `${item.sender ?? "A flow"} is waiting on you`;
   if (item.kind === "approve" && !item.title) return "In the room";
+  if (item.kind === "approve") return askLine(item.text ?? "");
   return item.text ?? "";
 }
 
