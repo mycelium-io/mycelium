@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
-  Check,
   Clock,
   Eye,
   FileText,
@@ -17,7 +16,6 @@ import {
   Square,
   SquareTerminal,
   UserMinus,
-  UserPlus,
   Users,
 } from "lucide-react";
 import {
@@ -28,7 +26,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
-import { inviteLink } from "@/lib/desktop";
 import {
   controlAgent,
   logFetchError,
@@ -57,7 +54,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
 import { usePrincipal } from "@/components/current-user";
-import { useHubAddress } from "@/lib/hub-address";
 
 interface Props {
   roomName: string;
@@ -331,10 +327,10 @@ export function AgentsPanel({
         <span className="text-micro tabular text-faint">
           {people.length + agents.length} {people.length + agents.length === 1 ? "member" : "members"}
         </span>
-        <InviteButton roomName={roomName} />
         <Button
           variant="ghost"
           size="xs"
+          className="ml-auto"
           onClick={() => {
             setAddKind("machine");
             setAddOpen(true);
@@ -511,30 +507,6 @@ export function AgentsPanel({
         )}
       </FadeScroll>
     </div>
-  );
-}
-
-/** Copy a link that invites a person into this room: it opens the desktop app
- *  when they have it, and offers the download or the browser when they don't. */
-function InviteButton({ roomName }: { roomName: string }) {
-  const [copied, setCopied] = useState(false);
-  const hub = useHubAddress();
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink(hub, roomName));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // Clipboard blocked: nothing to undo, the button just doesn't confirm.
-    }
-  };
-  return (
-    <Tooltip content="Copy a link that invites someone to this room">
-      <Button variant="ghost" size="xs" className="ml-auto" onClick={copy}>
-        {copied ? <Check className="size-3 text-green" /> : <UserPlus className="size-3" />}
-        {copied ? "Copied" : "Invite"}
-      </Button>
-    </Tooltip>
   );
 }
 
