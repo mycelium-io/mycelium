@@ -6723,7 +6723,7 @@
           "asks"
         ],
         "summary": "Answer Ask",
-        "description": "Answer an ask: any person in the room may, never an agent, and only once.",
+        "description": "Answer an ask, or skip it: any person in the room may, never an agent, and only once.",
         "operationId": "answer_ask_api_rooms__room_name__asks__ask_id__answer_post",
         "parameters": [
           {
@@ -14436,6 +14436,18 @@
             "title": "Text",
             "description": "The answer to a question, or a note on any kind"
           },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped",
+            "description": "True when the person skipped it rather than answering"
+          },
           "ask": {
             "type": "string",
             "title": "Ask"
@@ -14519,6 +14531,12 @@
             ],
             "title": "Reason",
             "description": "Another name for text, from before it"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "description": "Skip it instead of answering, with at most a note; any kind",
+            "default": false
           }
         },
         "type": "object",
@@ -14806,6 +14824,18 @@
             ],
             "title": "Text",
             "description": "The answer to a question, or a note on any kind"
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped",
+            "description": "True when the person skipped it rather than answering"
           }
         },
         "type": "object",

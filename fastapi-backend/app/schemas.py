@@ -2334,6 +2334,9 @@ class AskDecided(BaseModel):
     choices: list[str] | None = Field(None, description="On a choose: the option ids picked")
     chosen: list[str] | None = Field(None, description="On a choose: those options' labels")
     text: str | None = Field(None, description="The answer to a question, or a note on any kind")
+    skipped: bool | None = Field(
+        None, description="True when the person skipped it rather than answering"
+    )
 
 
 class AskOption(BaseModel):
@@ -2407,6 +2410,9 @@ class AskAnswerCreate(BaseModel):
     choices: list[str] | None = Field(None, description="A choose's: the option ids picked")
     text: str | None = Field(None, description="A question's answer, or a note on any kind")
     reason: str | None = Field(None, description="Another name for text, from before it")
+    skipped: bool = Field(
+        False, description="Skip it instead of answering, with at most a note; any kind"
+    )
 
 
 class AskAnswer(AskDecided):
