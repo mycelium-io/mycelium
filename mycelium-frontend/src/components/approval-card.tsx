@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   Check,
   ChevronDown,
@@ -65,6 +65,58 @@ function heading(ask: ApprovalAsk, mine: boolean, to: string): string {
   return "Asks you";
 }
 
+/** MOCK: alternatives to the card's look in the chat, picked by `?ask=` in the
+ *  URL. `box` is today's card; the rest are being compared. */
+type AskStyle = "box" | "quiet" | "rule" | "tint";
+const ASK_STYLES: readonly AskStyle[] = ["box", "quiet", "rule", "tint"];
+const subscribeNever = () => () => {};
+function useAskStyle(): AskStyle {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => {
+      const v = new URLSearchParams(window.location.search).get("ask");
+      return ASK_STYLES.find((s) => s === v) ?? "box";
+    },
+    () => "box",
+  );
+}
+
+/** The card's frame, its body's padding and its footer, per style. */
+function frame(style: AskStyle, waitsOnMe: boolean) {
+  switch (style) {
+    case "quiet":
+      // Today's card, with the yellow only on the label and icon.
+      return { outer: "rounded-lg border border-border bg-surface", body: "px-3 pt-2.5 pb-2.5", foot: "border-t border-border px-3 py-1.5" };
+    case "rule":
+      // No box: a rule down its left edge, like a quote, on the chat itself.
+      return {
+        outer: cn("border-l-2", waitsOnMe ? "border-yellow/70" : "border-border2"),
+        body: "pl-3 pt-0.5 pb-1.5",
+        foot: "pl-3 pb-0.5",
+      };
+    case "tint":
+      // No border: a faint fill, warm while it waits on you.
+      return {
+        outer: cn("rounded-lg", waitsOnMe ? "bg-yellow/[0.06]" : "bg-surface"),
+        body: "px-3 pt-2.5 pb-1",
+        foot: "px-3 pb-2.5 pt-1",
+      };
+    default:
+      return {
+        outer: cn("rounded-lg border bg-surface", waitsOnMe ? "border-yellow/40" : "border-border"),
+        body: "px-3 pt-2.5 pb-2.5",
+        foot: "border-t border-border px-3 py-1.5",
+      };
+  }
+}
+
+/** The answered card, folded to one row, per style. */
+function foldedFrame(style: AskStyle): string {
+  if (style === "rule") return "border-l-2 border-border2 pl-3 pr-0 hover:bg-hairline";
+  if (style === "tint") return "rounded-lg bg-surface px-3 hover:bg-hairline";
+  return "rounded-lg border border-border bg-surface px-3 hover:bg-hairline";
+}
+
 /**
  * An agent's ask, drawn where the agent asked it: in the room's channel or a
  * task's thread. It's put to one person, who sees it as theirs; anyone else in
@@ -90,6 +142,7 @@ export function AskCard({
 }) {
   const { principal } = useCurrentUser();
   const names = useNames();
+  const style = useAskStyle();
   const revalidate = useRoomRevalidate(roomName);
   // The answer shows at once; the hub's copy, folded onto the ask, replaces it
   // on the next read.
@@ -155,7 +208,10 @@ export function AskCard({
         data-ask={ask.id}
         onClick={() => setOpen(true)}
         aria-expanded={false}
-        className="mt-1.5 grid w-full max-w-2xl grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-label hover:bg-hairline"
+        className={cn(
+          "mt-1.5 grid w-full max-w-2xl grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 py-1.5 text-left text-label",
+          foldedFrame(style),
+        )}
       >
         <VerdictMark answer={answer} className="self-center" />
         <span className="truncate text-text">{askLine(ask.question)}</span>
@@ -183,14 +239,15 @@ export function AskCard({
   if (ask.why) facts.push(["Why now", ask.why]);
   if (ask.undo) facts.push(["To undo", ask.undo]);
   const waitsOnMe = mine && !answer;
+  const look = frame(style, waitsOnMe);
   const pickedCount = picked.length;
 
   return (
     <div
       data-ask={ask.id}
-      className={cn("@container mt-1.5 max-w-2xl rounded-lg border bg-surface", waitsOnMe ? "border-yellow/40" : "border-border")}
+      className={cn("@container mt-1.5 max-w-2xl", look.outer)}
     >
-      <div className="px-3 pt-2.5 pb-2.5">
+      <div className={look.body}>
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-micro">
           <Icon className={cn("size-3.5", waitsOnMe ? "text-yellow" : "text-faint")} />
           <span className={waitsOnMe ? "font-medium text-yellow" : "text-muted-foreground"}>
@@ -290,7 +347,7 @@ export function AskCard({
           </div>
         )}
       </div>
-      <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border px-3 py-1.5">
+      <div className={cn("flex min-h-9 flex-wrap items-center gap-1.5", look.foot)}>
         {answer ? (
           <div className="min-w-0 flex-1 text-label">
             <p className="text-text">
