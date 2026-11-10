@@ -46,12 +46,38 @@ export function clampRect(rect: WindowRect, viewport: { width: number; height: n
   return { x, y, width, height };
 }
 
-/** The most `rect` may grow from its corner, so it stays inside `viewport`. */
-export function maxSize(rect: WindowRect, viewport: { width: number; height: number }) {
-  return {
-    width: Math.max(MIN_WINDOW.width, viewport.width - rect.x - MARGIN),
-    height: Math.max(MIN_WINDOW.height, viewport.height - rect.y - MARGIN),
-  };
+/** An edge or corner a window is resized from, by the compass. */
+export type Edge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+/** `low` to `high`, with `low` winning when they cross (a window too small). */
+const within = (v: number, low: number, high: number) => Math.max(low, Math.min(v, high));
+
+/** `start` with its `edge` dragged by `dx`, `dy`: the opposite edges stay
+ *  where they are, it's never smaller than the minimum, and it stops at the
+ *  edges of `viewport`. */
+export function resizeRect(
+  start: WindowRect,
+  edge: Edge,
+  dx: number,
+  dy: number,
+  viewport: { width: number; height: number },
+): WindowRect {
+  let { x, y, width, height } = start;
+  if (edge.includes("e")) width = within(width + dx, MIN_WINDOW.width, viewport.width - MARGIN - x);
+  if (edge.includes("s")) height = within(height + dy, MIN_WINDOW.height, viewport.height - MARGIN - y);
+  // The left and top edges move the window's corner; the minimum size wins
+  // over the margin, as it does above.
+  if (edge.includes("w")) {
+    const right = x + width;
+    x = Math.min(Math.max(x + dx, MARGIN), right - MIN_WINDOW.width);
+    width = right - x;
+  }
+  if (edge.includes("n")) {
+    const bottom = y + height;
+    y = Math.min(Math.max(y + dy, MARGIN), bottom - MIN_WINDOW.height);
+    height = bottom - y;
+  }
+  return { x, y, width, height };
 }
 
 function readAll(): Record<string, WindowRect> {
