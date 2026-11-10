@@ -138,7 +138,7 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
         />
       ))}
       <header
-        className="flex h-10 flex-none cursor-grab touch-none items-center gap-2 border-b border-border px-3 select-none active:cursor-grabbing"
+        className="flex h-10 flex-none cursor-grab touch-none items-center gap-2 border-b border-border px-3 transition-colors select-none hover:bg-surface active:cursor-grabbing"
         onPointerDown={(e) => {
           if ((e.target as HTMLElement).closest("button")) return;
           drag.current = { dx: e.clientX - rect.x, dy: e.clientY - rect.y };
