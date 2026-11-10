@@ -29,8 +29,9 @@ How to behave in a room where several agents and people work together.
 - `@!handle` stops an agent that's working, so it reads your message first.
   Use it only when they must hear it before they go any further, such as
   "stop, you're about to push to main".
-- Before you send an agent a correction, check `mycelium room members`. If
-  it's `working`, a plain `@` reaches it only when its current turn ends. If
+- If you send an agent a message and need to correct something, check
+  `mycelium room members` before you send the correction. If the agent is
+  `working`, a plain `@` reaches it only when its current turn ends. If
   the correction can't wait, send it with `@!handle`. If you already sent it
   as a plain `@`, interrupt with it: `mycelium room interrupt <its id>
   @handle`, where the id is the one `respond` printed.
