@@ -13,6 +13,7 @@ import {
   FileText,
   ListChecks,
   MessageCircleQuestion,
+  MessageSquarePlus,
   SkipForward,
   X,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import { nameOf, useNames } from "@/lib/people";
 import { useRoomRevalidate } from "@/lib/room-data";
 import { Ago } from "@/lib/relative-time";
 import { Button } from "@/components/ui/button";
+import { SendPlaneIcon } from "@/components/send-plane-icon";
 import { cn } from "@/lib/utils";
 
 const KIND_ICON: Record<AskKind, typeof CircleHelp> = {
@@ -78,6 +80,159 @@ function useAskStyle(): AskStyle {
       return ASK_STYLES.find((s) => s === v) ?? "box";
     },
     () => "box",
+  );
+}
+
+/** MOCK: alternatives to the answer controls, picked by `?ctl=`. */
+type Controls = "now" | "a" | "b";
+function useAskControls(): Controls {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => {
+      const v = new URLSearchParams(window.location.search).get("ctl");
+      return v === "a" || v === "b" ? v : "now";
+    },
+    () => "now",
+  );
+}
+
+/**
+ * MOCK: the answer controls, two ways.
+ *
+ * `a`: the answers first, left-aligned under the ask, where the eye already
+ * is; a note opens from an icon; Skip sits apart at the right. A question's
+ * answer is a field with its send arrow inside, as the room's composer has.
+ *
+ * `b`: one field shaped like the room's composer. The note (or a question's
+ * answer) on top, and a bar inside it: the other answers and Skip on the
+ * left, the main answer on the right, where the composer's send is.
+ */
+function AskControls({
+  variant,
+  kind,
+  mine,
+  note,
+  setNote,
+  busy,
+  canSend,
+  sendLabel,
+  onSend,
+  askedOf,
+}: {
+  variant: "a" | "b";
+  kind: AskKind;
+  mine: boolean;
+  note: string;
+  setNote: (v: string) => void;
+  busy: boolean;
+  canSend: boolean;
+  sendLabel: string;
+  onSend: (decision?: Decision, none?: boolean, skip?: boolean) => void;
+  askedOf: string;
+}) {
+  const [noteOpen, setNoteOpen] = useState(false);
+  const primary = () => onSend(kind === "approve" ? "approved" : undefined);
+  const placeholder = kind === "question" ? (mine ? "Your answer" : `Answer for ${askedOf}`) : "Add a note";
+  const field = (rows: number, autoFocus = false) => (
+    <textarea
+      value={note}
+      onChange={(e) => setNote(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canSend) {
+          e.preventDefault();
+          primary();
+        }
+      }}
+      rows={rows}
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      aria-label={kind === "question" ? "Your answer" : "Note"}
+      className="block w-full resize-none bg-transparent px-2.5 py-2 text-label text-text outline-none placeholder:text-faint"
+    />
+  );
+  const sendArrow = (
+    <button
+      type="button"
+      onClick={primary}
+      disabled={busy || !canSend}
+      aria-label="Send"
+      className="flex size-7 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent-soft disabled:text-faint disabled:hover:bg-transparent"
+    >
+      <SendPlaneIcon className="size-4" />
+    </button>
+  );
+  const skip = (
+    <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => onSend(undefined, false, true)} className="text-muted-foreground">
+      Skip
+    </Button>
+  );
+  const decline = (
+    <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => onSend("declined")}>
+      <X className="size-3.5" /> Decline
+    </Button>
+  );
+  const none = (
+    <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => onSend(undefined, true)}>
+      None of these
+    </Button>
+  );
+  const main =
+    kind === "approve" ? (
+      <Button type="button" size="xs" disabled={busy} onClick={primary}>
+        <Check className="size-3.5" /> Approve
+      </Button>
+    ) : (
+      <Button type="button" size="xs" disabled={busy || !canSend} onClick={primary}>
+        {sendLabel}
+      </Button>
+    );
+
+  if (variant === "a") {
+    return (
+      <div className="flex w-full flex-col gap-2">
+        {kind === "question" && (
+          // The answer is the field, so its send and Skip sit inside it.
+          <div className="flex items-end rounded-lg border border-border2 bg-bg pr-1 pb-1 focus-within:border-accent">
+            {field(2)}
+            {skip}
+            {sendArrow}
+          </div>
+        )}
+        {noteOpen && (
+          <div className="rounded-lg border border-border2 bg-bg focus-within:border-accent">{field(1, true)}</div>
+        )}
+        {kind !== "question" && <div className="flex items-center gap-1.5">
+          {main}
+          {kind === "approve" && decline}
+          {kind === "choose" && none}
+          <span className="ml-auto flex items-center gap-0.5">
+            {!noteOpen && (
+              <button
+                type="button"
+                onClick={() => setNoteOpen(true)}
+                aria-label="Add a note"
+                title="Add a note"
+                className="flex size-7 items-center justify-center rounded-md text-faint transition-colors hover:bg-hairline hover:text-text"
+              >
+                <MessageSquarePlus className="size-4" />
+              </button>
+            )}
+            {skip}
+          </span>
+        </div>}
+      </div>
+    );
+  }
+  return (
+    <div className="w-full rounded-lg border border-border2 bg-bg focus-within:border-accent">
+      {field(kind === "question" ? 2 : 1)}
+      <div className="flex items-center gap-1.5 px-1.5 pb-1.5">
+        {kind === "approve" && decline}
+        {kind === "choose" && none}
+        {skip}
+        <span className="ml-auto">{kind === "question" ? sendArrow : main}</span>
+      </div>
+    </div>
   );
 }
 
@@ -143,6 +298,7 @@ export function AskCard({
   const { principal } = useCurrentUser();
   const names = useNames();
   const style = useAskStyle();
+  const controls = useAskControls();
   const revalidate = useRoomRevalidate(roomName);
   // The answer shows at once; the hub's copy, folded onto the ask, replaces it
   // on the next read.
@@ -347,7 +503,14 @@ export function AskCard({
           </div>
         )}
       </div>
-      <div className={cn("flex min-h-9 flex-wrap items-center gap-1.5", look.foot)}>
+      <div
+        className={cn(
+          "flex min-h-9 flex-wrap items-center gap-1.5",
+          look.foot,
+          // B's field is its own frame, so no divider above it.
+          controls === "b" && !answer && "border-t-0 pt-0 pb-3",
+        )}
+      >
         {answer ? (
           <div className="min-w-0 flex-1 text-label">
             <p className="text-text">
@@ -366,6 +529,19 @@ export function AskCard({
             </p>
             {answer.text && <p className="mt-0.5 text-muted-foreground">“{answer.text}”</p>}
           </div>
+        ) : controls !== "now" ? (
+          <AskControls
+            variant={controls}
+            kind={ask.kind}
+            mine={mine}
+            note={note}
+            setNote={setNote}
+            busy={busy}
+            canSend={ask.kind === "question" ? Boolean(note.trim()) : ask.kind === "choose" ? pickedCount > 0 : true}
+            sendLabel={ask.kind === "choose" && ask.multiple && pickedCount > 0 ? `Send ${pickedCount}` : "Send"}
+            onSend={(decision, none, skip) => void send(decision, none, skip)}
+            askedOf={who(ask.to)}
+          />
         ) : (
           <form
             className="flex min-w-0 flex-1 flex-wrap items-start gap-1.5"
