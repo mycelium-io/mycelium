@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { MIN_WINDOW, clampRect, defaultRect, maxSize, saveRect, savedRect } from "@/lib/terminal-window";
+import { MIN_WINDOW, clampRect, defaultRect, resizeRect, saveRect, savedRect } from "@/lib/terminal-window";
 
 const screen = { width: 1440, height: 900 };
 
@@ -35,10 +35,32 @@ describe("a popped-out terminal's place", () => {
     expect(clampRect({ x: 200, y: 100, width: 640, height: 680 }, screen)).toMatchObject({ x: 200, y: 100 });
   });
 
-  it("grows from its corner only as far as the window's edge", () => {
-    expect(maxSize({ x: 200, y: 100, width: 640, height: 680 }, screen)).toEqual({ width: 1232, height: 792 });
-    // Never below the smallest it can be.
-    expect(maxSize({ x: 1300, y: 800, width: 320, height: 240 }, screen)).toEqual(MIN_WINDOW);
+  describe("resized from an edge or corner", () => {
+    const start = { x: 400, y: 100, width: 600, height: 500 };
+
+    it("moves only that edge, keeping the opposite one where it is", () => {
+      expect(resizeRect(start, "e", 50, 99, screen)).toEqual({ ...start, width: 650 });
+      expect(resizeRect(start, "s", 99, 40, screen)).toEqual({ ...start, height: 540 });
+      expect(resizeRect(start, "w", -100, 99, screen)).toEqual({ ...start, x: 300, width: 700 });
+      expect(resizeRect(start, "n", 99, 30, screen)).toEqual({ ...start, y: 130, height: 470 });
+      expect(resizeRect(start, "nw", -50, -20, screen)).toEqual({ x: 350, y: 80, width: 650, height: 520 });
+      expect(resizeRect(start, "se", 10, 10, screen)).toEqual({ ...start, width: 610, height: 510 });
+    });
+
+    it("stops at the window's edges", () => {
+      expect(resizeRect(start, "e", 5000, 0, screen).width).toBe(screen.width - 8 - start.x);
+      expect(resizeRect(start, "s", 0, 5000, screen).height).toBe(screen.height - 8 - start.y);
+      expect(resizeRect(start, "w", -5000, 0, screen)).toMatchObject({ x: 8, width: start.x + start.width - 8 });
+      expect(resizeRect(start, "n", 0, -5000, screen)).toMatchObject({ y: 8, height: start.y + start.height - 8 });
+    });
+
+    it("never gets smaller than a few lines, wherever it's pushed", () => {
+      expect(resizeRect(start, "e", -5000, 0, screen).width).toBe(MIN_WINDOW.width);
+      expect(resizeRect(start, "s", 0, -5000, screen).height).toBe(MIN_WINDOW.height);
+      // From the left or top, the far edge stays put as it stops.
+      expect(resizeRect(start, "w", 5000, 0, screen)).toMatchObject({ x: 1000 - 320, width: 320 });
+      expect(resizeRect(start, "n", 0, 5000, screen)).toMatchObject({ y: 600 - 240, height: 240 });
+    });
   });
 
   it("keeps its top left on a window too small for it, so its header can be reached", () => {

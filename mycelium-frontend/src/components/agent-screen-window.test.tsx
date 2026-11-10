@@ -122,6 +122,26 @@ describe("an agent's terminal window", () => {
     expect(savedRect("builder")).toMatchObject({ x: 100, y: 130 });
   });
 
+  it("resizes from any edge or corner, and remembers its size", () => {
+    saveRect("builder", { x: 200, y: 100, width: 500, height: 600 });
+    open();
+    const grab = (edge: string, dx: number, dy: number) => {
+      const handle = terminal().querySelector<HTMLElement>(`[data-edge="${edge}"]`)!;
+      handle.setPointerCapture = vi.fn();
+      fireEvent.pointerDown(handle, { clientX: 300, clientY: 300, pointerId: 1 });
+      fireEvent.pointerMove(handle, { clientX: 300 + dx, clientY: 300 + dy, pointerId: 1 });
+      fireEvent.pointerUp(handle, { pointerId: 1 });
+    };
+    expect(terminal().querySelectorAll("[data-edge]")).toHaveLength(8);
+    grab("w", -50, 0);
+    expect(terminal().style).toMatchObject({ left: "150px", width: "550px" });
+    grab("n", 0, 40);
+    expect(terminal().style).toMatchObject({ top: "140px", height: "560px" });
+    grab("se", 20, -60);
+    expect(terminal().style).toMatchObject({ width: "570px", height: "500px" });
+    expect(savedRect("builder")).toEqual({ x: 150, y: 140, width: 570, height: 500 });
+  });
+
   it("closes on Esc and on ×, but not on an Esc something else took", () => {
     const { onClose } = open();
     const taken = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });

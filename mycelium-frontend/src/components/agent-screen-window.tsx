@@ -5,7 +5,7 @@
 
 /**
  * Where an agent's terminal opens: a window over the app that you drag by its
- * header and resize from its corner. Nothing behind it dims and a click
+ * header and resize from any edge or corner. Nothing behind it dims and a click
  * elsewhere doesn't close it, since you watch an agent while you read and
  * write in the room.
  *
@@ -25,17 +25,30 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useAgentSession } from "@/lib/agent-session";
 import { useIsDesktop } from "@/lib/desktop";
 import {
-  MIN_WINDOW,
   clampRect,
   defaultRect,
-  maxSize,
+  resizeRect,
   saveRect,
   savedRect,
+  type Edge,
   type WindowRect,
 } from "@/lib/terminal-window";
 import { cn } from "@/lib/utils";
 
 const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
+
+/** Where each edge and corner can be grabbed, and the cursor it shows. The
+ *  corners sit over the edges' ends, so a corner wins there. */
+const EDGES: { edge: Edge; className: string }[] = [
+  { edge: "n", className: "inset-x-0 top-0 h-1.5 cursor-ns-resize" },
+  { edge: "s", className: "inset-x-0 bottom-0 h-1.5 cursor-ns-resize" },
+  { edge: "w", className: "inset-y-0 left-0 w-1.5 cursor-ew-resize" },
+  { edge: "e", className: "inset-y-0 right-0 w-1.5 cursor-ew-resize" },
+  { edge: "nw", className: "left-0 top-0 size-3 cursor-nwse-resize" },
+  { edge: "se", className: "bottom-0 right-0 size-3 cursor-nwse-resize" },
+  { edge: "ne", className: "right-0 top-0 size-3 cursor-nesw-resize" },
+  { edge: "sw", className: "bottom-0 left-0 size-3 cursor-nesw-resize" },
+];
 
 const VIEWS = [
   { view: "rendered", label: "What it's doing", Icon: LayoutList },
@@ -63,8 +76,8 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
   const { handle } = props;
   // It only ever opens from a click, so the window is there to measure.
   const [rect, setRect] = useState<WindowRect>(() => clampRect(savedRect(handle) ?? defaultRect(viewport()), viewport()));
-  const section = useRef<HTMLElement | null>(null);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const resizing = useRef<{ edge: Edge; x: number; y: number; from: WindowRect } | null>(null);
   // The toggle shows once the app has answered for the agent, with its session
   // or why it has none. With none, the window opens on the terminal, whatever
   // was picked last; picking Rendered here then says why.
@@ -97,42 +110,33 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Resizing from the corner is the browser's, held inside the window by its
-  // max size below; what it settles on is kept.
-  useEffect(() => {
-    const el = section.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => {
-      const width = Math.round(el.offsetWidth);
-      const height = Math.round(el.offsetHeight);
-      setRect((r) => {
-        if (r.width === width && r.height === height) return r;
-        const next = clampRect({ ...r, width, height }, viewport());
-        saveRect(handle, next);
-        return next;
-      });
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handle]);
-
-  const most = maxSize(rect, viewport());
   return createPortal(
     <section
-      ref={section}
       aria-label={`@${handle}'s terminal`}
-      className="fixed z-50 flex resize flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.98]"
-      style={{
-        left: rect.x,
-        top: rect.y,
-        width: rect.width,
-        height: rect.height,
-        minWidth: MIN_WINDOW.width,
-        minHeight: MIN_WINDOW.height,
-        maxWidth: most.width,
-        maxHeight: most.height,
-      }}
+      className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.98]"
+      style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
     >
+      {EDGES.map(({ edge, className }) => (
+        <div
+          key={edge}
+          aria-hidden
+          data-edge={edge}
+          className={cn("absolute z-10 touch-none", className)}
+          onPointerDown={(e) => {
+            resizing.current = { edge, x: e.clientX, y: e.clientY, from: rect };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const r = resizing.current;
+            if (!r) return;
+            setRect(resizeRect(r.from, r.edge, e.clientX - r.x, e.clientY - r.y, viewport()));
+          }}
+          onPointerUp={() => {
+            if (resizing.current) saveRect(handle, rect);
+            resizing.current = null;
+          }}
+        />
+      ))}
       <header
         className="flex h-10 flex-none cursor-grab touch-none items-center gap-2 border-b border-border px-3 select-none active:cursor-grabbing"
         onPointerDown={(e) => {
