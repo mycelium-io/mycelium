@@ -97,6 +97,12 @@ describe("an approve", () => {
     expect(screen.queryByText("Why now")).toBeNull();
   });
 
+  it("never approves on ⌘↵: the note may be a Decline's", async () => {
+    renderWithSWR(<AskCard roomName="checkout" ask={approve()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "no, wait for the iPhone test{Meta>}{Enter}{/Meta}");
+    expect(answerAsk).not.toHaveBeenCalled();
+  });
+
   it("approves with the note typed beside it", async () => {
     renderWithSWR(<AskCard roomName="checkout" ask={approve()} />);
     await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "Ship it after the iPhone test");
@@ -155,6 +161,12 @@ describe("a choose", () => {
     });
     // It folds to the question, with what was answered under it.
     expect(await screen.findByText(/^Chose none of the options/)).toHaveTextContent("neither fits our contract");
+  });
+
+  it("sends what's ticked on ⌘↵", async () => {
+    renderWithSWR(<AskCard roomName="checkout" ask={choose()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "{Meta>}{Enter}{/Meta}");
+    expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", expect.objectContaining({ choices: expect.any(Array) }));
   });
 
   it("won't send with nothing ticked: none is its own button", async () => {

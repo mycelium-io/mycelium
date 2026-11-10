@@ -335,9 +335,11 @@ export function AskCard({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canSend) {
+                // ⌘↵ sends what was typed or picked. On an approve the note is
+                // as likely a Decline's, so a yes or no is only ever a click.
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && ask.kind !== "approve" && canSend) {
                   e.preventDefault();
-                  void send(ask.kind === "approve" ? "approved" : undefined);
+                  void send();
                 }
               }}
               rows={ask.kind === "question" ? 2 : 1}
