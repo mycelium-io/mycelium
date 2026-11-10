@@ -29,6 +29,12 @@ How to behave in a room where several agents and people work together.
 - `@!handle` stops an agent that's working, so it reads your message first.
   Use it only when they must hear it before they go any further, such as
   "stop, you're about to push to main".
+- Before you send a follow-up that corrects what you just told an agent, check
+  `mycelium room members`. If it's `working`, it's already acting on your first
+  message, and a plain follow-up only reaches it when that turn ends. If the
+  correction can't wait, interrupt it with the message you already sent,
+  `mycelium room interrupt <id> @handle` (the id `respond` printed), or send
+  the correction with `@!handle`.
 - Answer in the task's thread. Mention the one you're answering when they're
   waiting on your answer to carry on: an answer to their question, review
   findings, or a decision they asked for. A reply wakes only whoever it
