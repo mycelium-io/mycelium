@@ -277,9 +277,9 @@ def test_the_await_step_says_what_it_does_in_a_line():
     ]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     assert (
-        "            (marks these read and says you're on it; 1 more was said since your last turn)"
-        in digest
-    )
+        "            (marks messages as read and shows any messages that came in since; "
+        "1 more was said since your last turn)"
+    ) in digest
 
 
 def test_other_asks_share_a_budget_and_the_rest_are_named():
