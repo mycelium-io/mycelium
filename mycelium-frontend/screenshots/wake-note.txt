@@ -10,7 +10,7 @@ Since:   your last turn, 12m ago: 2 in this thread (@reviewer 2)
 └
 
 Next:    1. mycelium await --room checkout --handle builder --json --timeout 5
-            (marks these as read and shows you anything that came in since, so read what it says; 1 more was said since your last turn)
+            (marks messages as read and shows any messages that came in since; 1 more was said since your last turn)
          2. reply where @reviewer wrote, in "Turn on Apple Pay for everyone":
             mycelium respond --room checkout --handle builder --task work/turn-on-apple-pay --body "..."
 
