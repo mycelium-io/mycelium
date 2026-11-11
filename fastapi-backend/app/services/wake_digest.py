@@ -868,8 +868,7 @@ def build(
         if not awaited:
             lines += [
                 f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
-                f"            (marks these read and shows anything said after this note{extra})",
-                "            (read its output before you act)",
+                f"            (marks these as read and shows you anything that came in since, so read what it says{extra})",
             ]
         # An agent asked in a task's thread tends to answer in the main
         # channel, weighing a hint against its own sense of where a topic
