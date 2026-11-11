@@ -1630,7 +1630,9 @@ function StatusLine({
     <div
       role={tone === "error" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2 rounded-lg border bg-elevated px-2.5 py-1.5 text-micro shadow-lg",
+        // Centered, so the dismiss sits level with a line that carries a
+        // control (an Interrupt, an Undo) as well as with plain text.
+        "flex items-center gap-2 rounded-lg border bg-elevated px-2.5 py-1.5 text-micro shadow-lg",
         tone === "error" ? "border-red/40 text-red" : "border-border text-muted-foreground",
       )}
     >
