@@ -857,10 +857,10 @@ def build(
         # ``await`` comes first: it marks these read, and it returns anything
         # said between the wake and now, which this note can't show. Agents
         # read the step as an acknowledgement and throw its output away, so
-        # the line says the output is the point. Then a reply where each
-        # unanswered ask was made, the one
-        # that woke it first: an older ask can be a flow's turn in another
-        # thread, with a floor and a deadline there.
+        # the step says the output is the point. Then a reply where each
+        # unanswered ask was made, the one that woke it first: an older ask
+        # can be a flow's turn in another thread, with a floor and a deadline
+        # there.
         replies = _reply_lines(room, me, window, asked)
         # Handed over by ``await``, these are already read: the reply is all
         # that's left to do, and it is the one step.
@@ -868,7 +868,8 @@ def build(
         if not awaited:
             lines += [
                 f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
-                f"            (marks these read, and shows anything said since this note: read it before you act{extra})",
+                f"            (marks these read and shows anything said after this note{extra})",
+                "            (read its output before you act)",
             ]
         # An agent asked in a task's thread tends to answer in the main
         # channel, weighing a hint against its own sense of where a topic
