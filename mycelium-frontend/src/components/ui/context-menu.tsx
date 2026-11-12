@@ -33,7 +33,9 @@ function ContextMenuTrigger({
   // Whether text was selected before this right-click began. On a Mac a
   // right-click on a word selects that word first, so a selection seen only
   // at `contextmenu` would hand every right-click on text to the browser.
-  const selectedBefore = React.useRef(false)
+  // `null` when no press came before the menu (the Menu key, Shift+F10): any
+  // selection then was made on purpose.
+  const selectedBefore = React.useRef<boolean | null>(null)
   return (
     <Primitive.Trigger
       data-slot="context-menu-trigger"
@@ -45,11 +47,11 @@ function ContextMenuTrigger({
       // where it always is; our menu is for the row, not for a selection in
       // it. A word the right-click itself selected is let go.
       onContextMenu={(event) => {
-        if (selectedBefore.current && selectionWithin(event.currentTarget)) {
-          event.preventBaseUIHandler()
-          return
-        }
-        if (selectionWithin(event.currentTarget)) window.getSelection()?.removeAllRanges()
+        const before = selectedBefore.current ?? true
+        selectedBefore.current = null
+        if (!selectionWithin(event.currentTarget)) return
+        if (before) event.preventBaseUIHandler()
+        else window.getSelection()?.removeAllRanges()
       }}
       {...props}
     />

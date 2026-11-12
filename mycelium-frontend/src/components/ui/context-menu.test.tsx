@@ -64,6 +64,21 @@ describe("<ContextMenu />", () => {
     expect(window.getSelection()?.isCollapsed ?? true).toBe(true);
   });
 
+  it("leaves a selection to the browser's menu when the menu is opened from the keyboard", async () => {
+    render(<Row />);
+    const row = screen.getByTestId("row");
+    // A right-click on a word earlier, then the Menu key over a selection:
+    // the earlier press says nothing about this one.
+    fireEvent.mouseDown(row, { button: 2 });
+    fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+    fireEvent.keyDown(document.activeElement ?? row, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByText("Rename")).not.toBeInTheDocument());
+    select(row);
+    fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+    await waitFor(() => expect(screen.queryByText("Rename")).not.toBeInTheDocument());
+    expect(window.getSelection()?.isCollapsed).toBe(false);
+  });
+
   it("opens on a Ctrl-click on a word the same way", async () => {
     render(<Row />);
     const row = screen.getByTestId("row");
