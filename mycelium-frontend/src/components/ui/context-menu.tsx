@@ -30,14 +30,28 @@ function ContextMenuTrigger({
   children,
   ...props
 }: Omit<Primitive.Trigger.Props, "render" | "children"> & { children: React.ReactElement }) {
+  // Whether text was selected before this right-click began. On a Mac a
+  // right-click on a word selects that word first, so a selection seen only
+  // at `contextmenu` would hand every right-click on text to the browser.
+  // `null` when no press came before the menu (the Menu key, Shift+F10): any
+  // selection then was made on purpose.
+  const selectedBefore = React.useRef<boolean | null>(null)
   return (
     <Primitive.Trigger
       data-slot="context-menu-trigger"
       render={children}
-      // Selected text keeps the browser's own menu, so Copy is where it
-      // always is; our menu is for the row, not for a selection in it.
+      onMouseDownCapture={(event) => {
+        if (event.button === 2 || event.ctrlKey) selectedBefore.current = selectionWithin(event.currentTarget)
+      }}
+      // Text selected beforehand keeps the browser's own menu, so Copy is
+      // where it always is; our menu is for the row, not for a selection in
+      // it. A word the right-click itself selected is let go.
       onContextMenu={(event) => {
-        if (selectionWithin(event.currentTarget)) event.preventBaseUIHandler()
+        const before = selectedBefore.current ?? true
+        selectedBefore.current = null
+        if (!selectionWithin(event.currentTarget)) return
+        if (before) event.preventBaseUIHandler()
+        else window.getSelection()?.removeAllRanges()
       }}
       {...props}
     />

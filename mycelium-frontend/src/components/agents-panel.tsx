@@ -652,6 +652,9 @@ function rowMeta(
   return null;
 }
 
+/** How soon after a row's menu opens a click is taken as part of the same right-click. */
+const MENU_CLICK_MS = 500;
+
 /**
  * One agent, one line. The dense roster reads as a scannable column of handles,
  * not a stack of cards: a small avatar, the handle, and a terse status in a
@@ -659,7 +662,7 @@ function rowMeta(
  * shares one), so a row only tags an owner when it breaks from the group's; the
  * description and full owner live in its card rather than on every row.
  */
-function AgentRow({
+export function AgentRow({
   agent: a,
   groupOwner,
   memberPresence,
@@ -693,6 +696,8 @@ function AgentRow({
   // A pause says why it isn't answering, which beats what it was doing.
   const meta = paused ? "paused" : rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
+  // When the row's menu last opened, so a click that comes with the right-click is ignored.
+  const menuAt = useRef(0);
   return (
     <AgentCardHover handle={a.handle} side="left">
       <div
@@ -701,7 +706,21 @@ function AgentRow({
         // Focusable either way: focus opens its card.
         tabIndex={0}
         aria-label={onOpen ? `Watch @${a.handle}'s terminal` : undefined}
-        onClick={onOpen}
+        // A right-click opens the row's menu and never its terminal. Some
+        // browsers, and a Mac's Ctrl-click, send a click with the right-click,
+        // so a secondary click, or one that lands just after the menu opened,
+        // is left alone.
+        onContextMenu={() => {
+          menuAt.current = Date.now();
+        }}
+        onClick={
+          onOpen
+            ? (e) => {
+                if (e.button !== 0 || e.ctrlKey || Date.now() - menuAt.current < MENU_CLICK_MS) return;
+                onOpen();
+              }
+            : undefined
+        }
         onKeyDown={onOpen ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen()) : undefined}
         className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
           onOpen ? "cursor-pointer" : ""
