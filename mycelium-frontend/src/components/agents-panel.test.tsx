@@ -20,10 +20,10 @@ describe("an agent's row in Members", () => {
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
-  it("leaves a right-click to the row's menu, however the engine sends it", () => {
+  it("leaves a right-click to the row's menu, however the browser sends it", () => {
     const { onOpen, el } = row();
-    // A secondary button, a Mac's Ctrl-click, and a click that rides along
-    // with the menu opening.
+    // A secondary button, a Mac's Ctrl-click, and a click that comes with the
+    // menu opening.
     fireEvent.click(el, { button: 2 });
     fireEvent.click(el, { button: 0, ctrlKey: true });
     fireEvent.contextMenu(el);

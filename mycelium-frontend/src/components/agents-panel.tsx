@@ -652,6 +652,9 @@ function rowMeta(
   return null;
 }
 
+/** How soon after a row's menu opens a click is taken as part of the same right-click. */
+const MENU_CLICK_MS = 500;
+
 /**
  * One agent, one line. The dense roster reads as a scannable column of handles,
  * not a stack of cards: a small avatar, the handle, and a terse status in a
@@ -659,9 +662,6 @@ function rowMeta(
  * shares one), so a row only tags an owner when it breaks from the group's; the
  * description and full owner live in its card rather than on every row.
  */
-/** How soon after a row's menu opens a click is taken as part of the same right-click. */
-const MENU_CLICK_MS = 500;
-
 export function AgentRow({
   agent: a,
   groupOwner,
@@ -696,7 +696,7 @@ export function AgentRow({
   // A pause says why it isn't answering, which beats what it was doing.
   const meta = paused ? "paused" : rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
-  // When the row's menu last opened, so a click riding along with it is ignored.
+  // When the row's menu last opened, so a click that comes with the right-click is ignored.
   const menuAt = useRef(0);
   return (
     <AgentCardHover handle={a.handle} side="left">
@@ -707,9 +707,9 @@ export function AgentRow({
         tabIndex={0}
         aria-label={onOpen ? `Watch @${a.handle}'s terminal` : undefined}
         // A right-click opens the row's menu and never its terminal. Some
-        // engines (the desktop app's WebView, a Mac's Ctrl-click) send a click
-        // along with the menu, so a secondary click, or one that lands just
-        // after the menu opened, is left alone.
+        // browsers, and a Mac's Ctrl-click, send a click with the right-click,
+        // so a secondary click, or one that lands just after the menu opened,
+        // is left alone.
         onContextMenu={() => {
           menuAt.current = Date.now();
         }}
