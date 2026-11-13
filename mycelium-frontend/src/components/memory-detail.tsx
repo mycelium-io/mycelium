@@ -174,12 +174,15 @@ function MaybeExpandable({
   );
 }
 
+/** How many characters of a key's name stay before its folder is cut too. */
+const NAME_FLOOR = 8;
+
 /**
  * A memory's whole key, its folder and its name, as one control that copies
  * it. It's what a person types after `[[`, passes to `mycelium memory get`, or
  * pastes to someone, so every view of a memory shows it. In a narrow pane the
- * folder stays and the name is cut short, since the folder is what a tab's
- * title can't show; the copy is always the whole key.
+ * name is cut short first, since the folder is what a tab's title can't show;
+ * the copy is always the whole key.
  */
 export function MemoryKey({
   memoryKey,
@@ -213,8 +216,15 @@ export function MemoryKey({
           size === "label" ? "text-label" : "text-micro",
         )}
       >
-        {folder && <span className="flex-shrink-0 text-muted-foreground">{folder}</span>}
-        <span className={cn("min-w-0 truncate", size === "label" ? "text-text" : "text-muted-foreground")}>{name}</span>
+        {/* The name gives way first, down to a few characters; only then
+            does a deep folder (`context/summary/work/`) get cut too. */}
+        {folder && <span className="min-w-0 truncate text-muted-foreground">{folder}</span>}
+        <span
+          className={cn("min-w-0 shrink-[1000] truncate", size === "label" ? "text-text" : "text-muted-foreground")}
+          style={{ minWidth: name.length > NAME_FLOOR ? `${NAME_FLOOR}ch` : undefined }}
+        >
+          {name}
+        </span>
         {copied ? (
           <Check className="ml-1 size-3 flex-shrink-0 text-green" aria-hidden />
         ) : (

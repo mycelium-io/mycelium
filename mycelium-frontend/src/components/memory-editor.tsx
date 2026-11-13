@@ -229,7 +229,6 @@ export function MemoryEditor({
     }
   };
 
-
   const screen = (
     <div
       className={cn(
