@@ -28,9 +28,23 @@ NO_OPEN="${MYCELIUM_NO_OPEN:-}"
 
 APP_ASSET="Mycelium-macos-arm64.app.tar.gz"
 APP_NAME="Mycelium.app"
-# Where the app's hub and UI listen (mycelium/desktop/supervisor.py).
-APP_HUB_URL="http://127.0.0.1:8000"
+# Where the app's hub and UI listen (mycelium/desktop/supervisor.py). The hub
+# goes on another port when another program holds this one, and the app writes
+# down which in ~/.mycelium/desktop-started.json (`app_hub_url` reads it).
+APP_HUB_URL="http://127.0.0.1:3718"
 APP_UI_URL="http://127.0.0.1:3717"
+
+# The hub's address as the running app wrote it down, else the usual one.
+app_hub_url() {
+  local port
+  port=$(grep -A3 '"hub"' "$HOME/.mycelium/desktop-started.json" 2>/dev/null \
+    | grep -o '"port": *[0-9]*' | grep -o '[0-9]*$')
+  if [ -n "$port" ]; then
+    echo "http://127.0.0.1:$port"
+  else
+    echo "$APP_HUB_URL"
+  fi
+}
 
 # Parse CLI args (curl | bash -s -- --version X)
 while [ $# -gt 0 ]; do
@@ -477,16 +491,17 @@ if [ "$MODE" = app ]; then
       ok "Mycelium opened"
       # With a hub already chosen, the app starts it on its own: wait for it.
       if [ -z "$FIRST_RUN" ] && grep -q '"mode": *"hub"' "$SETTINGS" 2>/dev/null; then
-        step "Waiting for the hub at $APP_HUB_URL..."
+        step "Waiting for the hub..."
         for _ in $(seq 1 90); do
-          if curl -fsS -o /dev/null "$APP_HUB_URL/health" 2>/dev/null; then
+          hub_url=$(app_hub_url)
+          if curl -fsS -o /dev/null "$hub_url/health" 2>/dev/null; then
             HUB_UP=1
             break
           fi
           sleep 1
         done
         if [ -n "$HUB_UP" ]; then
-          ok "Hub running at $APP_HUB_URL"
+          ok "Hub running at $hub_url"
         else
           warn "The hub hasn't answered yet. The app's health screen says why; its log is ~/.mycelium/logs/desktop.log."
         fi

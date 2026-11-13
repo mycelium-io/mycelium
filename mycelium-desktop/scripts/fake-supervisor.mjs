@@ -16,7 +16,7 @@ const flag = (name) => {
 const mode = flag("--mode") === "client" ? "client" : "hub";
 const hubUrl = flag("--hub-url");
 const ui = mode === "hub" ? (process.env.FAKE_UI_URL ?? "http://localhost:3100") : hubUrl;
-const api = mode === "hub" ? "http://127.0.0.1:8000" : hubUrl;
+const api = mode === "hub" ? "http://127.0.0.1:3718" : hubUrl;
 
 const names = ["slim", "hub", "ui", "runner"];
 const components = Object.fromEntries(

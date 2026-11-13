@@ -118,6 +118,14 @@ def test_a_saved_default_hub_is_no_hub_of_its_own(isolated_home: Path):
     assert MyceliumConfig.load().server.api_url == APP_HUB
 
 
+def test_the_app_s_own_hub_saved_earlier_doesn_t_hide_the_hub_it_joins(isolated_home: Path):
+    """Running its own hub, the app points config.toml at it (on whichever
+    port it took). Switched to a team's hub, that local address names none."""
+    _app(isolated_home)
+    _config_toml(isolated_home, "http://127.0.0.1:3718")
+    assert MyceliumConfig.load().server.api_url == APP_HUB
+
+
 def test_the_environment_wins_over_the_app(isolated_home: Path, monkeypatch):
     _app(isolated_home)
     monkeypatch.setenv("MYCELIUM_API_URL", "http://env.test:9000")

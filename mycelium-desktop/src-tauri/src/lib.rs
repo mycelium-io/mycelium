@@ -13,6 +13,7 @@
 
 mod close;
 mod download;
+mod hub_check;
 mod paths;
 mod session;
 mod settings;
@@ -1132,6 +1133,14 @@ async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
     serde_json::from_slice(&out.stdout).map_err(|_| "The experiences came back unreadable.".into())
 }
 
+/// Why the address entered to join a team's hub isn't one, or null when a
+/// Mycelium hub answers there, so the place step says so where it's typed.
+#[tauri::command]
+async fn check_hub(app: AppHandle, webview: Webview, url: String) -> Result<Option<String>, String> {
+    local_only(&app, &webview)?;
+    Ok(hub_check::problem(&url, MACHINE).await)
+}
+
 /// What the hub is set up with, read-only: `mycelium hub settings --json`
 /// against the team's hub (or this Mac's). No key is ever in the answer.
 #[tauri::command]
@@ -1396,6 +1405,16 @@ async fn choose_agent_folder(
 async fn start(app: AppHandle, webview: Webview, settings: Settings) -> Result<paths::PathSetup, String> {
     local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let settings = settings.validate()?;
+    // A new hub to join is checked here too, whichever page asked, so no way
+    // of saving it skips the check the place step makes.
+    if let (Mode::Client, Some(hub)) = (&settings.mode, &settings.hub_url) {
+        let saved = settings::load().and_then(|s| s.hub_url);
+        if saved.as_deref() != Some(hub.as_str()) {
+            if let Some(problem) = hub_check::problem(hub, MACHINE).await {
+                return Err(problem);
+            }
+        }
+    }
     if let Some(question) = settings::load().and_then(|saved| changed_trust(&saved, &settings)) {
         confirmed_here(&app, &webview, question.0, question.1, "Change").await?;
     }
@@ -1687,6 +1706,7 @@ pub fn run() {
             agent_session_page,
             earlier_sessions,
             run_doctor,
+            check_hub,
             herdr_integrations,
             get_model,
             save_model,
