@@ -15,6 +15,7 @@
     "allow-agent-session-page",
     "allow-earlier-sessions",
     "allow-run-doctor",
+    "allow-check-hub",
     "allow-herdr-integrations",
     "allow-get-model",
     "allow-save-model",

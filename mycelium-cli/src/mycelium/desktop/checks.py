@@ -29,12 +29,13 @@ from mycelium.desktop.supervisor import (
     Locator,
     port_open,
     started_file,
+    started_port,
     started_ui_port,
 )
 from mycelium.ui_status import CheckResult
 
 SETTINGS = desktop_settings_path()
-#: What the running app started, with the port its UI is on.
+#: What the running app started, with the ports its UI and hub are on.
 STARTED = started_file()
 
 
@@ -391,7 +392,10 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
     """Every check for this Mac as the app runs it, grouped for display."""
     s = settings() or {}
     client = s.get("mode") == "client"
-    api_url = str(s.get("hubUrl") or "") if client else f"http://{HOST}:{HUB_PORT}"
+    # The app starts its hub on another port when something else holds
+    # HUB_PORT, and writes down which.
+    port = started_port("hub", STARTED) or HUB_PORT
+    api_url = str(s.get("hubUrl") or "") if client else f"http://{HOST}:{port}"
     services: list[CheckResult] = [app_setting()]
     if not client:
         services.append(slim_node())

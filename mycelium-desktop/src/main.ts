@@ -397,7 +397,7 @@ async function startWith(c: Choices, model: Record<string, string> | null): Prom
 /** Where rooms live: on this Mac, or on a team's hub at an address.
  *  ``onModeChange`` fires when the choice changes, not on every keystroke of
  *  the address, so a redraw it causes never takes the cursor out of the field. */
-function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; problem: () => string | null } {
+function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; problem: () => Promise<string | null> } {
   const hubField = el("input", {
     class: "field mono",
     placeholder: "https://hub.example.com",
@@ -437,7 +437,14 @@ function placePiece(c: Choices, onModeChange: () => void): { el: HTMLElement; pr
   render();
   return {
     el: el("div", { class: "piece" }, el("div", { class: "choices column", role: "radiogroup", "aria-label": "Where rooms live" }, here, team), hubRow),
-    problem: () => (c.mode === "client" && !c.hubUrl.trim() ? "Enter the hub's address." : null),
+    // Something answers at most addresses; only a hub that says it's
+    // Mycelium is one to join, said here rather than on the first screen
+    // after it.
+    problem: async () => {
+      if (c.mode !== "client") return null;
+      if (!c.hubUrl.trim()) return "Enter the hub's address.";
+      return inApp ? invoke<string | null>("check_hub", { url: c.hubUrl.trim() }) : null;
+    },
   };
 }
 
@@ -1112,7 +1119,9 @@ async function wizard() {
     const next = el("button", { class: "button", type: "button" }, last ? (c.mode === "hub" ? "Start Mycelium" : "Connect") : "Continue");
     next.addEventListener("click", async () => {
       if (at === "place") {
-        const problem = place.problem();
+        next.disabled = true;
+        const problem = await place.problem().catch((e) => String(e));
+        next.disabled = false;
         if (problem) return fail(problem);
       }
       if (at === "model") skippedModel = false;
@@ -1365,7 +1374,7 @@ async function settingsWindow(open: Section = "mac") {
         el("div", { class: "share" }, autostart, el("p", { class: "hint" }, "Changes right away.")),
       );
       save = async () => {
-        const problem = place.problem();
+        const problem = await place.problem();
         if (problem) throw new Error(problem);
         await startWith(c, null);
       };
