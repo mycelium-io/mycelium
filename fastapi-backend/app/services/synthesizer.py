@@ -189,6 +189,15 @@ def _read_new_messages(room: str, *, me: str, full: bool) -> tuple[list[StoredMe
     return _since_cursor(chat, *_cursor(room)), len(chat)
 
 
+def _briefing_version(room: str) -> int:
+    """The standing synthesis's version, or 0 when the room has none yet."""
+    from app.services.filesystem import read_memory_file, room_path
+
+    existing = read_memory_file(room_path(room), SYNTHESIS_KEY)
+    version = existing[0].get("version", 0) if existing else 0
+    return version if isinstance(version, int) else 0
+
+
 def _prior_summary(room: str) -> str:
     """The standing synthesis body, or empty when the room has none yet."""
     from app.services.filesystem import get_room_dir, read_memory_file
@@ -414,6 +423,9 @@ class SynthesizerEngine:
         """
         me = engine_handle or self._handle
         managed = self._manager.get(room)
+        # The briefing as this run found it: written back only over that
+        # version, so a person's edit made while the model works isn't lost.
+        read_version = _briefing_version(room)
 
         if settings.SYNTHESIZER_SOURCE == "memory":
             entries = _read_room_memory(room)
@@ -462,7 +474,15 @@ class SynthesizerEngine:
             await self._say_if_live(managed, room, me, "Pi returned an empty response — try again.")
             return None
 
-        await self._write_summary(room, response, me, cursor)
+        if not await self._write_summary(room, response, me, cursor, read_version):
+            await self._say_if_live(
+                managed,
+                room,
+                me,
+                "Someone edited the briefing while I worked, so I left their edit. "
+                "The next run starts from it.",
+            )
+            return None
         logger.info(
             "synthesizer: wrote %s for room %s (%d %s)",
             SYNTHESIS_KEY,
@@ -491,30 +511,46 @@ class SynthesizerEngine:
         await managed.post(env, text)
 
     async def _write_summary(
-        self, room: str, summary: str, created_by: str, cursor: dict[str, str] | None
-    ) -> None:
+        self,
+        room: str,
+        summary: str,
+        created_by: str,
+        cursor: dict[str, str] | None,
+        read_version: int | None = None,
+    ) -> bool:
         """Upsert the summary through the canonical versioned + indexed path.
 
         The cursor rides along as unmanaged frontmatter, so the position and the
-        text it describes land in the same write.
+        text it describes land in the same write. With ``read_version``, it's
+        written only over that version: ``False`` when the briefing moved on.
         """
         # Lazy import to avoid circular dependency. ``upsert_memories`` is the
         # canonical path for a correct versioned + indexed write.
+        from fastapi import HTTPException
+
         from app.routes.memory import upsert_memories
         from app.schemas import MemoryBatchCreate, MemoryCreate
 
-        await upsert_memories(
-            room,
-            MemoryBatchCreate(
-                items=[
-                    MemoryCreate(
-                        key=SYNTHESIS_KEY,
-                        value=summary.rstrip("\n") + "\n",
-                        created_by=created_by,
-                        embed=True,
-                        tags=["synthesis"],
-                        meta={CURSOR_META_KEY: cursor} if cursor else None,
-                    )
-                ]
-            ),
-        )
+        try:
+            await upsert_memories(
+                room,
+                MemoryBatchCreate(
+                    items=[
+                        MemoryCreate(
+                            key=SYNTHESIS_KEY,
+                            value=summary.rstrip("\n") + "\n",
+                            created_by=created_by,
+                            embed=True,
+                            tags=["synthesis"],
+                            meta={CURSOR_META_KEY: cursor} if cursor else None,
+                            base_version=read_version,
+                        )
+                    ]
+                ),
+            )
+        except HTTPException as e:
+            if e.status_code != 409:
+                raise
+            logger.info("synthesizer: %s was edited during the run in %s", SYNTHESIS_KEY, room)
+            return False
+        return True

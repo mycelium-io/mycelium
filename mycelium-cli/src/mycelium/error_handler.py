@@ -61,7 +61,8 @@ def _format_http_status_error(error: httpx.HTTPStatusError, verbose: bool) -> st
         body = error.response.json()
         detail = body.get("detail") if isinstance(body, dict) else None
         if isinstance(detail, dict):
-            detail = detail.get("message") or detail.get("error") or str(detail)
+            message, code = detail.get("message"), detail.get("error")
+            detail = f"{message} ({code})" if message and code else message or code or str(detail)
     except Exception:
         pass
 

@@ -28,20 +28,15 @@ async def make_room(client: AsyncClient, name: str) -> None:
 
 
 async def make_work(client: AsyncClient, room: str, key: str, **meta) -> None:
-    await client.post(
-        f"/api/rooms/{room}/memory",
-        json={
-            "items": [
-                {
-                    "key": key,
-                    "value": "Spike the auth rewrite",
-                    "created_by": "julia",
-                    "embed": False,
-                    "meta": meta or None,
-                }
-            ]
-        },
+    """A row as the hub's own writers leave it: a claim's fields are a lease's
+    to write, and the memory route refuses them (``memory.claim_field``)."""
+    from app.routes.memory import upsert_memories
+    from app.schemas import MemoryBatchCreate, MemoryCreate
+
+    item = MemoryCreate(
+        key=key, value="Spike the auth rewrite", created_by="julia", embed=False, meta=meta or None
     )
+    await upsert_memories(room, MemoryBatchCreate(items=[item]))
 
 
 def frontmatter(room: str, key: str) -> dict:

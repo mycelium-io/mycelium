@@ -276,7 +276,7 @@ def memory_set(
         # A validation refusal is said here; any other refusal is the session's to report.
         saved: list[MemoryRead] = [] if resp.status_code == 422 else answered(resp, list)  # noqa: PLR2004
         if not saved:
-            said = resp.parsed if resp.status_code == 422 else saved  # noqa: PLR2004
+            said = hub_error_detail(resp.content) or "it gave no reason"
             console.print(f"[red]Error:[/red] the hub didn't save {room_name}/{key}: {said}")
             raise typer.Exit(1)
         console.print(f"[green]Memory set:[/green] {room_name}/{key} (v{saved[0].version})")

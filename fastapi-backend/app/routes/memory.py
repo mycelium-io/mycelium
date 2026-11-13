@@ -50,6 +50,7 @@ from app.services import (
     hold_sweep,
     in_memory_store,
     links,
+    memory_kinds,
     memory_sync,
     principals,
     room_settings,
@@ -240,6 +241,8 @@ def _broadcast_memory_write(
     created_by: str,
     updated_by: str,
     updated_at: str,
+    tags: list[str] | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     """Schedule an ``extraction`` knowledge push mirroring a direct memory write.
 
@@ -260,6 +263,8 @@ def _broadcast_memory_write(
         created_by=created_by,
         updated_by=updated_by,
         updated_at=updated_at,
+        tags=tags,
+        meta=meta,
     )
     recipients = room_channels.manager.members(room_name)
     task = asyncio.create_task(_send_memory_write_knowledge(room_name, managed, write, recipients))
@@ -313,7 +318,7 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
             request, room_name, item.created_by, field="created_by"
         )
         _guard_manifest(request, room_name, item.key, item.value)
-    return await upsert_memories(room_name, payload)
+    return await upsert_memories(room_name, payload, people=True)
 
 
 def _guard_manifest(
@@ -334,7 +339,10 @@ def _guard_manifest(
         room_name, key.removeprefix("agents/"), content, principal.handle, deleting=deleting
     )
     if refusal:
-        raise HTTPException(status_code=403, detail=refusal)
+        raise HTTPException(
+            status_code=memory_kinds.CODES["memory.not_owner"],
+            detail={"error": "memory.not_owner", "message": refusal, "key": key},
+        )
 
 
 async def upsert_memories(
@@ -343,6 +351,8 @@ async def upsert_memories(
     *,
     notify: bool = True,
     system: dict[str, Any] | None = None,
+    people: bool = False,
+    keep_version: bool = False,
 ) -> list[MemoryRead]:
     """The write itself, with ``created_by`` already resolved to its true author.
 
@@ -362,6 +372,15 @@ async def upsert_memories(
 
     It is **write-once**: a value already on the row wins, so a task stays bound
     to the thread its history is in for the row's whole life.
+
+    ``people`` is a write from the memory route (the app's editor, ``memory
+    set``, an agent): each item is checked against its kind
+    (``services/memory_kinds.py``) before any is saved, so a refused batch
+    saves nothing. The hub's own writers leave it off: they own what a kind
+    keeps from people (a run's record, a lease's claim fields).
+
+    ``keep_version`` leaves the version as it is, for a write that only
+    re-dates a lease: an editor open on the row isn't told it was edited.
     """
     _require_room(room_name)
     if system and not set(system) <= SYSTEM_META:
@@ -372,35 +391,44 @@ async def upsert_memories(
 
     from app.services.metrics import record_memory_write
 
-    results: list[MemoryRead] = []
-    write_metrics: list[bool] = []
-    for item in payload.items:
+    # Every item is checked before any is saved, so a refused batch saves
+    # nothing: its kind (from the memory route), a room setting's value, and
+    # the version it was written over.
+    drawn: dict[int, str] = {}
+    setting_values: dict[int, Any] = {}
+    for i, item in enumerate(payload.items):
         value = item.value if isinstance(item.value, dict) else {"text": item.value}
-        content_text = item.content_text or _flatten_value(item.value)
-        body = value_to_content(value)
-
         existing = read_memory_file(room_dir, item.key)
         existing_meta = existing[0] if existing else {}
         current_version = existing_meta.get("version", 0) if existing else 0
 
+        if people:
+            try:
+                redrawn = memory_kinds.check(item.key, value_to_content(value), item.meta, existing)
+            except memory_kinds.Refused as e:
+                raise HTTPException(status_code=e.status, detail=e.detail(item.key)) from e
+            if redrawn is not None:
+                drawn[i] = redrawn
+
         # A room setting is checked against the room settings table here, at the
         # one write path, so every writer gets the same refusal.
-        setting_value: Any = None
         if room_settings.is_setting_key(item.key):
             try:
-                setting_value = room_settings.check_write(item.key, item.meta, existing_meta)
+                setting_values[i] = room_settings.check_write(item.key, item.meta, existing_meta)
             except room_settings.RoomSettingError as exc:
+                unknown = isinstance(exc, room_settings.UnknownSetting)
+                code = "memory.setting_unknown" if unknown else "memory.setting_invalid"
                 raise HTTPException(
-                    status_code=422,
-                    detail={"error": "room_setting", "message": str(exc), "key": item.key},
+                    status_code=memory_kinds.CODES[code],
+                    detail={"error": code, "message": str(exc), "key": item.key},
                 ) from exc
 
         # Conflict check: a supplied base_version must match what's on disk.
         if item.base_version is not None and item.base_version != current_version:
             raise HTTPException(
-                status_code=409,
+                status_code=memory_kinds.CODES["memory.stale_base"],
                 detail={
-                    "error": "stale_base",
+                    "error": "memory.stale_base",
                     "message": (
                         f"Write for '{item.key}' expected version {item.base_version} "
                         f"but current version is {current_version}"
@@ -414,12 +442,29 @@ async def upsert_memories(
                 },
             )
 
+    results: list[MemoryRead] = []
+    write_metrics: list[bool] = []
+    for i, item in enumerate(payload.items):
+        value = item.value if isinstance(item.value, dict) else {"text": item.value}
+        content_text = item.content_text or _flatten_value(item.value)
+        if i in drawn:
+            # A body drawn from its field (a summary, a decision): the field
+            # this write changed is the source, so the text follows it.
+            value = {"text": drawn[i]}
+            content_text = drawn[i]
+        body = value_to_content(value)
+
+        existing = read_memory_file(room_dir, item.key)
+        existing_meta = existing[0] if existing else {}
+        current_version = existing_meta.get("version", 0) if existing else 0
+        setting_value = setting_values.get(i)
+
         now = datetime.now(UTC)
         # A write that names no tags keeps the ones the memory has, like the rest
         # of its frontmatter; an empty list clears them.
         tags = item.tags if item.tags is not None else existing_meta.get("tags")
         if existing:
-            new_version = current_version + 1
+            new_version = current_version if keep_version else current_version + 1
             created_by = existing_meta.get("created_by", item.created_by)
             created_at = parse_timestamp(existing_meta.get("created_at")) or now
         else:
@@ -539,6 +584,10 @@ async def upsert_memories(
             created_by=created_by,
             updated_by=item.created_by,
             updated_at=now.isoformat(),
+            # The whole of both, empty included, so a field this write cleared
+            # is cleared on every copy too.
+            tags=list(tags) if isinstance(tags, list) else [],
+            meta=unmanaged_meta(extra_meta),
         )
         # A board row appearing for the first time is the room filing work: raise
         # a `filed` notice into the timeline, naming the task, its kind (so it

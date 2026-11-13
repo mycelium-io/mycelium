@@ -90,12 +90,17 @@ async def test_frontmatter_survives_a_later_write(client):
 @pytest.mark.asyncio
 async def test_managed_frontmatter_cannot_be_overridden_via_meta(client):
     await _room(client)
-    await _set(client, "context/stack", "The stack.", meta={"version": 99, "created_by": "spoof"})
+    item = {
+        "key": "context/stack",
+        "value": "The stack.",
+        "created_by": "tester",
+        "meta": {"version": 99, "created_by": "spoof"},
+    }
+    resp = await client.post("/api/rooms/r/memory", json={"items": [item]})
 
-    meta, _ = _on_disk("context/stack")
-
-    assert meta["version"] == 1
-    assert meta["created_by"] == "tester"
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "memory.store_field"
+    assert read_memory_file(get_room_dir("r"), "context/stack") is None
 
 
 @pytest.mark.asyncio
