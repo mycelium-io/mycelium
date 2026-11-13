@@ -293,7 +293,15 @@ def _describe(room: str, key: str, meta: dict, now: datetime) -> dict:
 
 
 async def _write(
-    room: str, key: str, meta: dict, content: str, patch: dict, handle: str, *, notify: bool = True
+    room: str,
+    key: str,
+    meta: dict,
+    content: str,
+    patch: dict,
+    handle: str,
+    *,
+    notify: bool = True,
+    keep_version: bool = False,
 ) -> dict:
     """Put a assignment change on the row, through the canonical memory upsert.
 
@@ -303,7 +311,9 @@ async def _write(
     """
     from app.services.fields import upsert_patch
 
-    fresh_meta = await upsert_patch(room, key, meta, content, patch, handle, notify=notify)
+    fresh_meta = await upsert_patch(
+        room, key, meta, content, patch, handle, notify=notify, keep_version=keep_version
+    )
     return _describe(room, key, fresh_meta, datetime.now(UTC))
 
 
@@ -504,9 +514,18 @@ async def renew(room: str, handle: str, now: datetime) -> list[dict]:
                 continue
             if (freshness(meta, now) or "fresh") == "fresh":
                 continue
+            # Not an edit, so the version stays: an editor open on the row
+            # isn't told someone else changed it.
             renewed.append(
                 await _write(
-                    room, key, meta, content, {"claimed_at": now.isoformat()}, handle, notify=False
+                    room,
+                    key,
+                    meta,
+                    content,
+                    {"claimed_at": now.isoformat()},
+                    handle,
+                    notify=False,
+                    keep_version=True,
                 )
             )
     return renewed

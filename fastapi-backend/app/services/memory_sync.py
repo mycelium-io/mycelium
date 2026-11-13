@@ -70,9 +70,15 @@ class KnowledgeWrite:
     updated_by: str
     updated_at: str
     base_version: int | None = None
+    #: The memory's tags and the frontmatter people set (its relations, a
+    #: summary's `contract`, a setting's value), so a copy reads like the
+    #: original. Sent only when there are some, so an older hub's copy and a
+    #: plain write read the same as before.
+    tags: list[str] | None = None
+    meta: dict[str, Any] | None = None
 
     def to_payload(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "key": self.key,
             "content": self.content,
             "version": self.version,
@@ -81,6 +87,11 @@ class KnowledgeWrite:
             "updated_by": self.updated_by,
             "updated_at": self.updated_at,
         }
+        if self.tags:
+            payload["tags"] = list(self.tags)
+        if self.meta:
+            payload["meta"] = dict(self.meta)
+        return payload
 
     @classmethod
     def from_payload(cls, data: dict[str, Any]) -> KnowledgeWrite | None:
@@ -110,6 +121,8 @@ class KnowledgeWrite:
             updated_by=actor,
             updated_at=str(data.get("updated_at") or datetime.now(UTC).isoformat()),
             base_version=base_version,
+            tags=[str(t) for t in tags] if isinstance(tags := data.get("tags"), list) else None,
+            meta=meta if isinstance(meta := data.get("meta"), dict) else None,
         )
 
 
@@ -185,7 +198,13 @@ def apply_knowledge_to_dir(base_dir: Any, write: KnowledgeWrite) -> ApplyResult:
     the (heavier) index. Returns an :class:`ApplyResult`; never raises on a
     conflict — a stale-base write is a *result*, not an error.
     """
-    from app.services.filesystem import parse_timestamp, read_memory_file, write_memory_file
+    from app.services.filesystem import (
+        parse_timestamp,
+        read_memory_file,
+        system_meta,
+        unmanaged_meta,
+        write_memory_file,
+    )
 
     existing = read_memory_file(base_dir, write.key)
     if existing is not None:
@@ -227,6 +246,14 @@ def apply_knowledge_to_dir(base_dir: Any, write: KnowledgeWrite) -> ApplyResult:
     # stays whatever the local file already had; this is an update.
     written_at = parse_timestamp(write.updated_at)
     created_at = parse_timestamp(existing[0].get("created_at")) if existing else None
+    # What the copy carries (tags, the frontmatter people set), and what this
+    # store keeps for itself (its own thread binding, an upload's file), which
+    # a copy never names and never moves.
+    old_meta = existing[0] if existing else {}
+    extra_meta = {**unmanaged_meta(write.meta or {}), **system_meta(old_meta)}
+    if write.meta is None:
+        extra_meta = {**unmanaged_meta(old_meta), **extra_meta}
+    tags = write.tags if write.tags is not None else old_meta.get("tags")
     write_memory_file(
         base_dir,
         write.key,
@@ -234,8 +261,10 @@ def apply_knowledge_to_dir(base_dir: Any, write: KnowledgeWrite) -> ApplyResult:
         created_by=write.created_by,
         updated_by=write.updated_by,
         version=write.version,
+        tags=tags if isinstance(tags, list) else None,
         created_at=created_at or written_at,
         updated_at=written_at,
+        extra_meta=extra_meta or None,
     )
     return ApplyResult(
         key=write.key,
