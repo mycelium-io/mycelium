@@ -391,44 +391,30 @@ async def upsert_memories(
 
     from app.services.metrics import record_memory_write
 
+    # Every item is checked before any is saved, so a refused batch saves
+    # nothing: its kind (from the memory route), a room setting's value, and
+    # the version it was written over.
     drawn: dict[int, str] = {}
-    if people:
-        for i, item in enumerate(payload.items):
-            value = item.value if isinstance(item.value, dict) else {"text": item.value}
+    setting_values: dict[int, Any] = {}
+    for i, item in enumerate(payload.items):
+        value = item.value if isinstance(item.value, dict) else {"text": item.value}
+        existing = read_memory_file(room_dir, item.key)
+        existing_meta = existing[0] if existing else {}
+        current_version = existing_meta.get("version", 0) if existing else 0
+
+        if people:
             try:
-                redrawn = memory_kinds.check(
-                    item.key,
-                    value_to_content(value),
-                    item.meta,
-                    read_memory_file(room_dir, item.key),
-                )
+                redrawn = memory_kinds.check(item.key, value_to_content(value), item.meta, existing)
             except memory_kinds.Refused as e:
                 raise HTTPException(status_code=e.status, detail=e.detail(item.key)) from e
             if redrawn is not None:
                 drawn[i] = redrawn
 
-    results: list[MemoryRead] = []
-    write_metrics: list[bool] = []
-    for i, item in enumerate(payload.items):
-        value = item.value if isinstance(item.value, dict) else {"text": item.value}
-        content_text = item.content_text or _flatten_value(item.value)
-        if i in drawn:
-            # A body drawn from its field (a summary, a decision): the field
-            # this write changed is the source, so the text follows it.
-            value = {"text": drawn[i]}
-            content_text = drawn[i]
-        body = value_to_content(value)
-
-        existing = read_memory_file(room_dir, item.key)
-        existing_meta = existing[0] if existing else {}
-        current_version = existing_meta.get("version", 0) if existing else 0
-
         # A room setting is checked against the room settings table here, at the
         # one write path, so every writer gets the same refusal.
-        setting_value: Any = None
         if room_settings.is_setting_key(item.key):
             try:
-                setting_value = room_settings.check_write(item.key, item.meta, existing_meta)
+                setting_values[i] = room_settings.check_write(item.key, item.meta, existing_meta)
             except room_settings.RoomSettingError as exc:
                 unknown = isinstance(exc, room_settings.UnknownSetting)
                 code = "memory.setting_unknown" if unknown else "memory.setting_invalid"
@@ -455,6 +441,23 @@ async def upsert_memories(
                     "updated_at": existing_meta.get("updated_at"),
                 },
             )
+
+    results: list[MemoryRead] = []
+    write_metrics: list[bool] = []
+    for i, item in enumerate(payload.items):
+        value = item.value if isinstance(item.value, dict) else {"text": item.value}
+        content_text = item.content_text or _flatten_value(item.value)
+        if i in drawn:
+            # A body drawn from its field (a summary, a decision): the field
+            # this write changed is the source, so the text follows it.
+            value = {"text": drawn[i]}
+            content_text = drawn[i]
+        body = value_to_content(value)
+
+        existing = read_memory_file(room_dir, item.key)
+        existing_meta = existing[0] if existing else {}
+        current_version = existing_meta.get("version", 0) if existing else 0
+        setting_value = setting_values.get(i)
 
         now = datetime.now(UTC)
         # A write that names no tags keeps the ones the memory has, like the rest
@@ -581,8 +584,10 @@ async def upsert_memories(
             created_by=created_by,
             updated_by=item.created_by,
             updated_at=now.isoformat(),
-            tags=tags if isinstance(tags, list) else None,
-            meta=unmanaged_meta(extra_meta) or None,
+            # The whole of both, empty included, so a field this write cleared
+            # is cleared on every copy too.
+            tags=list(tags) if isinstance(tags, list) else [],
+            meta=unmanaged_meta(extra_meta),
         )
         # A board row appearing for the first time is the room filing work: raise
         # a `filed` notice into the timeline, naming the task, its kind (so it

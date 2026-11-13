@@ -72,8 +72,9 @@ class KnowledgeWrite:
     base_version: int | None = None
     #: The memory's tags and the frontmatter people set (its relations, a
     #: summary's `contract`, a setting's value), so a copy reads like the
-    #: original. Sent only when there are some, so an older hub's copy and a
-    #: plain write read the same as before.
+    #: original. Empty is sent as empty, so a field the original cleared is
+    #: cleared on the copy too; ``None`` (an older hub, a write that names
+    #: neither) leaves the copy's as they were, and isn't sent.
     tags: list[str] | None = None
     meta: dict[str, Any] | None = None
 
@@ -87,9 +88,9 @@ class KnowledgeWrite:
             "updated_by": self.updated_by,
             "updated_at": self.updated_at,
         }
-        if self.tags:
+        if self.tags is not None:
             payload["tags"] = list(self.tags)
-        if self.meta:
+        if self.meta is not None:
             payload["meta"] = dict(self.meta)
         return payload
 

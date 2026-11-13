@@ -252,6 +252,18 @@ async def test_a_refused_item_saves_nothing_from_its_batch(room):
     assert absent("context/fine")
 
 
+async def test_a_stale_item_saves_nothing_from_its_batch_either(room):
+    await write(room, "context/later", "v1")
+    items = [
+        {"key": "context/first", "value": "ok", "created_by": "operator", "embed": False},
+        {"key": "context/later", "value": "v2", "created_by": "operator", "base_version": 0},
+    ]
+    refused(
+        await room.post(f"/api/rooms/{ROOM}/memory", json={"items": items}), "memory.stale_base"
+    )
+    assert absent("context/first")
+
+
 async def test_the_hub_s_own_writers_are_not_checked(room):
     await hub_writes("context/standing", "where the run is", headline="Step 2")
     await hub_writes("work/ship-it", "Ship it", owner="builder", assignment="held")
@@ -313,6 +325,28 @@ def test_a_copy_from_another_hub_carries_tags_and_frontmatter(tmp_path):
     assert meta["tags"] == ["shared-summary"]
     assert meta["contract"]["title"] == "Checkout"
     assert "episode" not in meta, "a copy never names this store's thread"
+
+
+def test_a_field_the_original_cleared_is_cleared_on_the_copy(tmp_path):
+    def copy(**kw: Any) -> None:
+        sent = memory_sync.KnowledgeWrite(
+            key="context/plan",
+            content="text",
+            created_by="operator",
+            updated_by="operator",
+            updated_at="2026-11-13T10:00:00+00:00",
+            **kw,
+        )
+        received = memory_sync.KnowledgeWrite.from_payload(sent.to_payload())
+        assert received is not None
+        memory_sync.apply_knowledge_to_dir(tmp_path, received)
+
+    copy(version=1, tags=["plan"], meta={"relates-to": "work/ship-it"})
+    copy(version=2, tags=[], meta={})
+    copied = read_memory_file(tmp_path, "context/plan")
+    assert copied is not None
+    assert "relates-to" not in copied[0]
+    assert not copied[0].get("tags")
 
 
 def test_a_plain_copy_reads_as_it_did():

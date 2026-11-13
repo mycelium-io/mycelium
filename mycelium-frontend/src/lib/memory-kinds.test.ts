@@ -41,7 +41,7 @@ describe("kindOf", () => {
 
   it("says why a kind isn't edited here, and nothing for one that is", () => {
     expect(notEditable(kindOf("uploads/plan.md"))).toMatch(/Upload the file again/);
-    expect(notEditable(kindOf("context/summary/ship-it"))).toMatch(/`contract` field/);
+    expect(notEditable(kindOf("context/summary/ship-it"))).toMatch(/in its contract field/);
     expect(notEditable(kindOf("context/plan"))).toBeNull();
   });
 });

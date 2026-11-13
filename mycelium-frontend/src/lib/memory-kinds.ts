@@ -71,7 +71,7 @@ export function notEditable(kind: MemoryKind): string | null {
   if (kind.edit === "none") return kind.says ?? "This memory can't be edited.";
   if (kind.edit === "field") {
     const what = kind.id === "summary" ? "summary" : "decision";
-    return `This text is made from the ${what} in its \`${kind.source}\` field, so it isn't edited here.`;
+    return `This text is made from the ${what} kept in its ${kind.source} field, so it isn't edited here.`;
   }
   return null;
 }
