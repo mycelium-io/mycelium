@@ -750,8 +750,11 @@ class Supervisor:
     def _point_cli_here(self) -> None:
         """Write the hub's address into this machine's CLI config, so the CLI
         and the agents that read it find the hub on whichever port it took.
-        Only over an address on this machine: one naming a hub elsewhere is
-        the person's choice, left alone."""
+
+        Only when the config names an address on this machine where no hub
+        answers (the default, or where the app's hub was before). One naming
+        a hub elsewhere, or a hub running here (one the person runs
+        themselves), is their choice, left alone."""
         from mycelium.config import MyceliumConfig
 
         try:
@@ -759,6 +762,8 @@ class Supervisor:
             now = urlparse(config.server.api_url)
             # Already this hub, however it's spelled (`localhost` or not).
             if now.hostname not in LOCAL_HOSTS or now.port == self.hub_port:
+                return
+            if now.port is not None and is_hub(now.port):
                 return
             config.server.api_url = self.api_url
             config.save()

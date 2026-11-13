@@ -773,6 +773,22 @@ def test_a_free_port_leaves_the_cli_s_config_as_it_was(
     assert config.read_text() == before
 
 
+def test_a_cli_pointed_at_a_hub_running_here_is_left_alone(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A hub the person runs themselves on another port of this machine is
+    theirs to point the CLI at, whichever port the app's hub is on."""
+    monkeypatch.setattr(sv, "HUB_PORT", sv.free_port())
+    with _serving(_AHub, monkeypatch) as theirs:
+        _cli_points_at(f"http://localhost:{theirs}")
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+        hub_c, _ = _hub_and_ui(sup)
+        assert hub_c.prepare is not None
+        hub_c.prepare()
+        assert sup.hub_port == sv.HUB_PORT
+        assert _cli_url() == f"http://localhost:{theirs}"
+
+
 def test_a_cli_pointed_at_a_hub_elsewhere_is_left_alone(
     isolated_home: Path, monkeypatch: pytest.MonkeyPatch
 ):
