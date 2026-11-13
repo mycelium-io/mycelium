@@ -168,8 +168,8 @@ async def test_the_route_and_the_history_read(client, hub):
 async def test_the_id_the_send_route_returned_finds_the_message(
     client, hub, monkeypatch: pytest.MonkeyPatch
 ):
-    """The app interrupts with the id ``POST /messages`` gave it, which is not
-    the history read's; the wire id works too."""
+    """The app interrupts with the id ``POST /messages`` gave it, which is the
+    history read's (one id per message); the wire id works too."""
     await client.post("/api/rooms", json={"name": ROOM})
 
     async def publish(_channel, *, sender, text, episode=None):
@@ -185,7 +185,7 @@ async def test_the_id_the_send_route_returned_finds_the_message(
     assert sent.status_code == 201, sent.text
     posted = sent.json()["id"]
     rid = str(persister.read_id_of("m-001"))
-    assert posted != rid, "the two ids differ, or this tests nothing"
+    assert posted == rid
 
     resp = await client.post(
         f"/api/rooms/{ROOM}/messages/{posted}/interrupt",
