@@ -9,6 +9,7 @@ import type { MarkdownEditorHandle } from "@/components/markdown-editor";
 import { Check, Copy, Loader2, Pencil } from "lucide-react";
 import { ApiError, createMemories, type Memory, type MemoryCreate } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { MemoryKey } from "@/components/memory-detail";
 import { Kbd } from "@/components/ui/kbd";
 import { TagInput } from "@/components/ui/tag-input";
 import {
@@ -228,7 +229,6 @@ export function MemoryEditor({
     }
   };
 
-  const crumbs = memory.key.split("/");
 
   const screen = (
     <div
@@ -248,16 +248,8 @@ export function MemoryEditor({
       >
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Pencil className="size-3.5 flex-shrink-0 text-accent" />
-          {(!named || fullscreen) && (
-            <span className="min-w-0 truncate font-mono text-label text-text" title={memory.key}>
-              {crumbs.map((part, i) => (
-                <span key={i}>
-                  {i > 0 && <span className="text-faint">/</span>}
-                  {part}
-                </span>
-              ))}
-            </span>
-          )}
+          {/* The whole key to copy; small where a tab already names it. */}
+          <MemoryKey memoryKey={memory.key} size={named && !fullscreen ? "micro" : "label"} />
           <span className="flex-shrink-0 text-micro text-faint tabular">v{memory.version}</span>
           <span
             className={cn(
