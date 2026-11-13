@@ -279,7 +279,7 @@ const PREVIEW_HUB: HubSettings = {
   share_usage: false,
 };
 const PREVIEW_CHECKS: Check[] = [
-  { section: `This ${MACHINE}`, name: "Hub", status: "ok", message: "answering at http://127.0.0.1:8000", details: [] },
+  { section: `This ${MACHINE}`, name: "Hub", status: "ok", message: "answering at http://127.0.0.1:3718", details: [] },
   { section: "Agents", name: "herdr", status: "ok", message: "running (0.9.1)", details: [] },
   {
     section: "Models",

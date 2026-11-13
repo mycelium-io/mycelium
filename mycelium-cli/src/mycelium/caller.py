@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
@@ -264,15 +265,17 @@ def desktop_hub() -> str | None:
 def _desktop_hub_over(files_hub: str | None) -> str | None:
     """The app's client-mode hub, unless ``config.toml`` names a hub of its own.
 
-    A ``config.toml`` naming the default hub names none: a whole-config save
-    (``mycelium login``, ``iam``) writes every field, defaults included, and in
-    client mode nothing answers on this computer's port anyway.
+    A ``config.toml`` naming a hub on this computer names none: a whole-config
+    save (``mycelium login``, ``iam``) writes every field, defaults included,
+    the app points it at the hub it runs here while it runs one, and in client
+    mode nothing answers on this computer anyway.
     """
     joined = desktop_hub()
     if joined is None:
         return None
     own = (files_hub or "").strip().rstrip("/")
-    return joined if own in ("", DEFAULT_HUB) else None
+    here = urlparse(own).hostname in ("127.0.0.1", "localhost", "::1")
+    return joined if own in ("", DEFAULT_HUB) or here else None
 
 
 def hub(config: MyceliumConfig) -> Answer:

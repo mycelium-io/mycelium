@@ -95,7 +95,12 @@ State = Literal["starting", "running", "stopped", "failed", "disabled"]
 
 HOST = "127.0.0.1"
 SLIM_PORT = 46357
-HUB_PORT = 8000
+#: Off 8000, the default of most local web servers, so someone's own server
+#: rarely holds it. The Docker install's hub stays on 8000.
+HUB_PORT = 3718
+#: Where the Docker install's hub listens. A hub already there is used, and
+#: said, as one on :data:`HUB_PORT` is, rather than starting a second hub.
+DOCKER_HUB_PORT = 8000
 UI_PORT = 3717
 #: How the CLI's config can name a hub on this machine.
 LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -704,6 +709,15 @@ class Supervisor:
         # The hub starts first, so its port is settled by now.
         c.env["MYCELIUM_INTERNAL_API_URL"] = self.api_url
 
+    def _hub_running(self) -> bool:
+        """Whether a Mycelium hub already answers, on :data:`HUB_PORT` or where
+        the Docker install puts one; the app then uses it, on that port."""
+        for port in (HUB_PORT, DOCKER_HUB_PORT):
+            if is_hub(port):
+                self.hub_port = port
+                return True
+        return False
+
     def _choose_hub_port(self, c: Component) -> None:
         """Before each start of the hub: :data:`HUB_PORT`, else the port it
         had, else the one this machine's CLI was last pointed at, else any
@@ -891,7 +905,7 @@ class Supervisor:
             env=hub_env_vars,
             # A hub, not anything that answers: a program of the person's own
             # on the port would otherwise be sent everything meant for the hub.
-            external=lambda: is_hub(HUB_PORT),
+            external=self._hub_running,
             watch=True,
         )
         hub.prepare = lambda: self._choose_hub_port(hub)
@@ -1430,8 +1444,9 @@ class Supervisor:
         found = self.look() if self.look is not None else find_hubs(HUB_PORT)
         # The app's own hub program, still running from before the app updated
         # itself (one started by a version that wrote nothing down): the app's,
-        # so stopped and started again from the new files, never kept.
-        own = at_port(found, HUB_PORT)
+        # so stopped and started again from the new files, never kept. A
+        # version from before the hub moved off 8000 left it there.
+        own = at_port(found, HUB_PORT) or at_port(found, DOCKER_HUB_PORT)
         if own is not None and own.pid and self._runs_app_hub(own.pid):
             self.emit(
                 {
@@ -1448,7 +1463,7 @@ class Supervisor:
         self.warnings = warnings(found, data_dir, __version__)
         for line in self.warnings:
             self.emit({"type": "warning", "message": line})
-        there = at_port(found, HUB_PORT)
+        there = at_port(found, HUB_PORT) or at_port(found, DOCKER_HUB_PORT)
         hub = next((c for c in self.components if c.name == "hub"), None)
         if there is None or hub is None:
             self._publish()

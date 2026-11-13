@@ -723,6 +723,21 @@ def test_a_hub_on_the_port_is_used(isolated_home: Path, monkeypatch: pytest.Monk
         assert hub_c.external() is True
 
 
+def test_a_docker_install_s_hub_is_used_where_it_listens(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The app's hub moved off 8000, where the Docker install's stays. A hub
+    found there is used, on its port, rather than starting a second one."""
+    with _serving(_AHub, monkeypatch) as port:
+        monkeypatch.setattr(sv, "HUB_PORT", sv.free_port())
+        monkeypatch.setattr(sv, "DOCKER_HUB_PORT", port)
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+        hub_c, _ = _hub_and_ui(sup)
+        assert hub_c.external is not None
+        assert hub_c.external() is True
+        assert sup.api_url == f"http://{sv.HOST}:{port}"
+
+
 def test_the_hub_goes_back_on_the_port_it_had_last_time(
     isolated_home: Path, monkeypatch: pytest.MonkeyPatch
 ):
