@@ -66,6 +66,12 @@ NAME_CHARS = 32
 BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor", "upstream", "check"}
 #: How far back the transcript is read for the agent's last turn.
 SCAN = 2000
+#: The live states the ``Members:`` line groups the room's agents by, in its
+#: order: the busy and the stuck first, since those are who a message crosses
+#: or nobody hears.
+MEMBER_STATES = ("working", "blocked", "idle", "done")
+#: How many agents a state names before it counts the rest.
+MEMBERS_NAMED = 4
 
 
 def _norm(handle: str | None) -> str:
@@ -308,6 +314,36 @@ def _upstream_notice(record: Any) -> dict[str, Any] | None:
         return None
     data = payload.get("data") or {}
     return data if data.get("subkind") == "upstream" else None
+
+
+def members(room: str, handle: str) -> str | None:
+    """``working @a @b · idle @c +4``: what each of the room's other agents is
+    doing now, by the live state its host reports, grouped in
+    :data:`MEMBER_STATES`' order. Agents only, never the one being woken; one
+    that's away, or whose state no host reports, isn't named, since there's
+    nothing true to say about it. ``None`` when none is."""
+    from app.services import room_channels, room_people
+
+    me = _norm(handle)
+    try:
+        agents = {_norm(a.get("handle")) for a in room_people.roster(room)["agents"]}
+        present = room_channels.manager.presence(room)
+    except Exception:  # a digest without the line is still a digest
+        return None
+    by_state: dict[str, list[str]] = {state: [] for state in MEMBER_STATES}
+    for name, info in present.items():
+        agent = _norm(name)
+        if agent in agents and agent != me and info.status in by_state:
+            by_state[info.status].append(agent)
+    groups = []
+    for state in MEMBER_STATES:
+        names = sorted(by_state[state])
+        if not names:
+            continue
+        shown = " ".join(f"@{n}" for n in names[:MEMBERS_NAMED])
+        rest = f" +{len(names) - MEMBERS_NAMED}" if len(names) > MEMBERS_NAMED else ""
+        groups.append(f"{state} {shown}{rest}")
+    return " · ".join(groups) or None
 
 
 def moves(room: str, handle: str, since: list[Any], now: datetime) -> list[str]:
@@ -935,6 +971,9 @@ def build(
         lines.append(f"         open now: {tally}")
     else:
         lines.append(f"Board:   {tally}")
+    # Who else is busy right now, so it doesn't act across them.
+    if others_now := members(room, me):
+        lines.append(f"Members: {others_now}")
     # What the team agreed for the task it's about, so it works to that.
     task_key = (
         wake.get("key") if reason in ("assigned", "handback") else (where[0] if where else None)

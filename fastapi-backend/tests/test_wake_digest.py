@@ -7,9 +7,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.services import message_format, wake_digest
+import pytest
+
+from app.services import message_format, room_channels, room_people, wake_digest
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.persister import TranscriptRecord
+from app.services.room_channels import MemberPresence
 
 ROOM = "digest-room"
 NOW = datetime(2026, 10, 1, 10, 44, tzinfo=UTC)
@@ -677,3 +680,62 @@ def test_a_title_on_the_board_and_tasks_lines_carries_no_control_character():
     assert "\x1b" not in digest
     assert 'Tasks:   yours "Fix it[201~now"' in digest
     assert '@lead filed "Fix it[201~now"' in digest
+
+
+def _room_of(monkeypatch: pytest.MonkeyPatch, agents: list[str], states: dict[str, str | None]):
+    """A room whose agents are ``agents``, present with the live ``states`` given
+    (a handle missing from ``states`` is away), beside a person who's working."""
+    monkeypatch.setattr(
+        room_people,
+        "roster",
+        lambda _r: {
+            "people": [{"handle": "julia"}],
+            "agents": [{"handle": a} for a in agents],
+            "engines": [],
+            "others": [],
+        },
+    )
+    present = {h: MemberPresence(kind="herdr", status=s) for h, s in states.items()}
+    present["julia"] = MemberPresence(kind="lease", status="working")
+    monkeypatch.setattr(room_channels.manager, "presence", lambda _r: present)
+
+
+def test_every_wake_says_what_the_rooms_other_agents_are_doing(monkeypatch: pytest.MonkeyPatch):
+    _room_of(
+        monkeypatch,
+        ["builder", "desktop", "design", "research", "themes", "voice"],
+        {
+            "builder": "working",
+            "desktop": "working",
+            "design": "idle",
+            "research": "done",
+            "themes": "blocked",
+        },
+    )
+    digest = wake_digest.build(
+        ROOM, {"handle": "desktop"}, [_said(1, "hay", "@desktop look", 1)], NOW
+    )
+    lines = digest.splitlines()
+    board_at = next(i for i, line in enumerate(lines) if line.startswith("Board:"))
+    members_at = next(i for i, line in enumerate(lines) if line.startswith("Members:"))
+    assert members_at > board_at
+    # Busy and stuck first; not the agent woken, not a person, not one who's away.
+    assert lines[members_at] == (
+        "Members: working @builder · blocked @themes · idle @design · done @research"
+    )
+
+
+def test_the_members_line_stays_one_line_however_many_agents(monkeypatch: pytest.MonkeyPatch):
+    idle = [f"agent{n}" for n in range(7)]
+    _room_of(monkeypatch, idle, dict.fromkeys(idle, "idle"))
+    assert wake_digest.members(ROOM, "someone") == "idle @agent0 @agent1 @agent2 @agent3 +3"
+
+
+def test_no_members_line_when_no_other_agent_says_what_it_is_doing(monkeypatch: pytest.MonkeyPatch):
+    # Away, or present with no state a host reports: nothing true to say.
+    _room_of(monkeypatch, ["builder", "design"], {"design": None})
+    assert wake_digest.members(ROOM, "builder") is None
+    digest = wake_digest.build(
+        ROOM, {"handle": "builder"}, [_said(1, "hay", "@builder hi", 1)], NOW
+    )
+    assert "Members:" not in digest
