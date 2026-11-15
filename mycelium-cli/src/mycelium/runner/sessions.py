@@ -104,6 +104,10 @@ class Follower:
         self.base = base or sessions_dir()
         #: What each file was last written from, so an unchanged one isn't again.
         self._written: dict[tuple[str, str], tuple[Any, ...]] = {}
+        #: How many subagent steps each agent's session has open, by (room,
+        #: handle); ``None`` when its CLI's session isn't read. A count is all
+        #: the hub is told (:func:`open_subagents`), never what they say.
+        self.subagents_open: dict[tuple[str, str], int | None] = {}
 
     def tick(self) -> None:
         try:
@@ -146,16 +150,19 @@ class Follower:
         self, key: tuple[str, str], kind: Any, session: str | None, folder: str | None, state: str
     ) -> None:
         if not kind.renders:
+            self.subagents_open[key] = None
             self._write(key, ("no_converter",), {"unavailable": "no_converter"})
             return
         path = kind.session_path(folder, session) if session else None
         if path is None:
+            self.subagents_open[key] = None
             self._write(key, ("no_session",), {"unavailable": "no_session"})
             return
         stamp = (str(path), state, *(_stamp(p) for p in kind.session_files(path)))
         if self._written.get(key) == stamp:
             return
         body = kind.read_session(path)
+        self.subagents_open[key] = open_subagents(body)
         self._write(key, stamp, {**body, "state": state, "waitingOn": None}, force=True)
 
     def _write(
@@ -184,8 +191,26 @@ class Follower:
 
     def _remove(self, key: tuple[str, str]) -> None:
         self._written.pop(key, None)
+        self.subagents_open.pop(key, None)
         with contextlib.suppress(OSError):
             (self.base / key[0] / f"{key[1]}.json").unlink()
+
+
+#: The tool a session starts a subagent with (Claude Code's `Agent`, before
+#: that `Task`).
+SUBAGENT_TOOLS = frozenset({"Agent", "Task"})
+
+
+def open_subagents(body: dict[str, Any]) -> int:
+    """How many subagent steps a read session has open: a subagent tool call
+    whose result hasn't come back. Counted here, so only the number leaves."""
+    return sum(
+        1
+        for e in body.get("entries") or []
+        if e.get("sessionUpdate") == "tool_call"
+        and e.get("name") in SUBAGENT_TOOLS
+        and e.get("status") in ("pending", "in_progress")
+    )
 
 
 def page(

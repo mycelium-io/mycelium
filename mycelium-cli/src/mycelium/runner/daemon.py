@@ -618,7 +618,19 @@ class Runner:
             self.log.print(f"[dim]couldn't read this machine's agents: {e}[/dim]")
             return None
         recovered(log, "machine report")
+        self._count_subagents(report)
         return report
+
+    def _count_subagents(self, report: dict[str, Any]) -> None:
+        """Each agent's open subagent steps, as the session follower counted
+        them: a number only, so its subagents end when their steps do."""
+        follower = getattr(self, "_follower", None)
+        if follower is None:
+            return
+        counts = dict(follower.subagents_open)
+        for workspace in report.get("workspaces") or []:
+            for agent in workspace.get("agents") or []:
+                agent["subagents_open"] = counts.get((agent.get("room"), agent.get("handle")))
 
     def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
         """The agents a ``restart`` job names, read now, each one restartable."""
@@ -2027,6 +2039,7 @@ class Runner:
         from mycelium.runner.sessions import SESSIONS_S, Follower
 
         follower = Follower(self.bridge)
+        self._follower = follower
         while not self._stop.wait(SESSIONS_S):
             try:
                 follower.tick()

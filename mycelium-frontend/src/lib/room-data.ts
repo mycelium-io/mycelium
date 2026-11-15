@@ -26,6 +26,8 @@ import useSWRInfinite from "swr/infinite";
 import {
   fetchA2aBridge,
   fetchEpisodes,
+  fetchSubagents,
+  type Subagent,
   fetchMyPaused,
   fetchMemory,
   fetchMemorySummaries,
@@ -510,6 +512,21 @@ export function useThreadMessages(
     // window already filled is not this, which is why the length is compared.
     loadingOlder: isValidating && hasOlder && depth > messages.length,
   };
+}
+
+/**
+ * The room's subagents by handle (lowercased), ended ones too: the Members
+ * rail lists the ones still running under their parent, and a message from
+ * any of them reads as the parent's subagent. Recorded on the hub, never
+ * read from the handle.
+ */
+export function useRoomSubagents(room: string): Map<string, Subagent> {
+  const { data } = useSWR(
+    room ? (["room", room, "subagents"] as const) : null,
+    () => fetchSubagents(room),
+    { refreshInterval: POLL.members },
+  );
+  return useMemo(() => new Map((data ?? []).map((s) => [s.handle.toLowerCase(), s])), [data]);
 }
 
 /**

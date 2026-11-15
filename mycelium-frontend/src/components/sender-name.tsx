@@ -19,12 +19,17 @@ export function SenderName({
   handle,
   highlight,
   tag,
+  named,
 }: {
   handle: string;
   highlight?: { query: Needles; active: boolean };
   tag?: string;
+  /** The name to show in place of a person's, as a subagent shows its own
+   *  (`review`), with its handle beside it. */
+  named?: string;
 }) {
-  const name = nameOf(useNames(), handle);
+  const people = nameOf(useNames(), handle);
+  const name = named ?? people;
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
       <span className="truncate text-label font-semibold text-text">

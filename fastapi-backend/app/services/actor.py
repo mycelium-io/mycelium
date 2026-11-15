@@ -52,7 +52,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
-from app.services import principals
+from app.services import principals, subagents
 from app.services.auth import Principal, normalize_handle
 
 
@@ -107,6 +107,7 @@ def bind_delegated_actor(
     ``bind_actor``/``_authoritative``, which requires the claimed handle to be the
     token's own and is right for writes that must always be the caller's own.
     """
+    _refuse_unrecorded_subagent(room, claimed, field)
     principal = current_principal(request)
     if principal is None:
         return claimed or ""
@@ -133,9 +134,31 @@ def may_act_as(principal: Principal, room: str, handle: str | None) -> bool:
     normalized = normalize_handle((handle or "").partition("#")[0])
     if normalized is None:
         return False
+    if subagents.SEPARATOR in normalized:
+        # A subagent: its parent's token may act as it, while it's recorded
+        # and hasn't ended. Never read from the name.
+        parent = subagents.parent_of(room, normalized)
+        return parent is not None and _mine(principal, parent)
     return _mine(principal, normalized) or principals.delegates_to(
         room, normalized, principal.handle
     )
+
+
+def _refuse_unrecorded_subagent(room: str, claimed: str | None, field: str) -> None:
+    """A handle with a colon is a subagent's, and only one recorded in the room
+    (``mycelium subagent start``) and not yet ended may write as it: with or
+    without sign-in, nobody makes one up by naming it."""
+    normalized = normalize_handle((claimed or "").partition("#")[0])
+    if normalized is None or subagents.SEPARATOR not in normalized:
+        return
+    if subagents.parent_of(room, normalized) is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"{field} '{claimed}' isn't a subagent in this room, or it has ended. "
+                "Start one with `mycelium subagent start <name>`."
+            ),
+        )
 
 
 def authorize_handle(
