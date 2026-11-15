@@ -23,8 +23,9 @@ const subscribeNever = () => () => {};
 function useSubagentLook(): SubagentLook {
   return useSyncExternalStore(
     subscribeNever,
-    () => LOOKS.find((l) => l === new URLSearchParams(window.location.search).get("sub")) ?? "chevron",
-    () => "chevron",
+    // The name, then the handle: the one picked (2026-11-14).
+    () => LOOKS.find((l) => l === new URLSearchParams(window.location.search).get("sub")) ?? "name",
+    () => "name",
   );
 }
 
@@ -37,7 +38,7 @@ export function SenderName({
   handle: string;
   highlight?: { query: Needles; active: boolean };
   tag?: string;
-  /** MOCK: an agent's subagent, named after its parent (`builder › review`). */
+  /** MOCK: an agent's subagent: `review @builder:review [subagent]`. */
   subagent?: { parent: string; name: string } | null;
 }) {
   const name = nameOf(useNames(), handle);
