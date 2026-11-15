@@ -700,42 +700,80 @@ def _room_of(monkeypatch: pytest.MonkeyPatch, agents: list[str], states: dict[st
     monkeypatch.setattr(room_channels.manager, "presence", lambda _r: present)
 
 
-def test_every_wake_says_what_the_rooms_other_agents_are_doing(monkeypatch: pytest.MonkeyPatch):
+def _handed(n: int, agent: str, **wake: str) -> None:
+    """A wake the hub handed ``agent``: why, from whom and where."""
+    from app.services import wake_log
+
+    wake_log.handed(ROOM, {"id": f"w{n}", "handle": agent, **wake}, {"messages": []})
+
+
+def test_every_wake_shows_the_rooms_other_agents_as_a_members_pane(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _task_thread()
     _room_of(
         monkeypatch,
-        ["builder", "desktop", "design", "research", "themes", "voice"],
+        ["builder", "desktop", "design", "research", "reviewer", "themes", "voice"],
         {
             "builder": "working",
             "desktop": "working",
             "design": "idle",
             "research": "done",
+            "reviewer": "working",
             "themes": "blocked",
         },
     )
+    # What each working agent is on is the last wake it was handed.
+    _handed(1, "builder", reason="mention", **{"from": "hay"})
+    _handed(2, "builder", reason="mention", episode=THREAD, **{"from": "scout"})
+    _handed(3, "reviewer", reason="assigned", key="work/fix-the-receipt-tax")
     digest = wake_digest.build(
         ROOM, {"handle": "desktop"}, [_said(1, "hay", "@desktop look", 1)], NOW
     )
     lines = digest.splitlines()
-    board_at = next(i for i, line in enumerate(lines) if line.startswith("Board:"))
-    members_at = next(i for i, line in enumerate(lines) if line.startswith("Members:"))
-    assert members_at > board_at
+    start = lines.index("Members (5 other agents)")
+    assert start > next(i for i, line in enumerate(lines) if line.startswith("Board:"))
     # Busy and stuck first; not the agent woken, not a person, not one who's away.
-    assert lines[members_at] == (
-        "Members: working @builder · blocked @themes · idle @design · done @research"
-    )
+    assert lines[start + 1 : start + 6] == [
+        '  ● working   @builder   answering @scout in "Fix the receipt tax"',
+        '              @reviewer  on "Fix the receipt tax"',
+        "  ▲ blocked   @themes    waiting for input on its machine",
+        "  ○ idle      @design",
+        "  ✓ done      @research",
+    ]
+    # Set off from the lines around it.
+    assert lines[start - 1] == ""
+    assert lines[start + 6] == ""
 
 
-def test_the_members_line_stays_one_line_however_many_agents(monkeypatch: pytest.MonkeyPatch):
+def test_a_working_agent_with_no_wake_says_only_that_its_working(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _room_of(monkeypatch, ["builder"], {"builder": "working"})
+    assert wake_digest.members(ROOM, "someone")[1] == "  ● working   @builder"
+
+
+def test_the_members_pane_counts_the_rest_past_a_few(monkeypatch: pytest.MonkeyPatch):
     idle = [f"agent{n}" for n in range(7)]
-    _room_of(monkeypatch, idle, dict.fromkeys(idle, "idle"))
-    assert wake_digest.members(ROOM, "someone") == "idle @agent0 @agent1 @agent2 @agent3 +3"
+    working = [f"busy{n}" for n in range(6)]
+    _room_of(
+        monkeypatch,
+        idle + working,
+        {**dict.fromkeys(idle, "idle"), **dict.fromkeys(working, "working")},
+    )
+    pane = wake_digest.members(ROOM, "someone")
+    assert pane[0] == "Members (13 other agents)"
+    assert pane[5] == "              and 2 more"
+    assert pane[6] == "  ○ idle      @agent0  @agent1  @agent2  @agent3  +3"
 
 
-def test_no_members_line_when_no_other_agent_says_what_it_is_doing(monkeypatch: pytest.MonkeyPatch):
+def test_no_members_pane_when_no_other_agent_says_what_it_is_doing(
+    monkeypatch: pytest.MonkeyPatch,
+):
     # Away, or present with no state a host reports: nothing true to say.
     _room_of(monkeypatch, ["builder", "design"], {"design": None})
-    assert wake_digest.members(ROOM, "builder") is None
+    assert wake_digest.members(ROOM, "builder") == []
     digest = wake_digest.build(
         ROOM, {"handle": "builder"}, [_said(1, "hay", "@builder hi", 1)], NOW
     )
-    assert "Members:" not in digest
+    assert "Members (" not in digest
