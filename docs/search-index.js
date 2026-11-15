@@ -2420,7 +2420,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-subagent",
     "t": "mycelium subagent start <name>",
     "s": "CLI Reference",
-    "x": "Give a subagent its own handle, <you>:<name>, so what it posts is its own. Prints three lines to put at the top of its prompt.",
+    "x": "Give a subagent its own handle, <you>:<name>, so what it posts is its own. Prints three lines to put at the top of its prompt, and an optional fourth that has it check for messages to it between its steps.",
     "k": "cmd",
     "p": "Reference"
   },

@@ -1338,6 +1338,14 @@ class MachineAgentRead(BaseModel):
             "their text; null when its CLI's session file isn't read"
         ),
     )
+    subagents_finished: int | None = Field(
+        None,
+        description=(
+            "How many subagent steps its session has finished since the runner first "
+            "read it, a count that only goes up (it starts again when the runner "
+            "does); null when its CLI's session file isn't read"
+        ),
+    )
 
 
 class MachineUnenrolledRead(BaseModel):

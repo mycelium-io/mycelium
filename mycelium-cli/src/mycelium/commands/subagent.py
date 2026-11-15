@@ -59,11 +59,22 @@ def brief(room: str, handle: str, parent: str) -> list[str]:
     ]
 
 
+def check_in(room: str, handle: str) -> str:
+    """The optional fourth line: a subagent has no wake of its own, so what's
+    said to it wakes its parent. A parent that wants it to hear for itself adds
+    this, and the subagent reads what came for it between its own steps."""
+    return (
+        "Between your steps, check for messages to you: "
+        f"mycelium await --as {handle} --room {room} --timeout 5"
+    )
+
+
 @doc_ref(
     usage="mycelium subagent start <name>",
     desc=(
         "Give a subagent its own handle, <code>&lt;you&gt;:&lt;name&gt;</code>, so what it "
-        "posts is its own. Prints three lines to put at the top of its prompt."
+        "posts is its own. Prints three lines to put at the top of its prompt, and an "
+        "optional fourth that has it check for messages to it between its steps."
     ),
     group="subagent",
 )
@@ -87,14 +98,22 @@ def subagent_start(
     body = SubagentCreate(name=name, parent=(parent or "").lstrip("@") or None)
     data = _call(start_api.sync_detailed, room_name=room, body=body)
     lines = brief(room, data["handle"], data["parent"])
+    optional = check_in(room, data["handle"])
     if as_json:
-        typer.echo(json.dumps({**data, "brief": lines}, indent=2))
+        typer.echo(json.dumps({**data, "brief": lines, "check_in": optional}, indent=2))
         return
     console.print(f"[green]Started[/green] @{data['handle']}. Put these at the top of its prompt:")
     console.print()
     # Plain, never wrapped: these are copied into a prompt as they are.
     for line in lines:
         typer.echo(f"  {line}")
+    console.print()
+    console.print(
+        "Messages to it wake you. To have it check for them itself, add this too:",
+        soft_wrap=True,
+    )
+    console.print()
+    typer.echo(f"  {optional}")
 
 
 @doc_ref(

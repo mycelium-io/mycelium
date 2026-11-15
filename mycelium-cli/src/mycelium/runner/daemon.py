@@ -622,15 +622,19 @@ class Runner:
         return report
 
     def _count_subagents(self, report: dict[str, Any]) -> None:
-        """Each agent's open subagent steps, as the session follower counted
-        them: a number only, so its subagents end when their steps do."""
+        """Each agent's open and finished subagent steps, as the session
+        follower counted them: numbers only, so its subagents end when their
+        steps do."""
         follower = getattr(self, "_follower", None)
         if follower is None:
             return
-        counts = dict(follower.subagents_open)
+        opened = dict(follower.subagents_open)
+        finished = dict(follower.subagents_finished)
         for workspace in report.get("workspaces") or []:
             for agent in workspace.get("agents") or []:
-                agent["subagents_open"] = counts.get((agent.get("room"), agent.get("handle")))
+                key = (agent.get("room"), agent.get("handle"))
+                agent["subagents_open"] = opened.get(key)
+                agent["subagents_finished"] = finished.get(key)
 
     def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
         """The agents a ``restart`` job names, read now, each one restartable."""

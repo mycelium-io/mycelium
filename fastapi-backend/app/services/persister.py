@@ -78,10 +78,13 @@ TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 # it out of this pattern, so it never wakes, addresses or summons anyone.
 # ``@!handle`` is an interrupting mention: a mention like ``@handle`` that also
 # stops the agent mid-turn, so it is in this pattern and in its own.
-_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?([A-Za-z0-9][\w-]*)")
-_SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
-_INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!([A-Za-z0-9][\w-]*)")
-_NAMED_RE = re.compile(r"(?:^|(?<=[\s(<]))@[~!]?([A-Za-z0-9][\w-]*)")
+# A handle may end in ``:name``, a subagent's (``app.services.subagents``),
+# whose name never ends the token on a dot, so a sentence's full stop stays out.
+_HANDLE = r"([A-Za-z0-9][\w-]*(?::[A-Za-z0-9](?:[\w.-]*[\w-])?)?)"
+_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?" + _HANDLE)
+_SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~" + _HANDLE)
+_INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!" + _HANDLE)
+_NAMED_RE = re.compile(r"(?:^|(?<=[\s(<]))@[~!]?" + _HANDLE)
 
 # Code is quoted, never addressed: a handle inside a code span or a fenced block
 # is no mention of any kind (``contracts/mentions.json``). A fence opens on a

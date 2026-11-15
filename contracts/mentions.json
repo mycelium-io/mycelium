@@ -25,6 +25,10 @@
     "mention, interrupt or silent (interrupt beats mention beats silent). Who a",
     "group reaches is the hub's (fastapi-backend/app/services/groups.py).",
     "",
+    "A handle may end in :name, a subagent's (builder:review). The name never",
+    "ends on a dot, so a sentence's full stop stays out, and a colon with no",
+    "name after it (\"@bob: hi\") ends the handle.",
+    "",
     "The backend (fastapi-backend/app/services/persister.py: parse_mentions,",
     "parse_silent_mentions, parse_interrupt_mentions), the frontend",
     "(mycelium-frontend/src/lib/mentions.ts) and the CLI's room export",
@@ -33,7 +37,7 @@
     "mycelium-frontend/src/lib/mentions.contract.test.ts and",
     "mycelium-cli/tests/test_mentions_contract.py."
   ],
-  "version": 4,
+  "version": 5,
   "sigils": {
     "mention": "@",
     "silent": "@~",
@@ -67,6 +71,8 @@
     { "text": "@!all stop, @here and @~here too", "mentions": [], "silent": [], "interrupt": [], "groups": { "all": "interrupt", "here": "mention" } },
     { "text": "@heres and @allison, not x@all", "mentions": ["heres", "allison"], "silent": [], "interrupt": [], "groups": {} },
     { "text": "@All please look, @!HERE too, and @here-team", "mentions": ["here-team"], "silent": [], "interrupt": [], "groups": { "all": "mention", "here": "interrupt" } },
-    { "text": "`@all` is code but @bob isn't", "mentions": ["bob"], "silent": [], "interrupt": [], "groups": {} }
+    { "text": "`@all` is code but @bob isn't", "mentions": ["bob"], "silent": [], "interrupt": [], "groups": {} },
+    { "text": "@builder:review check the retry path, thanks @builder:tests.", "mentions": ["builder:review", "builder:tests"], "silent": [], "interrupt": [], "groups": {} },
+    { "text": "@bob: hi, and @!sam:v1.2 stop, cc @~sam:lint", "mentions": ["bob", "sam:v1.2"], "silent": ["sam:lint"], "interrupt": ["sam:v1.2"], "groups": {} }
   ]
 }

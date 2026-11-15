@@ -87,7 +87,7 @@ const clock = (iso: string) => {
 function MessageLine({ text, me }: { text: string; me: string }) {
   const parts: ReactNode[] = [];
   const line = firstLine(text);
-  const re = /(^|[\s(<])@(~|!)?([A-Za-z0-9][\w-]*)/g;
+  const re = /(^|[\s(<])@(~|!)?([A-Za-z0-9][\w-]*(?::[A-Za-z0-9](?:[\w.-]*[\w-])?)?)/g;
   let last = 0;
   for (const m of line.matchAll(re)) {
     const start = (m.index ?? 0) + m[1].length;

@@ -740,6 +740,10 @@ class RoomChannelManager:
         (:mod:`app.services.interrupts`); otherwise it rings as a ``mention``.
         """
         name = handle.lstrip("@").lower()
+        if ":" in name:
+            # A subagent has no doorbell; the same message asks its parent,
+            # which is rung for it (``asks``).
+            return False
         status = self.herdr_status(room, name)
         if status is None:
             if self._unreachable_agent(room, name):

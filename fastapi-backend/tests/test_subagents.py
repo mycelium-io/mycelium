@@ -18,8 +18,14 @@ import pytest
 from httpx import AsyncClient
 
 from app.services import subagents
+from app.services.filesystem import room_path, write_memory_file
 
 ROOM = "checkout"
+
+
+@pytest.fixture(autouse=True)
+def _fresh_counts() -> None:
+    subagents._last_finished.clear()
 
 
 @pytest.fixture
@@ -165,3 +171,64 @@ async def test_the_runner_s_heartbeat_carries_the_count(room):
         resp = await room.post("/api/runners", json=hello(count))
         assert resp.status_code == 200, resp.text
     assert state("builder:review") == "done"
+
+
+def test_a_step_that_finished_between_two_heartbeats_still_ends_it(room):
+    # The parent's runner has counted 3 finished steps before this one starts.
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=3)
+    subagents.start(ROOM, "builder", "review")
+    # The step opened and closed before the next heartbeat: never seen open.
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=4)
+    assert state("builder:review") == "done"
+
+
+def test_finished_steps_end_subagents_oldest_first(room):
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=0)
+    subagents.start(ROOM, "builder", "review")
+    subagents.start(ROOM, "builder", "tests")
+    subagents.observe(ROOM, "builder", 1, "working", finished_steps=1)
+    assert (state("builder:review"), state("builder:tests")) == ("done", "working")
+    subagents.observe(ROOM, "builder", 1, "working", finished_steps=1)
+    assert state("builder:tests") == "working", "one step ends one subagent, once"
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=2)
+    assert state("builder:tests") == "done"
+
+
+def test_a_runner_that_started_again_counts_from_its_new_number(room):
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=9)
+    subagents.start(ROOM, "builder", "review")
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=0)
+    assert state("builder:review") == "working"
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=1)
+    assert state("builder:review") == "done"
+
+
+async def claimed_by_subagent(client: AsyncClient) -> str:
+    """A row on the board, claimed by ``builder:review``."""
+    key = "work/add-refund-tests"
+    write_memory_file(room_path(ROOM), key, "# Add refund tests", created_by="operator")
+    await start(client)
+    claimed = await client.post(
+        f"/api/rooms/{ROOM}/assignments/claim", json={"key": key, "handle": "builder:review"}
+    )
+    assert claimed.status_code == 200, claimed.text
+    assert (claimed.json()["assignment"], claimed.json()["owner"]) == ("held", "builder:review")
+    return key
+
+
+async def test_a_row_a_subagent_claimed_goes_back_when_it_ends(room):
+    key = await claimed_by_subagent(room)
+    assert (await room.delete(f"/api/rooms/{ROOM}/subagents/builder:review")).status_code == 200
+    row = (await room.get(f"/api/rooms/{ROOM}/assignments/{key}")).json()
+    assert (row["assignment"], row["owner"]) == ("released", None), row
+    assert "builder:review ended" in str(row)
+
+
+async def test_a_row_held_by_a_subagent_that_timed_out_goes_back_on_the_next_read(
+    room, monkeypatch
+):
+    key = await claimed_by_subagent(room)
+    monkeypatch.setattr(subagents, "TIMEOUT", timedelta(0))
+    await room.get(f"/api/rooms/{ROOM}/subagents")
+    row = (await room.get(f"/api/rooms/{ROOM}/assignments/{key}")).json()
+    assert row["assignment"] == "released", row

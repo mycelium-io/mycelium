@@ -22,7 +22,7 @@ export interface ComposerMention {
   resolved: boolean;
 }
 
-const TOKEN_RE = /@([~!]?)([A-Za-z0-9][\w-]*)/g;
+const TOKEN_RE = /@([~!]?)([A-Za-z0-9][\w-]*(?::[A-Za-z0-9](?:[\w.-]*[\w-])?)?)/g;
 const OPENS = /[\s(<]/;
 
 /** Every `@word` in `text`, in order. `members` holds the room's handles,

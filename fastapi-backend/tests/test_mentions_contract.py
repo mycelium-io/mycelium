@@ -50,7 +50,8 @@ def test_case_parses_as_the_contract_says(case):
 @pytest.mark.parametrize("case", _CONTRACT["cases"], ids=lambda c: c["text"])
 def test_only_a_loud_mention_asks(case):
     # Who a message asks (and so summons, when it's an engine): every loud
-    # mention, never a silent one (``asks.py``).
+    # mention, never a silent one (``asks.py``). A subagent has no doorbell,
+    # so a loud mention of one asks its parent too, right after it.
     from app.services import message_format
     from app.services.asks import asked
     from app.services.message_models import Kind
@@ -64,7 +65,12 @@ def test_only_a_loud_mention_asks(case):
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": case["text"]})
-    assert list(asked(content)) == [m.lower() for m in case["mentions"]]
+    expected: dict[str, None] = {}
+    for m in case["mentions"]:
+        expected.setdefault(m.lower(), None)
+        if ":" in m:
+            expected.setdefault(m.lower().partition(":")[0], None)
+    assert list(asked(content)) == list(expected)
 
 
 def test_blank_code_keeps_length_lines_and_prose():

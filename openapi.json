@@ -4208,7 +4208,7 @@
           "subagents"
         ],
         "summary": "List Subagents",
-        "description": "Every subagent the room has had, oldest first, ended ones included.",
+        "description": "Every subagent the room has had, oldest first, ended ones included.\nOne that ran out of time since the last read hands back what it held.",
         "operationId": "list_subagents_api_rooms__room_name__subagents_get",
         "parameters": [
           {
@@ -4366,7 +4366,7 @@
           "subagents"
         ],
         "summary": "End Subagent",
-        "description": "End a subagent: it leaves the members, and its messages stay its own.",
+        "description": "End a subagent: it leaves the members, any row it claimed goes back to\nthe board, and its messages stay its own.",
         "operationId": "end_subagent_api_rooms__room_name__subagents__handle__delete",
         "parameters": [
           {
@@ -19367,6 +19367,18 @@
             ],
             "title": "Subagents Open",
             "description": "How many subagent steps are open in its session file, a count and never their text; null when its CLI's session file isn't read"
+          },
+          "subagents_finished": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagents Finished",
+            "description": "How many subagent steps its session has finished since the runner first read it, a count that only goes up (it starts again when the runner does); null when its CLI's session file isn't read"
           }
         },
         "type": "object",

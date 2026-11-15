@@ -64,6 +64,14 @@ def _norm(handle: object) -> str:
     return norm_handle(handle) or ""
 
 
+def _asked_by_mention(handle: str) -> tuple[str, ...]:
+    """Who a mention of ``handle`` asks: the handle, and for a subagent's
+    (``parent:name``, ``app.services.subagents``) its parent too."""
+    name = _norm(handle)
+    parent, sep, _ = name.partition(":")
+    return (name, parent) if sep and parent else (name,)
+
+
 def asks(content: dict[str, Any], handle: str) -> Reason | None:
     """Why the message ``content`` asks ``handle`` for something, or ``None``.
 
@@ -83,8 +91,10 @@ def asks(content: dict[str, Any], handle: str) -> Reason | None:
     ids = [_norm(a.get("id")) if isinstance(a, dict) else "" for a in actors]
     if not me or (ids and ids[0] == me):
         return None
-    if me in {_norm(m) for m in parse_mentions(text)}:
-        interrupting = {_norm(m) for m in parse_interrupt_mentions(text)}
+    # A subagent has no doorbell of its own, so a mention of one asks its
+    # parent too, and the parent decides what to do with it.
+    if me in {h for m in parse_mentions(text) for h in _asked_by_mention(m)}:
+        interrupting = {h for m in parse_interrupt_mentions(text) for h in _asked_by_mention(m)}
         return "interrupt" if me in interrupting else "mention"
     if form := {_norm(h): f for h, f in asked_by_groups(content).items()}.get(me):
         return form
@@ -99,7 +109,8 @@ def asked(content: dict[str, Any]) -> dict[str, Reason]:
     header = (content.get("l9") or {}).get("header") or {}
     actors = (header.get("participants") or {}).get("actors") or []
     text = content.get("content")
-    candidates = parse_mentions(text) if isinstance(text, str) else []
+    mentioned = parse_mentions(text) if isinstance(text, str) else []
+    candidates = [h for m in mentioned for h in _asked_by_mention(m)]
     candidates += list(asked_by_groups(content))
     candidates += [a.get("id") for a in actors[1:] if isinstance(a, dict)]
     found: dict[str, Reason] = {}

@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from typer.testing import CliRunner
 
 from mycelium.cli import app
-from mycelium.runner.sessions import open_subagents
+from mycelium.runner.sessions import Follower, finished_subagents, open_subagents
 from tests.conftest import StandInHub, install_stand_in_hub
 
 runner = CliRunner()
@@ -55,6 +56,9 @@ def test_start_records_it_as_its_parent_and_prints_the_three_lines(hub: StandInH
     assert "You are @builder:review, a subagent of @builder, in the Mycelium room checkout." in out
     assert "add --as builder:review to every mycelium command" in out
     assert "mycelium subagent end builder:review --room checkout" in out
+    # The optional fourth line, set apart from the three.
+    assert "Messages to it wake you." in out
+    assert "mycelium await --as builder:review --room checkout --timeout 5" in out
 
 
 def test_start_says_the_hub_s_reason(hub: StandInHub):
@@ -97,3 +101,24 @@ def test_only_a_count_of_open_subagent_steps_is_read_from_a_session():
     }
     assert open_subagents(body) == 2
     assert open_subagents({"entries": []}) == 0
+
+
+def _done(call_id: str, name: str = "Agent") -> dict:
+    return {**_call(name, "completed"), "toolCallId": call_id}
+
+
+def test_finished_subagent_steps_are_counted_up_from_the_first_look(tmp_path: Path):
+    # Counting reads no herdr, so it has none.
+    follower = Follower(bridge=cast("Any", None), base=tmp_path)
+    key = ("checkout", "builder")
+    # What had finished before the first look is where the count starts.
+    follower._count_finished(key, finished_subagents({"entries": [_done("a"), _done("b")]}))
+    assert follower.subagents_finished[key] == 0
+    # A step that opened and closed between two looks still counts, and one
+    # that scrolled out of the latest entries doesn't count against it.
+    follower._count_finished(key, finished_subagents({"entries": [_done("b"), _done("c")]}))
+    assert follower.subagents_finished[key] == 1
+    follower._count_finished(
+        key, finished_subagents({"entries": [_done("c"), _done("d"), _done("x", "Bash")]})
+    )
+    assert follower.subagents_finished[key] == 2

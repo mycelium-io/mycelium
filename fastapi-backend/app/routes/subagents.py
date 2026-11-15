@@ -38,9 +38,12 @@ def _read(entry: dict) -> SubagentRead:
 
 @router.get("", response_model=list[SubagentRead], responses=refusals(404))
 async def list_subagents(room_name: str) -> list[SubagentRead]:
-    """Every subagent the room has had, oldest first, ended ones included."""
+    """Every subagent the room has had, oldest first, ended ones included.
+    One that ran out of time since the last read hands back what it held."""
     _require_room(room_name)
-    return [_read(e) for e in subagents.records(room_name)]
+    found = subagents.records(room_name)
+    await subagents.release_ended(room_name)
+    return [_read(e) for e in found]
 
 
 @router.post("", response_model=SubagentRead, status_code=201, responses=refusals(404, 422))
@@ -59,7 +62,8 @@ async def start_subagent(room_name: str, payload: SubagentCreate, request: Reque
 
 @router.delete("/{handle}", response_model=SubagentRead, responses=refusals(403, 404))
 async def end_subagent(room_name: str, handle: str, request: Request) -> SubagentRead:
-    """End a subagent: it leaves the members, and its messages stay its own."""
+    """End a subagent: it leaves the members, any row it claimed goes back to
+    the board, and its messages stay its own."""
     _require_room(room_name)
     found = subagents.record(room_name, handle)
     if found is None:
@@ -67,4 +71,5 @@ async def end_subagent(room_name: str, handle: str, request: Request) -> Subagen
     actor.authorize_handle(request, room_name, found["parent"], field="parent")
     ended = subagents.end(room_name, handle)
     assert ended is not None
+    await subagents.release_ended(room_name)
     return _read(ended)

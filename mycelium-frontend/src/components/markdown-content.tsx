@@ -25,7 +25,7 @@ import { typeset } from "@/lib/typeset";
 // standing alone: not inside a longer word or hash, a path, a URL or a
 // `urn:…:id`, which are written to be read whole.
 const TOKEN_RE =
-  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@~[A-Za-z0-9][\w-]*|@![A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?|(?<![\w\-/#.:@])[0-9a-f]{8}(?![\w\-/]))/g;
+  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@[~!]?[A-Za-z0-9][\w-]*:[A-Za-z0-9](?:[\w.-]*[\w-])?|@~[A-Za-z0-9][\w-]*|@![A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?|(?<![\w\-/#.:@])[0-9a-f]{8}(?![\w\-/]))/g;
 
 const THREAD_ID = /^[0-9a-f]{8}$/;
 
