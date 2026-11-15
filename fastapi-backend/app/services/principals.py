@@ -60,9 +60,14 @@ def classify_sender(room: str, handle: str) -> str:
     """Resolve a handle to what it actually is in this room.
 
     ``"agent"`` (a registered non-engine manifest), ``"engine"`` (an
-    ``adapter: engine`` manifest), ``"user"`` (a record in the global store), or
-    ``"unknown"`` (a phantom handle that resolves to neither).
+    ``adapter: engine`` manifest), ``"user"`` (a record in the global store),
+    ``"subagent"`` (an agent's subagent recorded in the room, ended or not:
+    ``app.services.subagents``), or ``"unknown"`` (a phantom handle that
+    resolves to none of them). A subagent is never a person, so it can't
+    answer what was asked of one.
     """
+    from app.services import subagents
+
     h = _norm(handle)
     if not h:
         return "unknown"
@@ -71,6 +76,8 @@ def classify_sender(room: str, handle: str) -> str:
         return "engine" if manifest.get("adapter") == ENGINE_ADAPTER else "agent"
     if load_user(h) is not None:
         return "user"
+    if subagents.SEPARATOR in h and subagents.record(room, h) is not None:
+        return "subagent"
     return "unknown"
 
 
@@ -218,24 +225,24 @@ def post_rejection_reason(room: str, handle: str, *, allow_unregistered: bool) -
     """Why ``handle`` may not post in ``room``, or None if it may.
 
     An **engine** is never impersonable through a participation call (drive it
-    with ``engine invoke``). A **phantom** handle (neither agent nor user) is
-    rejected on the agent path, unless it is a running subagent; the
-    human/broadcast path passes ``allow_unregistered=True`` so an anonymous chat
-    handle still works.
+    with ``engine invoke``). A **subagent** posts as an agent does while it
+    runs, and not once it has ended. A **phantom** handle (none of these) is
+    rejected on the agent path; the human/broadcast path passes
+    ``allow_unregistered=True`` so an anonymous chat handle still works.
     """
+    from app.services import subagents
+
     kind = classify_sender(room, handle)
     if kind == "engine":
         return (
             f"'{_norm(handle)}' is an engine and can't be posted as; "
             "drive it with `mycelium engine invoke`."
         )
-    if kind == "unknown" and not allow_unregistered:
-        from app.services import subagents
-
-        # A subagent its parent started, and that hasn't ended, posts as an
-        # agent does (``app.services.subagents``).
+    if kind == "subagent":
         if subagents.parent_of(room, handle) is not None:
             return None
+        return f"@{_norm(handle)} has ended; its parent can start it again with `subagent start`."
+    if kind == "unknown" and not allow_unregistered:
         return (
             f"'{_norm(handle)}' is not a registered agent or user; register it first "
             "(`mycelium agent create` or `mycelium user create`)."

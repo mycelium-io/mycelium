@@ -95,6 +95,19 @@ async def test_a_subagent_replies_as_an_agent_does(room):
     assert await reply() == 403
 
 
+async def test_a_subagent_is_its_own_kind_and_never_a_person(room):
+    from app.services import approvals, principals
+
+    assert principals.classify_sender(ROOM, "builder:review") == "unknown"
+    await start(room)
+    assert principals.classify_sender(ROOM, "builder:review") == "subagent"
+    assert not approvals.may_answer(ROOM, "builder:review")
+    await room.delete(f"/api/rooms/{ROOM}/subagents/builder:review")
+    # Ended, it's still a subagent: what it answered never counts as a person's.
+    assert principals.classify_sender(ROOM, "builder:review") == "subagent"
+    assert not approvals.may_answer(ROOM, "builder:review")
+
+
 @pytest.mark.parametrize(
     ("name", "parent", "status"),
     [
