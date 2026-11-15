@@ -73,14 +73,17 @@ logger = logging.getLogger(__name__)
 TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 
 # An ``@``-summon token: ``@`` followed by a handle (letter/digit start, then
-# word chars or hyphens). Guarded so it doesn't fire mid-word (e.g. an email).
+# word chars, hyphens or dots, never ending on a dot, so ``@avery.quinn`` is
+# one handle and a sentence's full stop stays out). Guarded so it doesn't fire
+# mid-word (e.g. an email).
 # ``@~handle`` is a silent mention (``contracts/mentions.json``): the ``~`` keeps
 # it out of this pattern, so it never wakes, addresses or summons anyone.
 # ``@!handle`` is an interrupting mention: a mention like ``@handle`` that also
 # stops the agent mid-turn, so it is in this pattern and in its own.
 # A handle may end in ``:name``, a subagent's (``app.services.subagents``),
-# whose name never ends the token on a dot, so a sentence's full stop stays out.
-_HANDLE = r"([A-Za-z0-9][\w-]*(?::[A-Za-z0-9](?:[\w.-]*[\w-])?)?)"
+# spelled the same way.
+_PART = r"[A-Za-z0-9](?:[\w.-]*[\w-])?"
+_HANDLE = rf"({_PART}(?::{_PART})?)"
 _SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?" + _HANDLE)
 _SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~" + _HANDLE)
 _INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!" + _HANDLE)

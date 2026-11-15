@@ -7,7 +7,7 @@
 // does (at the start, or after whitespace, `(` or `<`, and never inside code),
 // and reaches someone when its handle is a member of the room.
 
-import { blankCode } from "./mentions";
+import { blankCode, HANDLE_PATTERN } from "./mentions";
 
 export type ComposerMentionKind = "mention" | "silent" | "interrupt";
 
@@ -22,7 +22,7 @@ export interface ComposerMention {
   resolved: boolean;
 }
 
-const TOKEN_RE = /@([~!]?)([A-Za-z0-9][\w-]*(?::[A-Za-z0-9](?:[\w.-]*[\w-])?)?)/g;
+const TOKEN_RE = new RegExp(`@([~!]?)(${HANDLE_PATTERN})`, "g");
 const OPENS = /[\s(<]/;
 
 /** Every `@word` in `text`, in order. `members` holds the room's handles,

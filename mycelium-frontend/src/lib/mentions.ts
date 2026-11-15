@@ -15,9 +15,12 @@ export const MENTION_SIGIL = "@";
 export const SILENT_MENTION_SIGIL = "@~";
 export const INTERRUPT_MENTION_SIGIL = "@!";
 
-// A handle may end in `:name`, a subagent's, whose name never ends the token on
-// a dot, so a sentence's full stop stays out.
-const HANDLE = String.raw`([A-Za-z0-9][\w-]*(?::[A-Za-z0-9](?:[\w.-]*[\w-])?)?)`;
+// A handle is word characters, hyphens and dots, never ending on a dot, so
+// `@avery.quinn` is one handle and a sentence's full stop stays out. It may end
+// in `:name`, a subagent's, spelled the same way.
+const PART = String.raw`[A-Za-z0-9](?:[\w.-]*[\w-])?`;
+export const HANDLE_PATTERN = `${PART}(?::${PART})?`;
+const HANDLE = `(${HANDLE_PATTERN})`;
 const MENTION_RE = new RegExp(String.raw`(?:^|(?<=[\s(<]))@!?` + HANDLE, "g");
 const SILENT_RE = new RegExp(String.raw`(?:^|(?<=[\s(<]))@~` + HANDLE, "g");
 const INTERRUPT_RE = new RegExp(String.raw`(?:^|(?<=[\s(<]))@!` + HANDLE, "g");

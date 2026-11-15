@@ -10,6 +10,7 @@ import { VIEW_ICONS } from "@/components/room-views-nav";
 import { fetchWireHistory, logFetchError } from "@/lib/api";
 import { useRoomStream } from "@/lib/stream-hub";
 import { useRoomThreads } from "@/lib/room-data";
+import { HANDLE_PATTERN } from "@/lib/mentions";
 import { useCurrentUser } from "@/components/current-user";
 import { MessageBody } from "@/components/message-body";
 import { Chip } from "@/components/ui/chip";
@@ -87,7 +88,7 @@ const clock = (iso: string) => {
 function MessageLine({ text, me }: { text: string; me: string }) {
   const parts: ReactNode[] = [];
   const line = firstLine(text);
-  const re = /(^|[\s(<])@(~|!)?([A-Za-z0-9][\w-]*(?::[A-Za-z0-9](?:[\w.-]*[\w-])?)?)/g;
+  const re = new RegExp(`(^|[\\s(<])@(~|!)?(${HANDLE_PATTERN})`, "g");
   let last = 0;
   for (const m of line.matchAll(re)) {
     const start = (m.index ?? 0) + m[1].length;
