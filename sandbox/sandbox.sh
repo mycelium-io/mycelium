@@ -7,6 +7,10 @@
 #
 #   sandbox/sandbox.sh start     build from this worktree and start it
 #   sandbox/sandbox.sh creds     give its Claude Code this machine's sign-in again
+#
+# Claude Code inside signs in with a token of its own when there's one in
+# ~/.mycelium/sandbox-claude-token (made once with `claude setup-token`),
+# else with this machine's own sign-in (see creds).
 #   sandbox/sandbox.sh exec ...  run a command inside (a shell with none)
 #   sandbox/sandbox.sh url       where its UI is
 #   sandbox/sandbox.sh logs      the supervisor's output
@@ -86,9 +90,17 @@ start() {
   # The image this one replaced, left untagged by the build.
   docker image prune --force --filter "label=mycelium.sandbox=$name" >/dev/null
   docker rm -f "$container" >/dev/null 2>&1 || true
+  local token="$HOME/.mycelium/sandbox-claude-token" secret=()
+  if [ -s "$token" ]; then
+    secret=(--volume "$token:/run/secrets/claude-token:ro")
+  fi
   docker run --detach --name "$container" --init=false \
-    --publish 127.0.0.1::8080 "$image" >/dev/null
-  creds
+    --publish 127.0.0.1::8080 ${secret[@]+"${secret[@]}"} "$image" >/dev/null
+  if [ ${#secret[@]} -gt 0 ]; then
+    echo "Claude Code in $container signs in with its own token ($token)."
+  else
+    creds
+  fi
   echo "Started $container from $root."
   echo "UI:    $(url)"
   echo "Shell: sandbox/sandbox.sh exec"

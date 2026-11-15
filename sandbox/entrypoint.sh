@@ -9,4 +9,12 @@ set -euo pipefail
 
 socat TCP-LISTEN:8080,fork,reuseaddr TCP:127.0.0.1:3717 &
 
+# A Claude Code token of the sandbox's own (`claude setup-token`), mounted
+# read-only by sandbox.sh: read here, so it's in the processes' environment
+# and not in the container's configuration.
+if [ -r /run/secrets/claude-token ]; then
+  CLAUDE_CODE_OAUTH_TOKEN="$(cat /run/secrets/claude-token)"
+  export CLAUDE_CODE_OAUTH_TOKEN
+fi
+
 exec mycelium desktop serve --root /work
