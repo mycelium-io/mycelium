@@ -689,14 +689,14 @@ def _room_of(monkeypatch: pytest.MonkeyPatch, agents: list[str], states: dict[st
         room_people,
         "roster",
         lambda _r: {
-            "people": [{"handle": "julia"}],
+            "people": [{"handle": "operator"}],
             "agents": [{"handle": a} for a in agents],
             "engines": [],
             "others": [],
         },
     )
     present = {h: MemberPresence(kind="herdr", status=s) for h, s in states.items()}
-    present["julia"] = MemberPresence(kind="lease", status="working")
+    present["operator"] = MemberPresence(kind="lease", status="working")
     monkeypatch.setattr(room_channels.manager, "presence", lambda _r: present)
 
 
