@@ -80,6 +80,21 @@ async def test_an_ended_subagent_is_kept_but_posts_no_more(room):
     assert [s["state"] for s in listed] == ["ended"], "kept, so its messages still read as its"
 
 
+async def test_a_subagent_replies_as_an_agent_does(room):
+    # `mycelium respond` posts through /reply, which takes only a registered
+    # handle: a running subagent counts, an unstarted or ended one doesn't.
+    async def reply() -> int:
+        body = {"handle": "builder:review", "text": "the retry path is covered"}
+        return (await room.post(f"/api/rooms/{ROOM}/reply", json=body)).status_code
+
+    assert await reply() == 403
+    await start(room)
+    # Past the guard; with no live channel in tests the route then answers 503.
+    assert await reply() != 403
+    await room.delete(f"/api/rooms/{ROOM}/subagents/builder:review")
+    assert await reply() == 403
+
+
 @pytest.mark.parametrize(
     ("name", "parent", "status"),
     [

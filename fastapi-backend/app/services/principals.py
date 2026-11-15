@@ -219,8 +219,9 @@ def post_rejection_reason(room: str, handle: str, *, allow_unregistered: bool) -
 
     An **engine** is never impersonable through a participation call (drive it
     with ``engine invoke``). A **phantom** handle (neither agent nor user) is
-    rejected on the agent path; the human/broadcast path passes
-    ``allow_unregistered=True`` so an anonymous chat handle still works.
+    rejected on the agent path, unless it is a running subagent; the
+    human/broadcast path passes ``allow_unregistered=True`` so an anonymous chat
+    handle still works.
     """
     kind = classify_sender(room, handle)
     if kind == "engine":
@@ -229,6 +230,12 @@ def post_rejection_reason(room: str, handle: str, *, allow_unregistered: bool) -
             "drive it with `mycelium engine invoke`."
         )
     if kind == "unknown" and not allow_unregistered:
+        from app.services import subagents
+
+        # A subagent its parent started, and that hasn't ended, posts as an
+        # agent does (``app.services.subagents``).
+        if subagents.parent_of(room, handle) is not None:
+            return None
         return (
             f"'{_norm(handle)}' is not a registered agent or user; register it first "
             "(`mycelium agent create` or `mycelium user create`)."
