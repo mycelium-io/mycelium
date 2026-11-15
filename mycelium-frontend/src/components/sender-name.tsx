@@ -19,17 +19,30 @@ export function SenderName({
   handle,
   highlight,
   tag,
+  subagent,
 }: {
   handle: string;
   highlight?: { query: Needles; active: boolean };
   tag?: string;
+  /** MOCK: an agent's subagent, named after its parent (`builder › review`). */
+  subagent?: { parent: string; name: string } | null;
 }) {
   const name = nameOf(useNames(), handle);
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
+      {subagent ? (
+        <span className="flex min-w-0 items-baseline gap-1 truncate text-label" title={`@${handle}`}>
+          <span className="font-medium text-muted-foreground">{subagent.parent}</span>
+          <span aria-hidden className="text-faint">›</span>
+          <span className="truncate font-semibold text-text">
+            <HighlightText text={subagent.name} highlight={highlight} />
+          </span>
+        </span>
+      ) : (
       <span className="truncate text-label font-semibold text-text">
         <HighlightText text={name ?? handle} highlight={highlight} />
       </span>
+      )}
       {name && <span className="flex-shrink-0 text-micro text-faint">@{handle.replace(/^@/, "")}</span>}
       {tag && (
         <span className="flex-shrink-0 self-center rounded bg-hairline px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">

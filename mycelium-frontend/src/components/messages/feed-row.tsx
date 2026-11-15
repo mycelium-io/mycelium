@@ -46,6 +46,7 @@ import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
 import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
 import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
 import { InterruptMark, type Interrupted } from "@/components/messages/mention-wakes";
+import { subagentOf } from "@/lib/subagents";
 import { ThreadReplies } from "@/components/messages/thread-replies";
 import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
@@ -702,7 +703,10 @@ export function MessageRow({
 }) {
   const { roomName, agentHandles, engineHandles, agentTags, agentOwners, flagsByMessage, refreshFlags } = ctx;
   const drawsValues = Boolean(replyContext?.rated);
-  const isAgent = agentHandles.has(ev.sender);
+  // MOCK: a message from an agent's subagent, named after its parent. The
+  // handle carries the parent, so it still reads so once the subagent has left.
+  const subagent = subagentOf(ev.sender, agentHandles);
+  const isAgent = agentHandles.has(ev.sender) || Boolean(subagent);
   // Match the members panel so one sender isn't two colors in two places: an
   // agent wears its own stable tint (Monogram's default), a human the neutral seat.
   const color = isAgent ? undefined : "var(--avatar-neutral)";
@@ -732,7 +736,8 @@ export function MessageRow({
             <AgentCardHover room={roomName} handle={ev.sender}>
               <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
                 <Monogram
-                  handle={ev.sender}
+                  // MOCK: a subagent wears its parent's face, so the two read as one.
+                  handle={subagent?.parent ?? ev.sender}
                   color={color}
                   className="size-6 text-[10px]"
                   kind={engineHandles.has(ev.sender) ? "engine" : isAgent ? "agent" : "person"}
@@ -760,7 +765,8 @@ export function MessageRow({
                   <SenderName
                     handle={ev.sender}
                     highlight={hit}
-                    tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
+                    subagent={subagent}
+                    tag={subagent ? "subagent" : isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
                   />
                 </span>
               </AgentCardHover>

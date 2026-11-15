@@ -54,6 +54,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
 import { usePrincipal } from "@/components/current-user";
+import { subagentOf } from "@/lib/subagents";
+import { cn } from "@/lib/utils";
 
 interface Props {
   roomName: string;
@@ -225,8 +227,13 @@ export function AgentsPanel({
   // manifests, people from the hub's record of who joined, others who hold a
   // task or are present, and a presence entry for whoever holds a SLIM socket
   // or an `await` lease.
-  const { agents, people, others, presence, floors, subscriptions, paused, loading, refresh } =
+  const { agents, people, others: roster, presence, floors, subscriptions, paused, loading, refresh } =
     useRoomRoster(roomName);
+  // MOCK: a subagent that has left is gone from the room, not listed under Others.
+  const others = useMemo(
+    () => roster.filter((o) => !subagentOf(o.handle, new Set(agents.map((a) => a.handle.toLowerCase())))),
+    [roster, agents],
+  );
   const { room } = useRoom(roomName);
   const me = usePrincipal();
   // Pause, resume and stop are the owner's alone (the hub refuses anyone
@@ -305,11 +312,25 @@ export function AgentsPanel({
   // agents and bridged A2A ones alike — is **Active** when it holds a live socket
   // or an await lease and **Idle** otherwise. Idle folds by default so the handful
   // working now leads, while the group count still says how large the room is.
+  // MOCK: an agent's subagents, listed under it rather than as members of
+  // their own (`lib/subagents.ts`).
+  const subagents = useMemo(() => {
+    const handles = new Set(agents.map((a) => a.handle.toLowerCase()));
+    const byParent = new Map<string, AgentSummary[]>();
+    for (const a of agents) {
+      const sub = subagentOf(a.handle, handles);
+      if (sub) byParent.set(sub.parent.toLowerCase(), [...(byParent.get(sub.parent.toLowerCase()) ?? []), a]);
+    }
+    return byParent;
+  }, [agents]);
+
   const agentGroups = useMemo(() => {
     const active: AgentSummary[] = [];
     const engines: AgentSummary[] = [];
     const idle: AgentSummary[] = [];
+    const handles = new Set(agents.map((a) => a.handle.toLowerCase()));
     for (const a of agents) {
+      if (subagentOf(a.handle, handles)) continue;
       if (a.adapter === "engine") engines.push(a);
       else if (presence.get(a.handle.toLowerCase())) active.push(a);
       else idle.push(a);
@@ -480,6 +501,9 @@ export function AgentsPanel({
                       rowRef={marked ? highlightRow : undefined}
                       onOpen={watch}
                     />
+                    {subagents.get(a.handle.toLowerCase())?.map((s) => (
+                      <SubagentRow key={s.handle} handle={s.handle} memberPresence={presence.get(s.handle.toLowerCase())} />
+                    ))}
                     </MemberMenu>
                   );
                 })}
@@ -541,6 +565,32 @@ function SectionLabel({
 const NAME_COLUMN = "flex w-32 flex-shrink-0 items-center gap-1.5 min-w-0";
 /** What is said about the member, after the name column. */
 const META_COLUMN = "min-w-0 flex-1 truncate text-micro text-faint";
+
+/** MOCK: one of an agent's subagents, under its parent's row. Its own name
+ *  only, since the row above is the parent; it fades once it's done, and is
+ *  gone from the list when it leaves. */
+function SubagentRow({ handle, memberPresence }: { handle: string; memberPresence?: PresenceMember }) {
+  const name = subagentOf(handle)?.name ?? handle;
+  const status = memberPresence?.status ?? null;
+  const done = status === "done";
+  return (
+    <div
+      title={`@${handle}`}
+      className={cn("flex h-6 items-center gap-2 pl-6 pr-3 transition-opacity", done && "opacity-50")}
+    >
+      <span aria-hidden className="w-2 flex-shrink-0 font-mono text-micro leading-none text-faint">
+        └
+      </span>
+      {/* Starts where the parent's avatar does, so what it's doing lines up
+          with the parent's own. */}
+      <span className={NAME_COLUMN}>
+        <Monogram handle={handle} className="size-4 text-[8px]" presence={memberPresence?.kind} status={status} mutePresence kind="agent" />
+        <span className="truncate text-micro text-text">{name}</span>
+      </span>
+      <span className={META_COLUMN}>{done ? "done" : status === "working" ? "working" : memberPresence ? "here" : "idle"}</span>
+    </div>
+  );
+}
 
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];

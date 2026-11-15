@@ -1221,6 +1221,21 @@ const checkout: RoomFixture = {
       updated_at: iso(60 * 20),
       episode: checkoutEpisode("b3d5f7"),
     },
+    // MOCK: two of builder's subagents, members only while they run.
+    {
+      key: "agents/builder.review",
+      value: agentManifest("Reads #504's diff for the retry case, for builder."),
+      created_by: "builder",
+      version: 1,
+      updated_at: iso(6),
+    },
+    {
+      key: "agents/builder.tests",
+      value: agentManifest("Runs the refund tests against staging, for builder."),
+      created_by: "builder",
+      version: 1,
+      updated_at: iso(9),
+    },
     {
       key: "agents/conductor",
       value: agentManifest("Runs a flow in a task's thread, like helping members agree.", "engine"),
@@ -1325,6 +1340,9 @@ const checkout: RoomFixture = {
     { id: "t6b", sender_handle: "builder", message_type: "broadcast", content: "more than 5% of payments failing over ten minutes. one bad card won't trip it.", created_at: iso(80), episode: checkoutEpisode("e7a1c3") },
     { id: "t6c", sender_handle: "operator", message_type: "broadcast", content: "good. send it to the room and to my phone, not email.", created_at: iso(70), episode: checkoutEpisode("e7a1c3") },
     { id: "h7", sender_handle: "builder", message_type: "broadcast", content: "some order emails are going out twice when stripe retries a webhook. filing it, i'll fix it after apple pay.", created_at: iso(58) },
+    // MOCK: builder's subagents posting as themselves.
+    { id: "s1", sender_handle: "builder.tests", message_type: "broadcast", content: "refund tests pass on staging: 41 of 41, including the double-click case.", created_at: iso(3) },
+    { id: "s2", sender_handle: "builder.review", message_type: "broadcast", content: "#504's retry path looks right. one gap: a timeout after the charge but before the reply isn't refunded. adding a test for it.", created_at: iso(1) },
     // Builder forgets #499 merged yesterday (h3): the verifier's darker line.
     { id: "h7b", sender_handle: "builder", message_type: "broadcast", content: "apple pay sits on top of #499, which still needs a review before it can merge.", created_at: iso(55) },
     // ── the test-first correction ──
@@ -1589,6 +1607,9 @@ const checkout: RoomFixture = {
     // Builder is mid-turn, so a plain `@builder` waits for its turn to end.
     { handle: "builder", kind: "slim", last_seen: null, status: "working" },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
+    // MOCK: builder's subagents, one still at it and one finished.
+    { handle: "builder.review", kind: "lease", last_seen: iso(0), status: "working" },
+    { handle: "builder.tests", kind: "lease", last_seen: iso(2), status: "done" },
   ],
   // The verifier couldn't find an approval for #502, which builder called
   // approved: nobody in the room had reviewed it yet.
