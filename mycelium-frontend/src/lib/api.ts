@@ -2241,6 +2241,27 @@ export interface Team {
 }
 
 /** List registered users with their owned-agent roll-up. */
+/** An agent's subagent, recorded with its parent: `builder:review` is
+ *  `review`, a subagent of @builder. Kept after it ends, so its messages still
+ *  read as its. */
+export interface Subagent {
+  handle: string;
+  parent: string;
+  name: string;
+  state: "working" | "done" | "ended";
+  started_at: string;
+  ended_at: string | null;
+}
+
+/** Every subagent the room has had, ended ones too. */
+export async function fetchSubagents(room: string): Promise<Subagent[]> {
+  return apiFetch<Subagent[]>(`${roomApiPath(room)}/subagents`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is Subagent[],
+  });
+}
+
 export async function fetchUsers(): Promise<User[]> {
   const data = await apiFetch<{ users?: User[] }>(`/api/users`, { cache: "no-store", fallback: {} });
   return Array.isArray(data.users) ? data.users : [];

@@ -282,6 +282,25 @@ def test_the_await_step_says_what_it_does_in_a_line():
     ) in digest
 
 
+def test_a_mention_of_a_subagent_wakes_its_parent_saying_whose_it_is():
+    records = [
+        _said(1, "builder", "back", 60),
+        _said(2, "hay", "@builder:review is the retry path covered?", 1),
+    ]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert "is the retry path covered?" in digest
+    assert (
+        "For:     your subagent @builder:review. Answer it yourself, pass it on in its next "
+        "step, or have it check in with `mycelium await --as builder:review`."
+    ) in digest
+
+
+def test_a_plain_mention_names_no_subagent():
+    records = [_said(1, "builder", "back", 60), _said(2, "hay", "@builder look", 1)]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert "For:" not in digest
+
+
 def test_other_asks_share_a_budget_and_the_rest_are_named():
     big = "a long one " * 500
     records = [

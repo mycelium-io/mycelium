@@ -11,7 +11,7 @@ import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MarkdownTable } from "@/components/markdown-table";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
-import { INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
+import { HANDLE_PATTERN, INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { typeset } from "@/lib/typeset";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
@@ -24,8 +24,11 @@ import { typeset } from "@/lib/typeset";
 // `and/or` never lights up. A thread's short id is eight hex characters
 // standing alone: not inside a longer word or hash, a path, a URL or a
 // `urn:…:id`, which are written to be read whole.
-const TOKEN_RE =
-  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@~[A-Za-z0-9][\w-]*|@![A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?|(?<![\w\-/#.:@])[0-9a-f]{8}(?![\w\-/]))/g;
+// A mention's handle is the hub's (`HANDLE_PATTERN`): dots inside, never at its end.
+const TOKEN_RE = new RegExp(
+  String.raw`(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'\`]*[^\s)\]>"'\`.,;:!?]|@[~!]?${HANDLE_PATTERN}|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?|(?<![\w\-/#.:@])[0-9a-f]{8}(?![\w\-/]))`,
+  "g",
+);
 
 const THREAD_ID = /^[0-9a-f]{8}$/;
 

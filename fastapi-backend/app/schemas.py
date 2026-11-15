@@ -1035,6 +1035,26 @@ class HandlePick(BaseModel):
     handle: str = Field(..., min_length=1, max_length=64)
 
 
+class SubagentCreate(BaseModel):
+    """Start a subagent of ``parent``'s, with a handle of its own."""
+
+    name: str = Field(..., min_length=1, max_length=48, description="Its own name: `review`")
+    parent: str | None = Field(
+        None, description="Whose subagent it is; the caller when left out on a gated hub"
+    )
+
+
+class SubagentRead(BaseModel):
+    """An agent's subagent, recorded with its parent."""
+
+    handle: str = Field(..., description="The parent's handle, a colon, its name: `builder:review`")
+    parent: str
+    name: str
+    state: Literal["working", "done", "ended"]
+    started_at: str
+    ended_at: str | None = None
+
+
 class UserCreate(BaseModel):
     handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
     display_name: str = ""
@@ -1310,6 +1330,21 @@ class MachineAgentRead(BaseModel):
     resumes: bool = Field(
         False,
         description="A restart brings it back in its own session, keeping its conversation",
+    )
+    subagents_open: int | None = Field(
+        None,
+        description=(
+            "How many subagent steps are open in its session file, a count and never "
+            "their text; null when its CLI's session file isn't read"
+        ),
+    )
+    subagents_finished: int | None = Field(
+        None,
+        description=(
+            "How many subagent steps its session has finished since the runner first "
+            "read it, a count that only goes up (it starts again when the runner "
+            "does); null when its CLI's session file isn't read"
+        ),
     )
 
 

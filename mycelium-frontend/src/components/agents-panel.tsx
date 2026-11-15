@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
   Clock,
@@ -36,9 +36,11 @@ import {
   type RoomFloor,
   type RoomSubscription,
   type RoomOther,
+  type Subagent,
 } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
-import { useRoom, useRoomRoster, useScheduledHandles } from "@/lib/room-data";
+import { useRoom, useRoomRoster, useRoomSubagents, useScheduledHandles } from "@/lib/room-data";
+import { cn } from "@/lib/utils";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
@@ -225,8 +227,26 @@ export function AgentsPanel({
   // manifests, people from the hub's record of who joined, others who hold a
   // task or are present, and a presence entry for whoever holds a SLIM socket
   // or an `await` lease.
-  const { agents, people, others, presence, floors, subscriptions, paused, loading, refresh } =
+  const { agents, people, others: listed, presence, floors, subscriptions, paused, loading, refresh } =
     useRoomRoster(roomName);
+  // An agent's subagents, from the hub's record: the running ones under their
+  // parent's row, and none of them, running or ended, under Others.
+  const subagents = useRoomSubagents(roomName);
+  const others = useMemo(
+    () => listed.filter((o) => !subagents.has(o.handle.toLowerCase())),
+    [listed, subagents],
+  );
+  const running = useMemo(() => {
+    const byParent = new Map<string, Subagent[]>();
+    for (const s of subagents.values()) {
+      if (s.state === "ended") continue;
+      const parent = s.parent.toLowerCase();
+      byParent.set(parent, [...(byParent.get(parent) ?? []), s]);
+    }
+    return byParent;
+  }, [subagents]);
+  const subagentRows = (parent: string) =>
+    running.get(parent.toLowerCase())?.map((s) => <SubagentRow key={`subagent-${s.handle}`} subagent={s} />);
   const { room } = useRoom(roomName);
   const me = usePrincipal();
   // Pause, resume and stop are the owner's alone (the hub refuses anyone
@@ -450,8 +470,8 @@ export function AgentsPanel({
                         ? () => opener.open(a.handle)
                         : () => setWatching({ handle: a.handle, runner: a.runner ?? null });
                   return (
+                    <Fragment key={`agent-${a.handle}`}>
                     <MemberMenu
-                      key={`agent-${a.handle}`}
                       handle={a.handle}
                       agent
                       onOpenMemory={onOpenMemory}
@@ -481,6 +501,8 @@ export function AgentsPanel({
                       onOpen={watch}
                     />
                     </MemberMenu>
+                    {subagentRows(a.handle)}
+                    </Fragment>
                   );
                 })}
             </div>
@@ -541,6 +563,30 @@ function SectionLabel({
 const NAME_COLUMN = "flex w-32 flex-shrink-0 items-center gap-1.5 min-w-0";
 /** What is said about the member, after the name column. */
 const META_COLUMN = "min-w-0 flex-1 truncate text-micro text-faint";
+
+/** One of an agent's subagents, under its parent's row: its own name only,
+ *  since the row above is the parent's. It fades once it's done, and is gone
+ *  from the list when it ends. */
+export function SubagentRow({ subagent }: { subagent: Subagent }) {
+  const done = subagent.state === "done";
+  return (
+    <div
+      title={`@${subagent.handle}`}
+      className={cn("flex h-6 items-center gap-2 pl-6 pr-3 transition-opacity", done && "opacity-50")}
+    >
+      <span aria-hidden className="w-2 flex-shrink-0 font-mono text-micro leading-none text-faint">
+        └
+      </span>
+      {/* Starts where the parent's avatar does, so what it's doing lines up
+          with the parent's own. */}
+      <span className={NAME_COLUMN}>
+        <Monogram handle={subagent.handle} className="size-4 text-[8px]" kind="agent" />
+        <span className="truncate text-micro text-text">{subagent.name}</span>
+      </span>
+      <span className={META_COLUMN}>{done ? "done" : "working"}</span>
+    </div>
+  );
+}
 
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];

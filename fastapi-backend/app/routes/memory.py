@@ -54,6 +54,7 @@ from app.services import (
     principals,
     room_settings,
     search_index,
+    subagents,
     uploads,
 )
 from app.services.embedding import embed_text
@@ -312,6 +313,14 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
         item.created_by = actor.bind_delegated_actor(
             request, room_name, item.created_by, field="created_by"
         )
+        if _is_agent_manifest(item.key) and subagents.SEPARATOR in item.key:
+            # A colon is a subagent's alone, recorded with its parent: no agent
+            # is named like one.
+            raise HTTPException(
+                status_code=422,
+                detail=f"An agent's handle can't have a colon: {item.key}. "
+                "A subagent is started with `mycelium subagent start <name>`.",
+            )
         _guard_manifest(request, room_name, item.key, item.value)
     return await upsert_memories(room_name, payload)
 

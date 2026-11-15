@@ -38,6 +38,7 @@ from app.services import assignments, message_format
 from app.services.agent_registry import norm_handle
 from app.services.persister import (
     _conversational_text,
+    parse_mentions,
     parse_recorded_at,
     read_id,
     record_episode,
@@ -382,6 +383,20 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
 
         return tasks.episode_of(room, str(notice["key"]))
     return _thread_of(room, asked[-1])
+
+
+def _subagents_asked(asked: list[Any], me: str) -> list[str]:
+    """The names of ``me``'s subagents the messages in ``asked`` mention, first
+    named first. A subagent has no doorbell, so a mention of one asks its
+    parent (``asks``)."""
+    found: dict[str, None] = {}
+    for record in asked:
+        text = record.content.get("content") if isinstance(record.content, dict) else None
+        for handle in parse_mentions(text) if isinstance(text, str) else []:
+            parent, sep, name = _norm(handle).partition(":")
+            if sep and parent == me and name:
+                found.setdefault(name, None)
+    return list(found)
 
 
 def _floor_line(room: str, thread: str | None, me: str) -> str | None:
@@ -786,6 +801,14 @@ def build(
         count = f"{n} messages mention" if n > 1 else f"{sender} mentioned"
         why = f"{count} you in {_place(room, where)}{latest}"
     lines.append(f"Why:     {why}")
+    # A subagent has no doorbell, so what was said to one woke its parent.
+    if subs := _subagents_asked(asked, me):
+        named = ", ".join(f"@{me}:{s}" for s in subs)
+        noun = "your subagent" if len(subs) == 1 else "your subagents"
+        lines.append(
+            f"For:     {noun} {named}. Answer it yourself, pass it on in its next "
+            f"step, or have it check in with `mycelium await --as {me}:{subs[0]}`."
+        )
     # A thread whose floor is held for someone else: it was named, but the
     # conductor (or whoever holds it) asks in turn, so its writes wait till then.
     if (turn := _floor_line(room, here, me)) is not None:
