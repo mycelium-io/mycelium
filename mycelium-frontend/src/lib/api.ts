@@ -2219,6 +2219,19 @@ export interface User {
   teams: string[];
   notify: string | null;
   owns: OwnedAgent[];
+  /** Handles this person had before (their sign-in's email, before they had
+   *  a short handle), which past messages still carry. */
+  was?: string[];
+}
+
+/** Pick your handle on a hub whose sign-in gave you none (taken, or not a
+ *  valid handle). It's kept with your sign-in and never changes after. */
+export async function pickHandle(handle: string): Promise<{ handle: string | null }> {
+  return apiFetch<{ handle: string | null }>(`/api/whoami/handle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ handle }),
+  });
 }
 
 export interface Team {

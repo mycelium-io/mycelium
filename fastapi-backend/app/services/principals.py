@@ -352,6 +352,12 @@ def _apply_rollup(user: dict[str, Any], manifests: list[dict[str, Any]]) -> dict
         }
         for m in owned
     ]
+    # The handle their sign-in gave before they had a short one, which past
+    # messages still carry, so the app shows those under their name.
+    from app.services import identities
+
+    old = identities.claimed_by(user["handle"])
+    user["was"] = [old] if old else []
     return user
 
 
