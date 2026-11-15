@@ -1,0 +1,18 @@
+# Only the source goes in: dependencies are installed for Linux inside, and
+# the docs' media and build output aren't needed to run the product.
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/target
+.git
+.shotkit
+mycelium-client/mycelium_backend_client
+mycelium-cli/src/mycelium_backend_client
+docs
+mycelium-promo
+mycelium-deck
+mycelium-desktop/src-tauri/target
+shotkit/node_modules
