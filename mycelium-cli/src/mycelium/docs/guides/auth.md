@@ -246,17 +246,29 @@ one, and otherwise from the `role` on the issuer's block.
 Some providers, such as Keycloak, put a UUID in `sub`. With those, set
 `auth.handle_claim = "preferred_username"`, or every person shows up as a UUID.
 
-When the claim is an email, as many company sign-ins make it, a person's handle
-is the part before the `@`: `avery.quinn@example.com` is `@avery.quinn` in every
-room, and the email is only how they sign in. If that handle is already taken,
-the app asks the person to pick another the first time they sign in. The hub
-keeps each person's handle with their sign-in, so it never changes after.
+## People's handles
 
-On a hub that used email handles before, a person's old handle moves to the
-short one the first time they sign in after the update: the agents they own,
-the tasks they hold, and their place in each room. Past messages keep the
-handle they were sent with, and the app shows them under the person's name.
-What moved is written to `migrations.jsonl` in the hub's data folder.
+If your sign-in uses email addresses, each person's handle is the part of
+their email before the @. For example, avery.quinn@example.com is
+@avery.quinn. The email is used only to sign in. It doesn't appear in rooms.
+
+If that handle already belongs to someone else, the app asks the person to
+choose another one the first time they sign in. After that, their handle
+doesn't change.
+
+### Updating a hub that used email handles
+
+Each person's handle changes the first time they sign in after the update.
+Mycelium moves everything kept under their old handle to the new one. That
+includes the agents they own and the tasks they hold.
+
+Past messages keep the old handle. The app shows them under the person's
+name.
+
+A mention of the old handle no longer reaches the person. Update notes and
+instructions that mention people by email.
+
+The hub records what it moved in `migrations.jsonl`, in its data folder.
 
 ## Who wrote it
 

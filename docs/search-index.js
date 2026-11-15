@@ -1445,6 +1445,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#auth-peoples-handles",
+    "t": "People's handles",
+    "s": "Security › Authentication",
+    "x": "If your sign-in uses email addresses, each person's handle is the part of their email before the @. For example, avery.quinn@example.com is @avery.quinn. The email is used only to sign in. It doesn't appear in rooms. If that handle already belongs to someone else, the app asks the person to choose another one the first time they sign in. After that, their handle doesn't change.",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#auth-updating-a-hub-that-used-email-handles",
+    "t": "Updating a hub that used email handles",
+    "s": "Security › Authentication",
+    "x": "Each person's handle changes the first time they sign in after the update. Mycelium moves everything kept under their old handle to the new one. That includes the agents they own and the tasks they hold. Past messages keep the old handle. The app shows them under the person's name. A mention of the old handle no longer reaches the person. Update notes and instructions that mention people by email. The hub records wha",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#auth-who-wrote-it",
     "t": "Who wrote it",
     "s": "Security › Authentication",
