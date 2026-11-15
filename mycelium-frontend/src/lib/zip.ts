@@ -100,6 +100,17 @@ export function zipStored(entries: ZipEntry[]): Blob {
   return new Blob([...parts, ...central, new Uint8Array(end.buffer)] as BlobPart[], { type: "application/zip" });
 }
 
+/** A file's name as a zip entry: one name, never a path. The hub keeps an
+ *  upload's name as it was sent, and an agent can send `../../notes.md`, which
+ *  some extractors would write outside the folder. So only the last part is
+ *  kept, separators and control characters are swapped out, and `fallback`
+ *  stands in when nothing is left. */
+export function entryName(name: string, fallback: string): string {
+  const last = name.split(/[\\/]/).pop() ?? "";
+  const clean = last.replace(/[\x00-\x1f\x7f]/g, "").replace(/:/g, "-").trim();
+  return clean && clean !== "." && clean !== ".." ? clean : fallback;
+}
+
 /** Names that can sit side by side in one folder: a repeat gets " (2)", " (3)"
  *  before its extension, so two files called `notes.md` both survive. */
 export function distinctNames(names: string[]): string[] {

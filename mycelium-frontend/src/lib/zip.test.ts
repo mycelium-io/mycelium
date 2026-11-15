@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { crc32, distinctNames, zipStored } from "@/lib/zip";
+import { crc32, distinctNames, entryName, zipStored } from "@/lib/zip";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
 
@@ -50,6 +50,30 @@ describe("zipStored", () => {
 describe("crc32", () => {
   it("matches the standard check value", () => {
     expect(crc32(bytes("123456789"))).toBe(0xcbf43926);
+  });
+});
+
+describe("entryName", () => {
+  it("keeps a name that is already one name", () => {
+    expect(entryName("refund flow.png", "x")).toBe("refund flow.png");
+  });
+
+  it("never lets a name be a path out of the folder", () => {
+    expect(entryName("../x.md", "fb")).toBe("x.md");
+    expect(entryName("../../etc/notes.md", "fb")).toBe("notes.md");
+    expect(entryName("a/b.png", "fb")).toBe("b.png");
+    expect(entryName("C:\\Users\\a\\b.png", "fb")).toBe("b.png");
+  });
+
+  it("swaps a drive colon and drops control characters", () => {
+    expect(entryName("C:notes.md", "fb")).toBe("C-notes.md");
+    expect(entryName("no\u0000tes\n.md", "fb")).toBe("notes.md");
+  });
+
+  it("falls back when nothing is left", () => {
+    expect(entryName("..", "fb.md")).toBe("fb.md");
+    expect(entryName("a/", "fb.md")).toBe("fb.md");
+    expect(entryName("\u0001", "fb.md")).toBe("fb.md");
   });
 });
 
