@@ -401,7 +401,8 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     if pane and acting_as and not _own_handle(acting_as, pane):
         msg = (
             f"this is @{pane}'s pane, so commands here act as @{pane} only, "
-            f"not as @{acting_as.lstrip('@')}"
+            f"not as @{acting_as.lstrip('@')}. A subagent of @{pane}'s gets a handle "
+            "of its own with `mycelium subagent start <name>`"
         )
         raise ActingAsOtherError(msg)
     agent_token = agent_credentials.access_token(config, acting_as)

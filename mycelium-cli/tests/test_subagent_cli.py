@@ -54,7 +54,8 @@ def test_start_records_it_as_its_parent_and_prints_the_three_lines(hub: StandInH
     assert json.loads(sent.content) == {"name": "review", "parent": "builder"}
     out = result.output
     assert "You are @builder:review, a subagent of @builder, in the Mycelium room checkout." in out
-    assert "add --as builder:review to every mycelium command" in out
+    assert "add --as builder:review to every mycelium command that posts" in out
+    assert "commands that only read don't take it" in out
     assert "mycelium subagent end builder:review --room checkout" in out
     # The optional fourth line, set apart from the three.
     assert "Messages to it wake you." in out
@@ -75,6 +76,41 @@ def test_end_ends_it(hub: StandInHub):
     (sent,) = hub.sent("DELETE", "/api/rooms/checkout/subagents/builder:review")
     assert sent is not None
     assert "Ended @builder:review" in result.output
+
+
+def test_from_an_agent_s_pane_a_post_goes_out_only_as_it_or_its_subagents(
+    hub: StandInHub, monkeypatch: pytest.MonkeyPatch
+):
+    # A subagent that never ran `subagent start` made up a handle and posted
+    # with `room send`; `respond` refused that, `send` didn't ask.
+    monkeypatch.setenv("MYCELIUM_AGENT_PANE", "builder")
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "builder")
+    hub.answer = lambda r: (
+        201,
+        {
+            "id": "6f1c2a7e-0d3b-4c5e-9a8f-1b2c3d4e5f60",
+            "room_name": "checkout",
+            "sender_handle": json.loads(r.content)["sender_handle"],
+            "message_type": "broadcast",
+            "content": "x",
+            "created_at": "2026-11-15T10:00:00+00:00",
+        },
+    )
+    made_up = runner.invoke(app, ["room", "send", "a suggestion", "--as", "builder-helper"])
+    assert made_up.exit_code != 0
+    assert "subagent start" in made_up.output
+    assert not hub.sent("POST", "/api/rooms/checkout/messages")
+
+    own = runner.invoke(app, ["room", "send", "a suggestion", "--as", "builder:review"])
+    assert own.exit_code == 0, own.output
+    assert hub.sent("POST", "/api/rooms/checkout/messages")
+
+
+def test_a_subagent_ends_itself_with_the_as_its_brief_says_to_add(hub: StandInHub):
+    hub.answer = lambda _r: {**REVIEW, "state": "ended", "ended_at": "2026-11-15T10:05:00+00:00"}
+    result = runner.invoke(app, ["subagent", "end", "builder:review", "--as", "builder:review"])
+    assert result.exit_code == 0, result.output
+    assert hub.sent("DELETE", "/api/rooms/checkout/subagents/builder:review")
 
 
 def test_a_subagent_posts_as_itself_with_as(hub: StandInHub):
