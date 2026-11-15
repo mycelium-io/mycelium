@@ -3,6 +3,7 @@
 
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { HighlightText } from "@/components/ui/highlight-text";
 import type { Needles } from "@/lib/chat-search";
 import { nameOf, useNames } from "@/lib/people";
@@ -15,6 +16,18 @@ import { nameOf, useNames } from "@/lib/people";
  * accent is for links and mentions, and in the same face as the name so the
  * line reads as one line rather than as code.
  */
+/** MOCK: how a subagent is named in the chat, from `?sub=`. */
+type SubagentLook = "chevron" | "handle" | "tag" | "name";
+const LOOKS: readonly SubagentLook[] = ["chevron", "handle", "tag", "name"];
+const subscribeNever = () => () => {};
+function useSubagentLook(): SubagentLook {
+  return useSyncExternalStore(
+    subscribeNever,
+    () => LOOKS.find((l) => l === new URLSearchParams(window.location.search).get("sub")) ?? "chevron",
+    () => "chevron",
+  );
+}
+
 export function SenderName({
   handle,
   highlight,
@@ -28,6 +41,23 @@ export function SenderName({
   subagent?: { parent: string; name: string } | null;
 }) {
   const name = nameOf(useNames(), handle);
+  const look = useSubagentLook();
+  if (subagent && look !== "chevron") {
+    // MOCK: the other ways to name a subagent, picked by `?sub=`.
+    const shown = look === "handle" ? handle.replace(/^@/, "") : subagent.name;
+    const chip = look === "tag" ? `${subagent.parent}'s subagent` : "subagent";
+    return (
+      <span className="flex min-w-0 items-baseline gap-1.5" title={`@${handle}`}>
+        <span className="truncate text-label font-semibold text-text">
+          <HighlightText text={shown} highlight={highlight} />
+        </span>
+        {look === "name" && <span className="flex-shrink-0 text-micro text-faint">@{handle.replace(/^@/, "")}</span>}
+        <span className="flex-shrink-0 self-center rounded bg-hairline px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
+          {chip}
+        </span>
+      </span>
+    );
+  }
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
       {subagent ? (
