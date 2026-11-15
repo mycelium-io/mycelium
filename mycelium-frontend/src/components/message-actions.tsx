@@ -11,12 +11,13 @@
  * hovered or has focus, so a long channel carries no open bars.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
   Braces,
   Check,
   Copy,
+  Download,
   Link2,
   ListPlus,
   Loader2,
@@ -26,7 +27,9 @@ import {
   Quote,
 } from "lucide-react";
 import { createTask, createThread } from "@/lib/api";
-import { useRoomRevalidate, type MessageThread } from "@/lib/room-data";
+import { useRoomRevalidate, useRoomUploads, type MessageThread } from "@/lib/room-data";
+import { saveBlob, zipName, zipUploads } from "@/lib/upload-zip";
+import { uploadKeysIn } from "@/lib/uploads";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
   insertIntoComposer,
@@ -139,6 +142,25 @@ function Bar({
   }, [copied]);
 
   const link = messageId ? absoluteUrl(messagePath(roomName, messageId)) : null;
+
+  // A message with several files saves them all, as one zip, from here: taking
+  // a copy of a message lives in this bar, and the files under it stay as they are.
+  const keys = useMemo(() => uploadKeysIn(content), [content]);
+  const { uploads } = useRoomUploads(keys.length > 1 ? roomName : "");
+  const files = useMemo(() => keys.flatMap((k) => uploads.filter((u) => u.key === k)), [keys, uploads]);
+  const [zipping, setZipping] = useState(false);
+  const [zipFailed, setZipFailed] = useState(false);
+  const downloadAll = async () => {
+    setZipping(true);
+    setZipFailed(false);
+    try {
+      saveBlob(await zipUploads(files), zipName(roomName));
+    } catch {
+      setZipFailed(true);
+    } finally {
+      setZipping(false);
+    }
+  };
   // The bar sits in its message's row, so it says which pane the click is from.
   const bar = useRef<HTMLDivElement>(null);
   const insert = (text: string) => insertIntoComposer({ room: roomName, episode, text, from: bar.current });
@@ -244,6 +266,16 @@ function Bar({
           onClick={() => void copyText(link).then(() => setCopied("link"))}
         >
           {copied === "link" ? <Check /> : <Link2 />}
+        </IconButton>
+      )}
+      {files.length > 1 && (
+        <IconButton
+          label={zipFailed ? "Couldn't download. Try again." : `Download all ${files.length} files`}
+          className={zipFailed ? "size-7 text-red" : "size-7"}
+          disabled={zipping}
+          onClick={() => void downloadAll()}
+        >
+          {zipping ? <Loader2 className="animate-spin" /> : <Download />}
         </IconButton>
       )}
       <Divider />
