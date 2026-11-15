@@ -318,25 +318,28 @@ def _upstream_notice(record: Any) -> dict[str, Any] | None:
     return data if data.get("subkind") == "upstream" else None
 
 
-def _on(room: str, wake: dict[str, Any] | None) -> str:
+def _on(room: str, wake: dict[str, Any] | None, now: datetime) -> str:
     """What a working agent is on, from the last wake it was handed: who it's
-    answering and where, or the task it was given. Empty when it was handed
-    none (started by hand, say): nothing is guessed."""
+    answering and where, or the task it was given, and how long ago, since an
+    old wake can be one it has moved on from. Empty when it was handed none
+    (started by hand, say): nothing is guessed."""
     if not wake:
         return ""
+    when = age(parse_recorded_at(str(wake["at"])) if wake.get("at") else None, now)
     place = _where(room, wake.get("episode"))
     if wake.get("reason") in ("assigned", "handback") and (place or wake.get("task")):
         key = place[0] if place else str(wake["task"])
         title = (
             place[1] if place else next((_title(k, c) for k, _m, c in _rows(room) if k == key), key)
         )
-        return f'on "{_short(title, TITLE_CHARS)}"'
+        return f'on "{_short(title, TITLE_CHARS)}", {when}'
     where = f'in "{_short(place[1], TITLE_CHARS)}"' if place else "in the room"
     sender = _norm(wake.get("from"))
-    return f"answering @{sender} {where}" if sender else f"woken {where}"
+    doing = f"answering @{sender} {where}" if sender else f"woken {where}"
+    return f"{doing}, {when}"
 
 
-def members(room: str, handle: str) -> list[str]:
+def members(room: str, handle: str, now: datetime | None = None) -> list[str]:
     """The room's other agents and what each is doing now, as a small members
     pane: grouped by the live state its host reports, in
     :data:`MEMBER_STATES`' order. A working agent's row says what it's on
@@ -347,6 +350,7 @@ def members(room: str, handle: str) -> list[str]:
     from app.services import room_channels, room_people, wake_log
 
     me = _norm(handle)
+    now = now or datetime.now(UTC)
     try:
         agents = {_norm(a.get("handle")) for a in room_people.roster(room)["agents"]}
         present = room_channels.manager.presence(room)
@@ -387,7 +391,7 @@ def members(room: str, handle: str) -> list[str]:
         if state in ("working", "blocked"):
             for n, name in enumerate(names[:MEMBERS_NAMED]):
                 note = (
-                    _on(room, last_wake.get(name))
+                    _on(room, last_wake.get(name), now)
                     if state == "working"
                     else "waiting for input on its machine"
                 )
@@ -1039,7 +1043,7 @@ def build(
             lines.extend(f"         {p}" for p in pointers[1:])
     # Who else is busy right now and on what, so it doesn't act across them:
     # a small members pane, set off on its own.
-    if pane := members(room, me):
+    if pane := members(room, me, now):
         lines += ["", *pane, ""]
 
     # One line, so an agent that needs more than this digest holds knows the

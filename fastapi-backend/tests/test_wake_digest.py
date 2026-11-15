@@ -700,10 +700,12 @@ def _room_of(monkeypatch: pytest.MonkeyPatch, agents: list[str], states: dict[st
     monkeypatch.setattr(room_channels.manager, "presence", lambda _r: present)
 
 
-def _handed(n: int, agent: str, **wake: str) -> None:
-    """A wake the hub handed ``agent``: why, from whom and where."""
+def _handed(monkeypatch, n: int, agent: str, minutes_ago: int, **wake: str) -> None:
+    """A wake the hub handed ``agent`` ``minutes_ago``: why, from whom and where."""
     from app.services import wake_log
 
+    at = (NOW - timedelta(minutes=minutes_ago)).isoformat()
+    monkeypatch.setattr(wake_log, "_now", lambda: at)
     wake_log.handed(ROOM, {"id": f"w{n}", "handle": agent, **wake}, {"messages": []})
 
 
@@ -724,9 +726,9 @@ def test_every_wake_shows_the_rooms_other_agents_as_a_members_pane(
         },
     )
     # What each working agent is on is the last wake it was handed.
-    _handed(1, "builder", reason="mention", **{"from": "hay"})
-    _handed(2, "builder", reason="mention", episode=THREAD, **{"from": "scout"})
-    _handed(3, "reviewer", reason="assigned", key="work/fix-the-receipt-tax")
+    _handed(monkeypatch, 1, "builder", 20, reason="mention", **{"from": "hay"})
+    _handed(monkeypatch, 2, "builder", 3, reason="mention", episode=THREAD, **{"from": "scout"})
+    _handed(monkeypatch, 3, "reviewer", 0, reason="assigned", key="work/fix-the-receipt-tax")
     digest = wake_digest.build(
         ROOM, {"handle": "desktop"}, [_said(1, "hay", "@desktop look", 1)], NOW
     )
@@ -735,8 +737,8 @@ def test_every_wake_shows_the_rooms_other_agents_as_a_members_pane(
     assert start > next(i for i, line in enumerate(lines) if line.startswith("Board:"))
     # Busy and stuck first; not the agent woken, not a person, not one who's away.
     assert lines[start + 1 : start + 6] == [
-        '  ● working   @builder   answering @scout in "Fix the receipt tax"',
-        '              @reviewer  on "Fix the receipt tax"',
+        '  ● working   @builder   answering @scout in "Fix the receipt tax", 3m ago',
+        '              @reviewer  on "Fix the receipt tax", now',
         "  ▲ blocked   @themes    waiting for input on its machine",
         "  ○ idle      @design",
         "  ✓ done      @research",
@@ -744,6 +746,15 @@ def test_every_wake_shows_the_rooms_other_agents_as_a_members_pane(
     # Set off from the lines around it.
     assert lines[start - 1] == ""
     assert lines[start + 6] == ""
+
+
+def test_what_a_working_agent_is_on_says_how_long_ago(monkeypatch: pytest.MonkeyPatch):
+    """Its last wake can be hours old, and it may have moved on since: the row
+    says when, so no one reads an old answer as what it's doing now."""
+    _room_of(monkeypatch, ["builder"], {"builder": "working"})
+    _handed(monkeypatch, 1, "builder", 125, reason="mention", **{"from": "hay"})
+    pane = wake_digest.members(ROOM, "someone", NOW)
+    assert pane[1] == "  ● working   @builder  answering @hay in the room, 2h ago"
 
 
 def test_a_working_agent_with_no_wake_says_only_that_its_working(
