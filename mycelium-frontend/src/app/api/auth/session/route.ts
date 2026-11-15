@@ -19,6 +19,15 @@ const MOCK_AUTH: Record<string, object> = {
   "signed-in": { authRequired: true, oidcConfigured: true, signedIn: true, handle: "operator" },
   "signed-out": { authRequired: true, oidcConfigured: true, signedIn: false, handle: null },
   optional: { authRequired: false, oidcConfigured: true, signedIn: false, handle: null },
+  // Signed in, but the short handle their sign-in gives is someone else's.
+  "needs-handle": {
+    authRequired: true,
+    oidcConfigured: true,
+    signedIn: true,
+    handle: null,
+    needsHandle: true,
+    suggested: "avery.quinn",
+  },
 };
 
 export async function GET(): Promise<Response> {
