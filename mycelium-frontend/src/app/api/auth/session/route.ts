@@ -6,7 +6,8 @@
 
 import { NextResponse } from "next/server";
 import { readHubSignIn, resolveOidcConfig, whyNoSignIn } from "@/lib/auth-config";
-import { getSession } from "@/lib/session";
+import { getBackendUrl } from "@/lib/backend";
+import { bearer, getSession } from "@/lib/session";
 import { isMockMode } from "@/mocks";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ export async function GET(): Promise<Response> {
   const hub = isMockMode() ? null : await readHubSignIn();
   const oidcConfigured = (await resolveOidcConfig(hub)) != null;
   const session = await getSession();
+  const me = session ? await hubIdentity() : null;
   return NextResponse.json({
     // `authRequired` comes from the backend's own health auth block — the gate
     // is the source of truth, so the UI can't disagree with it.
@@ -36,6 +38,32 @@ export async function GET(): Promise<Response> {
     oidcConfigured,
     signInProblem: oidcConfigured ? null : whyNoSignIn(hub),
     signedIn: session != null,
-    handle: session?.handle ?? null,
+    // The hub's handle for this sign-in, never the token's own claim: a
+    // sign-in's claim is often an email, and the hub gives the person a short
+    // handle instead (`services/identities.py`).
+    handle: me ? me.handle : session && !session.handle.includes("@") ? session.handle : null,
+    needsHandle: me?.needsHandle ?? false,
+    suggested: me?.suggested ?? null,
   });
+}
+
+/** Who the hub says this sign-in is, or null when it can't be asked. */
+async function hubIdentity(): Promise<{
+  handle: string | null;
+  needsHandle: boolean;
+  suggested: string | null;
+} | null> {
+  const token = await bearer();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/whoami`, {
+      headers: { authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const me = (await res.json()) as { handle?: string | null; needs_handle?: boolean; suggested?: string | null };
+    return { handle: me.handle ?? null, needsHandle: Boolean(me.needs_handle), suggested: me.suggested ?? null };
+  } catch {
+    return null;
+  }
 }

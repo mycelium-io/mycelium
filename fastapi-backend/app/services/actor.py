@@ -113,7 +113,11 @@ def bind_delegated_actor(
     authorize_handle(request, room, claimed, field=field)
     base, sep, session = (claimed or "").partition("#")
     normalized = normalize_handle(base)
-    resolved = normalized if normalized is not None else principal.handle
+    resolved = (
+        normalized
+        if normalized is not None and not _mine(principal, normalized)
+        else principal.handle
+    )
     return f"{resolved}#{session}" if sep and session else resolved
 
 
@@ -129,7 +133,7 @@ def may_act_as(principal: Principal, room: str, handle: str | None) -> bool:
     normalized = normalize_handle((handle or "").partition("#")[0])
     if normalized is None:
         return False
-    return normalized == principal.handle or principals.delegates_to(
+    return _mine(principal, normalized) or principals.delegates_to(
         room, normalized, principal.handle
     )
 
@@ -156,12 +160,22 @@ def authorize_handle(
     )
 
 
+def _mine(principal: Principal, handle: str) -> bool:
+    """Whether ``handle`` is the principal's own: its handle, or the
+    email-shaped one its sign-in gave before it had a short one, which still
+    means it (a CLI whose config names the old one keeps working) and nobody
+    else (``services/identities.py``)."""
+    from app.services import identities
+
+    return handle == principal.handle or handle == identities.claimed_by(principal.handle)
+
+
 def _authoritative(principal: Principal, claimed: str | None, field: str) -> str:
     base, sep, session = (claimed or "").partition("#")
     normalized = normalize_handle(base)
     if normalized is None:
         return principal.handle
-    if normalized != principal.handle:
+    if not _mine(principal, normalized):
         raise HTTPException(
             status_code=403,
             detail=(

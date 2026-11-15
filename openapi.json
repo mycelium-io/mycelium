@@ -13004,6 +13004,78 @@
         }
       }
     },
+    "/api/whoami/handle": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Pick Handle",
+        "description": "Pick your handle, when your sign-in gives none (``needs_handle``): the\none its claim would give is taken or isn't a valid handle. It's kept with\nyour sign-in, so it never changes after; a sign-in that has one keeps it.",
+        "operationId": "pick_handle_api_whoami_handle_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandlePick"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoamiRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -17501,6 +17573,22 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HandlePick": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "HandlePick",
+        "description": "The handle a signed-in person picks for themselves."
       },
       "HealthAuth": {
         "properties": {
@@ -24902,6 +24990,14 @@
             },
             "type": "array",
             "title": "Owns"
+          },
+          "was": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Was",
+            "description": "Handles this person had before (the one their sign-in gave before they had a short one), which past messages still carry"
           }
         },
         "type": "object",
@@ -25920,6 +26016,24 @@
             ],
             "title": "Role",
             "description": "The principal's role"
+          },
+          "needs_handle": {
+            "type": "boolean",
+            "title": "Needs Handle",
+            "description": "A person signed in whose sign-in gives no handle yet: they pick one (POST /api/whoami/handle) before anything else",
+            "default": false
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested",
+            "description": "With needs_handle, the short handle their sign-in would give"
           }
         },
         "type": "object",

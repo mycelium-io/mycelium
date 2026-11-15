@@ -26,7 +26,7 @@ from typing import Any
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.a2a_agents import router as a2a_agents_router
@@ -67,7 +67,7 @@ from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
 from app.routes.verifier import router as verifier_router
 from app.routes.voice import router as voice_router
-from app.schemas import HealthRead, WhoamiRead, refusals
+from app.schemas import HandlePick, HealthRead, WhoamiRead, refusals
 from app.services.auth import GATE_REFUSALS, auth_gate
 from app.services.filesystem import UnsafePathError
 
@@ -471,12 +471,49 @@ async def whoami(request: Request):
     principal = getattr(request.state, "principal", None)
     if principal is None:
         return {"gated": settings.AUTH_ENABLED, "handle": None, "subject": None, "role": None}
+    return _whoami_of(principal)
+
+
+def _whoami_of(principal: Any) -> dict[str, Any]:
+    from app.services import identities
+
+    claimed = str(principal.claims.get(settings.AUTH_HANDLE_CLAIM) or "")
     return {
         "gated": True,
-        "handle": principal.handle,
+        "handle": principal.handle or None,
         "subject": principal.subject,
         "role": principal.role,
+        "needs_handle": principal.needs_handle,
+        "suggested": identities.short_of(claimed) if principal.needs_handle else None,
     }
+
+
+@app.post(
+    "/api/whoami/handle",
+    tags=["auth"],
+    response_model=WhoamiRead,
+    responses={**GATE_REFUSALS, **refusals(409, 422)},
+)
+async def pick_handle(payload: HandlePick, request: Request):
+    """Pick your handle, when your sign-in gives none (``needs_handle``): the
+    one its claim would give is taken or isn't a valid handle. It's kept with
+    your sign-in, so it never changes after; a sign-in that has one keeps it."""
+    from dataclasses import replace
+
+    from app.services import identities, short_handles
+
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        raise HTTPException(status_code=409, detail="This hub doesn't sign people in.")
+    claimed = str(principal.claims.get(settings.AUTH_HANDLE_CLAIM) or "")
+    try:
+        handle = identities.pick(principal.issuer, principal.subject, claimed, payload.handle)
+    except identities.HandleTaken as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    await short_handles.settle(principal.issuer, principal.subject, claimed, handle)
+    return _whoami_of(replace(principal, handle=handle, needs_handle=False))
 
 
 @app.get("/", tags=["health"], response_model=HealthRead, response_model_exclude_unset=True)

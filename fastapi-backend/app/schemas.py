@@ -1017,6 +1017,22 @@ class WhoamiRead(BaseModel):
     handle: str | None = Field(None, description="The verified handle; none on an ungated hub")
     subject: str | None = Field(None, description="The token's subject claim")
     role: str | None = Field(None, description="The principal's role")
+    needs_handle: bool = Field(
+        False,
+        description=(
+            "A person signed in whose sign-in gives no handle yet: they pick one "
+            "(POST /api/whoami/handle) before anything else"
+        ),
+    )
+    suggested: str | None = Field(
+        None, description="With needs_handle, the short handle their sign-in would give"
+    )
+
+
+class HandlePick(BaseModel):
+    """The handle a signed-in person picks for themselves."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
 
 
 class UserCreate(BaseModel):
@@ -1044,6 +1060,13 @@ class UserRead(BaseModel):
     teams: list[str] = Field(default_factory=list)
     notify: str | None = None
     owns: list[OwnedAgentRead] = Field(default_factory=list)
+    was: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Handles this person had before (the one their sign-in gave before "
+            "they had a short one), which past messages still carry"
+        ),
+    )
 
 
 class RoomFolder(BaseModel):

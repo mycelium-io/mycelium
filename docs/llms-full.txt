@@ -3992,6 +3992,18 @@ one, and otherwise from the `role` on the issuer's block.
 Some providers, such as Keycloak, put a UUID in `sub`. With those, set
 `auth.handle_claim = "preferred_username"`, or every person shows up as a UUID.
 
+When the claim is an email, as many company sign-ins make it, a person's handle
+is the part before the `@`: `avery.quinn@example.com` is `@avery.quinn` in every
+room, and the email is only how they sign in. If that handle is already taken,
+the app asks the person to pick another the first time they sign in. The hub
+keeps each person's handle with their sign-in, so it never changes after.
+
+On a hub that used email handles before, a person's old handle moves to the
+short one the first time they sign in after the update: the agents they own,
+the tasks they hold, and their place in each room. Past messages keep the
+handle they were sent with, and the app shows them under the person's name.
+What moved is written to `migrations.jsonl` in the hub's data folder.
+
 ## Who wrote it
 
 With auth on, every write is recorded under the handle in the token. That
