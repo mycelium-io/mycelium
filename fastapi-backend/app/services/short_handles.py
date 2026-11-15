@@ -23,6 +23,7 @@ agent or a task is never lost to it.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -54,6 +55,11 @@ RETRIES = 5
 
 #: What a task row names a person by.
 _ROW_FIELDS = ("assignee", "owner", "assignment_note_by")
+
+#: How long a move that failed waits before a sign-in tries it again.
+RETRY_AFTER_S = 300.0
+#: When each person's failed move may be tried again, in this process.
+_failed_until: dict[str, float] = {}
 
 
 def _renamed(value: object, old: str, new: str) -> object:
@@ -173,7 +179,7 @@ def _move_folders(old: str, new: str) -> bool:
 
 
 async def _move_room(room: str, old: str, new: str) -> int:
-    from app.services import assignments, pauses, room_people, schedules
+    from app.services import assignments, pauses, room_people, schedules, subscriptions
     from app.services.room_channels import manager
 
     moved = 0
@@ -183,6 +189,7 @@ async def _move_room(room: str, old: str, new: str) -> int:
         elif assignments.assignable(key):
             moved += await _move_row(room, key, old, new)
     moved += len(await schedules.rename_owner(room, old, new))
+    moved += await subscriptions.rename(room, old, new)
     moved += room_people.rename(room, old, new)
     moved += _move_room_meta(room, old, new)
     manager.rename_member(room, old, new)
@@ -224,9 +231,14 @@ async def settle(issuer: str, subject: str, claimed: str, handle: str) -> None:
     old = norm_handle(claimed)
     if not old or old == handle:
         return
+    who = f"{issuer} {subject}"
+    if time.monotonic() < _failed_until.get(who, 0.0):
+        return
     try:
-        await migrations.once(MIGRATION, f"{issuer} {subject}", old, handle)
+        await migrations.once(MIGRATION, who, old, handle)
     except Exception:
         # Their request goes ahead under the short handle; the move isn't
-        # recorded, so it finishes at their next sign-in.
-        logger.exception("moving a handle to @%s stopped partway; it finishes next sign-in", handle)
+        # recorded, so it finishes at a later sign-in. Not on every request
+        # meanwhile: one that keeps failing would scan every room each time.
+        _failed_until[who] = time.monotonic() + RETRY_AFTER_S
+        logger.exception("moving a handle to @%s stopped partway; it runs again later", handle)

@@ -12,7 +12,7 @@ The same sign-in always gets the same handle, and the email is only how they
 sign in.
 
 A claim that's already a plain handle is bound as it is, so a hub whose sign-in
-says ``julia`` sees no change. The claim a handle was bound from is kept beside
+says ``sam`` sees no change. The claim a handle was bound from is kept beside
 it, so a person's own old (email-shaped) handle still means them, and nobody
 else's.
 """
@@ -72,26 +72,64 @@ def short_of(claimed: str) -> str | None:
 
 
 def _someone_else_has(handle: str, issuer: str, subject: str, claimed: str) -> bool:
-    """Whether ``handle`` is another person's or an agent's."""
+    """Whether ``handle`` is someone else's: bound to another sign-in, or
+    already named anywhere rights live, since whoever got it would inherit
+    them. Only the person's own claim, already a plain handle, is theirs."""
     me = _key(issuer, subject)
     for key, entry in _read().items():
         if key != me and (entry.get("handle") == handle or entry.get("claimed") == handle):
             return True
     if handle == norm_handle(claimed):
-        return False  # the person's own claim, already a plain handle
+        return False
     from app.services import principals
 
-    if principals.load_user(handle) is not None:
-        return True
-    return _an_agent(handle)
+    return principals.load_user(handle) is not None or _named_anywhere(handle)
 
 
-def _an_agent(handle: str) -> bool:
-    from app.services.filesystem import list_room_names, read_memory_file, room_path
+def _named_anywhere(handle: str) -> bool:
+    """Whether any room names ``handle``: as an agent, an agent's ``owner``
+    or ``allow_from``, one of its people or members, or a task's holder or
+    assignee. A handle with rights it gives isn't free to hand out."""
+    import yaml
 
-    return any(
-        read_memory_file(room_path(r), f"agents/{handle}") is not None for r in list_room_names()
+    from app.services import assignments, room_people
+    from app.services.agent_registry import AGENTS_PREFIX
+    from app.services.filesystem import (
+        list_memory_files,
+        list_room_names,
+        read_room_meta,
+        room_path,
     )
+
+    def names(value: object) -> bool:
+        values = value if isinstance(value, list) else [value]
+        return any(norm_handle(v) == handle for v in values)
+
+    for room in list_room_names():
+        meta = read_room_meta(room) or {}
+        if (
+            handle in room_people.handles(room)
+            or names(meta.get("owner"))
+            or names(meta.get("members"))
+        ):
+            return True
+        for key, fields, content in list_memory_files(room_path(room), limit=None):
+            if key.startswith(AGENTS_PREFIX) and "/" not in key.removeprefix(AGENTS_PREFIX):
+                if key.removeprefix(AGENTS_PREFIX) == handle:
+                    return True
+                try:
+                    data = yaml.safe_load(content) or {}
+                except yaml.YAMLError:
+                    continue
+                if isinstance(data, dict) and (
+                    names(data.get("owner")) or names(data.get("allow_from"))
+                ):
+                    return True
+            elif assignments.assignable(key) and (
+                names(fields.get("owner")) or names(fields.get("assignee"))
+            ):
+                return True
+    return False
 
 
 def resolve(issuer: str, subject: str, claimed: str) -> str | None:
