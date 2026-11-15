@@ -6,11 +6,12 @@
 # runs on the machine, to try a change the way someone would use it.
 #
 #   sandbox/sandbox.sh start     build from this worktree and start it
+#   sandbox/sandbox.sh token     save a Claude Code token for sandboxes (asks for it)
 #   sandbox/sandbox.sh creds     give its Claude Code this machine's sign-in again
 #
 # Claude Code inside signs in with a token of its own when there's one in
-# ~/.mycelium/sandbox-claude-token (made once with `claude setup-token`),
-# else with this machine's own sign-in (see creds).
+# ~/.mycelium/sandbox-claude-token (made once with `claude setup-token` and
+# saved with `token`), else with this machine's own sign-in (see creds).
 #   sandbox/sandbox.sh exec ...  run a command inside (a shell with none)
 #   sandbox/sandbox.sh url       where its UI is
 #   sandbox/sandbox.sh logs      the supervisor's output
@@ -106,8 +107,23 @@ start() {
   echo "Shell: sandbox/sandbox.sh exec"
 }
 
+# Asked for in this terminal, without echoing it, and written straight to a
+# file only its owner can read: never pasted into a chat, a room or a log.
+token() {
+  local file="$HOME/.mycelium/sandbox-claude-token" value
+  [ -t 0 ] || die "run this in a terminal: it asks for the token"
+  echo "Run \`claude setup-token\` in another terminal, then paste the token it prints here."
+  read -r -s -p "Token: " value
+  echo
+  [ -n "$value" ] || die "no token given"
+  mkdir -p "$(dirname "$file")"
+  (umask 077 && printf '%s\n' "$value" > "$file")
+  echo "Saved to $file. Sandboxes started from now on use it."
+}
+
 case "${1:-}" in
   start) start ;;
+  token) token ;;
   creds) creds ;;
   exec)
     shift
