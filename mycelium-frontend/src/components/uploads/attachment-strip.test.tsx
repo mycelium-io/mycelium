@@ -68,3 +68,51 @@ describe("AttachmentStrip", () => {
     expect(screen.getByText("Couldn't load the image")).toBeTruthy();
   });
 });
+
+describe("Download all", () => {
+  const NOTES: Upload = {
+    ...SHOT,
+    name: "notes.md",
+    key: "uploads/notes.md",
+    filename: "notes.md",
+    kind: "text",
+    content_type: "text/plain",
+    url: "/api/rooms/r/uploads/notes.md",
+  };
+  const SHOT2: Upload = { ...SHOT, name: "shot-2.png", key: "uploads/shot-2.png", url: "/api/rooms/r/uploads/shot-2.png" };
+
+  it("isn't offered for a message with one file", () => {
+    roomUploads.uploads = [SHOT];
+    roomUploads.loading = false;
+    strip();
+    expect(screen.queryByRole("button", { name: /Download all/ })).toBeNull();
+  });
+
+  it("saves every file as one zip named after the room, two files of one name kept apart", async () => {
+    roomUploads.uploads = [SHOT, NOTES, SHOT2];
+    roomUploads.loading = false;
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        fetched.push(url);
+        return new Response(new TextEncoder().encode(url));
+      }),
+    );
+    const saved: { name: string; size: number }[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push({ name: this.download, size: 0 });
+    });
+    URL.createObjectURL = vi.fn(() => "blob:zip");
+    URL.revokeObjectURL = vi.fn();
+
+    render(<AttachmentStrip roomName="checkout" keys={[SHOT.key, NOTES.key, SHOT2.key]} onOpen={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Download all/ }));
+
+    await vi.waitFor(() => expect(saved).toHaveLength(1));
+    expect(fetched).toEqual([SHOT.url, NOTES.url, SHOT2.url].map((u) => expect.stringContaining(`${u}?download=1`)));
+    expect(saved[0].name).toMatch(/^checkout-\d{4}-\d{2}-\d{2}-\d{4}\.zip$/);
+    click.mockRestore();
+    vi.unstubAllGlobals();
+  });
+});

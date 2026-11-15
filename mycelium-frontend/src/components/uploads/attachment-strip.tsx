@@ -4,11 +4,13 @@
 "use client";
 
 import { useState } from "react";
-import { FileX, ImageOff } from "lucide-react";
+import { Download, FileX, ImageOff, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Upload } from "@/lib/api";
 import { useRoomUploads } from "@/lib/room-data";
+import { saveBlob, zipName, zipUploads } from "@/lib/upload-zip";
 import { formatBytes, kindLabel, mediaUrl } from "@/lib/uploads";
+import { cn } from "@/lib/utils";
 import { KIND_ICON } from "@/components/uploads/upload-preview";
 
 /**
@@ -31,9 +33,10 @@ export function AttachmentStrip({
   const { uploads, loading } = useRoomUploads(roomName);
   if (!keys.length) return null;
   const byKey = new Map(uploads.map((u) => [u.key, u]));
+  const present = keys.flatMap((key) => byKey.get(key) ?? []);
 
   return (
-    <div className="mt-1.5 flex flex-wrap gap-2">
+    <div className="mt-1.5 flex flex-wrap items-end gap-2">
       {keys.map((key) => {
         const upload = byKey.get(key);
         if (!upload) {
@@ -77,7 +80,40 @@ export function AttachmentStrip({
           </button>
         );
       })}
+      {present.length > 1 && <DownloadAll roomName={roomName} uploads={present} />}
     </div>
+  );
+}
+
+/** Every file the message carries, saved as one zip. */
+function DownloadAll({ roomName, uploads }: { roomName: string; uploads: Upload[] }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    setFailed(false);
+    try {
+      saveBlob(await zipUploads(uploads), zipName(roomName));
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => void save()}
+      disabled={busy}
+      title={failed ? "Couldn't download. Try again." : `Download all ${uploads.length} as a zip`}
+      className={cn(
+        "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-micro transition-colors hover:bg-hairline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        failed ? "text-red" : "text-muted-foreground hover:text-text",
+      )}
+    >
+      {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Download className="size-3.5" aria-hidden />}
+      Download all
+    </button>
   );
 }
 
