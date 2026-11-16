@@ -6,41 +6,70 @@
 /**
  * The Widgets card at the foot of the rooms sidebar: the person's own widgets,
  * from `[statusline]` in this computer's config file, as the desktop app last
- * ran them (`lib/widgets.ts`). One row each: its icon and label, its value,
- * and a bar under it when it's a meter. One that failed or hung shows a dot
- * and says so; hovering any row says the command, when it ran, and how it
+ * ran them (`lib/widgets.ts`). One row each: its icon and label, its value
+ * as inline markdown with its own dot, in its color, and a bar under it when
+ * it has a meter. What a run printed as JSON is drawn over the config's
+ * fields. One that failed or hung shows that dot instead and says so; hovering
+ * any row says the command, the widget's own tooltip, when it ran, and how it
  * failed. The header opens Settings at the widgets.
  *
  * Nothing renders in a browser, or when there are no widgets: no card at all.
  */
 
 import Link from "next/link";
-import { CircleDot, Gauge, HardDrive, MemoryStick, Type, Upload, type LucideIcon } from "lucide-react";
+import { Gauge } from "lucide-react";
 import { settingHref } from "@/lib/client-settings";
 import { StatusDot } from "@/components/status-items";
 import { Tooltip } from "@/components/ui/tooltip";
+import { InlineMarkdown } from "@/components/inline-markdown";
+import { WidgetIcon } from "@/components/widget-icon";
 import { relativeTime, useNow } from "@/lib/relative-time";
-import { percent, useWidgets, widgetState, type Widget, type WidgetIcon } from "@/lib/widgets";
-
-export const WIDGET_ICON: Record<WidgetIcon, LucideIcon> = {
-  memory: MemoryStick,
-  disk: HardDrive,
-  upload: Upload,
-  ci: CircleDot,
-  text: Type,
-};
+import { lookOf, useWidgets, widgetState, type Widget, type WidgetColor } from "@/lib/widgets";
+import { cn } from "@/lib/utils";
 
 export const WIDGETS_SETTINGS = settingHref("widgets");
 
-/** What a widget's hover says: its command, when it last ran, and how it failed. */
+/** A widget's color, as the theme's own: it colors the icon and the text. */
+export const WIDGET_COLOR: Record<WidgetColor, string> = {
+  accent: "text-accent",
+  green: "text-green",
+  yellow: "text-yellow",
+  red: "text-red",
+  muted: "text-muted-foreground",
+};
+
+/** A widget's tooltip: a few lines of inline markdown. */
+function WidgetTooltip({ text }: { text: string }) {
+  return (
+    <span className="flex flex-col">
+      {text.split("\n").map((line, i) => (
+        <span key={i}>
+          <InlineMarkdown text={line} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** What a widget's hover says: its command, its own tooltip, when it last ran,
+ *  and how it failed. */
 export function RunDetail({ widget }: { widget: Widget }) {
   const now = useNow();
   const run = widget.run;
-  if (widget.text !== null) return <span>Fixed text, from your config file.</span>;
+  const { tooltip } = lookOf(widget);
+  if (widget.text !== null) {
+    return (
+      <span className="flex max-w-80 flex-col gap-1">
+        {tooltip && <WidgetTooltip text={tooltip} />}
+        <span className={cn(tooltip && "text-muted-foreground")}>Fixed text, from your config file.</span>
+      </span>
+    );
+  }
   const ran = run?.ran_at ? relativeTime(Date.parse(run.ran_at), now) : null;
   return (
     <span className="flex max-w-80 flex-col gap-1">
       <code className="font-mono text-[11px] break-all">{widget.command}</code>
+      {tooltip && <WidgetTooltip text={tooltip} />}
       {!run && <span className="text-muted-foreground">Hasn&apos;t run yet. Runs every {widget.every}.</span>}
       {run?.ok && (
         <span className="text-muted-foreground">
@@ -72,25 +101,43 @@ function Meter({ value }: { value: number }) {
   );
 }
 
-function WidgetRow({ widget }: { widget: Widget }) {
-  const Icon = WIDGET_ICON[widget.icon] ?? Type;
+/** A widget's value: its text as inline markdown, its own dot before it, and
+ *  a failed or hung run's dot in place of both. */
+export function WidgetValue({ widget, className }: { widget: Widget; className?: string }) {
   const state = widgetState(widget);
-  const meter = widget.meter && state.kind === "value" ? percent(state.value) : null;
+  const look = lookOf(widget);
+  if (state.kind === "waiting") return <span className="text-faint">…</span>;
+  if (state.kind === "failed" || state.kind === "hung") {
+    return (
+      <span className="flex flex-shrink-0 items-center gap-1.5 text-muted-foreground">
+        <StatusDot tone={state.kind === "hung" ? "warn" : "bad"} />
+        {state.kind === "hung" ? "Hung" : "Failed"}
+      </span>
+    );
+  }
+  return (
+    <span className={cn("flex min-w-0 items-center gap-1.5", className)}>
+      {look.state && <StatusDot tone={look.state} />}
+      {state.value && (
+        <span className={cn("truncate tabular", look.color ? WIDGET_COLOR[look.color] : "text-text")}>
+          <InlineMarkdown text={state.value} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+function WidgetRow({ widget }: { widget: Widget }) {
+  const look = lookOf(widget);
+  const meter = look.meter;
   return (
     <li>
       <Tooltip side="right" content={<RunDetail widget={widget} />}>
         <div className="flex flex-col gap-1 px-2.5 py-1">
           <div className="flex items-center gap-2 text-label">
-            <Icon className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
+            <WidgetIcon name={look.icon} className={look.color ? WIDGET_COLOR[look.color] : "text-faint"} />
             <span className="min-w-0 flex-1 truncate text-muted-foreground">{widget.label}</span>
-            {state.kind === "value" && <span className="max-w-[55%] truncate tabular text-text">{state.value}</span>}
-            {state.kind === "waiting" && <span className="text-faint">…</span>}
-            {(state.kind === "failed" || state.kind === "hung") && (
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <StatusDot tone={state.kind === "hung" ? "warn" : "bad"} />
-                {state.kind === "hung" ? "Hung" : "Failed"}
-              </span>
-            )}
+            <WidgetValue widget={widget} className="max-w-[55%] justify-end" />
           </div>
           {meter !== null && (
             <span className="flex pl-5.5">

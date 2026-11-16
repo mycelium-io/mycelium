@@ -17,6 +17,7 @@ Load priority (highest to lowest):
 """
 
 import os
+import re
 import warnings
 from pathlib import Path
 from typing import Any, ClassVar, Literal
@@ -846,24 +847,90 @@ class MetricsConfig(BaseModel):
     )
 
 
-#: The icons a widget can show, as the desktop app draws them.
-WIDGET_ICONS = ("memory", "disk", "upload", "ci", "text")
 #: The shortest a widget's command may wait between runs.
 WIDGET_MIN_EVERY_S = 5
+#: The theme colors a widget can be drawn in, by name, so every theme still reads.
+WIDGET_COLORS = ("accent", "green", "yellow", "red", "muted")
+#: The states a widget's dot can show (the app's own ``StatusDot``).
+WIDGET_STATES = ("ok", "warn", "bad", "off")
+#: How much of a tooltip a widget keeps: a few lines, not a page.
+WIDGET_TOOLTIP_LINES = 8
+WIDGET_TOOLTIP_CHARS = 1000
+#: The fields that set how a widget looks, from its config or from a run's JSON.
+WIDGET_LOOK = ("icon", "color", "state", "meter", "tooltip")
+
+_ICON_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+def _is_emoji(value: str) -> bool:
+    """One emoji, as far as a check here can tell: short, no letters, no spaces.
+    The app draws it as text, so a near miss shows as what was written."""
+    return (
+        0 < len(value) <= 8
+        and value.isprintable()
+        and not any(c.isascii() or c.isspace() for c in value)
+    )
+
+
+def widget_look(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The fields in ``raw`` that set how a widget looks and are good, and a
+    note for each that isn't. A bad field is left out, never the widget.
+
+    ``icon`` is a Lucide icon's kebab-case name (the app falls back to its
+    default for a name it doesn't know) or one emoji; ``color`` and ``state``
+    are names from :data:`WIDGET_COLORS` and :data:`WIDGET_STATES`; ``meter``
+    is a number from 0 to 100; ``tooltip`` is a few lines of markdown.
+    """
+    good: dict[str, Any] = {}
+    notes: list[str] = []
+    for field in WIDGET_LOOK:
+        if raw.get(field) is None:
+            continue
+        value = raw[field]
+        if field == "icon":
+            ok = isinstance(value, str) and (bool(_ICON_NAME.match(value)) or _is_emoji(value))
+            hint = "a Lucide icon name like memory-stick, or one emoji"
+        elif field == "color":
+            ok = value in WIDGET_COLORS
+            hint = f"one of {', '.join(WIDGET_COLORS)}"
+        elif field == "state":
+            ok = value in WIDGET_STATES
+            hint = f"one of {', '.join(WIDGET_STATES)}"
+        elif field == "meter":
+            ok = (
+                isinstance(value, int | float) and not isinstance(value, bool) and 0 <= value <= 100
+            )
+            value = float(value) if ok else value
+            hint = "a number from 0 to 100"
+        else:
+            ok = isinstance(value, str)
+            if ok:
+                lines = value.strip().splitlines()[:WIDGET_TOOLTIP_LINES]
+                value = "\n".join(lines)[:WIDGET_TOOLTIP_CHARS]
+            hint = "text"
+        if ok:
+            good[field] = value
+        else:
+            notes.append(f"{field} {str(value)[:40]!r} was ignored: it should be {hint}.")
+    return good, notes
 
 
 class StatusWidget(BaseModel):
     """One row of the desktop app's Widgets card, under ``[[statusline.widget]]``::
 
         [[statusline.widget]]
-        label = "RAM free"
-        icon = "memory"
-        command = "memory_pressure | awk '/free percentage/ {print $5}'"
+        label = "RAM"
+        command = "~/bin/ram.sh"
         every = "30s"
-        meter = true
+        icon = "memory-stick"
+        color = "accent"
 
     Either ``command`` (run by the desktop app on this computer, every
-    ``every``, showing the first line it prints) or ``text`` (fixed words).
+    ``every``) or ``text`` (fixed words). A command shows the first line it
+    prints, or, when what it prints is one JSON object, sets its fields for
+    that run: ``text`` and the look fields (:func:`widget_look`), over the
+    config's. Text is inline markdown. A look field that's wrong is left out
+    with a note (``notes``), never stopping the widget or its other fields.
     """
 
     label: str = Field(..., min_length=1, max_length=64, description="What the row is called.")
@@ -879,19 +946,45 @@ class StatusWidget(BaseModel):
     timeout: float = Field(
         default=10.0, gt=0, le=600, description="Seconds before a run counts as hung."
     )
-    icon: str = Field(default="text", description=f"One of {', '.join(WIDGET_ICONS)}.")
-    meter: bool = Field(
-        default=False, description="Draw the value, a percentage, as a bar under the row."
+    icon: str | None = Field(
+        default=None, description="A Lucide icon's kebab-case name, or one emoji."
     )
+    color: str | None = Field(
+        default=None, description=f"A theme color by name: {', '.join(WIDGET_COLORS)}."
+    )
+    state: str | None = Field(
+        default=None, description=f"A status dot: {', '.join(WIDGET_STATES)}."
+    )
+    meter: bool | float | None = Field(
+        default=None,
+        description=(
+            "A bar under the row: a number from 0 to 100, or true to read a "
+            "percentage from the text."
+        ),
+    )
+    tooltip: str | None = Field(
+        default=None, description="Markdown shown under the command on hover."
+    )
+    #: Why a look field was left out, for Settings. Not set by the person.
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _keep_good_look(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        rest = {k: v for k, v in data.items() if k not in (*WIDGET_LOOK, "notes")}
+        # `meter = true` still means "read a percentage from the text"; false, none.
+        legacy = data.get("meter") if isinstance(data.get("meter"), bool) else None
+        good, notes = widget_look({k: v for k, v in data.items() if k != "meter" or legacy is None})
+        if legacy:
+            good["meter"] = True
+        return rest | good | {"notes": notes}
 
     @model_validator(mode="after")
     def _one_source(self) -> "StatusWidget":
         if (self.command is None) == (self.text is None):
             raise ValueError(f"widget {self.label!r} needs exactly one of 'command' or 'text'")
-        if self.icon not in WIDGET_ICONS:
-            raise ValueError(
-                f"widget {self.label!r}: icon must be one of {', '.join(WIDGET_ICONS)}"
-            )
         if self.seconds() < WIDGET_MIN_EVERY_S:
             raise ValueError(
                 f"widget {self.label!r}: every must be at least {WIDGET_MIN_EVERY_S}s, "
@@ -926,8 +1019,13 @@ class StatuslineSection(BaseModel):
         description=(
             "The rows of the Widgets card, in order, as [[statusline.widget]] tables: "
             "label, then command (with every, timeout) or text, and optionally icon "
-            "(memory, disk, upload, ci, text) and meter. Checked by the desktop app, "
-            "which shows any mistake in Settings > Widgets."
+            "(a Lucide icon name like memory-stick, or one emoji), color (accent, green, "
+            "yellow, red, muted), state (ok, warn, bad, off), meter (0 to 100) and "
+            "tooltip. Text and tooltip are inline markdown: **bold**, *italic*, `code`. "
+            "A command can print one JSON object instead of a line to set any of these "
+            'for that run, e.g. {"text": "**38%** free", "icon": "memory-stick", '
+            '"state": "warn", "meter": 38, "tooltip": "Swap is *2.1G*"}. Checked by '
+            "the desktop app, which notes any field it ignored in Settings > Widgets."
         ),
     )
 
