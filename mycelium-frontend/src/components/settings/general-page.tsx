@@ -32,6 +32,9 @@ function pasteLimitLabel(chars: number): string {
   return chars > 0 ? `Over ${chars.toLocaleString("en-US")} characters` : "Never";
 }
 import { Note, Row, Section, Segmented, SettingsPage } from "./settings-ui";
+import { CONFIG_PATH, RUNS, WIDGETS } from "@/mocks/statusline";
+import { RunDetail, WIDGET_ICON } from "@/components/status-widgets";
+import { StatusDot } from "@/components/status-items";
 
 /** How an imported theme is told apart from a built-in one in the dropdown. */
 const CUSTOM_PREFIX = "custom:";
@@ -231,6 +234,48 @@ export function GeneralPage() {
             ))}
           </Select>
         </Row>
+      </Section>
+
+      {/* MOCK: the person's own status line, kept in their config file. */}
+      <Section
+        title="Status line"
+        note={
+          <>
+            Widgets you add to <code className="font-mono">[statusline]</code> in your config file. They run on this
+            computer only.
+          </>
+        }
+      >
+        <Row id="statusline" label="Config file" help={<code className="font-mono">{CONFIG_PATH}</code>}>
+          <Button variant="outline" size="sm">
+            Open in editor
+          </Button>
+        </Row>
+        {WIDGETS.map((w, i) => {
+          const run = RUNS[i];
+          const Icon = WIDGET_ICON[w.icon ?? "text"];
+          return (
+            <Row
+              key={w.label}
+              label={
+                <span className="flex items-center gap-1.5">
+                  <Icon className="size-3.5 text-faint" aria-hidden />
+                  {w.label}
+                </span>
+              }
+              help={<RunDetail widget={w} run={run} />}
+            >
+              {run.ok ? (
+                <span className="text-label tabular text-text">{run.value}</span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-label text-muted-foreground">
+                  <StatusDot tone={run.timedOut ? "warn" : "bad"} />
+                  {run.timedOut ? "Hung" : "Failed"}
+                </span>
+              )}
+            </Row>
+          );
+        })}
       </Section>
     </SettingsPage>
   );

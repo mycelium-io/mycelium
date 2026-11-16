@@ -17,6 +17,7 @@ import { InstallModalProvider, useOpenInstallModal } from "@/components/install-
 import { DocsLink } from "@/components/docs-link";
 import { updateLink, useAppDownload, useDesktopUpdate, useIsDesktop } from "@/lib/desktop";
 import { HubStatus, MachinesStatusLink, MetricsStatusLink, TerminalStatusLink } from "@/components/status-items";
+import { StatusWidgets } from "@/components/status-widgets";
 import { MyAgentsPause } from "@/components/my-agents-pause";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -324,6 +325,7 @@ export function AppShell({
               </>
             )}
             <div className="ml-auto flex flex-shrink-0 items-center gap-3">
+              <StatusWidgets />
               {statusRight}
               <MetricsStatusLink />
               <span aria-hidden className="hidden h-3 w-px flex-shrink-0 bg-border sm:block" />
