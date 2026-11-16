@@ -22,6 +22,8 @@ export interface StatusWidget {
   every?: string;
   /** Seconds before a run counts as hung. */
   timeout?: number;
+  /** Draw a percentage as a small meter too. */
+  meter?: boolean;
 }
 
 export interface WidgetRun {
@@ -43,6 +45,7 @@ export const WIDGETS: StatusWidget[] = [
     icon: "memory",
     command: "memory_pressure | awk '/free percentage/ {print $5}'",
     every: "30s",
+    meter: true,
   },
   {
     label: "disk free",
@@ -81,6 +84,7 @@ label = "RAM free"
 icon = "memory"
 command = "memory_pressure | awk '/free percentage/ {print $5}'"
 every = "30s"
+meter = true
 
 [[statusline.widget]]
 label = "disk free"

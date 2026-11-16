@@ -17,7 +17,7 @@ import { InstallModalProvider, useOpenInstallModal } from "@/components/install-
 import { DocsLink } from "@/components/docs-link";
 import { updateLink, useAppDownload, useDesktopUpdate, useIsDesktop } from "@/lib/desktop";
 import { HubStatus, MachinesStatusLink, MetricsStatusLink, TerminalStatusLink } from "@/components/status-items";
-import { StatusWidgets } from "@/components/status-widgets";
+import { StatusWidgets, TitleWidgets } from "@/components/status-widgets";
 import { MyAgentsPause } from "@/components/my-agents-pause";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -202,6 +202,7 @@ export function AppShell({
             crumb={crumb}
             right={
               <>
+                <TitleWidgets />
                 {headerRight}
                 <UpdateAppButton />
                 <GetAppButton />

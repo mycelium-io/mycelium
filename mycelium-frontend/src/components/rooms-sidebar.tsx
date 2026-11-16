@@ -71,6 +71,7 @@ import { DeleteRoomDialog } from "@/components/delete-room-dialog";
 import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SidebarWidgets } from "@/components/status-widgets";
 import { Tooltip } from "@/components/ui/tooltip";
 import { iconButtonClass } from "@/components/ui/icon-button";
 import { KeyBadge } from "@/components/key-badge";
@@ -686,6 +687,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
         </DropZone>
         </nav>
       </ScrollArea>
+      <SidebarWidgets />
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
       {deleteTarget && (

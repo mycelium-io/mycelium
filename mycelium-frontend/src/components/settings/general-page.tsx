@@ -238,7 +238,7 @@ export function GeneralPage() {
 
       {/* MOCK: the person's own status line, kept in their config file. */}
       <Section
-        title="Status line"
+        title="Widgets"
         note={
           <>
             Widgets you add to <code className="font-mono">[statusline]</code> in your config file. They run on this
