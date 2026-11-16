@@ -848,6 +848,8 @@ class MetricsConfig(BaseModel):
 
 #: The icons a widget can show, as the desktop app draws them.
 WIDGET_ICONS = ("memory", "disk", "upload", "ci", "text")
+#: The shortest a widget's command may wait between runs.
+WIDGET_MIN_EVERY_S = 5
 
 
 class StatusWidget(BaseModel):
@@ -889,6 +891,11 @@ class StatusWidget(BaseModel):
         if self.icon not in WIDGET_ICONS:
             raise ValueError(
                 f"widget {self.label!r}: icon must be one of {', '.join(WIDGET_ICONS)}"
+            )
+        if self.seconds() < WIDGET_MIN_EVERY_S:
+            raise ValueError(
+                f"widget {self.label!r}: every must be at least {WIDGET_MIN_EVERY_S}s, "
+                f"not {self.every!r}"
             )
         return self
 

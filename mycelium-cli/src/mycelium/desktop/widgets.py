@@ -74,6 +74,25 @@ def _env() -> dict[str, str]:
     return env
 
 
+def _stop_tree(proc: subprocess.Popen) -> None:
+    """Stop ``proc`` and everything it started: its process group on macOS and
+    Linux, its process tree on Windows (where killing the shell alone would
+    leave what it started running)."""
+    if sys.platform == "win32":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(  # noqa: S603 - a fixed command on the pid we started
+                ["taskkill", "/T", "/F", "/PID", str(proc.pid)],  # noqa: S607 - Windows' own
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+    else:
+        with contextlib.suppress(OSError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    with contextlib.suppress(OSError):
+        proc.kill()
+
+
 def run_command(command: str, timeout: float) -> Run:
     """Run ``command`` in the shell, stopping it (and what it started) after ``timeout``."""
     try:
@@ -89,16 +108,14 @@ def run_command(command: str, timeout: float) -> Run:
             env=_env(),
             # Its own process group, so a hung run is stopped with what it started.
             start_new_session=sys.platform != "win32",
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
     except OSError as e:
         return Run(ok=False, error=str(e)[:LINE_CHARS])
     try:
         out, err = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        if sys.platform != "win32":
-            with contextlib.suppress(OSError):
-                os.killpg(proc.pid, signal.SIGKILL)
-        proc.kill()
+        _stop_tree(proc)
         with contextlib.suppress(subprocess.TimeoutExpired):
             proc.communicate(timeout=5)
         return Run(ok=False, timed_out=True)

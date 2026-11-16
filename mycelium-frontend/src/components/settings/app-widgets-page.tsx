@@ -45,7 +45,9 @@ export function AppWidgetsPage() {
         {!data && <div className="px-4 py-3 text-label text-muted-foreground">Reading…</div>}
         {data && widgets.length === 0 && (
           <div className="px-4 py-3 text-label text-muted-foreground">
-            <p>No widgets yet, so there&apos;s no card. Add one to your config file under `[statusline]`:</p>
+            <p>No widgets yet, so there&apos;s no card. Add one to your config file under{" "}
+              <code className="font-mono text-text">[statusline]</code>:
+            </p>
             <pre className="mt-2 rounded-md bg-bg p-2 font-mono text-micro text-text">{EXAMPLE}</pre>
           </div>
         )}

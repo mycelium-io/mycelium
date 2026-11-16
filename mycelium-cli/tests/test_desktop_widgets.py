@@ -37,6 +37,14 @@ def test_a_widget_is_a_command_on_an_interval_or_fixed_text():
             StatusWidget.model_validate(bad)
 
 
+def test_a_widget_runs_at_most_every_five_seconds():
+    """`0s` would run it on every tick of the supervisor, twice a second."""
+    assert StatusWidget(label="x", command="x", every="5s").seconds() == 5.0
+    for too_often in ("0s", "4s"):
+        with pytest.raises(ValidationError, match="every must be at least 5s"):
+            StatusWidget(label="x", command="x", every=too_often)
+
+
 def test_the_section_is_read_from_config_toml_and_never_reaches_the_stack():
     config = MyceliumConfig.model_validate(
         {"statusline": {"widget": [{"label": "disk free", "command": "df -h /", "every": "5m"}]}}
