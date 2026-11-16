@@ -5,7 +5,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Eye, ListPlus, ListTodo, Loader2, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
+import { Eye, ListPlus, ListTodo, Loader2, Maximize2, MessageSquare, Network, Pencil, X } from "lucide-react";
+import { mockTaskGraph } from "@/mocks/task-graph";
+import { TaskGraph } from "@/components/task/task-graph";
 import { createThreadTask } from "@/lib/api";
 import { memoryHref } from "@/lib/memory-routes";
 import {
@@ -123,6 +125,9 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   const revalidate = useRoomRevalidate(roomName);
   const shortId = threadShortId(target.episode) ?? "thread";
   const [isEditing, setIsEditing] = useState(false);
+  // MOCK: the task's graph, drawn in place of its thread.
+  const graph = listed && !messageThread ? mockTaskGraph(listed.key) : null;
+  const [showGraph, setShowGraph] = useState(false);
 
   // The conversation owns the read; it hands us its refresh so a send through
   // the composer below can re-read the episode.
@@ -192,6 +197,19 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   // pane is a task (a negotiation thread is no memory to edit or open).
   const taskActions = messageThread ? threadActions : listed && (
     <>
+      {graph && (
+        <Tooltip content={showGraph ? "Show the thread" : "Show the graph"}>
+          <button
+            type="button"
+            aria-pressed={showGraph}
+            onClick={() => setShowGraph(v => !v)}
+            aria-label={showGraph ? "Show the thread" : "Show the graph"}
+            className={`grid size-6 place-items-center rounded transition-colors hover:bg-hairline hover:text-text ${showGraph ? "bg-hairline text-text" : "text-muted-foreground"}`}
+          >
+            <Network className="size-3.5" strokeWidth={1.9} />
+          </button>
+        </Tooltip>
+      )}
       {/* A plain toggle with a revalidate on save: the pane is narrow and
           transient, so it keeps less chrome than the full page does. */}
       <Tooltip content={isEditing ? "View task" : "Edit task"}>
@@ -286,6 +304,13 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
             onCancel={() => setIsEditing(false)}
           />
         </div>
+      ) : graph && showGraph ? (
+        <>
+          {!showClose && (
+            <div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-border px-3">{taskActions}</div>
+          )}
+          <TaskGraph graph={graph} />
+        </>
       ) : (
         // The task's body over its conversation, in one scroll. The body is
         // clamped rather than boxed: a long task fades under an Expand button
