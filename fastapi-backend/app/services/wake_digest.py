@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.services import assignments, message_format
@@ -74,6 +74,9 @@ MEMBER_STATES = {"working": "●", "blocked": "▲", "idle": "○", "done": "✓
 MEMBERS_NAMED = 4
 #: How far back the wake log is read for what each working agent is on.
 WAKES_READ = 200
+#: How long without a wake before the digest says to read the skill again: by
+#: then the agent's session may have been compacted or started fresh.
+SKILL_AFTER = timedelta(hours=24)
 
 
 def _norm(handle: str | None) -> str:
@@ -664,6 +667,32 @@ def _shown(room: str, me: str) -> dict[str, datetime]:
     return shown
 
 
+def _last_wake(room: str, me: str) -> datetime | None:
+    """When a wake was last handed over for ``me`` in ``room``; ``None`` if never.
+
+    Read before this wake is logged, so it is the one before."""
+    from app.services import wake_log
+
+    for w in wake_log.read(room, agent=me, limit=WAKES_READ):
+        if w.get("outcome") in ("handed", "delivered"):
+            return parse_recorded_at(str(w.get("at") or ""))
+    return None
+
+
+def _skill_line(room: str, me: str, now: datetime) -> str | None:
+    """A reminder to read the skill again, when the agent hasn't been woken
+    here for :data:`SKILL_AFTER`, or ever."""
+    last = _last_wake(room, me)
+    if last is not None and now - last < SKILL_AFTER:
+        return None
+    if last is None:
+        return "Skill:   this is your first wake here; run `mycelium skill print` to read how Mycelium works"
+    return (
+        f"Skill:   your last wake here was {age(last, now)}; "
+        "run `mycelium skill print` to re-read how Mycelium works"
+    )
+
+
 def _replied(room: str, window: list[Any], asked: list[Any], me: str) -> set[int]:
     """The asks the agent has replied to since: a wake showed it the ask, and
     after that it posted where the ask was made. The hub can see that much;
@@ -925,6 +954,9 @@ def build(
     if elsewhere:
         rest.append(f"{elsewhere} elsewhere")
     lines.append(f"Since:   {first}: " + ", ".join(rest))
+    # A wake ``await`` prints is a turn the agent is already taking, not a wake.
+    if not awaited and (skill := _skill_line(room, me, now)) is not None:
+        lines.append(skill)
     # Someone else pausing one of its schedules is said here, once, rather than
     # with a message that woke it (the herdr-wakes route marks it said).
     from app.services import schedules

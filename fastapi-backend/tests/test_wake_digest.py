@@ -285,6 +285,31 @@ def test_the_await_step_says_what_it_does_in_a_line():
     ) in digest
 
 
+def _skill(digest: str) -> str | None:
+    return next((ln for ln in digest.splitlines() if ln.startswith("Skill:")), None)
+
+
+def test_a_wake_after_a_day_without_one_says_to_read_the_skill_again(monkeypatch):
+    records = [_said(1, "hay", "@builder look", 1)]
+    wake = {"handle": "builder", "from": "hay"}
+
+    # Never woken here: its first wake points at the skill.
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW)) == (
+        "Skill:   this is your first wake here; "
+        "run `mycelium skill print` to read how Mycelium works"
+    )
+    # Woken an hour ago: nothing to say.
+    _woken_with(monkeypatch, "w1", [], 60)
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW)) is None
+    # Its last wake over a day ago: it says how long.
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW + timedelta(hours=49))) == (
+        "Skill:   your last wake here was 2d ago; "
+        "run `mycelium skill print` to re-read how Mycelium works"
+    )
+    # What `await` prints is a turn the agent is already taking, not a wake.
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW, awaited=True)) is None
+
+
 def test_a_mention_of_a_subagent_wakes_its_parent_saying_whose_it_is():
     records = [
         _said(1, "builder", "back", 60),
