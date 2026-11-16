@@ -80,6 +80,34 @@ async def test_an_ended_subagent_is_kept_but_posts_no_more(room):
     assert [s["state"] for s in listed] == ["ended"], "kept, so its messages still read as its"
 
 
+async def test_a_subagent_replies_as_an_agent_does(room):
+    # `mycelium respond` posts through /reply, which takes only a registered
+    # handle: a running subagent counts, an unstarted or ended one doesn't.
+    async def reply() -> int:
+        body = {"handle": "builder:review", "text": "the retry path is covered"}
+        return (await room.post(f"/api/rooms/{ROOM}/reply", json=body)).status_code
+
+    assert await reply() == 403
+    await start(room)
+    # Past the guard; with no live channel in tests the route then answers 503.
+    assert await reply() != 403
+    await room.delete(f"/api/rooms/{ROOM}/subagents/builder:review")
+    assert await reply() == 403
+
+
+async def test_a_subagent_is_its_own_kind_and_never_a_person(room):
+    from app.services import approvals, principals
+
+    assert principals.classify_sender(ROOM, "builder:review") == "unknown"
+    await start(room)
+    assert principals.classify_sender(ROOM, "builder:review") == "subagent"
+    assert not approvals.may_answer(ROOM, "builder:review")
+    await room.delete(f"/api/rooms/{ROOM}/subagents/builder:review")
+    # Ended, it's still a subagent: what it answered never counts as a person's.
+    assert principals.classify_sender(ROOM, "builder:review") == "subagent"
+    assert not approvals.may_answer(ROOM, "builder:review")
+
+
 @pytest.mark.parametrize(
     ("name", "parent", "status"),
     [

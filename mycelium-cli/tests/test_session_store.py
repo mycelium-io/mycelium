@@ -227,6 +227,18 @@ def test_an_agents_pane_cant_act_as_anyone_else(config, monkeypatch) -> None:
     assert caller.credential(config, "builder").value is None
 
 
+def test_an_agents_pane_acts_as_its_own_subagents(config, monkeypatch) -> None:
+    # A subagent runs in its parent's process, so it posts from the parent's
+    # pane; the hub checks the parent started it.
+    monkeypatch.setenv("MYCELIUM_AGENT_PANE", "builder")
+    monkeypatch.setenv("MYCELIUM_AGENT_HANDLE", "builder")
+    assert caller.credential(config, "builder:review").value is None
+    assert caller.credential(config, "@Builder:review").value is None
+    for other in ("scout:review", "builder-two:review", "builder:"):
+        with pytest.raises(caller.ActingAsOtherError, match="act as @builder only"):
+            caller.credential(config, other)
+
+
 def test_a_pane_herdrs_registry_maps_is_an_agents_even_unmarked(monkeypatch) -> None:
     monkeypatch.setattr(
         caller, "pane_agent", lambda: caller.PaneAgent(pane="w1:p2", handle="scout", room="r")

@@ -391,16 +391,18 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     client from the environment, or one stored for that handle), then the
     membership's token when the call is made as that member, then this
     machine's ``mycelium login`` session, which an agent's pane never gets.
-    In an agent's pane, acting as anyone but that agent is refused.
+    In an agent's pane, acting as anyone but that agent or one of its
+    subagents (``<agent>:<name>``, which the hub checks it started) is refused.
     """
     from mycelium import agent_credentials
     from mycelium.client import current_token
 
     pane = in_agent_pane()
-    if pane and acting_as and not _same_handle(acting_as, pane):
+    if pane and acting_as and not _own_handle(acting_as, pane):
         msg = (
             f"this is @{pane}'s pane, so commands here act as @{pane} only, "
-            f"not as @{acting_as.lstrip('@')}"
+            f"not as @{acting_as.lstrip('@')}. A subagent of @{pane}'s gets a handle "
+            "of its own with `mycelium subagent start <name>`"
         )
         raise ActingAsOtherError(msg)
     agent_token = agent_credentials.access_token(config, acting_as)
@@ -416,7 +418,7 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
         member is not None
         and member.token
         and not member.token_expired()
-        and (who is None or _same_handle(who, member.handle))
+        and (who is None or _own_handle(who, member.handle))
     ):
         return Answer(member.token, MEMBERSHIP)
     session = current_token(config)
@@ -499,6 +501,14 @@ def _same_handle(a: str, b: str) -> bool:
         return h.partition("#")[0].strip().lstrip("@").lower()
 
     return norm(a) == norm(b)
+
+
+def _own_handle(acting: str, handle: str) -> bool:
+    """Whether ``acting`` is ``handle`` or one of its subagents, ``handle:name``.
+    A subagent runs in its parent's process, so it posts from the parent's pane
+    with the parent's credential; the hub checks it was started."""
+    parent, sep, name = acting.partition(":")
+    return _same_handle(acting, handle) or bool(sep and name and _same_handle(parent, handle))
 
 
 def explain(config: MyceliumConfig) -> list[tuple[str, str | None, str]]:

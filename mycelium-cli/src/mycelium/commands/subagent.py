@@ -34,9 +34,10 @@ app = typer.Typer(
 console = Console()
 
 
-def _call(fn: Callable[..., Any], **kwargs: Any) -> Any:
-    """Call a typed-client endpoint; say the hub's reason and exit on a refusal."""
-    with typed_client() as client:
+def _call(fn: Callable[..., Any], *, acting: str | None = None, **kwargs: Any) -> Any:
+    """Call a typed-client endpoint as ``acting``; say the hub's reason and exit
+    on a refusal."""
+    with typed_client(handle=acting) as client:
         try:
             resp = fn(client=client, **kwargs)
         except httpx.HTTPError as exc:
@@ -54,7 +55,8 @@ def brief(room: str, handle: str, parent: str) -> list[str]:
     """The three lines a parent puts at the top of its subagent's prompt."""
     return [
         f"You are @{handle}, a subagent of @{parent}, in the Mycelium room {room}.",
-        f"Post as yourself: add --as {handle} to every mycelium command you run.",
+        f"Post as yourself: add --as {handle} to every mycelium command that posts or "
+        "changes something; commands that only read don't take it.",
         f"When you're done: mycelium subagent end {handle} --room {room}",
     ]
 
@@ -96,7 +98,7 @@ def subagent_start(
 
     assert room is not None
     body = SubagentCreate(name=name, parent=(parent or "").lstrip("@") or None)
-    data = _call(start_api.sync_detailed, room_name=room, body=body)
+    data = _call(start_api.sync_detailed, acting=parent, room_name=room, body=body)
     lines = brief(room, data["handle"], data["parent"])
     optional = check_in(room, data["handle"])
     if as_json:
@@ -123,19 +125,22 @@ def subagent_start(
 )
 @app.command(name="end")
 @in_room("room")
+@acts_as("actor", optional=True)
 @emits_json("as_json")
 def subagent_end(
     handle: str = typer.Argument(..., help="The subagent's handle, like builder:review"),
     room: str | None = None,
+    actor: str | None = None,
     as_json: bool = False,
 ) -> None:
-    """End a subagent."""
+    """End a subagent: the subagent itself (its brief says to add ``--as`` to
+    every command) or its parent."""
     from mycelium_backend_client.api.subagents import (
         end_subagent_api_rooms_room_name_subagents_handle_delete as end_api,
     )
 
     assert room is not None
-    data = _call(end_api.sync_detailed, room_name=room, handle=handle.lstrip("@"))
+    data = _call(end_api.sync_detailed, acting=actor, room_name=room, handle=handle.lstrip("@"))
     if as_json:
         typer.echo(json.dumps(data, indent=2))
         return
