@@ -377,7 +377,8 @@ def memory_graph(
         _echo_json(graph)
         return
     for line in lines(graph, task):
-        console.print(line, soft_wrap=True)
+        # What agents wrote is shown as written: no guessing at numbers or quotes.
+        console.print(line, soft_wrap=True, highlight=False)
 
 
 @doc_ref(
