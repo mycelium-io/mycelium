@@ -165,7 +165,15 @@ describe("mock memory write handler", () => {
       { key: target.key, value: "x", created_by: "alice", base_version: target.version + 99 },
     ]);
     expect(res.status).toBe(409);
-    expect((res.body as { error: string }).error).toBe("stale_base");
+    expect((res.body as { detail: { error: string } }).detail.error).toBe("memory.stale_base");
+  });
+
+  it("refuses a write to an upload as the hub does", async () => {
+    const res = await post("checkout", [{ key: "uploads/plan.md", value: "x", created_by: "alice" }]);
+    expect(res.status).toBe(409);
+    const { detail } = res.body as { detail: { error: string; message: string } };
+    expect(detail.error).toBe("memory.read_only");
+    expect(detail.message).toMatch(/Upload the file again/);
   });
 
   it("round-trips tags and the expandable flag", async () => {

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { memoryCommand, taskCommand } from "@/lib/agent-command";
 import { requestMemoryEdit } from "@/lib/memory-edit-request";
+import { kindOf, notEditable } from "@/lib/memory-kinds";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -191,15 +192,18 @@ function MemoryRowMenu({
           <ContextMenuItem icon={FileText} onClick={() => onOpen(memory)}>
             Open
           </ContextMenuItem>
-          <ContextMenuItem
-            icon={Pencil}
-            onClick={() => {
-              requestMemoryEdit(memory.key);
-              onOpen(memory);
-            }}
-          >
-            Edit
-          </ContextMenuItem>
+          {/* A kind nobody edits here gets no Edit; its view says why. */}
+          {notEditable(kindOf(memory.key)) === null && (
+            <ContextMenuItem
+              icon={Pencil}
+              onClick={() => {
+                requestMemoryEdit(memory.key);
+                onOpen(memory);
+              }}
+            >
+              Edit
+            </ContextMenuItem>
+          )}
           <ContextMenuItem icon={Maximize2} onClick={() => router.push(href)}>
             Open full page
           </ContextMenuItem>

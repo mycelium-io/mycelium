@@ -68,6 +68,7 @@ import type {
   ScheduleRun,
 } from "@/lib/api";
 import { memorySummaryOf } from "@/lib/memory-preview";
+import { kindOf } from "@/lib/memory-kinds";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -688,7 +689,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub.length === 2 && method === "PUT") {
         const done = setRoomSettingMock(roomName, id, await readJson(req));
         if ("ok" in done) return json(done.ok);
-        return json({ detail: { error: "room_setting", message: done.message, key: `settings/${id}` } }, done.status);
+        return json({ detail: { error: "memory.setting_invalid", message: done.message, key: `settings/${id}` } }, done.status);
       }
       if (sub.length === 2 && method === "DELETE") {
         const reset = resetRoomSettingMock(roomName, id);
@@ -723,14 +724,22 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const items = body.items ?? [];
 
         for (const item of items) {
+          // A kind nobody edits is refused before anything is saved, with the
+          // hub's code and sentence (contracts/memory-kinds.json).
+          const kind = kindOf(item.key);
+          if (kind.edit === "none") {
+            return json({ detail: { error: "memory.read_only", message: kind.says, key: item.key } }, 409);
+          }
           const existing = fx.memories.find((m) => m.key === item.key);
           const currentVersion = existing?.version ?? 0;
           if (item.base_version !== undefined && item.base_version !== currentVersion) {
             return json({
-              error: "stale_base",
-              message: `Write for '${item.key}' expected version ${item.base_version} but current version is ${currentVersion}`,
-              key: item.key,
-              current_version: currentVersion,
+              detail: {
+                error: "memory.stale_base",
+                message: `Write for '${item.key}' expected version ${item.base_version} but current version is ${currentVersion}`,
+                key: item.key,
+                current_version: currentVersion,
+              },
             }, 409);
           }
         }

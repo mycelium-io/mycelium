@@ -1,0 +1,115 @@
+{
+  "_comment": [
+    "Frozen table of the kinds of memory a room keeps, and what a write from the",
+    "memory route (the app's editor, `memory set`, an agent, a scenario) may do to",
+    "each. A key's kind is the first whose pattern matches it (`*` is one part of",
+    "a key, `**` any number of parts). The hub checks every write from that route",
+    "against its kind before anything is saved (fastapi-backend/app/services/",
+    "memory_kinds.py, called from routes/memory.py's upsert), so every writer",
+    "there gets the same refusal: {error: <code>, message, key}. The hub's own",
+    "processes (the conductor, the synthesizer, leases, uploads) write through",
+    "their own routes and own what this table keeps from people. `edit`: what a",
+    "person may write (`body`, `field` for a body drawn from `source`, or",
+    "`none`). `fixed`: frontmatter a person may not change. `checks`: what's run",
+    "on the written content. The frontend's copy (mycelium-frontend/src/lib/",
+    "memory-kinds.ts) says which kinds its editor offers. Asserted by",
+    "fastapi-backend/tests/test_memory_kinds.py, mycelium-cli/tests/",
+    "test_memory_refusals.py and mycelium-frontend/src/lib/memory-kinds.test.ts."
+  ],
+  "version": 1,
+  "store_fields": ["key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value", "episode", "upload"],
+  "kinds": [
+    {
+      "id": "upload",
+      "patterns": ["uploads/**"],
+      "edit": "none",
+      "says": "An upload is its file, and can't be edited. Upload the file again to replace it."
+    },
+    {
+      "id": "agent",
+      "patterns": ["agents/*"],
+      "edit": "body",
+      "checks": ["yaml", "agent_manifest"]
+    },
+    {
+      "id": "protocol",
+      "patterns": ["protocols/*"],
+      "edit": "body",
+      "checks": ["yaml", "protocol"]
+    },
+    {
+      "id": "setting",
+      "patterns": ["settings/*"],
+      "edit": "body",
+      "checks": ["setting"]
+    },
+    {
+      "id": "skill",
+      "patterns": ["skills/*"],
+      "edit": "body",
+      "checks": ["skill_description"]
+    },
+    {
+      "id": "thread",
+      "patterns": ["threads/*"],
+      "edit": "body",
+      "fixed": ["from"]
+    },
+    {
+      "id": "task",
+      "patterns": ["work/**", "decisions/**", "status/**", "failed/**"],
+      "edit": "body",
+      "fixed": ["assignment", "owner", "claimed_at", "ttl_minutes", "assignment_note", "assignment_note_by"]
+    },
+    {
+      "id": "summary",
+      "patterns": ["context/summary/**"],
+      "edit": "field",
+      "source": "contract",
+      "checks": ["summary"]
+    },
+    {
+      "id": "decision",
+      "patterns": ["context/decision/**"],
+      "edit": "field",
+      "source": "decision",
+      "checks": ["decision"]
+    },
+    {
+      "id": "synthesis",
+      "patterns": ["context/synthesis"],
+      "edit": "body",
+      "fixed": ["synthesized_through"]
+    },
+    {
+      "id": "standing",
+      "patterns": ["context/standing"],
+      "edit": "none",
+      "says": "Mycelium writes this after every step of a flow, so it can't be edited."
+    },
+    {
+      "id": "episode_record",
+      "patterns": ["log/episodes/*"],
+      "edit": "none",
+      "says": "This is the record of a flow's run, written as it runs, so it can't be edited."
+    },
+    {
+      "id": "memory",
+      "patterns": ["**"],
+      "edit": "body"
+    }
+  ],
+  "codes": {
+    "memory.stale_base": 409,
+    "memory.store_field": 422,
+    "memory.fixed_field": 422,
+    "memory.claim_field": 422,
+    "memory.read_only": 409,
+    "memory.rendered_body": 409,
+    "memory.yaml_invalid": 422,
+    "memory.schema_invalid": 422,
+    "memory.not_owner": 403,
+    "memory.setting_unknown": 422,
+    "memory.setting_invalid": 422
+  }
+}
