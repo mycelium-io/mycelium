@@ -114,6 +114,11 @@ CODES: dict[str, int] = {
     "memory.not_owner": 403,
     "memory.setting_unknown": 422,
     "memory.setting_invalid": 422,
+    # What the team learned (``services/knowledge.py``).
+    "memory.learned_kind": 422,
+    "memory.learned_on_task": 422,
+    "memory.derived_from_missing": 422,
+    "memory.task_missing": 422,
 }
 
 #: The most a skill's one-line description may hold (``SkillCreate``).

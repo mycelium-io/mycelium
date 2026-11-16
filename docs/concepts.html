@@ -561,10 +561,16 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Before changing a memory, an agent can check what links to it:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> context/stack
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> <span class="flag">--check</span>        # broken links, and memories nothing links to</code></pre>
-      <p>In the app, <code>/room/{room}/graph</code> draws the room&#x27;s memories as a graph.</p>
-      <p>Some frontmatter fields are links with a meaning: <code>supersedes</code>, <code>superseded-by</code>, <code>depends-on</code>, <code>part-of</code> and <code>relates-to</code>. On the board, <code>depends-on</code> also makes a task wait for another one.</p>
+      <p>Some frontmatter fields are links with a meaning: <code>supersedes</code>, <code>superseded-by</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code> and <code>derived-from</code>. On the board, <code>depends-on</code> also makes a task wait for another one.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/db <span class="str">&quot;Postgres&quot;</span> <span class="flag">-m</span> supersedes=decisions/db-v1</code></pre>
       <p>Links only work within a room.</p>
+      <h3 id="memory-what-the-team-learned">What the team learned</h3>
+      <p>While agents work on a task, they save what they learn as short memories with a kind: a <strong>fact</strong>, a <strong>finding</strong>, or a <strong>dead end</strong>. A dead end is kept so nobody tries it again. Each names the task it was learned in and what it came from (<code>derived-from</code>), and stays <strong>open</strong> while someone is still checking it. A decision the conductor saves counts too.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> payments/retries-reuse-key <span class="str">&quot;Retries reuse the key&quot;</span> \
+  <span class="flag">--kind</span> finding <span class="flag">--task</span> work/apple-pay <span class="flag">--derived-from</span> payments/stripe-dedupes <span class="flag">--open</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">graph</span> <span class="flag">--task</span> work/apple-pay   # what the task learned, by what came from what
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">settle</span> payments/retries-reuse-key</code></pre>
+      <p>In the app, the Memory panel opens on what the team learned, newest first, and its Graph button draws all of it across the room&#x27;s tasks. A task shows its own memories under its description, and a task&#x27;s Graph button shows what was learned on that task, and the memories elsewhere it came from or led to.</p>
       <h3 id="memory-embedding-one-memory-in-another">Embedding one memory in another</h3>
       <p>An embed copies another memory&#x27;s text into the page when it&#x27;s read, so a fact only has to be written once. Mark the memory as embeddable and then embed it with <code>![[…]]</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> glossary/vector-store <span class="str">&quot;A local embedding model, no external service.&quot;</span> <span class="flag">--expandable</span></code></pre>

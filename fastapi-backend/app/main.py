@@ -43,6 +43,7 @@ from app.routes.episodes import router as episodes_router
 from app.routes.fields import router as fields_router
 from app.routes.hub import router as hub_router
 from app.routes.joins import router as joins_router
+from app.routes.knowledge import router as knowledge_router
 from app.routes.links import router as links_router
 from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
@@ -428,6 +429,7 @@ app.include_router(fields_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(tasks_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(threads_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(subagents_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(knowledge_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(board_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")

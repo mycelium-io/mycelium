@@ -49,6 +49,7 @@ from app.services import (
     actor,
     hold_sweep,
     in_memory_store,
+    knowledge,
     links,
     memory_kinds,
     memory_sync,
@@ -418,6 +419,15 @@ async def upsert_memories(
                 raise HTTPException(status_code=e.status, detail=e.detail(item.key)) from e
             if redrawn is not None:
                 drawn[i] = redrawn
+            # What a memory says it is as knowledge: its kind, its task and
+            # what it came from (``services/knowledge.py``).
+            try:
+                item.meta = knowledge.check(room_name, item.key, item.meta or {}, existing_meta)
+            except knowledge.Refused as e:
+                raise HTTPException(
+                    status_code=memory_kinds.CODES[e.code],
+                    detail={"error": e.code, "message": e.message, "key": item.key},
+                ) from e
 
         # A room setting is checked against the room settings table here, at the
         # one write path, so every writer gets the same refusal.

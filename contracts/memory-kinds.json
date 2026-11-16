@@ -110,6 +110,10 @@
     "memory.schema_invalid": 422,
     "memory.not_owner": 403,
     "memory.setting_unknown": 422,
-    "memory.setting_invalid": 422
+    "memory.setting_invalid": 422,
+    "memory.learned_kind": 422,
+    "memory.learned_on_task": 422,
+    "memory.derived_from_missing": 422,
+    "memory.task_missing": 422
   }
 }

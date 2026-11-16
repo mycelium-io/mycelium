@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EMPTY_LAYOUT, type RoomFolders } from "@/lib/room-folders";
+import type { KnowledgeGraph } from "@/lib/knowledge";
 import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { unstable_serialize, useSWRConfig, type SWRConfiguration } from "swr";
 import useSWRInfinite from "swr/infinite";
@@ -28,6 +29,7 @@ import {
   fetchEpisodes,
   fetchSubagents,
   type Subagent,
+  fetchKnowledge,
   fetchMyPaused,
   fetchMemory,
   fetchMemorySummaries,
@@ -527,6 +529,22 @@ export function useRoomSubagents(room: string): Map<string, Subagent> {
     { refreshInterval: POLL.members },
   );
   return useMemo(() => new Map((data ?? []).map((s) => [s.handle.toLowerCase(), s])), [data]);
+}
+
+const NO_KNOWLEDGE: KnowledgeGraph = { tasks: [], memories: [] };
+
+/**
+ * What the room's team learned (`lib/knowledge.ts`): one read the Memory
+ * panel's graph, a task's lens on it and the task's Memories section all
+ * share. Refreshed with the room's memories, since every piece is one.
+ */
+export function useRoomKnowledge(room: string): KnowledgeGraph {
+  const { data } = useSWR(
+    room ? (["room", room, "knowledge"] as const) : null,
+    () => fetchKnowledge(room),
+    { refreshInterval: POLL.memories },
+  );
+  return data ?? NO_KNOWLEDGE;
 }
 
 /**

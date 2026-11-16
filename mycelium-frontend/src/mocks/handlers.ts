@@ -41,6 +41,7 @@ import {
   learnOnTask,
   learnOnThreadRead,
 } from "./learn";
+import { mockKnowledgeWire } from "./knowledge";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
@@ -1136,6 +1137,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
     case "subagents":
       return method === "GET" && sub.length === 1 ? json(fx.subagents ?? []) : null;
+
+    case "knowledge":
+      return method === "GET" && sub.length === 1 ? json(mockKnowledgeWire(roomName)) : null;
 
     case "threads": {
       if (method !== "POST") return null;
