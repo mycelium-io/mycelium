@@ -6,8 +6,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, ListPlus, ListTodo, Loader2, Maximize2, MessageSquare, Network, Pencil, X } from "lucide-react";
-import { mockTaskGraph } from "@/mocks/task-graph";
-import { TaskGraph } from "@/components/task/task-graph";
+import { mockHasLens, mockRoomKnowledge } from "@/mocks/knowledge";
+import { KnowledgeGraph } from "@/components/knowledge-graph";
+import { TaskMemories } from "@/components/task/task-memories";
 import { createThreadTask } from "@/lib/api";
 import { memoryHref } from "@/lib/memory-routes";
 import {
@@ -125,8 +126,9 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   const revalidate = useRoomRevalidate(roomName);
   const shortId = threadShortId(target.episode) ?? "thread";
   const [isEditing, setIsEditing] = useState(false);
-  // MOCK: the task's graph, drawn in place of its thread.
-  const graph = listed && !messageThread ? mockTaskGraph(listed.key) : null;
+  // MOCK: the room's knowledge through this task, drawn in place of its thread.
+  const knowledge = mockRoomKnowledge(roomName);
+  const graph = knowledge && listed && !messageThread && mockHasLens(listed.key) ? knowledge : null;
   const [showGraph, setShowGraph] = useState(false);
 
   // The conversation owns the read; it hands us its refresh so a send through
@@ -309,7 +311,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           {!showClose && (
             <div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-border px-3">{taskActions}</div>
           )}
-          <TaskGraph graph={graph} />
+          <KnowledgeGraph tasks={graph.tasks} memories={graph.memories} lens={listed!.key} onOpen={onOpenMemory} />
         </>
       ) : (
         // The task's body over its conversation, in one scroll. The body is
@@ -361,6 +363,13 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
                   actions={showClose ? undefined : taskActions}
                 />
               </div>
+            )}
+            {graph && listed && (
+              <TaskMemories
+                memories={graph.memories.filter(m => m.task === listed.key)}
+                onOpen={onOpenMemory}
+                onGraph={() => setShowGraph(true)}
+              />
             )}
             <TaskConversation
               roomName={roomName}

@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { Network } from "lucide-react";
 import { fetchMemoryGraph, type MemoryGraph as MemoryGraphData } from "@/lib/api";
 import { MemoryGraph } from "@/components/memory-graph";
+import { KnowledgeGraph } from "@/components/knowledge-graph";
+import { mockRoomKnowledge } from "@/mocks/knowledge";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { MemoryView } from "@/components/memory-view";
 import { EmptyState } from "@/components/empty-state";
@@ -60,9 +62,18 @@ export function MemoryGraphView({ roomName }: Props) {
     );
   }
 
+  // MOCK: the room's knowledge, by what came from what, in place of the link graph.
+  const knowledge = mockRoomKnowledge(roomName);
+
   return (
     <>
-      <MemoryGraph graph={graph} onNavigate={setOpenKey} roomName={roomName} className="h-full" />
+      {knowledge ? (
+        <div className="flex h-full flex-col">
+          <KnowledgeGraph tasks={knowledge.tasks} memories={knowledge.memories} onOpen={setOpenKey} />
+        </div>
+      ) : (
+        <MemoryGraph graph={graph} onNavigate={setOpenKey} roomName={roomName} className="h-full" />
+      )}
 
       <DetailDrawer open={openKey !== null} onClose={() => setOpenKey(null)} title={openKey}>
         {/* Following a link inside the drawer swaps it to the target, so a
