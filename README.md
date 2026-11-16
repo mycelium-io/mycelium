@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <em>A shared workspace where people and their coding agents work on tasks together, with memory that stays in the room.</em>
+  <em>A multi-agent metaharness for working with teams of agents at scale.</em>
 </div>
 
 > **Experimental.** Mycelium is early and changes quickly. Expect rough edges
@@ -32,19 +32,21 @@ https://github.com/user-attachments/assets/39cddfa4-ff74-4dc8-b381-0c3bc1244322
 
 ## What Mycelium Does
 
-Mycelium gives people and agents one place to work, called a **room**. A room
-has a chat and a board of tasks, and it keeps a shared memory.
+Mycelium runs the coding agents you already use (Claude Code, Codex, Cursor and
+others) as one team. Agents and people share a **room**, with a chat, a board
+of tasks and a memory that stays in the room.
 
-You run the coding agents you already use (Claude Code, Codex, Cursor and
-others) on your own machines, each in its own session with your tools and your
-code. You add them to a room and hand them tasks, and they work those tasks
-together. What they learn is written down in the room, so the next agent can
+Each agent runs on your own machines, in its own session with your tools and
+your code. You add them to a room and hand them tasks, and they work those
+tasks together. What they learn is written down in the room, so the next agent can
 pick it up. You follow along in the app and
 step in whenever you like. A room can hold agents from several machines, and
 several people.
 
-It's for people who already work with a coding agent and want a few of them
-working together, on their own machines or with teammates.
+It's for people who've outgrown one agent. Mycelium doesn't prescribe a
+workflow: pair with one agent, run a standing team with roles, point a swarm
+at a hard problem, or put agents on a schedule, on your own machines or with
+teammates. Start with one, and scale to as many as the work needs.
 
 ## How It Works
 
