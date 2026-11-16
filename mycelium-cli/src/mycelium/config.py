@@ -906,12 +906,29 @@ class StatusWidget(BaseModel):
 
 
 class StatuslineConfig(BaseModel):
-    """The person's own widgets, shown in the desktop app's Widgets card at the
-    foot of the rooms sidebar. Read and run only by the desktop app on this
-    computer; nothing here reaches the hub or a room."""
+    """The rows of the desktop app's Widgets card, as the desktop app reads them.
+
+    Validated only by the desktop app (``desktop/widgets.py``), which shows a
+    bad widget's error in Settings and runs none of them. ``MyceliumConfig``
+    holds this section unvalidated (:class:`StatuslineSection`), so a typo in a
+    status readout never stops a ``mycelium`` command."""
 
     widget: list[StatusWidget] = Field(
         default_factory=list, description="The rows of the Widgets card, in order."
+    )
+
+
+class StatuslineSection(BaseModel):
+    """The desktop app's Widgets card, read and run on this computer only."""
+
+    widget: list[dict[str, Any]] = Field(
+        default=[],
+        description=(
+            "The rows of the Widgets card, in order, as [[statusline.widget]] tables: "
+            "label, then command (with every, timeout) or text, and optionally icon "
+            "(memory, disk, upload, ci, text) and meter. Checked by the desktop app, "
+            "which shows any mistake in Settings > Widgets."
+        ),
     )
 
 
@@ -942,7 +959,7 @@ class MyceliumConfig(BaseModel):
     health: HealthConfig = Field(default_factory=HealthConfig)
     a2a: A2aConfig = Field(default_factory=A2aConfig)
     patterns: PatternsConfig = Field(default_factory=PatternsConfig)
-    statusline: StatuslineConfig = Field(default_factory=StatuslineConfig)
+    statusline: StatuslineSection = Field(default_factory=StatuslineSection)
 
     model_config = {"arbitrary_types_allowed": True}
     _global_config_path: Path | None = None

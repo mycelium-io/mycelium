@@ -1473,11 +1473,11 @@
 <span class="comment"># Refuse any scenario with a member that is not a persona or a person, so this hub never starts a worker (Pi with tools) for a caller.</span>
 <span class="arg">personas_only</span> = <span class="flag">false</span>
 
-<span class="comment"># The person&#x27;s own widgets, shown in the desktop app&#x27;s Widgets card at the</span>
+<span class="comment"># The desktop app&#x27;s Widgets card, read and run on this computer only.</span>
 <span class="cmd" id="config-statusline">[statusline]</span>
 
-<span class="comment"># The rows of the Widgets card, in order.</span>
-<span class="arg">widget</span> = PydanticUndefined</code></pre>
+<span class="comment"># The rows of the Widgets card, in order, as [[statusline.widget]] tables: label, then command (with every, timeout) or text, and optionally icon (memory, disk, upload, ci, text) and meter. Checked by the desktop app, which shows any mistake in Settings &gt; Widgets.</span>
+<span class="arg">widget</span> = []</code></pre>
     </section>
     <nav class="doc-pager" data-pager-for="configuration" aria-label="Previous and next sections">
       <a class="doc-pager-link prev" href="#cli-reference">

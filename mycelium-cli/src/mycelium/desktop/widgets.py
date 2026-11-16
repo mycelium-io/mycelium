@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import toml
+from pydantic import ValidationError
 
 from mycelium.config import StatuslineConfig, StatusWidget
 
@@ -61,6 +62,17 @@ def default_path() -> Path:
 def _first_line(text: str) -> str | None:
     line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
     return line[:LINE_CHARS] or None
+
+
+def _first_problem(e: ValidationError) -> str:
+    """The first thing wrong, said as the person wrote it: which widget, which key."""
+    err = e.errors()[0]
+    where = [str(p) for p in err["loc"]]
+    if len(where) >= 2 and where[0] == "widget" and where[1].isdigit():
+        where = [f"widget {int(where[1]) + 1}", *where[2:]]
+    msg = err["msg"].removeprefix("Value error, ")
+    # A whole-widget check already names the widget by its label.
+    return f"{' '.join(where)}: {msg}" if where and not msg.startswith("widget ") else msg
 
 
 def _env() -> dict[str, str]:
@@ -162,6 +174,8 @@ class Widgets:
             try:
                 raw = toml.loads(self.path.read_text(encoding="utf-8")).get("statusline") or {}
                 widgets = StatuslineConfig.model_validate(raw).widget
+            except ValidationError as e:
+                error = f"[statusline] in {self.path} isn't valid: {_first_problem(e)}"
             except Exception as e:  # noqa: BLE001 - a bad file runs nothing and says why
                 error = f"[statusline] in {self.path} isn't valid: {e}".splitlines()[0]
         with self._lock:
