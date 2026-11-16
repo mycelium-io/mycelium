@@ -30,6 +30,8 @@ const COMMANDS: &[&str] = &[
     "set_autostart",
     "open_room",
     "open_log",
+    "widgets",
+    "open_widgets_config",
     "start",
     "update_progress",
     "update_retry",
