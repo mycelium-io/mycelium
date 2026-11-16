@@ -8,8 +8,12 @@
  * runs and what they saved (`context/decision`, `context/summary`), and an
  * agent's subagents, branching off the step they worked on.
  *
- * Nodes marked `note` are step 2: steps an agent labels itself (`tried`,
- * `found`, `ruled out`, `blocked by`), which nothing stores yet.
+ * Everything descriptive is a tag. A note is a short message an agent tags
+ * (`#tried`, `#found`, or any word the room uses), hung off the step it was
+ * posted in. A tagged reply to another message is a relationship of the room's
+ * own (`#explains`), drawn between the two. A task or part can carry tags too.
+ * A `tags/<name>` memory may give a tag a color and a description; a tag
+ * without one is drawn plain.
  */
 
 export type GraphKind =
@@ -23,12 +27,19 @@ export type GraphKind =
   | "summary"
   | "subagent"
   | "post"
-  | "tried"
-  | "found"
-  | "ruled-out"
-  | "blocked";
+  | "note";
 
 export type GraphState = "done" | "working" | "open" | "blocked" | "waiting" | "dropped";
+
+/** A tag's color, from its `tags/<name>` memory. */
+export type TagTone = "accent" | "green" | "red" | "yellow" | "plain";
+
+export interface RoomTag {
+  name: string;
+  tone: TagTone;
+  /** From the tag's memory, shown on hover. */
+  about?: string;
+}
 
 export interface GraphNode {
   id: string;
@@ -39,10 +50,10 @@ export interface GraphNode {
   /** A subagent's handle, for its tooltip. */
   handle?: string;
   state?: GraphState;
-  /** The edge from its parent node, by its type. */
+  /** The edge from its parent node, by its type. A note's edge is its tag. */
   edge?: string;
-  /** Step 2: a step an agent labeled itself. */
-  note?: boolean;
+  /** The tags the node carries. */
+  tags?: string[];
   children?: GraphNode[];
 }
 
@@ -50,15 +61,39 @@ export interface GraphLink {
   from: string;
   to: string;
   label: string;
+  /** Set when the link is a tagged reply: a relationship of the room's own. */
+  tag?: string;
 }
 
 export interface TaskGraph {
   root: GraphNode;
   links: GraphLink[];
+  /** The room's tags that have a memory. */
+  tags: RoomTag[];
 }
+
+const note = (id: string, tag: string, label: string, by?: string): GraphNode => ({
+  id,
+  kind: "note",
+  label,
+  edge: `#${tag}`,
+  tags: [tag],
+  handle: by,
+});
+
+const CHECKOUT_TAGS: RoomTag[] = [
+  { name: "tried", tone: "plain", about: "Something an agent tried" },
+  { name: "found", tone: "green", about: "Something that turned out true" },
+  { name: "ruled-out", tone: "red", about: "An approach we won't take, and why" },
+  { name: "blocked-by", tone: "red", about: "What a step is waiting on outside the room" },
+  { name: "flaky", tone: "yellow", about: "A test or check that fails some runs" },
+  { name: "explains", tone: "accent", about: "A reply that explains the message it answers" },
+  { name: "hardware", tone: "plain" },
+];
 
 /** A task with several parts, mid-flight, three subagents off one step. */
 const APPLE_PAY: TaskGraph = {
+  tags: CHECKOUT_TAGS,
   root: {
     id: "epic",
     kind: "task",
@@ -81,8 +116,8 @@ const APPLE_PAY: TaskGraph = {
         edge: "part",
         children: [
           { id: "pr502", kind: "pr", label: "#502", meta: "approved", state: "working", edge: "opened" },
-          { id: "n-sim", kind: "tried", label: "Pay in the simulator", edge: "tried", note: true, children: [
-            { id: "n-sim-f", kind: "found", label: "Works with a test card", edge: "found", note: true },
+          { ...note("n-sim", "tried", "Pay in the simulator", "builder"), children: [
+            note("n-sim-f", "found", "Works with a test card", "builder"),
           ] },
         ],
       },
@@ -92,9 +127,8 @@ const APPLE_PAY: TaskGraph = {
         label: "Test on a real iPhone",
         state: "blocked",
         edge: "part",
-        children: [
-          { id: "n-card", kind: "blocked", label: "No real card on staging", edge: "blocked by", note: true },
-        ],
+        tags: ["hardware"],
+        children: [note("n-card", "blocked-by", "No real card on staging", "morgan")],
       },
       {
         id: "review",
@@ -114,7 +148,7 @@ const APPLE_PAY: TaskGraph = {
             edge: "subagent",
             children: [
               { id: "p-review", kind: "post", label: "One gap: a timeout after the charge", meta: "1m ago", edge: "posted" },
-              { id: "n-timeout", kind: "found", label: "Timeout before the reply isn't refunded", edge: "found", note: true },
+              note("n-timeout", "found", "Timeout before the reply isn't refunded", "builder:review"),
             ],
           },
           {
@@ -127,7 +161,7 @@ const APPLE_PAY: TaskGraph = {
             edge: "subagent",
             children: [
               { id: "p-tests", kind: "post", label: "41 of 41 refund tests pass", meta: "3m ago", edge: "posted" },
-              { id: "n-dbl", kind: "tried", label: "Double-click the Pay button", edge: "tried", note: true },
+              note("n-flaky", "flaky", "Refund test 12 fails one run in ten", "builder:tests"),
             ],
           },
           {
@@ -140,7 +174,7 @@ const APPLE_PAY: TaskGraph = {
             edge: "subagent",
             children: [
               { id: "p-retry", kind: "post", label: "Retries reuse the idempotency key", meta: "7m ago", edge: "posted" },
-              { id: "n-key", kind: "ruled-out", label: "A new key per retry", edge: "ruled out", note: true },
+              note("n-key", "ruled-out", "A new key per retry", "builder:retry"),
             ],
           },
         ],
@@ -161,11 +195,14 @@ const APPLE_PAY: TaskGraph = {
     { from: "add", to: "stripe", label: "depends on" },
     { from: "iphone", to: "add", label: "depends on" },
     { from: "launch", to: "review", label: "depends on" },
+    // review's finding, posted as a reply to the tests' flaky note.
+    { from: "n-timeout", to: "n-flaky", label: "#explains", tag: "explains" },
   ],
 };
 
 /** A decision that's nearly done: a run settled it, parts carry it out. */
 const DOUBLE_CHARGES: TaskGraph = {
+  tags: CHECKOUT_TAGS,
   root: {
     id: "dc",
     kind: "task",
@@ -181,6 +218,7 @@ const DOUBLE_CHARGES: TaskGraph = {
         edge: "ran",
         children: [
           { id: "dc-sum", kind: "summary", label: "context/summary/double-charges", edge: "saved" },
+          note("dc-support", "ruled-out", "Send every one to support", "conductor"),
           {
             id: "dc-dec",
             kind: "decision",
