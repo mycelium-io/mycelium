@@ -52,12 +52,61 @@ describe("the Widgets card", () => {
     expect(screen.getByText("Mac mini")).toBeTruthy();
     expect(screen.getByText("Failed")).toBeTruthy();
     expect(screen.getByText("Hung")).toBeTruthy();
-    // The header opens Settings at the widgets.
-    expect(screen.getByRole("link", { name: "Widgets" }).getAttribute("href")).toBe("/settings/widgets");
+    // No heading; every tile opens Settings at the widgets.
+    expect(screen.queryByText("Widgets")).toBeNull();
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(4);
+    for (const link of links) expect(link.getAttribute("href")).toBe("/settings/widgets");
     // RAM free's bar, filled to its value; no other row has one.
     const bars = container.querySelectorAll("span[style*='width']");
     expect(bars).toHaveLength(1);
     expect((bars[0] as HTMLElement).style.width).toBe("38%");
+  });
+
+  it("draws what a run's JSON set over the config: markdown text, color, dot, meter", async () => {
+    inTheApp({
+      config: "/Users/you/.mycelium/config.toml",
+      error: null,
+      widgets: [
+        widget({
+          label: "RAM",
+          icon: "memory-stick",
+          color: "accent",
+          run: {
+            ...ran,
+            ok: true,
+            value: "**38%** free",
+            fields: { color: "yellow", state: "warn", meter: 61, tooltip: "Swap is *2.1G*" },
+          },
+        }),
+        widget({ label: "mood", command: null, text: "🚀 *shipping*", icon: "🚀" }),
+      ],
+    });
+    const { container } = wrap(<WidgetsCard />);
+    const bold = await screen.findByText("38%");
+    expect(bold.tagName).toBe("STRONG");
+    // The run's color wins over the config's, on the text.
+    expect(bold.closest(".text-yellow")).toBeTruthy();
+    expect(screen.getByText("shipping").tagName).toBe("EM");
+    // Its own dot, in its state's tone.
+    expect(container.querySelector("span[style*='--yellow']")).toBeTruthy();
+    // The bar is the run's number, not a percentage read from the text.
+    const bar = container.querySelector("span[style*='width']") as HTMLElement;
+    expect(bar.style.width).toBe("61%");
+    // An emoji is drawn as itself.
+    expect(screen.getAllByText("🚀").length).toBeGreaterThan(0);
+  });
+
+  it("puts a failed run's dot over the state a config sets", async () => {
+    inTheApp({
+      config: "/Users/you/.mycelium/config.toml",
+      error: null,
+      widgets: [widget({ label: "CI", state: "ok", run: { ...ran, ok: false, value: null, exit: 1 } })],
+    });
+    const { container } = wrap(<WidgetsCard />);
+    expect(await screen.findByText("Failed")).toBeTruthy();
+    expect(container.querySelectorAll("span[style*='background']")).toHaveLength(1);
+    expect(container.querySelector("span[style*='--green']")).toBeNull();
   });
 
   it("is nothing at all with no widgets", async () => {

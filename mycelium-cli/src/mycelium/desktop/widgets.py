@@ -8,8 +8,10 @@ What runs is only ever what ``[statusline]`` in this computer's
 room, the hub or another member reaches it, and the app's pages read the
 results without being able to name a command. Each widget's command runs every
 ``every`` on a thread of its own, never twice at once; the first line it prints
-is its value. A run that exits non-zero has failed, and one still running after
-``timeout`` is stopped, with whatever it started, and counts as hung.
+is its value, unless it prints one JSON object, whose fields set its text and
+look for that run (``read_output``). A run that exits non-zero has failed, and
+one still running after ``timeout`` is stopped, with whatever it started, and
+counts as hung.
 
 The file is read again when it changes, so editing it takes effect without a
 restart. A file that doesn't parse runs nothing and says why.
@@ -18,13 +20,14 @@ restart. A file that doesn't parse runs nothing and says why.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import subprocess
 import sys
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -32,7 +35,7 @@ from typing import Any
 import toml
 from pydantic import ValidationError
 
-from mycelium.config import StatuslineConfig, StatusWidget
+from mycelium.config import WIDGET_LOOK, StatuslineConfig, StatusWidget, widget_look
 
 #: The event the supervisor sends the app with every change.
 EVENT = "widgets"
@@ -45,8 +48,12 @@ class Run:
     """How a widget's last run went."""
 
     ok: bool
-    #: The first line it printed.
+    #: The first line it printed, or the ``text`` of the JSON it printed.
     value: str | None = None
+    #: The look fields its JSON set for this run, over the config's.
+    fields: dict[str, Any] = field(default_factory=dict)
+    #: Why a field it printed was left out.
+    notes: list[str] = field(default_factory=list)
     exit: int | None = None
     timed_out: bool = False
     #: The first line of what it printed to stderr, when it failed.
@@ -62,6 +69,36 @@ def default_path() -> Path:
 def _first_line(text: str) -> str | None:
     line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
     return line[:LINE_CHARS] or None
+
+
+def read_output(out: str) -> Run:
+    """A successful run's output: one JSON object sets its text and look for
+    the run; anything else is plain, and its first line is the text."""
+    stripped = out.strip()
+    if stripped.startswith("{"):
+        try:
+            printed = json.loads(stripped)
+        except ValueError as e:
+            # Shown as plain text, as it would be anyway, with why it wasn't read.
+            note = f"What it printed starts like JSON but isn't: {e}. Shown as plain text."
+            return Run(ok=True, value=_first_line(out), exit=0, notes=[note[:LINE_CHARS]])
+        if isinstance(printed, dict):
+            fields, notes = widget_look(printed)
+            text = printed.get("text")
+            if text is not None and not isinstance(text, str):
+                notes.append(f"text {str(text)[:40]!r} was ignored: it should be text.")
+                text = None
+            unknown = sorted(k for k in printed if k != "text" and k not in WIDGET_LOOK)
+            if unknown:
+                notes.append(f"{', '.join(unknown)} isn't a widget field, so it was ignored.")
+            return Run(
+                ok=True,
+                exit=0,
+                value=_first_line(text) if text else None,
+                fields=fields,
+                notes=notes,
+            )
+    return Run(ok=True, value=_first_line(out), exit=0)
 
 
 def _first_problem(e: ValidationError) -> str:
@@ -133,7 +170,7 @@ def run_command(command: str, timeout: float) -> Run:
         return Run(ok=False, timed_out=True)
     if proc.returncode != 0:
         return Run(ok=False, exit=proc.returncode, error=_first_line(err))
-    return Run(ok=True, value=_first_line(out), exit=0)
+    return read_output(out)
 
 
 class Widgets:

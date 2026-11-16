@@ -11,13 +11,33 @@
 import useSWR from "swr";
 import { appCall, useHasAppSettings } from "@/lib/desktop-app";
 
-export type WidgetIcon = "memory" | "disk" | "upload" | "ci" | "text";
+/** A theme color by name, never hex, so every theme still reads. */
+export type WidgetColor = "accent" | "green" | "yellow" | "red" | "muted";
+/** A widget's dot: the app's own `StatusDot` tones. */
+export type WidgetTone = "ok" | "warn" | "bad" | "off";
+
+/** What sets how a widget looks: from its config, and from a run's JSON over it.
+ *  The desktop app has already left out anything that isn't one of these. */
+export interface WidgetLook {
+  /** A Lucide icon's kebab-case name, or one emoji. */
+  icon?: string | null;
+  color?: WidgetColor | null;
+  state?: WidgetTone | null;
+  /** 0 to 100. In the config, `true` reads a percentage from the text. */
+  meter?: number | boolean | null;
+  /** Markdown, a few lines. */
+  tooltip?: string | null;
+}
 
 /** How a widget's command last went. */
 export interface WidgetRun {
   ok: boolean;
-  /** The first line it printed. */
+  /** The first line it printed, or the `text` of the JSON it printed. */
   value: string | null;
+  /** What the JSON it printed set for this run. */
+  fields?: WidgetLook;
+  /** Why a field it printed was left out. */
+  notes?: string[];
   exit: number | null;
   timed_out: boolean;
   /** The first line it printed to stderr, when it failed. */
@@ -26,14 +46,14 @@ export interface WidgetRun {
   ran_at: string | null;
 }
 
-export interface Widget {
+export interface Widget extends WidgetLook {
   label: string;
   command: string | null;
   text: string | null;
   every: string;
   timeout: number;
-  icon: WidgetIcon;
-  meter: boolean;
+  /** Why a field in its config was left out. */
+  notes?: string[];
   /** Its last run; null before its first, and for fixed text. */
   run: WidgetRun | null;
 }
@@ -72,8 +92,43 @@ export function widgetState(widget: Widget): WidgetState {
   return { kind: "value", value: run.value ?? "" };
 }
 
-/** A percentage in `value` (`"38%"`, `"38.5"`), for a meter; null when there isn't one. */
+/** A percentage in `value` (`"38%"`, `"**38.5**"`), for a meter; null when there isn't one. */
 export function percent(value: string): number | null {
-  const n = parseFloat(value);
+  const n = parseFloat(value.replace(/[*`_]/g, ""));
   return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null;
+}
+
+/** How a widget looks now: its config, with its last good run's fields over it. */
+export interface Look {
+  icon: string | null;
+  color: WidgetColor | null;
+  state: WidgetTone | null;
+  /** The bar's fill, 0 to 100; null for no bar. */
+  meter: number | null;
+  tooltip: string | null;
+}
+
+export function lookOf(widget: Widget): Look {
+  const ran = widget.run?.ok ? (widget.run.fields ?? {}) : {};
+  const pick = <K extends keyof WidgetLook>(k: K): WidgetLook[K] | null => ran[k] ?? widget[k] ?? null;
+  const state = widgetState(widget);
+  const meterField = pick("meter");
+  const meter =
+    typeof meterField === "number"
+      ? Math.max(0, Math.min(100, meterField))
+      : meterField === true && state.kind === "value"
+        ? percent(state.value)
+        : null;
+  return {
+    icon: pick("icon") as string | null,
+    color: pick("color") as WidgetColor | null,
+    state: pick("state") as WidgetTone | null,
+    meter,
+    tooltip: pick("tooltip") as string | null,
+  };
+}
+
+/** Every field the app left out, from the config and the last run, for Settings. */
+export function notesOf(widget: Widget): string[] {
+  return [...(widget.notes ?? []), ...(widget.run?.notes ?? [])];
 }

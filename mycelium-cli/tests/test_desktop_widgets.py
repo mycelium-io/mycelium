@@ -23,18 +23,95 @@ posix = pytest.mark.skipif(sys.platform == "win32", reason="the commands are POS
 
 def test_a_widget_is_a_command_on_an_interval_or_fixed_text():
     run = StatusWidget(label="RAM free", command="echo 38%", every="30s", meter=True)
-    assert (run.seconds(), run.timeout, run.icon) == (30.0, 10.0, "text")
+    assert (run.seconds(), run.timeout, run.icon, run.meter) == (30.0, 10.0, None, True)
     assert StatusWidget(label="hub", text="Mac mini").command is None
     assert StatusWidget(label="ci", command="x", every="2m").seconds() == 120.0
     for bad in (
         {"label": "both", "command": "x", "text": "y"},
         {"label": "neither"},
         {"label": "when", "command": "x", "every": "soon"},
-        {"label": "icon", "command": "x", "icon": "rocket"},
         {"label": "slow", "command": "x", "timeout": 0},
     ):
         with pytest.raises(ValidationError):
             StatusWidget.model_validate(bad)
+
+
+def test_a_widget_sets_its_look_and_a_bad_field_is_only_noted():
+    good = StatusWidget(
+        label="RAM",
+        command="x",
+        icon="memory-stick",
+        color="accent",
+        state="warn",
+        meter=38,
+        tooltip="Swap is *2.1G*",
+    )
+    assert (good.icon, good.color, good.state, good.meter) == (
+        "memory-stick",
+        "accent",
+        "warn",
+        38.0,
+    )
+    assert good.notes == []
+    assert StatusWidget(label="mood", text="fine", icon="🚀").icon == "🚀"
+
+    bad = StatusWidget(
+        label="RAM",
+        command="x",
+        icon="Memory Stick",
+        color="#ff0000",
+        state="great",
+        meter=140,
+        tooltip="kept",
+    )
+    # The widget stands, with the fields that were right.
+    assert (bad.icon, bad.color, bad.state, bad.meter, bad.tooltip) == (
+        None,
+        None,
+        None,
+        None,
+        "kept",
+    )
+    assert [n.split(" ", 1)[0] for n in bad.notes] == ["icon", "color", "state", "meter"]
+    assert "one of accent, green, yellow, red, muted" in bad.notes[1]
+
+
+def test_a_tooltip_keeps_a_few_lines():
+    long = "\n".join(f"line {i}" for i in range(20))
+    assert (StatusWidget(label="x", text="y", tooltip=long).tooltip or "").count("\n") == 7
+
+
+def test_a_run_that_prints_json_sets_its_fields_for_that_run():
+    run = w.read_output(
+        '{"text": "**38%** free\\nsecond", "icon": "memory-stick", "color": "yellow",'
+        ' "state": "warn", "meter": 38, "tooltip": "Swap is *2.1G*"}\n'
+    )
+    assert (run.ok, run.value) == (True, "**38%** free")
+    assert run.fields == {
+        "icon": "memory-stick",
+        "color": "yellow",
+        "state": "warn",
+        "meter": 38.0,
+        "tooltip": "Swap is *2.1G*",
+    }
+    assert run.notes == []
+
+
+def test_a_bad_field_in_a_runs_json_is_noted_and_the_rest_shows():
+    run = w.read_output('{"text": "up", "color": "#0f0", "meter": "38", "colour": "red"}')
+    assert (run.value, run.fields) == ("up", {})
+    assert len(run.notes) == 3
+    assert "colour isn't a widget field" in run.notes[2]
+
+
+def test_output_that_isnt_one_json_object_is_plain_text():
+    assert w.read_output("[1, 2]\n").value == "[1, 2]"
+    assert w.read_output("38%\n").fields == {}
+    # A raw newline inside a JSON string is the easy way to get it wrong: shown as
+    # it printed, and Settings says why it wasn't read.
+    broken = w.read_output('{"text": "up",\n"tooltip": "two\nlines"}\n')
+    assert (broken.ok, broken.value, broken.fields) == (True, '{"text": "up",', {})
+    assert "starts like JSON but isn't" in broken.notes[0]
 
 
 def test_a_widget_runs_at_most_every_five_seconds():

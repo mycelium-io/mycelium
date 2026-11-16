@@ -4,18 +4,19 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { RunDetail, WIDGET_ICON } from "@/components/widgets-card";
-import { StatusDot } from "@/components/status-items";
+import { RunDetail, WIDGET_COLOR, WidgetValue } from "@/components/widgets-card";
+import { WidgetIcon } from "@/components/widget-icon";
 import { desktopMachine } from "@/lib/desktop";
 import { appCall } from "@/lib/desktop-app";
-import { useWidgets, widgetState } from "@/lib/widgets";
+import { cn } from "@/lib/utils";
+import { lookOf, notesOf, useWidgets } from "@/lib/widgets";
 import { ActionError, useAppAction } from "./app-save";
 import { Note, Section, SettingsPage } from "./settings-ui";
 
 /** How a first widget reads in the config file, for a page with none. */
 const EXAMPLE = `[[statusline.widget]]
 label = "disk free"
-icon = "disk"
+icon = "hard-drive"
 command = "df -h / | awk 'NR==2 {print $4}'"
 every = "5m"`;
 
@@ -52,25 +53,28 @@ export function AppWidgetsPage() {
           </div>
         )}
         {widgets.map((w, i) => {
-          const Icon = WIDGET_ICON[w.icon];
-          const state = widgetState(w);
+          const look = lookOf(w);
+          const notes = notesOf(w);
           return (
             <div key={`${i}-${w.label}`} className="flex gap-3 px-4 py-3">
-              <Icon className="mt-0.5 size-3.5 flex-shrink-0 text-faint" aria-hidden />
+              <WidgetIcon
+                name={look.icon}
+                className={cn("mt-0.5", look.color ? WIDGET_COLOR[look.color] : "text-faint")}
+              />
               <div className="min-w-0 flex-1 text-label">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-text">{w.label}</span>
-                  {state.kind === "value" && <span className="truncate tabular text-muted-foreground">{state.value}</span>}
-                  {(state.kind === "failed" || state.kind === "hung") && (
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      <StatusDot tone={state.kind === "hung" ? "warn" : "bad"} />
-                      {state.kind === "hung" ? "Hung" : "Failed"}
-                    </span>
-                  )}
+                  <WidgetValue widget={w} />
                 </div>
                 <div className="mt-0.5 text-micro text-muted-foreground">
                   <RunDetail widget={w} />
                 </div>
+                {/* A field the app left out: said here, quietly, and nowhere else. */}
+                {notes.map((note, n) => (
+                  <div key={n} className="mt-0.5 text-micro text-faint">
+                    {note}
+                  </div>
+                ))}
               </div>
             </div>
           );
