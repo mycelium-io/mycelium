@@ -172,6 +172,25 @@ def memory_set(
         "-m",
         help="Extra frontmatter as key=value (repeatable), e.g. -m supersedes=decisions/db-v1",
     ),
+    kind: str | None = typer.Option(
+        None,
+        "--kind",
+        "-k",
+        help="What you learned: fact, finding or dead-end. It shows in the room's memory graph.",
+    ),
+    task: str | None = typer.Option(
+        None,
+        "--task",
+        help="The task it was learned in (default: the task of what it came from)",
+    ),
+    derived_from: str | None = typer.Option(
+        None,
+        "--derived-from",
+        help="Comma-separated keys of the memories it came from",
+    ),
+    still_open: bool = typer.Option(
+        False, "--open", help="Still being worked on; settle it with `mycelium memory settle`"
+    ),
 ) -> None:
     """Write a memory to a room's persistent namespace (upsert).
 
@@ -194,6 +213,8 @@ def memory_set(
         cat notes.md | mycelium memory set context/notes -f -
         mycelium memory set glossary/slim "SLIM is the messaging fabric." --expandable
         mycelium memory set decisions/db "Postgres" -m supersedes=decisions/db-v1
+        mycelium memory set payments/retries-reuse-key "Retries reuse the key" \\
+            --kind finding --derived-from payments/stripe-dedupes --task work/apple-pay
     """
     from mycelium_backend_client.api.memory import (
         create_memories_api_rooms_room_name_memory_post as create_api,
@@ -265,6 +286,15 @@ def memory_set(
     frontmatter = _parse_meta_pairs(meta)
     if expandable:
         frontmatter["expandable"] = True
+    # What the team learned (the hub checks these, and refuses a bad one).
+    if kind:
+        frontmatter["kind"] = kind
+    if task:
+        frontmatter["task"] = task
+    if derived_from:
+        frontmatter["derived-from"] = [k.strip() for k in derived_from.split(",") if k.strip()]
+    if still_open:
+        frontmatter["open"] = True
     if frontmatter:
         item["meta"] = frontmatter
 
@@ -280,6 +310,111 @@ def memory_set(
             console.print(f"[red]Error:[/red] the hub didn't save {room_name}/{key}: {said}")
             raise typer.Exit(1)
         console.print(f"[green]Memory set:[/green] {room_name}/{key} (v{saved[0].version})")
+    if kind:
+        _say_learned(room_name, key)
+
+
+def _knowledge(room_name: str, task: str | None = None) -> dict[str, Any]:
+    """The room's knowledge graph from the hub, or one task's lens on it."""
+    from mycelium_backend_client.api.knowledge import (
+        read_knowledge_api_rooms_room_name_knowledge_get as read_api,
+    )
+    from mycelium_backend_client.models import KnowledgeGraphRead
+    from mycelium_backend_client.types import UNSET
+
+    with _hub_session() as client:
+        found = answered(
+            read_api.sync_detailed(room_name=room_name, client=client, task=task or UNSET),
+            KnowledgeGraphRead,
+        )
+    return found.to_dict()
+
+
+def _say_learned(room_name: str, key: str) -> None:
+    """One line on where a memory landed in the graph: its kind and task, and
+    what it came from."""
+    graph = _knowledge(room_name)
+    nodes = {m["key"]: m for m in graph["memories"]}
+    node = nodes.get(key)
+    if not node:
+        return
+    titles = {t["key"]: t["title"] for t in graph["tasks"]}
+    kind = node["kind"].replace("-", " ")
+    where = f" in {escape(titles.get(node['task'], node['task']))}" if node.get("task") else ""
+    state = " It's open." if node.get("open") else ""
+    # Every kind (fact, finding, dead end, decision) takes "A".
+    console.print(f"  [dim]A {kind}{where}.{state}[/dim]")
+    sources = [nodes[k] for k in node.get("derived_from") or [] if k in nodes]
+    if sources:
+        came = ", ".join(f"{escape(s['title'])} ({escape(s['by'])})" for s in sources)
+        console.print(f"  [dim]It came from {came}[/dim]")
+
+
+@doc_ref(
+    usage="mycelium memory graph [--task <task>]",
+    desc=(
+        "What the team learned: facts, findings, dead ends and decisions, each under "
+        "what it came from, with who wrote it and whether it's still open. With "
+        "<code>--task</code>, one task's lens: what it produced, and what those came "
+        "from or fed elsewhere. Read it before you start on a task."
+    ),
+    group="memory",
+)
+@app.command(name="graph")
+@in_room("room")
+@emits_json("as_json")
+def memory_graph(
+    room: str | None = None,
+    task: str | None = typer.Option(None, "--task", help="A task's key, to see it through"),
+    as_json: bool = False,
+) -> None:
+    """What the team learned, each under what it came from."""
+    from mycelium.knowledge_view import lines
+
+    room_name = _get_active_room(room)
+    graph = _knowledge(room_name, task)
+    if as_json:
+        _echo_json(graph)
+        return
+    for line in lines(graph, task):
+        console.print(line, soft_wrap=True)
+
+
+@doc_ref(
+    usage="mycelium memory settle <key>",
+    desc="Mark a fact or finding as holding, so it's no longer open.",
+    group="memory",
+)
+@app.command(name="settle")
+@in_room("room")
+@acts_as("handle")
+@emits_json("as_json")
+def memory_settle(
+    key: str = typer.Argument(..., help="The memory's key"),
+    room: str | None = None,
+    handle: str | None = None,
+    as_json: bool = False,
+) -> None:
+    """Mark a memory as holding: it's no longer open."""
+    from mycelium_backend_client.api.knowledge import (
+        settle_knowledge_api_rooms_room_name_knowledge_settle_post as settle_api,
+    )
+    from mycelium_backend_client.models import KnowledgeRead, KnowledgeSettle
+
+    room_name = _get_active_room(room)
+    with _hub_session() as client:
+        settled = answered(
+            settle_api.sync_detailed(
+                room_name=room_name,
+                client=client,
+                body=KnowledgeSettle(key=key, handle=(handle or "").lstrip("@") or None),
+            ),
+            KnowledgeRead,
+        )
+    if as_json:
+        _echo_json(settled.to_dict())
+        return
+    console.print(f"[green]✓[/green] Settled {escape(key)}")
 
 
 @doc_ref(

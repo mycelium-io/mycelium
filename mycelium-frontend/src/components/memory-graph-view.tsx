@@ -6,9 +6,9 @@
 import { useEffect, useState } from "react";
 import { Network } from "lucide-react";
 import { fetchMemoryGraph, type MemoryGraph as MemoryGraphData } from "@/lib/api";
+import { useRoomKnowledge } from "@/lib/room-data";
 import { MemoryGraph } from "@/components/memory-graph";
 import { KnowledgeGraph } from "@/components/knowledge-graph";
-import { mockRoomKnowledge } from "@/mocks/knowledge";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { MemoryView } from "@/components/memory-view";
 import { EmptyState } from "@/components/empty-state";
@@ -18,14 +18,42 @@ interface Props {
   roomName: string;
 }
 
-/** Fetches a room's link graph and renders it full-page (#599). Clicking a node
- *  opens that memory in a drawer over the graph, drawn by the same `MemoryView`
- *  as everywhere else, rather than navigating away: the graph is the thing
- *  you're exploring, so losing your pan/zoom and hand-arranged layout to read
- *  one memory would defeat the view. */
+/** The room's memory graph, full-page: what the team learned, across its tasks,
+ *  each piece where it came from (`KnowledgeGraph`). A room nobody has written
+ *  facts, findings or dead ends in yet shows how its memories link instead.
+ *  Clicking a node opens that memory in a drawer over the graph, drawn by the
+ *  same `MemoryView` as everywhere else, so the graph stays where you were. */
 export function MemoryGraphView({ roomName }: Props) {
-  const [graph, setGraph] = useState<MemoryGraphData | null>(null);
+  const knowledge = useRoomKnowledge(roomName);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const learned = knowledge.memories.length > 0;
+
+  return (
+    <>
+      {learned ? (
+        <div className="flex h-full flex-col">
+          <KnowledgeGraph tasks={knowledge.tasks} memories={knowledge.memories} onOpen={setOpenKey} />
+        </div>
+      ) : (
+        <LinkGraph roomName={roomName} onOpen={setOpenKey} />
+      )}
+
+      <DetailDrawer open={openKey !== null} onClose={() => setOpenKey(null)} title={openKey}>
+        {/* Following a link inside the drawer swaps it to the target, so a
+            reader can walk the graph without closing and re-aiming at a node.
+            Keyed on the memory, so a slow answer for the last one can't land
+            under the next one's title. */}
+        {openKey && (
+          <MemoryView key={openKey} roomName={roomName} memoryKey={openKey} onOpenMemory={setOpenKey} />
+        )}
+      </DetailDrawer>
+    </>
+  );
+}
+
+/** How the room's memories link (#599), for a room with nothing learned yet. */
+function LinkGraph({ roomName, onOpen }: { roomName: string; onOpen: (key: string) => void }) {
+  const [graph, setGraph] = useState<MemoryGraphData | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -62,28 +90,5 @@ export function MemoryGraphView({ roomName }: Props) {
     );
   }
 
-  // MOCK: the room's knowledge, by what came from what, in place of the link graph.
-  const knowledge = mockRoomKnowledge(roomName);
-
-  return (
-    <>
-      {knowledge ? (
-        <div className="flex h-full flex-col">
-          <KnowledgeGraph tasks={knowledge.tasks} memories={knowledge.memories} onOpen={setOpenKey} />
-        </div>
-      ) : (
-        <MemoryGraph graph={graph} onNavigate={setOpenKey} roomName={roomName} className="h-full" />
-      )}
-
-      <DetailDrawer open={openKey !== null} onClose={() => setOpenKey(null)} title={openKey}>
-        {/* Following a link inside the drawer swaps it to the target, so a
-            reader can walk the graph without closing and re-aiming at a node.
-            Keyed on the memory, so a slow answer for the last one can't land
-            under the next one's title. */}
-        {openKey && (
-          <MemoryView key={openKey} roomName={roomName} memoryKey={openKey} onOpenMemory={setOpenKey} />
-        )}
-      </DetailDrawer>
-    </>
-  );
+  return <MemoryGraph graph={graph} onNavigate={onOpen} roomName={roomName} className="h-full" />;
 }

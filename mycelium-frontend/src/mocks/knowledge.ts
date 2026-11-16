@@ -2,41 +2,27 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * MOCK: the checkout room's knowledge, as a graph of its memories.
- *
- * Each memory here is an ordinary memory with three proposed fields: a `kind`
- * (a fact, a finding, a dead end, or a decision the conductor saved), the task
- * it was learned in, and `derived-from`, a new relation beside `part-of`,
- * `depends-on`, `relates-to` and `supersedes` that says which memories it came
- * from. A memory is open while someone is still working on it and settled once
- * it holds. Tags are the room's own, for flavor.
- *
- * The room's graph is all of it. A task's graph is the same graph through one
- * lens: the memories that task produced, plus the ones from other tasks they
- * came from.
+ * The checkout mock room's knowledge, as the hub's `/knowledge` sends it
+ * (`services/knowledge.py`): what its team learned, each piece with its kind,
+ * the task it was learned in, who wrote it, and what it came from. Served by
+ * the mock hub (`mocks/handlers.ts`), so the app reads it the way it reads a
+ * real hub's.
  */
 
-export type KnowledgeKind = "fact" | "finding" | "dead-end" | "decision";
+import type { KnowledgeKind, KnowledgeTask, KnowledgeWire } from "@/lib/knowledge";
 
-export interface KnowledgeTask {
-  key: string;
-  title: string;
-}
-
-export interface Knowledge {
+/** A mock memory: the wire's fields, with how long ago it changed. */
+interface Knowledge {
   key: string;
   kind: KnowledgeKind;
   title: string;
-  /** Who wrote it: a person, an agent, or a subagent (`builder:retry`). */
   by: string;
-  /** The task it was learned in. */
   task: string;
   open?: boolean;
-  /** Keys of the memories it came from. */
   derivedFrom?: string[];
-  /** Keys of memories it bears on without coming from them. */
   relatesTo?: string[];
   tags?: string[];
+  /** "3d ago", "5h ago", "1m ago". */
   at: string;
 }
 
@@ -175,12 +161,33 @@ export const CHECKOUT_KNOWLEDGE: Knowledge[] = [
   },
 ];
 
-/** The checkout room's knowledge, or null for any other room. */
-export function mockRoomKnowledge(room: string): { tasks: KnowledgeTask[]; memories: Knowledge[] } | null {
-  return room === "checkout" ? { tasks: CHECKOUT_TASKS, memories: CHECKOUT_KNOWLEDGE } : null;
+const UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000 };
+
+function isoAgo(at: string, now: number): string {
+  const found = /^(\d+)([mhd]) ago$/.exec(at);
+  return new Date(now - (found ? Number(found[1]) * UNIT_MS[found[2]] : 0)).toISOString();
 }
 
-/** Whether a task has a lens in the mock. */
-export function mockHasLens(taskKey: string): boolean {
-  return CHECKOUT_TASKS.some((t) => t.key === taskKey);
+/** A room's knowledge as the hub sends it: the checkout room's, and nothing
+ *  for any other. */
+export function mockKnowledgeWire(
+  room: string,
+  now = Date.now(),
+): { tasks: KnowledgeTask[]; memories: KnowledgeWire[] } {
+  if (room !== "checkout") return { tasks: [], memories: [] };
+  return {
+    tasks: CHECKOUT_TASKS,
+    memories: CHECKOUT_KNOWLEDGE.map((m) => ({
+      key: m.key,
+      kind: m.kind,
+      title: m.title,
+      by: m.by,
+      task: m.task,
+      open: !!m.open,
+      derived_from: m.derivedFrom ?? [],
+      relates_to: m.relatesTo ?? [],
+      tags: m.tags ?? [],
+      updated_at: isoAgo(m.at, now),
+    })),
+  };
 }

@@ -4452,6 +4452,180 @@
         }
       }
     },
+    "/api/rooms/{room_name}/knowledge": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read Knowledge",
+        "description": "What the room's team learned, each piece with what it came from.",
+        "operationId": "read_knowledge_api_rooms__room_name__knowledge_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "task",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A task's key, to see the room through it",
+              "title": "Task"
+            },
+            "description": "A task's key, to see the room through it"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeGraphRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/knowledge/settle": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Settle Knowledge",
+        "description": "Mark a memory as holding: it's no longer open.",
+        "operationId": "settle_knowledge_api_rooms__room_name__knowledge_settle_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSettle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/board": {
       "get": {
         "tags": [
@@ -18983,6 +19157,170 @@
           "code"
         ],
         "title": "JoinRedeem"
+      },
+      "KnowledgeGraphRead": {
+        "properties": {
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeTaskRead"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "memories": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRead"
+            },
+            "type": "array",
+            "title": "Memories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tasks",
+          "memories"
+        ],
+        "title": "KnowledgeGraphRead",
+        "description": "What a room's team learned, or one task's lens on it."
+      },
+      "KnowledgeRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fact",
+              "finding",
+              "dead-end",
+              "decision"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "The memory's first line"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "Who wrote it: a person, an agent or a subagent"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "The task it was learned in"
+          },
+          "open": {
+            "type": "boolean",
+            "title": "Open",
+            "description": "Still being worked on, rather than settled",
+            "default": false
+          },
+          "derived_from": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Derived From",
+            "description": "What it came from"
+          },
+          "relates_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relates To"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At",
+            "default": ""
+          },
+          "in_task": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Task",
+            "description": "Through a task's lens: whether the task produced it, rather than it being where the task's memories came from or went"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "title",
+          "by"
+        ],
+        "title": "KnowledgeRead",
+        "description": "One thing the team learned: a memory with a kind."
+      },
+      "KnowledgeSettle": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Key"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle",
+            "description": "Who settles it (default: the caller)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "KnowledgeSettle"
+      },
+      "KnowledgeTaskRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title"
+        ],
+        "title": "KnowledgeTaskRead",
+        "description": "A task the room's knowledge was learned in."
       },
       "LatestLine": {
         "properties": {

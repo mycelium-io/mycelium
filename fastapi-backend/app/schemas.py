@@ -1055,6 +1055,45 @@ class SubagentRead(BaseModel):
     ended_at: str | None = None
 
 
+class KnowledgeTaskRead(BaseModel):
+    """A task the room's knowledge was learned in."""
+
+    key: str
+    title: str
+
+
+class KnowledgeRead(BaseModel):
+    """One thing the team learned: a memory with a kind."""
+
+    key: str
+    kind: Literal["fact", "finding", "dead-end", "decision"]
+    title: str = Field(..., description="The memory's first line")
+    by: str = Field(..., description="Who wrote it: a person, an agent or a subagent")
+    task: str | None = Field(None, description="The task it was learned in")
+    open: bool = Field(False, description="Still being worked on, rather than settled")
+    derived_from: list[str] = Field(default_factory=list, description="What it came from")
+    relates_to: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    updated_at: str = ""
+    in_task: bool | None = Field(
+        None,
+        description="Through a task's lens: whether the task produced it, rather than "
+        "it being where the task's memories came from or went",
+    )
+
+
+class KnowledgeGraphRead(BaseModel):
+    """What a room's team learned, or one task's lens on it."""
+
+    tasks: list[KnowledgeTaskRead]
+    memories: list[KnowledgeRead]
+
+
+class KnowledgeSettle(BaseModel):
+    key: str = Field(..., min_length=1)
+    handle: str | None = Field(None, description="Who settles it (default: the caller)")
+
+
 class UserCreate(BaseModel):
     handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
     display_name: str = ""

@@ -14,6 +14,7 @@ import { uiTokenHeaders } from "@/lib/ui-token";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
 import type { LockRecord, TallyRecord } from "@/lib/conductor-line";
+import { fromWire, type KnowledgeGraph, type KnowledgeTask, type KnowledgeWire } from "@/lib/knowledge";
 
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser console.
@@ -2251,6 +2252,22 @@ export interface Subagent {
   state: "working" | "done" | "ended";
   started_at: string;
   ended_at: string | null;
+}
+
+/** What the room's team learned: its memories with a kind, the tasks they were
+ *  learned in, and what each came from (`lib/knowledge.ts`). An older hub has
+ *  none. */
+export async function fetchKnowledge(room: string): Promise<KnowledgeGraph> {
+  const wire = await apiFetch<{ tasks: KnowledgeTask[]; memories: KnowledgeWire[] }>(
+    `${roomApiPath(room)}/knowledge`,
+    {
+      cache: "no-store",
+      fallback: { tasks: [], memories: [] },
+      guard: (d: unknown): d is { tasks: KnowledgeTask[]; memories: KnowledgeWire[] } =>
+        !!d && typeof d === "object" && Array.isArray((d as { memories?: unknown }).memories),
+    },
+  );
+  return { tasks: wire.tasks, memories: wire.memories.map(fromWire) };
 }
 
 /** Every subagent the room has had, ended ones too. */

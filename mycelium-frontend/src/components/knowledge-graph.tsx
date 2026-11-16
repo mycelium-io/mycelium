@@ -4,8 +4,8 @@
 "use client";
 
 /**
- * MOCK: the room's knowledge as a graph of its memories, read left to right by
- * what came from what.
+ * The room's knowledge as a graph of its memories, read left to right by what
+ * came from what (`lib/knowledge.ts`, from the hub's `/knowledge`).
  *
  * A memory sits one column right of the furthest memory it was derived from,
  * and as level with those as the column allows, so a line of reasoning reads
@@ -20,7 +20,7 @@
 
 import { useMemo, useState } from "react";
 import { Ban, Info, Lightbulb, Vote, type LucideIcon } from "lucide-react";
-import type { Knowledge, KnowledgeKind, KnowledgeTask } from "@/mocks/knowledge";
+import type { Knowledge, KnowledgeKind, KnowledgeTask } from "@/lib/knowledge";
 import { cn } from "@/lib/utils";
 
 const NODE_W = 264;
@@ -128,13 +128,13 @@ export function KnowledgeGraph({ tasks, memories, lens, onOpen }: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-8 flex-shrink-0 items-center gap-1 border-b border-border px-3 text-micro">
+      <div className="flex h-8 flex-shrink-0 items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-border px-3 text-micro">
         {lens ? (
           <>
             <span className="px-1.5 text-text">
               {own.length} memories
             </span>
-            <span className="px-1.5 text-muted-foreground">
+            <span className="px-1.5 text-accent">
               {own.filter((m) => m.open).length} open
             </span>
           </>
@@ -157,7 +157,7 @@ export function KnowledgeGraph({ tasks, memories, lens, onOpen }: Props) {
             #{t}
           </Chip>
         ))}
-        <span className="ml-auto flex items-center gap-3 text-faint">
+        <span className="ml-auto flex items-center gap-3 pl-3 text-faint">
           {(Object.keys(KIND) as KnowledgeKind[]).map((k) => {
             const { icon: Icon, tone, label } = KIND[k];
             return (

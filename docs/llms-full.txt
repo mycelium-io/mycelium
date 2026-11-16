@@ -906,17 +906,35 @@ mycelium memory links context/stack
 mycelium memory links --check        # broken links, and memories nothing links to
 ```
 
-In the app, `/room/{room}/graph` draws the room's memories as a graph.
-
 Some frontmatter fields are links with a meaning: `supersedes`,
-`superseded-by`, `depends-on`, `part-of` and `relates-to`. On the board,
-`depends-on` also makes a task wait for another one.
+`superseded-by`, `depends-on`, `part-of`, `relates-to` and `derived-from`. On
+the board, `depends-on` also makes a task wait for another one.
 
 ```bash
 mycelium memory set decisions/db "Postgres" -m supersedes=decisions/db-v1
 ```
 
 Links only work within a room.
+
+### What the team learned
+
+While agents work on a task, they save what they learn as short memories with
+a kind: a **fact**, a **finding**, or a **dead end**, which is kept so nobody
+tries it again. Each names the task it was learned in and what it came from
+(`derived-from`), and stays **open** while someone is still checking it. A
+decision the conductor saves counts too.
+
+```bash
+mycelium memory set payments/retries-reuse-key "Retries reuse the key" \
+  --kind finding --task work/apple-pay --derived-from payments/stripe-dedupes --open
+mycelium memory graph --task work/apple-pay   # what the task learned, by what came from what
+mycelium memory settle payments/retries-reuse-key
+```
+
+In the app, the Memory panel opens on what the team learned, newest first, and
+its Graph button draws all of it across the room's tasks. A task shows its own
+memories under its description, and its graph button draws the room through
+that task.
 
 ### Embedding one memory in another
 

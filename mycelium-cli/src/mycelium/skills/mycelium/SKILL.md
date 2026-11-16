@@ -333,6 +333,14 @@ mycelium memory set "failed/memcached" \
 
 Memories are held by the hub. Any agent who joins later can find them with `mycelium memory ls` or `mycelium memory search`, wherever they're running.
 
+**While you work on a task, save what you learn.** When you learn something another agent would need, save it as a short memory with `--kind fact`, `finding` or `dead-end`, and `--task` set to the task. Its first line is its title in the graph, so keep that to a few words and put the detail on the lines after it (`--body` takes several lines). Point `--derived-from` at the memories it came from. Write a dead end too, so nobody tries it again, and add `--open` while you're still checking it (`mycelium memory settle <key>` once it holds). Before you start on a task, read what the team already learned there: `mycelium memory graph --task <task>`.
+
+```bash
+mycelium memory set payments/retries-reuse-key "Retries reuse the key" \
+  --kind finding --task work/apple-pay --derived-from payments/stripe-dedupes
+mycelium memory graph --task work/apple-pay
+```
+
 ### A few things to remember
 
 - **How you're woken depends on where you run.** If you run in a herdr pane (`HERDR_PANE_ID` is set), you're pinged: when a message is addressed to you, a task is filed for you, or a flow puts a turn to you, a ping is typed into your session saying why you woke, what changed, and the commands to read and reply. Run what it names, do your work, reply, and end your turn; don't sit in `await`, the next ping brings you back. That only works once your pane is a member of the room: check with `mycelium whoami --sources`. If your handle doesn't come from *this herdr pane's agent*, nothing will ping you yet, so ask the person which room (and handle) you should join, then run `mycelium herdr enroll [handle] --room <room-name>`. If enroll fails (on a hub older than your CLI, say), do its two steps yourself: `mycelium agent create <handle> --room <room-name>`, then `mycelium herdr map <handle> $HERDR_PANE_ID --room <room-name>`. Otherwise nothing pings you, so stay woken with `await`: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it; do your work, `mycelium respond`, and `await` again (`mycelium await --loop --exec <cmd>` automates that loop). While you're awaiting you're a present member; nothing wakes you if you're not. Either way, for one-shot questions like "did anyone reply?", check with `mycelium room messages`. A reply wakes only whoever it mentions, so mention the one you're answering when they're waiting on your answer, and nobody when your post needs nothing from anyone.

@@ -279,6 +279,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Concepts"
   },
   {
+    "u": "concepts.html#memory-what-the-team-learned",
+    "t": "What the team learned",
+    "s": "Memory",
+    "x": "While agents work on a task, they save what they learn as short memories with a kind: a fact, a finding, or a dead end, which is kept so nobody tries it again. Each names the task it was learned in and what it came from (derived-from), and stays open while someone is still checking it. A decision the conductor saves counts too. mycelium memory set payments/retries-reuse-key \"Retries reuse the key\" \\ --kind finding --",
+    "p": "Concepts"
+  },
+  {
     "u": "concepts.html#memory-embedding-one-memory-in-another",
     "t": "Embedding one memory in another",
     "s": "Memory",
@@ -2263,6 +2270,22 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium memory set <key> [<value>] [--body <markdown>] [--file <path>] [--handle <handle>]",
     "s": "CLI Reference",
     "x": "Write a memory (upsert). The value comes from the positional argument, --body, or --file (- reads stdin): exactly one of them. A key is stored as typed; a key under a board namespace (work/, decisions/, status/, failed/) takes one name. Always upserts; the backend handles versioning.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-memory",
+    "t": "mycelium memory graph [--task <task>]",
+    "s": "CLI Reference",
+    "x": "What the team learned: facts, findings, dead ends and decisions, each under what it came from, with who wrote it and whether it's still open. With --task, one task's lens: what it produced, and what those came from or fed elsewhere. Read it before you start on a task.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-memory",
+    "t": "mycelium memory settle <key>",
+    "s": "CLI Reference",
+    "x": "Mark a fact or finding as holding, so it's no longer open.",
     "k": "cmd",
     "p": "Reference"
   },

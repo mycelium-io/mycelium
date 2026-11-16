@@ -6,13 +6,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, ListPlus, ListTodo, Loader2, Maximize2, MessageSquare, Network, Pencil, X } from "lucide-react";
-import { mockHasLens, mockRoomKnowledge } from "@/mocks/knowledge";
 import { KnowledgeGraph } from "@/components/knowledge-graph";
 import { TaskMemories } from "@/components/task/task-memories";
 import { createThreadTask } from "@/lib/api";
 import { memoryHref } from "@/lib/memory-routes";
 import {
   useRoomEpisodes,
+  useRoomKnowledge,
   useRoomMembers,
   useRoomMemories,
   useRoomMemory,
@@ -126,9 +126,12 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   const revalidate = useRoomRevalidate(roomName);
   const shortId = threadShortId(target.episode) ?? "thread";
   const [isEditing, setIsEditing] = useState(false);
-  // MOCK: the room's knowledge through this task, drawn in place of its thread.
-  const knowledge = mockRoomKnowledge(roomName);
-  const graph = knowledge && listed && !messageThread && mockHasLens(listed.key) ? knowledge : null;
+  // What the team learned while working this task: the room's knowledge
+  // through its lens, drawn in place of the thread when asked for.
+  const knowledge = useRoomKnowledge(roomName);
+  const learnedHere =
+    listed && !messageThread ? knowledge.memories.filter(m => m.task === listed.key) : [];
+  const graph = learnedHere.length > 0 ? knowledge : null;
   const [showGraph, setShowGraph] = useState(false);
 
   // The conversation owns the read; it hands us its refresh so a send through
@@ -366,7 +369,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
             )}
             {graph && listed && (
               <TaskMemories
-                memories={graph.memories.filter(m => m.task === listed.key)}
+                memories={learnedHere}
                 onOpen={onOpenMemory}
                 onGraph={() => setShowGraph(true)}
               />
