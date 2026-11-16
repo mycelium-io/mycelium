@@ -11,14 +11,13 @@
  * and a bar when it has a meter. A long value takes a whole line. What a run
  * printed as JSON is drawn over the config's fields. One that failed or hung
  * shows that dot instead and says so; hovering any tile says the command, the
- * widget's own tooltip, when it ran, and how it failed. The header opens
- * Settings at the widgets.
+ * widget's own tooltip, when it ran, and how it failed. There's no heading:
+ * clicking a tile opens Settings at the widgets.
  *
  * Nothing renders in a browser, or when there are no widgets: no card at all.
  */
 
 import Link from "next/link";
-import { Gauge } from "lucide-react";
 import { settingHref } from "@/lib/client-settings";
 import { StatusDot } from "@/components/status-items";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -134,7 +133,8 @@ const WIDE_AT = 10;
 
 /** One widget, as a tile: its label above, its value below it at full size,
  *  and its bar under that. The value wraps to two lines before it's cut. The
- *  tile's one dot sits in its corner: a failed or hung run's, else its own. */
+ *  tile's one dot sits in its corner: a failed or hung run's, else its own.
+ *  Clicking it opens Settings at the widgets. */
 function WidgetTile({ widget }: { widget: Widget }) {
   const look = lookOf(widget);
   const state = widgetState(widget);
@@ -145,7 +145,10 @@ function WidgetTile({ widget }: { widget: Widget }) {
   return (
     <li className={cn("min-w-0", wide && "col-span-2")}>
       <Tooltip side="right" content={<RunDetail widget={widget} />}>
-        <div className="flex h-full flex-col gap-1 rounded-md border border-border bg-bg px-2 py-1.5">
+        <Link
+          href={WIDGETS_SETTINGS}
+          className="flex h-full flex-col gap-1 rounded-md border border-border bg-bg px-2 py-1.5 transition-colors hover:border-border2"
+        >
           <div className="flex items-center gap-1.5 text-micro text-muted-foreground">
             <WidgetIcon name={look.icon} className={cn("size-3", color ?? "text-faint")} />
             <span className="min-w-0 flex-1 truncate">{widget.label}</span>
@@ -160,7 +163,7 @@ function WidgetTile({ widget }: { widget: Widget }) {
             {state.kind === "waiting" ? "…" : failed ? (state.kind === "hung" ? "Hung" : "Failed") : <InlineMarkdown text={state.value} />}
           </div>
           {look.meter !== null && !failed && <Meter value={look.meter} />}
-        </div>
+        </Link>
       </Tooltip>
     </li>
   );
@@ -171,16 +174,9 @@ export function WidgetsCard() {
   const data = useWidgets();
   if (!data || data.widgets.length === 0) return null;
   return (
-    // The tiles are the boxes; the card around them is only its heading.
-    <div className="flex-shrink-0 border-t border-border pt-1">
-      <Link
-        href={WIDGETS_SETTINGS}
-        className="flex items-center gap-1.5 px-3 pt-1.5 pb-1.5 text-micro text-muted-foreground hover:text-text"
-      >
-        <Gauge className="size-3.5 text-faint" aria-hidden />
-        Widgets
-      </Link>
-      <ul className="grid grid-cols-2 gap-1.5 px-2 pb-2">
+    // Only the tiles, with no heading: a line above them sets them off from the rooms.
+    <div className="flex-shrink-0 border-t border-border pt-2">
+      <ul aria-label="Widgets" className="grid grid-cols-2 gap-1.5 px-2 pb-2">
         {data.widgets.map((w, i) => (
           <WidgetTile key={`${i}-${w.label}`} widget={w} />
         ))}

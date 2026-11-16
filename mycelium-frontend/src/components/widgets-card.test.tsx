@@ -52,8 +52,11 @@ describe("the Widgets card", () => {
     expect(screen.getByText("Mac mini")).toBeTruthy();
     expect(screen.getByText("Failed")).toBeTruthy();
     expect(screen.getByText("Hung")).toBeTruthy();
-    // The header opens Settings at the widgets.
-    expect(screen.getByRole("link", { name: "Widgets" }).getAttribute("href")).toBe("/settings/widgets");
+    // No heading; every tile opens Settings at the widgets.
+    expect(screen.queryByText("Widgets")).toBeNull();
+    const links = screen.getAllByRole("link");
+    expect(links).toHaveLength(4);
+    for (const link of links) expect(link.getAttribute("href")).toBe("/settings/widgets");
     // RAM free's bar, filled to its value; no other row has one.
     const bars = container.querySelectorAll("span[style*='width']");
     expect(bars).toHaveLength(1);
