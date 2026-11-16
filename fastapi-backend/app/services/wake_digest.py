@@ -685,8 +685,12 @@ def _skill_line(room: str, me: str, now: datetime) -> str | None:
     last = _last_wake(room, me)
     if last is not None and now - last < SKILL_AFTER:
         return None
-    first = f"your last wake here was {age(last, now)}" if last else "this is your first wake here"
-    return f"Skill:   {first}; run `mycelium skill print` to re-read how Mycelium works"
+    if last is None:
+        return "Skill:   this is your first wake here; run `mycelium skill print` to read how Mycelium works"
+    return (
+        f"Skill:   your last wake here was {age(last, now)}; "
+        "run `mycelium skill print` to re-read how Mycelium works"
+    )
 
 
 def _replied(room: str, window: list[Any], asked: list[Any], me: str) -> set[int]:

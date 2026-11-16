@@ -296,7 +296,7 @@ def test_a_wake_after_a_day_without_one_says_to_read_the_skill_again(monkeypatch
     # Never woken here: its first wake points at the skill.
     assert _skill(wake_digest.build(ROOM, wake, records, NOW)) == (
         "Skill:   this is your first wake here; "
-        "run `mycelium skill print` to re-read how Mycelium works"
+        "run `mycelium skill print` to read how Mycelium works"
     )
     # Woken an hour ago: nothing to say.
     _woken_with(monkeypatch, "w1", [], 60)
