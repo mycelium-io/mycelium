@@ -1014,7 +1014,9 @@ class StatuslineConfig(BaseModel):
 class StatuslineSection(BaseModel):
     """The desktop app's Widgets card, read and run on this computer only."""
 
-    widget: list[dict[str, Any]] = Field(
+    # ``Any``, not a list of tables: even a section of the wrong shape is the
+    # desktop app's to report, never a reason for the CLI to stop.
+    widget: Any = Field(
         default=[],
         description=(
             "The rows of the Widgets card, in order, as [[statusline.widget]] tables: "
@@ -1028,6 +1030,12 @@ class StatuslineSection(BaseModel):
             "the desktop app, which notes any field it ignored in Settings > Widgets."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _any_shape(cls, data: Any) -> Any:
+        """``statusline = "x"`` is kept as it was written, for the app to report."""
+        return data if isinstance(data, dict) else {"widget": data}
 
 
 class MyceliumConfig(BaseModel):
