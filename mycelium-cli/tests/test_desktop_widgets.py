@@ -45,14 +45,32 @@ def test_a_widget_runs_at_most_every_five_seconds():
             StatusWidget(label="x", command="x", every=too_often)
 
 
-def test_the_section_is_read_from_config_toml_and_never_reaches_the_stack():
-    config = MyceliumConfig.model_validate(
-        {"statusline": {"widget": [{"label": "disk free", "command": "df -h /", "every": "5m"}]}}
-    )
-    assert [x.label for x in config.statusline.widget] == ["disk free"]
+def test_the_section_is_kept_in_config_toml_and_never_reaches_the_stack():
+    row = {"label": "disk free", "command": "df -h /", "every": "5m"}
+    config = MyceliumConfig.model_validate({"statusline": {"widget": [row]}})
+    assert config.statusline.widget == [row]
     assert StatuslineConfig().widget == []
     # Only the desktop app reads it, on this computer: never rendered into .env.
     assert "statusline.widget" in LOCAL_ONLY_FIELDS
+
+
+def test_a_bad_widget_stops_only_the_widgets_never_the_cli(tmp_path: Path, monkeypatch):
+    """A typo in a status readout must not stop `await`, `respond` or the runner."""
+    home = tmp_path / "home"
+    (home / ".mycelium").mkdir(parents=True)
+    path = home / ".mycelium" / "config.toml"
+    path.write_text('[[statusline.widget]]\nlabel = "busy"\ncommand = "a"\nevery = "4s"\n')
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(tmp_path)
+
+    config = MyceliumConfig.load()
+    assert config.statusline.widget == [{"label": "busy", "command": "a", "every": "4s"}]
+
+    widgets = w.Widgets(path, run=lambda *_: pytest.fail("ran"), clock=Clock())
+    widgets.tick()
+    snap = widgets.snapshot()
+    assert snap["widgets"] == []
+    assert "every must be at least 5s" in snap["error"]
 
 
 @posix
