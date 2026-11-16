@@ -21,10 +21,13 @@ refused with a stable code, like every other memory write.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.services.board import title_of
-from app.services.filesystem import list_memory_files, read_memory_file, room_path
+from app.services.filesystem import changes_in, list_memory_files, read_memory_file, room_path
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 KIND_FIELD = "kind"
 TASK_FIELD = "task"
@@ -151,9 +154,31 @@ def _node(key: str, meta: dict[str, Any], content: str) -> dict[str, Any]:
     }
 
 
+#: Each room folder's graph with the change count it was built at (``changes_in``).
+_graphs: dict[str, tuple[int, dict[str, Any]]] = {}
+
+
 def room_knowledge(room: str) -> dict[str, Any]:
-    """Everything the room's team learned, and the tasks it was learned in."""
+    """Everything the room's team learned, and the tasks it was learned in.
+
+    Built by reading every memory in the room, so it is kept until a memory
+    there is written or deleted. The graph returned is shared: read it, never
+    change it (``lens`` copies what it marks). Blocking; call it off the loop.
+    """
     base = room_path(room)
+    # By folder rather than name: a room's name means another folder under
+    # another data dir.
+    folder = str(base.resolve())
+    seen = changes_in(base)
+    kept = _graphs.get(folder)
+    if kept is not None and kept[0] == seen:
+        return kept[1]
+    graph = _build(base)
+    _graphs[folder] = (seen, graph)
+    return graph
+
+
+def _build(base: Path) -> dict[str, Any]:
     memories = [
         _node(key, meta, content)
         for key, meta, content in list_memory_files(base, limit=None)

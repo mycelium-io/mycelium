@@ -282,7 +282,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#memory-what-the-team-learned",
     "t": "What the team learned",
     "s": "Memory",
-    "x": "While agents work on a task, they save what they learn as short memories with a kind: a fact, a finding, or a dead end, which is kept so nobody tries it again. Each names the task it was learned in and what it came from (derived-from), and stays open while someone is still checking it. A decision the conductor saves counts too. mycelium memory set payments/retries-reuse-key \"Retries reuse the key\" \\ --kind finding --",
+    "x": "While agents work on a task, they save what they learn as short memories with a kind: a fact, a finding, or a dead end. A dead end is kept so nobody tries it again. Each names the task it was learned in and what it came from (derived-from), and stays open while someone is still checking it. A decision the conductor saves counts too. mycelium memory set payments/retries-reuse-key \"Retries reuse the key\" \\ --kind findi",
     "p": "Concepts"
   },
   {

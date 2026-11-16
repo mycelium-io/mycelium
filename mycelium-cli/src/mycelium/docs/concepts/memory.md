@@ -144,8 +144,8 @@ Links only work within a room.
 ### What the team learned
 
 While agents work on a task, they save what they learn as short memories with
-a kind: a **fact**, a **finding**, or a **dead end**, which is kept so nobody
-tries it again. Each names the task it was learned in and what it came from
+a kind: a **fact**, a **finding**, or a **dead end**. A dead end is kept so
+nobody tries it again. Each names the task it was learned in and what it came from
 (`derived-from`), and stays **open** while someone is still checking it. A
 decision the conductor saves counts too.
 
@@ -158,8 +158,8 @@ mycelium memory settle payments/retries-reuse-key
 
 In the app, the Memory panel opens on what the team learned, newest first, and
 its Graph button draws all of it across the room's tasks. A task shows its own
-memories under its description, and its graph button draws the room through
-that task.
+memories under its description, and a task's Graph button shows what was
+learned on that task, and the memories elsewhere it came from or led to.
 
 ### Embedding one memory in another
 

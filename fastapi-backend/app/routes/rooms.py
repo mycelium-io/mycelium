@@ -18,9 +18,11 @@ from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
     list_room_names,
+    note_change,
     read_room_meta,
     remove_room_dir,
     room_exists,
+    room_path,
     write_room_meta,
 )
 from app.services.persister import TRANSCRIPT_FILENAME
@@ -259,6 +261,8 @@ async def reindex_room(room_name: str):
     from app.services.indexer import index_room
 
     stats = await index_room(room_name)
+    # Files changed by hand: whatever was built from the room is built again.
+    note_change(room_path(room_name))
     return {"status": "complete", **stats}
 
 

@@ -10,6 +10,8 @@ memory as holding, so it's no longer open (``mycelium memory settle``).
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.schemas import KnowledgeGraphRead, KnowledgeRead, KnowledgeSettle, refusals
@@ -31,7 +33,9 @@ async def read_knowledge(
 ) -> KnowledgeGraphRead:
     """What the room's team learned, each piece with what it came from."""
     _require_room(room_name)
-    graph = knowledge.room_knowledge(room_name)
+    # Building it reads every memory in the room; off the loop, so the hub keeps
+    # answering while it does.
+    graph = await asyncio.to_thread(knowledge.room_knowledge, room_name)
     if task:
         graph = knowledge.lens(graph, task)
     return KnowledgeGraphRead.model_validate(graph)

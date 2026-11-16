@@ -164,6 +164,42 @@ async def test_a_memory_is_settled_once_it_holds(room):
     assert by_key(await graph(room))["payments/timeout"]["open"] is False
 
 
+async def test_the_graph_is_kept_until_a_memory_in_the_room_changes(room, monkeypatch):
+    from app.services import knowledge
+
+    builds = []
+    build = knowledge.list_memory_files
+
+    def counted(*args, **kwargs):
+        builds.append(1)
+        return build(*args, **kwargs)
+
+    monkeypatch.setattr(knowledge, "list_memory_files", counted)
+    await learn(room, "payments/timeout", "A timeout", kind="finding", task=TASK, open=True)
+
+    await graph(room)
+    await graph(room, TASK)
+    assert len(builds) == 1, "a second read rebuilt a room nothing changed in"
+
+    # A write, a settle and a delete each show on the next read.
+    await learn(room, "payments/refunds", "Refunds land in a day", kind="fact", task=TASK)
+    assert "payments/refunds" in by_key(await graph(room))
+    await room.post(
+        f"/api/rooms/{ROOM}/knowledge/settle", json={"key": "payments/timeout", "handle": "builder"}
+    )
+    assert by_key(await graph(room))["payments/timeout"]["open"] is False
+    assert (await room.delete(f"/api/rooms/{ROOM}/memory/payments/refunds")).status_code == 204
+    assert "payments/refunds" not in by_key(await graph(room))
+
+    # A file edited on disk shows once the room is reindexed, the step after one.
+    (room_path(ROOM) / "payments" / "by-hand.md").write_text(
+        f"---\nkey: payments/by-hand\nkind: fact\ntask: {TASK}\n---\nEdited on disk\n"
+    )
+    assert "payments/by-hand" not in by_key(await graph(room))
+    await room.post(f"/api/rooms/{ROOM}/reindex")
+    assert "payments/by-hand" in by_key(await graph(room))
+
+
 async def test_only_knowledge_can_be_settled(room):
     await learn(room, "context/notes", "Some notes")
     resp = await room.post(f"/api/rooms/{ROOM}/knowledge/settle", json={"key": "context/notes"})
