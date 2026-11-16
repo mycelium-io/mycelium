@@ -73,6 +73,24 @@ def test_a_bad_widget_stops_only_the_widgets_never_the_cli(tmp_path: Path, monke
     assert "every must be at least 5s" in snap["error"]
 
 
+@pytest.mark.parametrize("body", ['statusline = "x"\n', '[statusline]\nwidget = "x"\n'])
+def test_a_section_of_the_wrong_shape_stops_only_the_widgets(
+    tmp_path: Path, monkeypatch, body: str
+):
+    home = tmp_path / "home"
+    (home / ".mycelium").mkdir(parents=True)
+    path = home / ".mycelium" / "config.toml"
+    path.write_text(body)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(tmp_path)
+
+    assert MyceliumConfig.load().statusline.widget == "x"
+    widgets = w.Widgets(path, run=lambda *_: pytest.fail("ran"), clock=Clock())
+    widgets.tick()
+    assert widgets.snapshot()["widgets"] == []
+    assert "isn't valid" in widgets.snapshot()["error"]
+
+
 @posix
 def test_a_run_shows_the_first_line_printed():
     run = w.run_command("printf '\\n38%%\\nmore\\n'", 5)
