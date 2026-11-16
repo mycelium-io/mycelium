@@ -141,8 +141,8 @@ def asked(records: list[TranscriptRecord], room: str) -> dict[str, Asked]:
 
 
 def may_answer(room: str, handle: str) -> bool:
-    """Whether ``handle`` may answer an ask: anyone but an agent or an engine,
-    so no agent can approve its own work, or another's.
+    """Whether ``handle`` may answer an ask: anyone but an agent, an agent's
+    subagent or an engine, so no agent can approve its own work, or another's.
 
     Not whether they're a person the room knows: on a gated hub their token
     already says who they are, and on an open one anyone can claim any name,
@@ -161,7 +161,7 @@ def records(room: str) -> list[TranscriptRecord]:
 
 
 def _is_person(room: str, handle: str) -> bool:
-    return principals.classify_sender(room, handle) not in {"agent", "engine"}
+    return principals.classify_sender(room, handle) not in {"agent", "subagent", "engine"}
 
 
 def _is_person_here(room: str, handle: str) -> bool:

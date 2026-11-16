@@ -44,7 +44,9 @@ describe("composerMentions", () => {
   });
 
   it("never resolves the @ of an email address, even a member's", () => {
-    expect(read("write to julia@eng.example")).toEqual([["@eng", "mention", false]]);
+    expect(read("write to sam@eng")).toEqual([["@eng", "mention", false]]);
+    // A handle can hold dots, so the token runs to the end of the address.
+    expect(read("write to sam@eng.example")).toEqual([["@eng.example", "mention", false]]);
   });
 
   it("skips a handle quoted as code", () => {

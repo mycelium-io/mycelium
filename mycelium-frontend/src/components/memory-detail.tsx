@@ -4,7 +4,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, CornerDownLeft, Download, FileImage, FileText } from "lucide-react";
+import { ArrowUpRight, Check, Copy, CornerDownLeft, Download, FileImage, FileText } from "lucide-react";
+import { copyText } from "@/lib/clipboard";
 import { highlightJson } from "@/lib/json-highlight";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Expandable } from "@/components/ui/expandable";
@@ -144,8 +145,8 @@ interface Props {
   /** Head it with a sticky toolbar naming the key, for a surface that shows it nowhere else. */
   showKey?: boolean;
   /** With `showKey`, something around it already names the memory (a tab, a
-   *  drawer's title): the toolbar leads with its folder and facts instead of
-   *  repeating the icon and key under it. */
+   *  drawer's title): the toolbar leads with the whole key, small, and its
+   *  facts, instead of the icon and the key as the page's title. */
   named?: boolean;
   /** More controls at the end of the header (a tab's Edit and its own page). */
   actions?: React.ReactNode;
@@ -173,18 +174,64 @@ function MaybeExpandable({
   );
 }
 
-/** A key as breadcrumbs, the way the editor's header writes it. */
-function KeyCrumbs({ memoryKey }: { memoryKey: string }) {
-  const parts = memoryKey.split("/");
+/** How many characters of a key's name stay before its folder is cut too. */
+const NAME_FLOOR = 8;
+
+/**
+ * A memory's whole key, its folder and its name, as one control that copies
+ * it. It's what a person types after `[[`, passes to `mycelium memory get`, or
+ * pastes to someone, so every view of a memory shows it. In a narrow pane the
+ * name is cut short first, since the folder is what a tab's title can't show;
+ * the copy is always the whole key.
+ */
+export function MemoryKey({
+  memoryKey,
+  size = "label",
+  heading = false,
+}: {
+  memoryKey: string;
+  size?: "label" | "micro";
+  /** The page's own title, so it's its heading too. */
+  heading?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const slash = memoryKey.lastIndexOf("/");
+  const folder = slash >= 0 ? memoryKey.slice(0, slash + 1) : "";
+  const name = memoryKey.slice(slash + 1);
+  const copy = async () => {
+    await copyText(memoryKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  const Tag = heading ? "h1" : "span";
   return (
-    <h1 className="min-w-0 truncate font-mono text-label" title={memoryKey}>
-      {parts.map((part, i) => (
-        <span key={i} className={i === parts.length - 1 ? "text-text" : "text-muted-foreground"}>
-          {i > 0 && <span className="text-faint">/</span>}
-          {part}
+    <Tag className="flex min-w-0">
+      <button
+        type="button"
+        onClick={() => void copy()}
+        title={`Copy ${memoryKey}`}
+        aria-label={`Copy ${memoryKey}`}
+        className={cn(
+          "group/key flex min-w-0 items-center rounded font-mono hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          size === "label" ? "text-label" : "text-micro",
+        )}
+      >
+        {/* The name gives way first, down to a few characters; only then
+            does a deep folder (`context/summary/work/`) get cut too. */}
+        {folder && <span className="min-w-0 truncate text-muted-foreground">{folder}</span>}
+        <span
+          className={cn("min-w-0 shrink-[1000] truncate", size === "label" ? "text-text" : "text-muted-foreground")}
+          style={{ minWidth: name.length > NAME_FLOOR ? `${NAME_FLOOR}ch` : undefined }}
+        >
+          {name}
         </span>
-      ))}
-    </h1>
+        {copied ? (
+          <Check className="ml-1 size-3 flex-shrink-0 text-green" aria-hidden />
+        ) : (
+          <Copy className="ml-1 size-3 flex-shrink-0 text-faint opacity-0 transition-opacity group-hover/key:opacity-100 group-focus-visible/key:opacity-100" aria-hidden />
+        )}
+      </button>
+    </Tag>
   );
 }
 
@@ -298,7 +345,6 @@ export function MemoryDetail({
       {upload && ` · ${kindLabel(upload.kind)} · ${formatBytes(upload.size)}`}
     </span>
   );
-  const folder = memory.key.split("/").slice(0, -1).join("/");
   const tags = memory.tags?.map(tag => (
     <span key={tag} className="flex-shrink-0 rounded bg-hairline px-1.5 font-mono text-faint">
       {tag}
@@ -349,17 +395,12 @@ export function MemoryDetail({
         // breadcrumbs, what it is in a quiet line beside it, and the controls.
         <header className="sticky top-0 z-10 flex min-h-10 items-center gap-3 border-b border-border bg-paper/95 px-5 py-1.5 backdrop-blur-sm">
           {named ? (
-            // The tab above shows the key's last part, so this line adds what
-            // it can't: the folder (a skill's badge says it already) and facts.
+            // The tab above shows the key's last part; this line has the whole
+            // key, to read and copy, then the facts.
             <div className="flex min-w-0 flex-1 items-center gap-2 text-micro text-faint">
               {skill}
-              <span className="min-w-0 truncate">
-                {!skill && folder && (
-                  <>
-                    <span className="font-mono">{folder}</span>
-                    {" · "}
-                  </>
-                )}
+              <MemoryKey memoryKey={memory.key} size="micro" />
+              <span className="hidden min-w-0 shrink-[100] truncate @xl:block">
                 {facts}
                 {memory.tags?.map(tag => (
                   <span key={tag} className="ml-2 rounded bg-hairline px-1.5 font-mono">
@@ -375,7 +416,7 @@ export function MemoryDetail({
               ) : (
                 <FileText className="size-3.5 flex-shrink-0 text-muted-foreground" />
               )}
-              <KeyCrumbs memoryKey={memory.key} />
+              <MemoryKey memoryKey={memory.key} heading />
               {skill}
               {/* Gives way before the key does. */}
               <span className="hidden min-w-0 shrink-[100] truncate text-micro text-faint @xl:block">
@@ -392,6 +433,7 @@ export function MemoryDetail({
         </header>
       ) : (
         <header className={`flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 border-b border-border ${pad} py-1 text-micro text-muted-foreground`}>
+          <MemoryKey memoryKey={memory.key} size="micro" />
           {skill}
           {facts}
           {tags}

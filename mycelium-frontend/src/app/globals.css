@@ -974,6 +974,21 @@ body {
   --dv-context-menu-background-color: var(--elevated);
   --dv-context-menu-color: var(--text);
 }
+/* The seam between split tab groups: 12px to grab, like the app's other
+ * dividers (`ui/resizable.tsx`), centered where dockview's 4px one sits, and
+ * lit only in its middle 4px when dragged. */
+.dockview-theme-mycelium .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash {
+  width: 12px;
+  margin-left: -4px;
+  padding: 0 4px;
+  background-clip: content-box;
+}
+.dockview-theme-mycelium .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash {
+  height: 12px;
+  margin-top: -4px;
+  padding: 4px 0;
+  background-clip: content-box;
+}
 .dockview-theme-mycelium .dv-tabs-and-actions-container {
   border-bottom: 1px solid var(--border);
 }

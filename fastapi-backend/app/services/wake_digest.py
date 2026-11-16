@@ -38,6 +38,7 @@ from app.services import assignments, message_format
 from app.services.agent_registry import norm_handle
 from app.services.persister import (
     _conversational_text,
+    parse_mentions,
     parse_recorded_at,
     read_id,
     record_episode,
@@ -65,6 +66,14 @@ NAME_CHARS = 32
 BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor", "upstream", "check"}
 #: How far back the transcript is read for the agent's last turn.
 SCAN = 2000
+#: The live states the ``Members`` block groups the room's agents by, in its
+#: order, each with its mark: the busy and the stuck first, since those are
+#: who a message crosses or nobody hears.
+MEMBER_STATES = {"working": "●", "blocked": "▲", "idle": "○", "done": "✓"}
+#: How many agents a state names before it counts the rest.
+MEMBERS_NAMED = 4
+#: How far back the wake log is read for what each working agent is on.
+WAKES_READ = 200
 
 
 def _norm(handle: str | None) -> str:
@@ -309,6 +318,93 @@ def _upstream_notice(record: Any) -> dict[str, Any] | None:
     return data if data.get("subkind") == "upstream" else None
 
 
+def _on(room: str, wake: dict[str, Any] | None, now: datetime) -> str:
+    """What a working agent is on, from the last wake it was handed: who it's
+    answering and where, or the task it was given, and how long ago, since an
+    old wake can be one it has moved on from. Empty when it was handed none
+    (started by hand, say): nothing is guessed."""
+    if not wake:
+        return ""
+    when = age(parse_recorded_at(str(wake["at"])) if wake.get("at") else None, now)
+    place = _where(room, wake.get("episode"))
+    if wake.get("reason") in ("assigned", "handback") and (place or wake.get("task")):
+        key = place[0] if place else str(wake["task"])
+        title = (
+            place[1] if place else next((_title(k, c) for k, _m, c in _rows(room) if k == key), key)
+        )
+        return f'on "{_short(title, TITLE_CHARS)}", {when}'
+    where = f'in "{_short(place[1], TITLE_CHARS)}"' if place else "in the room"
+    sender = _norm(wake.get("from"))
+    doing = f"answering @{sender} {where}" if sender else f"woken {where}"
+    return f"{doing}, {when}"
+
+
+def members(room: str, handle: str, now: datetime | None = None) -> list[str]:
+    """The room's other agents and what each is doing now, as a small members
+    pane: grouped by the live state its host reports, in
+    :data:`MEMBER_STATES`' order. A working agent's row says what it's on
+    (:func:`_on`), a blocked one that it's waiting on its machine, and the idle
+    and the done share a line. Agents only, never the one being woken; one
+    that's away, or whose state no host reports, isn't listed, since there's
+    nothing true to say about it. Empty when none is."""
+    from app.services import room_channels, room_people, wake_log
+
+    me = _norm(handle)
+    now = now or datetime.now(UTC)
+    try:
+        agents = {_norm(a.get("handle")) for a in room_people.roster(room)["agents"]}
+        present = room_channels.manager.presence(room)
+    except Exception:  # a digest without the block is still a digest
+        return []
+    by_state: dict[str, list[str]] = {state: [] for state in MEMBER_STATES}
+    for name, info in present.items():
+        agent = _norm(name)
+        if agent in agents and agent != me and info.status in by_state:
+            by_state[info.status].append(agent)
+    total = sum(len(names) for names in by_state.values())
+    if not total:
+        return []
+    last_wake: dict[str, dict[str, Any]] = {}
+    if by_state["working"]:
+        try:
+            wakes = wake_log.read(room, limit=WAKES_READ)
+        except Exception:  # what it's on is extra; the state is the news
+            wakes = []
+        for wake in wakes:  # newest first: the first one per agent is its last
+            agent = _norm(wake.get("agent"))
+            if wake.get("outcome") in ("handed", "delivered"):
+                last_wake.setdefault(agent, wake)
+    for names in by_state.values():
+        names.sort()
+    # The notes line up after the longest name of the rows that carry one.
+    noted = by_state["working"][:MEMBERS_NAMED] + by_state["blocked"][:MEMBERS_NAMED]
+    width = max((len(n) for n in noted), default=0)
+    noun = "agent" if total == 1 else "agents"
+    lines = [f"Members ({total} other {noun})"]
+    for state, mark in MEMBER_STATES.items():
+        names = by_state[state]
+        if not names:
+            continue
+        label = f"  {mark} {state:<9} "
+        pad = " " * len(label)
+        rest = len(names) - MEMBERS_NAMED
+        if state in ("working", "blocked"):
+            for n, name in enumerate(names[:MEMBERS_NAMED]):
+                note = (
+                    _on(room, last_wake.get(name), now)
+                    if state == "working"
+                    else "waiting for input on its machine"
+                )
+                row = f"@{name:<{width}}  {note}".rstrip()
+                lines.append(f"{label if n == 0 else pad}{row}")
+            if rest > 0:
+                lines.append(f"{pad}and {rest} more")
+        else:
+            shown = "  ".join(f"@{n}" for n in names[:MEMBERS_NAMED])
+            lines.append(f"{label}{shown}{f'  +{rest}' if rest > 0 else ''}")
+    return lines
+
+
 def moves(room: str, handle: str, since: list[Any], now: datetime) -> list[str]:
     """Everything that moved in ``since``, newest first: the board's changes and
     the changes to the pull requests behind the agent's rows, in one list.
@@ -382,6 +478,20 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
 
         return tasks.episode_of(room, str(notice["key"]))
     return _thread_of(room, asked[-1])
+
+
+def _subagents_asked(asked: list[Any], me: str) -> list[str]:
+    """The names of ``me``'s subagents the messages in ``asked`` mention, first
+    named first. A subagent has no doorbell, so a mention of one asks its
+    parent (``asks``)."""
+    found: dict[str, None] = {}
+    for record in asked:
+        text = record.content.get("content") if isinstance(record.content, dict) else None
+        for handle in parse_mentions(text) if isinstance(text, str) else []:
+            parent, sep, name = _norm(handle).partition(":")
+            if sep and parent == me and name:
+                found.setdefault(name, None)
+    return list(found)
 
 
 def _floor_line(room: str, thread: str | None, me: str) -> str | None:
@@ -786,6 +896,14 @@ def build(
         count = f"{n} messages mention" if n > 1 else f"{sender} mentioned"
         why = f"{count} you in {_place(room, where)}{latest}"
     lines.append(f"Why:     {why}")
+    # A subagent has no doorbell, so what was said to one woke its parent.
+    if subs := _subagents_asked(asked, me):
+        named = ", ".join(f"@{me}:{s}" for s in subs)
+        noun = "your subagent" if len(subs) == 1 else "your subagents"
+        lines.append(
+            f"For:     {noun} {named}. Answer it yourself, pass it on in its next "
+            f"step, or have it check in with `mycelium await --as {me}:{subs[0]}`."
+        )
     # A thread whose floor is held for someone else: it was named, but the
     # conductor (or whoever holds it) asks in turn, so its writes wait till then.
     if (turn := _floor_line(room, here, me)) is not None:
@@ -923,6 +1041,10 @@ def build(
         if pointers:
             lines.append(f"Agreed:  {pointers[0]}")
             lines.extend(f"         {p}" for p in pointers[1:])
+    # Who else is busy right now and on what, so it doesn't act across them:
+    # a small members pane, set off on its own.
+    if pane := members(room, me, now):
+        lines += ["", *pane, ""]
 
     # One line, so an agent that needs more than this digest holds knows the
     # room's whole history can be asked rather than paged through.

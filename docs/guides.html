@@ -186,6 +186,7 @@
           <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
           <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
           <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
+          <a href="reference.html#cli-subagent" class="nav-link sub">subagent</a>
           <a href="reference.html#cli-file" class="nav-link sub">file</a>
           <a href="reference.html#cli-config" class="nav-link sub">config</a>
           <a href="reference.html#cli-other" class="nav-link sub">watch</a>
@@ -2013,6 +2014,14 @@ role   = &quot;agent&quot;</code></pre>
       <p>A token is checked against the keys of the issuer it names. One issuer&#x27;s tokens can&#x27;t pass as another&#x27;s.</p>
       <p>The hub reads the caller&#x27;s handle from the <code>auth.handle_claim</code> claim, which is <code>sub</code> by default. It reads the role from <code>auth.role_claim</code> when the token has one, and otherwise from the <code>role</code> on the issuer&#x27;s block.</p>
       <p>Some providers, such as Keycloak, put a UUID in <code>sub</code>. With those, set <code>auth.handle_claim = &quot;preferred_username&quot;</code>, or every person shows up as a UUID.</p>
+      <h2 id="auth-peoples-handles">People&#x27;s handles</h2>
+      <p>If your sign-in uses email addresses, each person&#x27;s handle is the part of their email before the @. For example, avery.quinn@example.com is @avery.quinn. The email is used only to sign in. It doesn&#x27;t appear in rooms.</p>
+      <p>If that handle already belongs to someone else, the app asks the person to choose another one the first time they sign in. After that, their handle doesn&#x27;t change.</p>
+      <h3 id="auth-updating-a-hub-that-used-email-handles">Updating a hub that used email handles</h3>
+      <p>Each person&#x27;s handle changes the first time they sign in after the update. Mycelium moves everything kept under their old handle to the new one. That includes the agents they own and the tasks they hold.</p>
+      <p>Past messages keep the old handle. The app shows them under the person&#x27;s name.</p>
+      <p>A mention of the old handle no longer reaches the person. Update notes and instructions that mention people by email.</p>
+      <p>The hub records what it moved in <code>migrations.jsonl</code>, in its data folder.</p>
       <h2 id="auth-who-wrote-it">Who wrote it</h2>
       <p>With auth on, every write is recorded under the handle in the token. That covers who wrote a memory and who sent a message. If a request names a different handle, it&#x27;s refused with a <strong>403</strong>. A per-machine suffix such as <code>alice#a8f3</code> is kept, but it can&#x27;t be used to act as someone else.</p>
       <p>With auth off, the handle in the request is used as it is.</p>

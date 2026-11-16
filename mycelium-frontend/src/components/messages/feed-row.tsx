@@ -5,11 +5,12 @@
 
 import { useMemo, useRef, useState } from "react";
 import { AtSign, Braces, Copy, Link2, MessageSquare, Reply, TextQuote } from "lucide-react";
-import type { VerifierFlag } from "@/lib/api";
+import type { Subagent, VerifierFlag } from "@/lib/api";
 import type { Event } from "@/lib/room-events";
 import {
   useMessageThreads,
   useRoomAgents,
+  useRoomSubagents,
   useRoomRowNames,
   useRoomThreads,
   useRoomVerifierFlags,
@@ -147,6 +148,9 @@ export interface FeedContext {
   /** Who each message's sender interrupted with it, by message id; marked on
    *  the message, never a line of its own. */
   interruptedByMessage?: ReadonlyMap<string, Interrupted[]>;
+  /** The room's subagents by handle (lowercased), ended ones too, from the
+   *  hub's record: a message from one wears its parent's face. */
+  subagents?: ReadonlyMap<string, Subagent>;
   rowNames: Map<string, RowNaming>;
   flagsByMessage: Map<string, VerifierFlag[]>;
   refreshFlags: () => void;
@@ -170,6 +174,7 @@ export function useFeedContext(
   const { agents } = useRoomAgents(roomName);
   const threads = useRoomThreads(roomName);
   const messageThreads = useMessageThreads(roomName);
+  const subagents = useRoomSubagents(roomName);
   const rowNames = useRoomRowNames(roomName);
   const { byMessage: flagsByMessage, refresh: refreshFlags } = useRoomVerifierFlags(roomName);
   const threadIds = useMemo(() => {
@@ -190,6 +195,7 @@ export function useFeedContext(
       threads,
       threadIds,
       messageThreads,
+      subagents,
       rowNames,
       flagsByMessage,
       refreshFlags,
@@ -197,7 +203,7 @@ export function useFeedContext(
       onOpenMemory,
       episode,
     }),
-    [roomName, agents, threads, threadIds, messageThreads, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
+    [roomName, agents, threads, threadIds, messageThreads, subagents, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
   );
 }
 
@@ -702,7 +708,10 @@ export function MessageRow({
 }) {
   const { roomName, agentHandles, engineHandles, agentTags, agentOwners, flagsByMessage, refreshFlags } = ctx;
   const drawsValues = Boolean(replyContext?.rated);
-  const isAgent = agentHandles.has(ev.sender);
+  // A message from an agent's subagent wears its parent's face, by its own
+  // name, from the hub's record, which outlasts the subagent.
+  const subagent = ctx.subagents?.get(ev.sender.toLowerCase());
+  const isAgent = agentHandles.has(ev.sender) || Boolean(subagent);
   // Match the members panel so one sender isn't two colors in two places: an
   // agent wears its own stable tint (Monogram's default), a human the neutral seat.
   const color = isAgent ? undefined : "var(--avatar-neutral)";
@@ -732,7 +741,7 @@ export function MessageRow({
             <AgentCardHover room={roomName} handle={ev.sender}>
               <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
                 <Monogram
-                  handle={ev.sender}
+                  handle={subagent?.parent ?? ev.sender}
                   color={color}
                   className="size-6 text-[10px]"
                   kind={engineHandles.has(ev.sender) ? "engine" : isAgent ? "agent" : "person"}
@@ -760,7 +769,8 @@ export function MessageRow({
                   <SenderName
                     handle={ev.sender}
                     highlight={hit}
-                    tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
+                    named={subagent?.name}
+                    tag={subagent ? "subagent" : isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
                   />
                 </span>
               </AgentCardHover>

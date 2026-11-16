@@ -215,6 +215,22 @@ def remove(room: str, raw: object) -> bool:
     return True
 
 
+def rename(room: str, old: str, new: str) -> bool:
+    """``old``'s entry, now ``new``'s (a person's handle moved). Whether it changed."""
+    with _lock:
+        stored = _read(room)
+        if not stored or not any(norm_handle(e.get("handle")) == old for e in stored):
+            return False
+        if any(norm_handle(e.get("handle")) == new for e in stored):
+            entries = [e for e in stored if norm_handle(e.get("handle")) != old]
+        else:
+            entries = [
+                {**e, "handle": new} if norm_handle(e.get("handle")) == old else e for e in stored
+            ]
+        _write(room, entries)
+        return True
+
+
 def joined_by_message(room: str, sender: object) -> bool:
     """A person who posts in a shared room has joined it. Agents and unknown handles haven't.
 

@@ -50,6 +50,7 @@ from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
     read_memory_file,
+    room_path,
     system_meta,
 )
 
@@ -529,6 +530,19 @@ async def renew(room: str, handle: str, now: datetime) -> list[dict]:
                 )
             )
     return renewed
+
+
+def claimed_by(room: str, handle: str, now: datetime) -> list[str]:
+    """The rows ``handle`` holds by claiming them, not by being given them."""
+    who = handle.lstrip("@").lower()
+    return [
+        key
+        for namespace in ASSIGNABLE_NAMESPACES
+        for key, meta, _ in list_memory_files(room_path(room), prefix=f"{namespace}/", limit=None)
+        if meta.get(FIELD) == "held"
+        and state_of(meta, now) == "held"
+        and str(meta.get("owner") or "").lstrip("@").lower() == who
+    ]
 
 
 def read(room: str, key: str, now: datetime) -> dict:

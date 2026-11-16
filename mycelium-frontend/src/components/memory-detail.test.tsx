@@ -44,6 +44,20 @@ describe("MemoryDetail", () => {
     });
   });
 
+  it.each([
+    ["its own page", { showKey: true }],
+    ["a tab, which names it already", { showKey: true, named: true }],
+    ["a task's thread", {}],
+  ])("shows its whole key, folder and all, to copy, on %s", async (_where, props) => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<MemoryDetail memory={memory} roomName="demo" variant="page" {...props} />);
+    const key = screen.getByRole("button", { name: "Copy context/overview" });
+    expect(key).toHaveTextContent("context/overview");
+    await userEvent.click(key);
+    expect(writeText).toHaveBeenCalledWith("context/overview");
+  });
+
   it("lists each linked memory once, under the way it links", async () => {
     const onNavigate = vi.fn();
     render(<MemoryDetail memory={memory} roomName="demo" variant="page" onNavigate={onNavigate} />);

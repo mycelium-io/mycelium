@@ -52,7 +52,9 @@ def post(
     from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType, MessageRead
     from mycelium_backend_client.types import UNSET
 
-    with _typed_client(config) as client:
+    # As the sender, so an agent's pane posts only as its agent or one of its
+    # subagents, as `respond` does (``caller.credential``).
+    with _typed_client(config, handle=sender_handle) as client:
         body = MessageCreate(
             sender_handle=sender_handle,
             message_type=MessageCreateMessageType.BROADCAST,

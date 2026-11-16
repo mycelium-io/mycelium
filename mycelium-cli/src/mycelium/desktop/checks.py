@@ -22,19 +22,22 @@ import httpx
 
 from mycelium.caller import desktop_settings_path
 from mycelium.desktop.supervisor import (
+    DOCKER_HUB_PORT,
     HOST,
     HUB_PORT,
     SLIM_PORT,
     UI_PORT,
     Locator,
+    is_hub,
     port_open,
     started_file,
+    started_port,
     started_ui_port,
 )
 from mycelium.ui_status import CheckResult
 
 SETTINGS = desktop_settings_path()
-#: What the running app started, with the port its UI is on.
+#: What the running app started, with the ports its UI and hub are on.
 STARTED = started_file()
 
 
@@ -129,7 +132,7 @@ def hubs_here(*, client: bool = False) -> CheckResult:
             message=f"{len(found)} running, not used by the app",
             details=listed,
         )
-    there = at_port(found, HUB_PORT)
+    there = at_port(found, HUB_PORT) or at_port(found, DOCKER_HUB_PORT)
     if not said:
         return CheckResult(name="Hubs on this computer", status="ok", message=listed[0])
     fix = []
@@ -391,7 +394,13 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
     """Every check for this Mac as the app runs it, grouped for display."""
     s = settings() or {}
     client = s.get("mode") == "client"
-    api_url = str(s.get("hubUrl") or "") if client else f"http://{HOST}:{HUB_PORT}"
+    # The app starts its hub on another port when something else holds
+    # HUB_PORT, and writes down which; a hub it didn't start, it uses where
+    # it answers.
+    port = started_port("hub", STARTED) or next(
+        (p for p in (HUB_PORT, DOCKER_HUB_PORT) if is_hub(p)), HUB_PORT
+    )
+    api_url = str(s.get("hubUrl") or "") if client else f"http://{HOST}:{port}"
     services: list[CheckResult] = [app_setting()]
     if not client:
         services.append(slim_node())

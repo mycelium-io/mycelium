@@ -1134,6 +1134,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json(memoryRead(roomName, row), 201);
     }
 
+    case "subagents":
+      return method === "GET" && sub.length === 1 ? json(fx.subagents ?? []) : null;
+
     case "threads": {
       if (method !== "POST") return null;
       const body = await readJson(req);

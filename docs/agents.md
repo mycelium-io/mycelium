@@ -114,8 +114,9 @@ and the person has to answer it; you can't click it for them. Tell the user to:
 4. then add a model and its API key in the app's **Settings** (⌘,), since some
    of Mycelium's coordination features use an LLM.
 
-The app then runs the SLIM node, the hub (at `http://127.0.0.1:8000`), the UI
-and the runner itself, and points the CLI at its hub. Once they say it has
+The app then runs the SLIM node, the hub (at `http://127.0.0.1:3718`, or a free
+port if another program holds that one), the UI and the runner itself, and
+points the CLI at its hub. Once they say it has
 started, **verify**:
 
 ```bash

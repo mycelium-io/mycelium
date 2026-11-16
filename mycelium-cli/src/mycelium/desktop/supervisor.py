@@ -29,7 +29,10 @@ answers on counts as running, so the app sits beside a Docker stack rather
 than fighting it for its ports. The UI is the exception: the window opens on
 it, so one the supervisor didn't start is never used. When its port is taken
 the UI goes on another, said in its status, and it counts as running only
-once it proves it holds this launch's token (:func:`proves_token`).
+once it proves it holds this launch's token (:func:`proves_token`). The hub
+on its port counts only when it says it's a Mycelium hub (:func:`is_hub`);
+anything else there is someone's own program, and the hub goes on another
+port, said in its status, with this machine's CLI pointed at it.
 
 Each program's output is a pipe, drained by a thread per program. A program
 whose pipe nobody drains blocks on its next write, so a reader survives
@@ -81,6 +84,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import httpx
 
@@ -91,8 +95,15 @@ State = Literal["starting", "running", "stopped", "failed", "disabled"]
 
 HOST = "127.0.0.1"
 SLIM_PORT = 46357
-HUB_PORT = 8000
+#: Off 8000, the default of most local web servers, so someone's own server
+#: rarely holds it. The Docker install's hub stays on 8000.
+HUB_PORT = 3718
+#: Where the Docker install's hub listens. A hub already there is used, and
+#: said, as one on :data:`HUB_PORT` is, rather than starting a second hub.
+DOCKER_HUB_PORT = 8000
 UI_PORT = 3717
+#: How the CLI's config can name a hub on this machine.
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 #: Tells the UI server its launch token is on its stdin. Only the flag is in the
 #: environment; the token is never in one (any program as this user can read it).
 UI_TOKEN_STDIN_ENV = "MYCELIUM_UI_TOKEN_STDIN"
@@ -108,9 +119,9 @@ HUB_RESTART_MARKER = ".hub-restart-requested"
 #: The programs a supervisor started and is running (pid and program), in
 #: ``~/.mycelium``. An app that updates itself in place replaces its files under
 #: them without stopping them, so the next supervisor reads this to stop what
-#: was the app's own and start it again from the new files. The UI's entry also
-#: has its ``port``, so ``mycelium doctor`` looks for the UI where it is
-#: (:func:`started_ui_port`).
+#: was the app's own and start it again from the new files. The UI's and the
+#: hub's entries also have their ``port``, so ``mycelium doctor`` looks for
+#: each where it is (:func:`started_port`).
 STARTED_FILE = "desktop-started.json"
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
@@ -267,15 +278,15 @@ class Locator:
             )
         return [str(exe), "slim", "start", "--endpoint", f"{HOST}:{SLIM_PORT}"]
 
-    def hub(self) -> tuple[list[str], Path | None]:
+    def hub(self, port: int = HUB_PORT) -> tuple[list[str], Path | None]:
         if cmd := os.environ.get("MYCELIUM_HUB_CMD"):
             return shlex.split(cmd), None
         if bundled := self._program("hub/mycelium-hub") or self._program("mycelium-hub"):
-            return [str(bundled), "--host", HOST, "--port", str(HUB_PORT)], None
+            return [str(bundled), "--host", HOST, "--port", str(port)], None
         if self.repo is not None and shutil.which("uv"):
             backend = self.repo / "fastapi-backend"
             argv = ["uv", "run", "--project", str(backend), "uvicorn", "app.main:app"]
-            return [*argv, "--host", HOST, "--port", str(HUB_PORT)], backend
+            return [*argv, "--host", HOST, "--port", str(port)], backend
         raise LocateError(
             "This build doesn't include the hub, and there's no Mycelium checkout to run "
             "it from. Use the desktop app, or run the hub with Docker (mycelium up)."
@@ -467,16 +478,30 @@ def started_file() -> Path:
     return Path.home() / ".mycelium" / STARTED_FILE
 
 
-def started_ui_port(path: Path | None = None) -> int | None:
-    """The port the running app's UI was started on, from :data:`STARTED_FILE`;
+def started_port(name: str, path: Path | None = None) -> int | None:
+    """The port the running app started ``name`` on, from :data:`STARTED_FILE`;
     ``None`` when the app isn't running it (or wrote down no port)."""
     try:
         started = json.loads((path or started_file()).read_text())
     except (OSError, ValueError):
         return None
-    entry = started.get("ui") if isinstance(started, dict) else None
+    entry = started.get(name) if isinstance(started, dict) else None
     port = entry.get("port") if isinstance(entry, dict) else None
     return port if isinstance(port, int) and port > 0 else None
+
+
+def started_ui_port(path: Path | None = None) -> int | None:
+    """The port the running app's UI was started on (:func:`started_port`)."""
+    return started_port("ui", path)
+
+
+def is_hub(port: int) -> bool:
+    """Whether a Mycelium hub answers on ``port``: its ``/health`` says so.
+    Anything else answering there (someone's own server on a common port)
+    is not one, whatever it answers."""
+    from mycelium.hubs import health
+
+    return health(port, HOST) is not None
 
 
 #: Where the UI server answers the readiness question (``lib/ui-guard.ts``).
@@ -603,6 +628,9 @@ class Supervisor:
         #: The port the UI server listens on: :data:`UI_PORT` unless something
         #: else holds it (:meth:`_choose_ui_port`).
         self.ui_port = UI_PORT
+        #: The port the hub it starts listens on: :data:`HUB_PORT` unless
+        #: something that isn't a hub holds it (:meth:`_choose_hub_port`).
+        self.hub_port = HUB_PORT
         #: Whether the hub's settings came from config.toml, so a restart the
         #: Hub page asks for reads it again (an env passed in is kept as is).
         self._env_from_config = env is None
@@ -660,7 +688,7 @@ class Supervisor:
 
     @property
     def api_url(self) -> str:
-        return f"http://{HOST}:{HUB_PORT}" if self.mode == "hub" else str(self.hub_url)
+        return f"http://{HOST}:{self.hub_port}" if self.mode == "hub" else str(self.hub_url)
 
     @property
     def ui_url(self) -> str:
@@ -678,6 +706,71 @@ class Supervisor:
                 self.ui_port = free_port()
             c.running_detail = f"on port {self.ui_port}: another program is using port {UI_PORT}"
         c.env["PORT"] = str(self.ui_port)
+        # The hub starts first, so its port is settled by now.
+        c.env["MYCELIUM_INTERNAL_API_URL"] = self.api_url
+
+    def _hub_running(self) -> bool:
+        """Whether a Mycelium hub already answers, on :data:`HUB_PORT` or where
+        the Docker install puts one; the app then uses it, on that port."""
+        for port in (HUB_PORT, DOCKER_HUB_PORT):
+            if is_hub(port):
+                self.hub_port = port
+                return True
+        return False
+
+    def _choose_hub_port(self, c: Component) -> None:
+        """Before each start of the hub: :data:`HUB_PORT`, else the port it
+        had, else the one this machine's CLI was last pointed at, else any
+        free one. Reached only when no hub answers on :data:`HUB_PORT`
+        (``external``), so something there is another program. Then the CLI,
+        and the agents that read its config, are pointed at the hub."""
+        if port_free(HUB_PORT):
+            self.hub_port, c.running_detail = HUB_PORT, None
+        else:
+            if self.hub_port == HUB_PORT or not port_free(self.hub_port):
+                self.hub_port = self._hub_port_before() or free_port()
+            c.running_detail = f"on port {self.hub_port}: another program is using port {HUB_PORT}"
+        self._point_cli_here()
+
+    def _hub_port_before(self) -> int | None:
+        """The port of the hub on this machine the CLI's config names, when
+        it's free: where the hub ran last time, so agents started then still
+        find it."""
+        from mycelium.config import MyceliumConfig
+
+        try:
+            url = urlparse(MyceliumConfig.load().server.api_url)
+            port = url.port
+        except Exception:  # noqa: BLE001 - an unreadable config names no port
+            return None
+        if url.hostname not in LOCAL_HOSTS or port in (None, HUB_PORT):
+            return None
+        return port if port_free(port) else None
+
+    def _point_cli_here(self) -> None:
+        """Write the hub's address into this machine's CLI config, so the CLI
+        and the agents that read it find the hub on whichever port it took.
+
+        Only when the config names an address on this machine where no hub
+        answers (the default, or where the app's hub was before). One naming
+        a hub elsewhere, or a hub running here (one the person runs
+        themselves), is their choice, left alone."""
+        from mycelium.config import MyceliumConfig
+
+        try:
+            config = MyceliumConfig.load()
+            now = urlparse(config.server.api_url)
+            # Already this hub, however it's spelled (`localhost` or not).
+            if now.hostname not in LOCAL_HOSTS or now.port == self.hub_port:
+                return
+            if now.port is not None and is_hub(now.port):
+                return
+            config.server.api_url = self.api_url
+            config.save()
+        except Exception as e:  # noqa: BLE001 - the hub runs either way
+            self.emit({"type": "log", "component": "hub", "line": f"couldn't update config: {e}"})
+            return
+        self.emit({"type": "log", "component": "hub", "line": f"pointed the CLI at {self.api_url}"})
 
     def _ui_ready(self) -> bool:
         """The UI answers, and (in the app) proves it's the one this
@@ -810,6 +903,17 @@ class Supervisor:
     def _components(self) -> list[Component]:
         loc = self.locator
         hub_env_vars = self._hub_env_vars()
+        hub = Component(
+            name="hub",
+            argv=lambda: loc.hub(self.hub_port),
+            ready=lambda: http_ok(f"http://{HOST}:{self.hub_port}/health"),
+            env=hub_env_vars,
+            # A hub, not anything that answers: a program of the person's own
+            # on the port would otherwise be sent everything meant for the hub.
+            external=self._hub_running,
+            watch=True,
+        )
+        hub.prepare = lambda: self._choose_hub_port(hub)
         return [
             Component(
                 name="slim",
@@ -817,14 +921,7 @@ class Supervisor:
                 ready=lambda: port_open(SLIM_PORT),
                 external=lambda: port_open(SLIM_PORT),
             ),
-            Component(
-                name="hub",
-                argv=loc.hub,
-                ready=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
-                env=hub_env_vars,
-                external=lambda: http_ok(f"http://{HOST}:{HUB_PORT}/health"),
-                watch=True,
-            ),
+            hub,
             self._ui(),
         ]
 
@@ -942,7 +1039,8 @@ class Supervisor:
                 c.proc.stdin.write(c.stdin + "\n")
                 c.proc.stdin.close()
         if not c.outlives:
-            self._remember(c.name, c.proc.pid, argv[0], self.ui_port if c.name == "ui" else None)
+            port = {"ui": self.ui_port, "hub": self.hub_port}.get(c.name)
+            self._remember(c.name, c.proc.pid, argv[0], port)
         c.started_at = time.monotonic()
         c.unanswered_since = 0.0
         self._read(c)
@@ -1351,8 +1449,9 @@ class Supervisor:
         found = self.look() if self.look is not None else find_hubs(HUB_PORT)
         # The app's own hub program, still running from before the app updated
         # itself (one started by a version that wrote nothing down): the app's,
-        # so stopped and started again from the new files, never kept.
-        own = at_port(found, HUB_PORT)
+        # so stopped and started again from the new files, never kept. A
+        # version from before the hub moved off 8000 left it there.
+        own = at_port(found, HUB_PORT) or at_port(found, DOCKER_HUB_PORT)
         if own is not None and own.pid and self._runs_app_hub(own.pid):
             self.emit(
                 {
@@ -1369,7 +1468,7 @@ class Supervisor:
         self.warnings = warnings(found, data_dir, __version__)
         for line in self.warnings:
             self.emit({"type": "warning", "message": line})
-        there = at_port(found, HUB_PORT)
+        there = at_port(found, HUB_PORT) or at_port(found, DOCKER_HUB_PORT)
         hub = next((c for c in self.components if c.name == "hub"), None)
         if there is None or hub is None:
             self._publish()
