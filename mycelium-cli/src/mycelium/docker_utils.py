@@ -62,6 +62,8 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     # ── Read straight from the bind-mounted config.toml ─────────────────────
     "metrics.scrape": "collector_main.py reads it from the mounted config.toml",
     "metrics.collector_url": "spoke-side: which collector `mycelium metrics show` reads",
+    # ── Desktop app only: run on this computer, never by the hub ────────────
+    "statusline.widget": "the desktop app's own widgets, run on this computer only",
     # ── CLI-side only: never leaves the host ────────────────────────────────
     "identity.name": "the operator's local display name",
     "identity.machine_id": "local machine affinity UUID",

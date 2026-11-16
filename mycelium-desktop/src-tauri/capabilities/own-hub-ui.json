@@ -21,6 +21,8 @@
     "allow-pick-folder",
     "allow-run-doctor",
     "allow-open-log",
+    "allow-widgets",
+    "allow-open-widgets-config",
     "allow-get-model",
     "allow-save-model",
     "allow-get-experiences",

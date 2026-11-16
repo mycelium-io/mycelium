@@ -611,6 +611,7 @@ class Supervisor:
         restart_herdr: Callable[[Any], None] | None = None,
         requests_base: Path | None = None,
         started_path: Path | None = None,
+        widgets: Any = None,
     ) -> None:
         if mode == "client" and not hub_url:
             raise ValueError("client mode needs the hub's URL")
@@ -671,6 +672,13 @@ class Supervisor:
         self.find_stale_herdr = stale_herdr
         self.restart_herdr = restart_herdr
         self.requests_base = requests_base or REQUESTS_BASE
+        #: The person's own widgets, from ``[statusline]`` in this computer's
+        #: config file, run here and sent to the app (``desktop.widgets``).
+        if widgets is None:
+            from mycelium.desktop.widgets import Widgets
+
+            widgets = Widgets()
+        self.widgets = widgets
         #: The herdr server whose program was replaced after it started, as wire.
         self.stale_herdr: dict[str, Any] | None = None
         #: The program that stopped answering, by name, until it answers again.
@@ -1509,9 +1517,18 @@ class Supervisor:
                     self._start_runner()
                 self._tick_runner()
                 self._watch_herdr()
+                self._tick_widgets()
                 self._stop.wait(TICK_S)
         finally:
             self._shutdown()
+
+    def _tick_widgets(self) -> None:
+        """Run the widgets that are due, and send the app what they say when it changes."""
+        try:
+            if self.widgets.tick():
+                self.emit(self.widgets.snapshot())
+        except Exception as e:  # noqa: BLE001 - a widget never stops the supervisor
+            self.emit({"type": "log", "component": "widgets", "line": f"widgets: {e}"})
 
     def stop(self) -> None:
         self._stop.set()
