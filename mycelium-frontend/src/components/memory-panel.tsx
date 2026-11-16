@@ -584,15 +584,16 @@ export function MemoryPanel({
   return (
     <div ref={paneRef} className="flex flex-col h-full overflow-hidden">
       <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3 text-micro tabular text-muted-foreground">
-        {/* A count, not a control: it sits back behind the actions beside it. */}
-        <span className="text-faint">
-          {/* At the cap the room may hold more: say these are the newest, and that ↵ search reaches the rest. */}
-          {memories.length >= MEMORIES_MAX
-            ? `Newest ${MEMORIES_MAX.toLocaleString()} memories (↵ searches them all)`
-            : `${memories.length} ${memories.length === 1 ? "memory" : "memories"}`}{" "}
-          · {contributors.length}{" "}
-          {contributors.length === 1 ? "contributor" : "contributors"}
-        </span>
+        {/* A count, not a control: it sits back behind the actions beside it,
+            on one line however narrow the rail. Who wrote them is its tooltip. */}
+        <Tooltip content={`${contributors.length} ${contributors.length === 1 ? "contributor" : "contributors"}`}>
+          <span className="min-w-0 truncate text-faint">
+            {/* At the cap the room may hold more: say these are the newest, and that ↵ search reaches the rest. */}
+            {memories.length >= MEMORIES_MAX
+              ? `Newest ${MEMORIES_MAX.toLocaleString()} memories (↵ searches them all)`
+              : `${memories.length.toLocaleString()} ${memories.length === 1 ? "memory" : "memories"}`}
+          </span>
+        </Tooltip>
         <Tooltip content="Open the memory link graph">
           <Link
             href={memoryGraphHref(roomName)}
