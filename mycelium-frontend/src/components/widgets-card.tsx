@@ -6,12 +6,13 @@
 /**
  * The Widgets card at the foot of the rooms sidebar: the person's own widgets,
  * from `[statusline]` in this computer's config file, as the desktop app last
- * ran them (`lib/widgets.ts`). One row each: its icon and label, its value
- * as inline markdown with its own dot, in its color, and a bar under it when
- * it has a meter. What a run printed as JSON is drawn over the config's
- * fields. One that failed or hung shows that dot instead and says so; hovering
- * any row says the command, the widget's own tooltip, when it ran, and how it
- * failed. The header opens Settings at the widgets.
+ * ran them (`lib/widgets.ts`). One tile each, two to a line: its icon, label
+ * and dot along the top, its value under them as inline markdown in its color,
+ * and a bar when it has a meter. A long value takes a whole line. What a run
+ * printed as JSON is drawn over the config's fields. One that failed or hung
+ * shows that dot instead and says so; hovering any tile says the command, the
+ * widget's own tooltip, when it ran, and how it failed. The header opens
+ * Settings at the widgets.
  *
  * Nothing renders in a browser, or when there are no widgets: no card at all.
  */
@@ -127,23 +128,38 @@ export function WidgetValue({ widget, className }: { widget: Widget; className?:
   );
 }
 
-function WidgetRow({ widget }: { widget: Widget }) {
+/** A value this long or longer gets the card's whole width rather than half,
+ *  so a sentence wraps to a second line instead of being cut at once. */
+const WIDE_AT = 10;
+
+/** One widget, as a tile: its label above, its value below it at full size,
+ *  and its bar under that. The value wraps to two lines before it's cut. The
+ *  tile's one dot sits in its corner: a failed or hung run's, else its own. */
+function WidgetTile({ widget }: { widget: Widget }) {
   const look = lookOf(widget);
-  const meter = look.meter;
+  const state = widgetState(widget);
+  const failed = state.kind === "failed" || state.kind === "hung";
+  const tone = failed ? (state.kind === "hung" ? "warn" : "bad") : look.state;
+  const color = look.color ? WIDGET_COLOR[look.color] : null;
+  const wide = state.kind === "value" && state.value.replace(/[*`_]/g, "").length >= WIDE_AT;
   return (
-    <li>
+    <li className={cn("min-w-0", wide && "col-span-2")}>
       <Tooltip side="right" content={<RunDetail widget={widget} />}>
-        <div className="flex flex-col gap-1 px-2.5 py-1">
-          <div className="flex items-center gap-2 text-label">
-            <WidgetIcon name={look.icon} className={look.color ? WIDGET_COLOR[look.color] : "text-faint"} />
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">{widget.label}</span>
-            <WidgetValue widget={widget} className="max-w-[55%] justify-end" />
+        <div className="flex h-full flex-col gap-1 rounded-md border border-border bg-bg px-2 py-1.5">
+          <div className="flex items-center gap-1.5 text-micro text-muted-foreground">
+            <WidgetIcon name={look.icon} className={cn("size-3", color ?? "text-faint")} />
+            <span className="min-w-0 flex-1 truncate">{widget.label}</span>
+            {tone && <StatusDot tone={tone} />}
           </div>
-          {meter !== null && (
-            <span className="flex pl-5.5">
-              <Meter value={meter} />
-            </span>
-          )}
+          <div
+            className={cn(
+              "line-clamp-2 text-label break-words tabular",
+              failed || state.kind === "waiting" ? "text-muted-foreground" : cn("font-medium", color ?? "text-text"),
+            )}
+          >
+            {state.kind === "waiting" ? "…" : failed ? (state.kind === "hung" ? "Hung" : "Failed") : <InlineMarkdown text={state.value} />}
+          </div>
+          {look.meter !== null && !failed && <Meter value={look.meter} />}
         </div>
       </Tooltip>
     </li>
@@ -155,17 +171,18 @@ export function WidgetsCard() {
   const data = useWidgets();
   if (!data || data.widgets.length === 0) return null;
   return (
-    <div className="m-2 flex-shrink-0 rounded-lg border border-border bg-surface">
+    // The tiles are the boxes; the card around them is only its heading.
+    <div className="flex-shrink-0 border-t border-border pt-1">
       <Link
         href={WIDGETS_SETTINGS}
-        className="flex items-center gap-1.5 px-2.5 pt-2 pb-1 text-micro text-muted-foreground hover:text-text"
+        className="flex items-center gap-1.5 px-3 pt-1.5 pb-1.5 text-micro text-muted-foreground hover:text-text"
       >
         <Gauge className="size-3.5 text-faint" aria-hidden />
         Widgets
       </Link>
-      <ul className="pb-1.5">
+      <ul className="grid grid-cols-2 gap-1.5 px-2 pb-2">
         {data.widgets.map((w, i) => (
-          <WidgetRow key={`${i}-${w.label}`} widget={w} />
+          <WidgetTile key={`${i}-${w.label}`} widget={w} />
         ))}
       </ul>
     </div>
