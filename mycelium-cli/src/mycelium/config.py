@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import toml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from mycelium.protocol import EngineRuntime
 
@@ -846,6 +846,92 @@ class MetricsConfig(BaseModel):
     )
 
 
+#: The icons a widget can show, as the desktop app draws them.
+WIDGET_ICONS = ("memory", "disk", "upload", "ci", "text")
+#: The shortest a widget's command may wait between runs.
+WIDGET_MIN_EVERY_S = 5
+
+
+class StatusWidget(BaseModel):
+    """One row of the desktop app's Widgets card, under ``[[statusline.widget]]``::
+
+        [[statusline.widget]]
+        label = "RAM free"
+        icon = "memory"
+        command = "memory_pressure | awk '/free percentage/ {print $5}'"
+        every = "30s"
+        meter = true
+
+    Either ``command`` (run by the desktop app on this computer, every
+    ``every``, showing the first line it prints) or ``text`` (fixed words).
+    """
+
+    label: str = Field(..., min_length=1, max_length=64, description="What the row is called.")
+    command: str | None = Field(
+        default=None, description="A shell command the desktop app runs on this computer."
+    )
+    text: str | None = Field(default=None, description="Fixed words to show instead of a command.")
+    every: str = Field(
+        default="1m",
+        pattern=r"^\d+\s*[smh]$",
+        description="How often the command runs: seconds, minutes or hours, e.g. '30s', '5m'.",
+    )
+    timeout: float = Field(
+        default=10.0, gt=0, le=600, description="Seconds before a run counts as hung."
+    )
+    icon: str = Field(default="text", description=f"One of {', '.join(WIDGET_ICONS)}.")
+    meter: bool = Field(
+        default=False, description="Draw the value, a percentage, as a bar under the row."
+    )
+
+    @model_validator(mode="after")
+    def _one_source(self) -> "StatusWidget":
+        if (self.command is None) == (self.text is None):
+            raise ValueError(f"widget {self.label!r} needs exactly one of 'command' or 'text'")
+        if self.icon not in WIDGET_ICONS:
+            raise ValueError(
+                f"widget {self.label!r}: icon must be one of {', '.join(WIDGET_ICONS)}"
+            )
+        if self.seconds() < WIDGET_MIN_EVERY_S:
+            raise ValueError(
+                f"widget {self.label!r}: every must be at least {WIDGET_MIN_EVERY_S}s, "
+                f"not {self.every!r}"
+            )
+        return self
+
+    def seconds(self) -> float:
+        """``every`` in seconds."""
+        n, unit = int(self.every[:-1].strip()), self.every[-1]
+        return float(n * {"s": 1, "m": 60, "h": 3600}[unit])
+
+
+class StatuslineConfig(BaseModel):
+    """The rows of the desktop app's Widgets card, as the desktop app reads them.
+
+    Validated only by the desktop app (``desktop/widgets.py``), which shows a
+    bad widget's error in Settings and runs none of them. ``MyceliumConfig``
+    holds this section unvalidated (:class:`StatuslineSection`), so a typo in a
+    status readout never stops a ``mycelium`` command."""
+
+    widget: list[StatusWidget] = Field(
+        default_factory=list, description="The rows of the Widgets card, in order."
+    )
+
+
+class StatuslineSection(BaseModel):
+    """The desktop app's Widgets card, read and run on this computer only."""
+
+    widget: list[dict[str, Any]] = Field(
+        default=[],
+        description=(
+            "The rows of the Widgets card, in order, as [[statusline.widget]] tables: "
+            "label, then command (with every, timeout) or text, and optionally icon "
+            "(memory, disk, upload, ci, text) and meter. Checked by the desktop app, "
+            "which shows any mistake in Settings > Widgets."
+        ),
+    )
+
+
 class MyceliumConfig(BaseModel):
     """Complete Mycelium CLI configuration."""
 
@@ -873,6 +959,7 @@ class MyceliumConfig(BaseModel):
     health: HealthConfig = Field(default_factory=HealthConfig)
     a2a: A2aConfig = Field(default_factory=A2aConfig)
     patterns: PatternsConfig = Field(default_factory=PatternsConfig)
+    statusline: StatuslineSection = Field(default_factory=StatuslineSection)
 
     model_config = {"arbitrary_types_allowed": True}
     _global_config_path: Path | None = None

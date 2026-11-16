@@ -1259,6 +1259,36 @@ fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
     open_log_file(&desktop_log())
 }
 
+/// The person's own widgets as the supervisor last ran them, from
+/// `[statusline]` in this computer's config file: each one's settings and its
+/// last run. The page reads them and nothing else: it can't name a command,
+/// and only that file says what runs. `None` until the supervisor has said.
+#[tauri::command]
+fn widgets(app: AppHandle, webview: Webview) -> Result<Option<Value>, String> {
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
+    Ok(app.state::<Supervisor>().widgets())
+}
+
+/// Open this computer's config file (`~/.mycelium/config.toml`), where the
+/// widgets are, in the person's text editor.
+#[tauri::command]
+fn open_widgets_config(app: AppHandle, webview: Webview) -> Result<(), String> {
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
+    let config = paths::home().join(".mycelium").join("config.toml");
+    if !config.exists() {
+        return Err("There's no config file yet. It's made when Mycelium first starts.".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // `-t` opens it in the default text editor, whatever owns `.toml`.
+        paths::command("open").arg("-t").arg(&config).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        paths::open(config.as_os_str()).map_err(|e| e.to_string())
+    }
+}
+
 /// Back to the room UI from one of the app's own pages, once it is up.
 #[tauri::command]
 fn open_room(app: AppHandle, webview: Webview) -> Result<(), String> {
@@ -1719,6 +1749,8 @@ pub fn run() {
             set_autostart,
             open_room,
             open_log,
+            widgets,
+            open_widgets_config,
             start,
             update_progress,
             update_retry,

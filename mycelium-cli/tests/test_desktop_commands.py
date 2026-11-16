@@ -49,6 +49,9 @@ OWN_UI |= {
     "pick_folder",
     "run_doctor",
     "open_log",
+    # The Widgets card reads its widgets' last runs; Settings opens their file.
+    "widgets",
+    "open_widgets_config",
     "get_model",
     "save_model",
     "get_experiences",
