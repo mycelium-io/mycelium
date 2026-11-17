@@ -111,10 +111,12 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
             ))}
           </div>
 
-          <table className="w-full text-label">
+          {/* Boxed, with room at both ends, so the rows sit on the page rather than run to its edges. */}
+          <div className="overflow-hidden rounded-md border border-border bg-bg">
+          <table className="w-full text-label [&_td:first-child]:pl-3 [&_td:last-child]:pr-3 [&_th:first-child]:pl-3 [&_th:last-child]:pr-3">
             <thead>
-              <tr className="text-left text-micro text-faint">
-                <th className="w-7 pb-1.5">
+              <tr className="bg-surface text-left text-micro text-faint [&>th]:py-2">
+                <th className="w-10">
                   <input
                     type="checkbox"
                     aria-label="Select all"
@@ -135,12 +137,12 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                     className="size-3.5 accent-[var(--accent)]"
                   />
                 </th>
-                <th className="pb-1.5 font-normal">Agent</th>
-                <th className="pb-1.5 font-normal">Machine</th>
-                <th className="w-28 pb-1.5 font-normal">RAM</th>
-                <th className="w-12 pb-1.5 text-right font-normal">CPU</th>
-                <th className="w-14 pb-1.5 text-right font-normal">Idle</th>
-                <th className="w-16 pb-1.5" />
+                <th className="font-normal">Agent</th>
+                <th className="font-normal">Machine</th>
+                <th className="w-28 font-normal">RAM</th>
+                <th className="w-12 text-right font-normal">CPU</th>
+                <th className="w-14 text-right font-normal">Idle</th>
+                <th className="w-16" />
               </tr>
             </thead>
             <tbody>
@@ -276,6 +278,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
               ))}
             </tbody>
           </table>
+          </div>
         </section>
       </div>
 
