@@ -39,6 +39,9 @@ import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Bot, Handshake, ListTodo, Lock } from "lucide-react";
+import { DetailDrawer } from "@/components/detail-drawer";
+import { AgentMetricsView } from "@/components/agent-metrics";
+import { mockHasMetrics, ram, totalMb } from "@/mocks/agent-metrics";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -96,6 +99,9 @@ function RoomWorkspace() {
   }, []);
 
   const { agents, episodes, openTasks } = useRoomStatus(roomName);
+  // MOCK: what the room's agents use, from the runners' machine reports.
+  const metrics = mockHasMetrics(roomName);
+  const [metricsOpen, setMetricsOpen] = useState(false);
   const { room, refresh: refreshRoom } = useRoom(roomName);
 
   // A pushed memory/presence event refreshes every reader of this room's data
@@ -360,14 +366,16 @@ function RoomWorkspace() {
       )}
       {agents !== null && (
         <StatusButton
-          onClick={() => openTab("agents")}
-          tooltip="View agents"
+          // MOCK: with metrics, the count says what the agents use and opens them.
+          onClick={() => (metrics ? setMetricsOpen(true) : openTab("agents"))}
+          tooltip={metrics ? "What each agent uses" : "View agents"}
           action="rail.agents"
           className="flex-shrink-0"
         >
           <Bot />
           <span className="tabular">
             {agents} agent{agents === 1 ? "" : "s"}
+            {metrics && ` use ${ram(totalMb)}`}
           </span>
         </StatusButton>
       )}
@@ -402,6 +410,15 @@ function RoomWorkspace() {
       statusLeft={statusLeft}
       roomViews={roomViews}
     >
+      <DetailDrawer
+        open={metricsOpen}
+        onClose={() => setMetricsOpen(false)}
+        title="Agents"
+        subtitle="What each one uses on the machine it runs on"
+        wide
+      >
+        <AgentMetricsView initiallyOpen="builder" />
+      </DetailDrawer>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ResizablePanelGroup
           className="min-h-0 flex-1"
