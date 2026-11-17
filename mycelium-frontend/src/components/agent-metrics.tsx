@@ -139,7 +139,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                 </th>
                 <th className="font-normal">Agent</th>
                 <th className="font-normal">Machine</th>
-                <th className="w-28 font-normal">RAM</th>
+                <th className="w-40 font-normal">RAM</th>
                 <th className="w-12 text-right font-normal">CPU</th>
                 <th className="w-14 text-right font-normal">Idle</th>
                 <th className="w-16" />
@@ -152,7 +152,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                 const remote = a.machine !== HERE;
                 return (
                   <Fragment key={a.handle}>
-                    <tr className={cn("group border-t border-border hover:bg-hairline", isOpen && "bg-hairline")}>
+                    <tr className={cn("group h-11 border-t border-border hover:bg-hairline", isOpen && "bg-hairline")}>
                       <td className="py-2">
                         {!stopped && (
                           <input
@@ -200,9 +200,9 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                       <td className="py-2 pr-2 text-muted-foreground">{a.machine}</td>
                       <td className="py-2 pr-2">
                         {!stopped && !remote && (
-                          <span className="flex flex-col gap-1">
-                            <span className="tabular text-text">{ram(a.ramMb)}</span>
-                            <Bar value={(a.ramMb / heaviest) * 100} />
+                          <span className="flex items-center gap-2">
+                            <span className="w-14 flex-shrink-0 tabular text-text">{ram(a.ramMb)}</span>
+                            <Bar value={(a.ramMb / heaviest) * 100} className="flex-1" />
                           </span>
                         )}
                       </td>
@@ -263,7 +263,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                 );
               })}
               {NO_METRICS.map((m) => (
-                <tr key={m.handle} className="border-t border-border">
+                <tr key={m.handle} className="h-11 border-t border-border">
                   <td />
                   <td className="py-2 pr-2">
                     <span className="flex items-center gap-2 pl-5.5">
