@@ -23,7 +23,13 @@ export interface AgentMetrics {
   /** The agent CLI, as herdr names its kind. */
   kind: string;
   machine: string;
-  state: "working" | "idle" | "blocked";
+  /** `paused`: in memory with its wakes held. `stopped`: its process ended to
+   *  free memory, its pane and conversation kept for Start. */
+  state: "working" | "idle" | "blocked" | "paused" | "stopped";
+  /** How long since its last turn, for picking agents to stop. */
+  idleFor?: string;
+  /** Kept running when agents are stopped in bulk. */
+  keep?: boolean;
   ramMb: number;
   /** Percent of one core, averaged over the last minute. */
   cpu: number;
@@ -49,6 +55,7 @@ export const AGENT_METRICS: AgentMetrics[] = [
     kind: "claude",
     machine: "This computer",
     state: "working",
+    keep: true,
     ramMb: 1240,
     cpu: 34,
     up: "3h",
@@ -71,10 +78,65 @@ export const AGENT_METRICS: AgentMetrics[] = [
     ramMb: 640,
     cpu: 1,
     up: "1d",
+    idleFor: "40m",
     processes: [
       { name: "codex", command: "codex resume", ramMb: 588 },
       { name: "zsh", command: "-zsh", ramMb: 52 },
     ],
+  },
+  {
+    handle: "research",
+    kind: "claude",
+    machine: "This computer",
+    state: "idle",
+    idleFor: "5h",
+    ramMb: 980,
+    cpu: 0,
+    up: "2d",
+    processes: [
+      { name: "claude", command: "claude --resume 9a2e…", ramMb: 702 },
+      { name: "browser-mcp", command: "npx @browsermcp/mcp", ramMb: 236 },
+      { name: "zsh", command: "-zsh", ramMb: 42 },
+    ],
+  },
+  {
+    handle: "themes",
+    kind: "claude",
+    machine: "This computer",
+    state: "idle",
+    idleFor: "3h",
+    ramMb: 760,
+    cpu: 0,
+    up: "1d",
+    processes: [
+      { name: "claude", command: "claude --resume 1b7d…", ramMb: 718 },
+      { name: "zsh", command: "-zsh", ramMb: 42 },
+    ],
+  },
+  {
+    handle: "voice",
+    kind: "claude",
+    machine: "This computer",
+    state: "paused",
+    idleFor: "1h",
+    ramMb: 690,
+    cpu: 0,
+    up: "6h",
+    processes: [
+      { name: "claude", command: "claude --resume 7c40…", ramMb: 650 },
+      { name: "zsh", command: "-zsh", ramMb: 40 },
+    ],
+  },
+  {
+    handle: "refactorer",
+    kind: "claude",
+    machine: "This computer",
+    state: "stopped",
+    idleFor: "1d",
+    ramMb: 0,
+    cpu: 0,
+    up: "",
+    processes: [],
   },
 ];
 

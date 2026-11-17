@@ -4,19 +4,26 @@
 "use client";
 
 /**
- * MOCK: what the room's agents use on the machines they run on, opened from
- * the agent count in the status rail.
+ * MOCK: what the room's agents use on the machines they run on, and bringing
+ * them down to save memory, opened from the agent count in the status rail.
  *
  * Each machine first, with how much of its RAM the room's agents hold. Then
- * one row per agent, heaviest first: its state, machine, RAM, CPU and how long
- * it has run. Opening a row lists the processes in its pane, which is where
- * the memory goes (an agent's MCP servers count toward it), and the subagents
- * running inside it. Members that report nothing say why, last.
+ * one row per agent, heaviest first: its state, machine, RAM, CPU and how
+ * long since its last turn. Opening a row lists the processes in its pane,
+ * which is where the memory goes, and the subagents running inside it.
+ *
+ * Agents are picked with their boxes, or all the idle ones at once, and the
+ * bar at the foot pauses or stops them. Pause holds an agent's wakes and keeps
+ * it in memory. Stop ends its process to free the memory, and Start brings it
+ * back in the same conversation. An agent marked Keep running is never picked
+ * by the quick picks.
  */
 
 import { Fragment, useState } from "react";
-import { ChevronRight, SquareTerminal } from "lucide-react";
+import { ChevronRight, Pause, Pin, Play, Square, SquareTerminal } from "lucide-react";
 import { Monogram } from "@/components/ui/monogram";
+import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { StatusDot, type Tone } from "@/components/status-items";
 import { AGENT_METRICS, MACHINES, NO_METRICS, ram, type AgentMetrics } from "@/mocks/agent-metrics";
 import { cn } from "@/lib/utils";
@@ -25,7 +32,16 @@ const STATE: Record<AgentMetrics["state"], { word: string; tone: Tone }> = {
   working: { word: "Working", tone: "ok" },
   idle: { word: "Idle", tone: "off" },
   blocked: { word: "Blocked", tone: "warn" },
+  paused: { word: "Paused", tone: "warn" },
+  stopped: { word: "Stopped", tone: "off" },
 };
+
+/** "5h", "40m", "1d" as minutes, to compare. */
+function minutes(span?: string): number {
+  if (!span) return 0;
+  const n = parseFloat(span);
+  return span.endsWith("d") ? n * 1440 : span.endsWith("h") ? n * 60 : n;
+}
 
 function Bar({ value, className }: { value: number; className?: string }) {
   return (
@@ -35,122 +51,218 @@ function Bar({ value, className }: { value: number; className?: string }) {
   );
 }
 
-export function AgentMetricsView({ initiallyOpen }: { initiallyOpen?: string }) {
+export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initiallyOpen?: string; initiallyPicked?: string[] }) {
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null);
+  const [picked, setPicked] = useState<Set<string>>(new Set(initiallyPicked ?? []));
   const rows = [...AGENT_METRICS].sort((a, b) => b.ramMb - a.ramMb);
   const heaviest = rows[0]?.ramMb ?? 1;
+  const running = rows.filter((a) => a.state !== "stopped");
+  const idle = running.filter((a) => !a.keep && a.state !== "working" && minutes(a.idleFor) >= 60);
+  const chosen = rows.filter((a) => picked.has(a.handle));
+  const frees = chosen.reduce((s, a) => s + a.ramMb, 0);
+
+  const toggle = (h: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(h)) next.delete(h);
+      else next.add(h);
+      return next;
+    });
 
   return (
-    <div className="flex flex-col gap-6 overflow-y-auto px-5 py-4">
-      <section className="grid grid-cols-2 gap-2">
-        {MACHINES.map((m) => {
-          const used = AGENT_METRICS.filter((a) => a.machine === m.name).reduce((s, a) => s + a.ramMb, 0);
-          return (
-            <div key={m.name} className="rounded-md border border-border bg-bg px-3 py-2.5">
-              <div className="text-micro text-muted-foreground">{m.name}</div>
-              <div className="mt-0.5 text-body font-medium text-text tabular">
-                {ram(used)} <span className="text-label font-normal text-faint">of {m.ramGb} GB</span>
-              </div>
-              <Bar value={(used / (m.ramGb * 1024)) * 100} className="mt-2" />
-            </div>
-          );
-        })}
-      </section>
-
-      <table className="w-full text-label">
-        <thead>
-          <tr className="text-left text-micro text-faint">
-            <th className="pb-1.5 font-normal">Agent</th>
-            <th className="pb-1.5 font-normal">Machine</th>
-            <th className="w-32 pb-1.5 font-normal">RAM</th>
-            <th className="w-12 pb-1.5 text-right font-normal">CPU</th>
-            <th className="w-10 pb-1.5 text-right font-normal">Up</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((a) => {
-            const isOpen = open === a.handle;
+    <div className="flex min-h-full flex-col">
+      <div className="flex flex-1 flex-col gap-6 px-5 py-4">
+        <section className="grid grid-cols-2 gap-2">
+          {MACHINES.map((m) => {
+            const used = AGENT_METRICS.filter((a) => a.machine === m.name).reduce((s, a) => s + a.ramMb, 0);
             return (
-              <Fragment key={a.handle}>
-                <tr
-                  onClick={() => setOpen(isOpen ? null : a.handle)}
-                  className={cn("cursor-pointer border-t border-border hover:bg-hairline", isOpen && "bg-hairline")}
-                >
-                  <td className="py-2 pr-2">
-                    <span className="flex items-center gap-2">
-                      <ChevronRight
-                        className={cn("size-3.5 flex-shrink-0 text-faint transition-transform", isOpen && "rotate-90")}
-                        aria-hidden
-                      />
-                      <Monogram handle={a.handle} kind="agent" className="size-5 text-[9px]" />
-                      <span className="text-text">{a.handle}</span>
-                      <StatusDot tone={STATE[a.state].tone} />
-                      <span className="text-micro text-muted-foreground">{STATE[a.state].word}</span>
-                    </span>
-                  </td>
-                  <td className="py-2 pr-2 text-muted-foreground">{a.machine}</td>
-                  <td className="py-2 pr-2">
-                    <span className="flex flex-col gap-1">
-                      <span className="tabular text-text">{ram(a.ramMb)}</span>
-                      <Bar value={(a.ramMb / heaviest) * 100} />
-                    </span>
-                  </td>
-                  <td className="py-2 text-right tabular text-muted-foreground">{a.cpu}%</td>
-                  <td className="py-2 text-right tabular text-muted-foreground">{a.up}</td>
-                </tr>
-                {isOpen && (
-                  <tr className="bg-hairline/50">
-                    <td colSpan={5} className="px-8 pt-1 pb-3">
-                      <ul className="flex flex-col">
-                        {a.processes.map((p) => (
-                          <li key={p.name} className="flex items-baseline gap-3 py-1">
-                            <span className="w-28 flex-shrink-0 font-mono text-[12px] text-text">{p.name}</span>
-                            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint">{p.command}</span>
-                            <span className="tabular text-muted-foreground">{ram(p.ramMb)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {a.subagents && (
-                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-muted-foreground">
-                          <span className="text-faint">Subagents inside it</span>
-                          {a.subagents.map((s) => (
-                            <span key={s.handle} className="flex items-center gap-1.5">
-                              <StatusDot tone={s.state === "working" ? "ok" : "off"} />
-                              {s.handle}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {a.machine === "This computer" && (
-                        <button
-                          type="button"
-                          className="mt-3 flex items-center gap-1.5 rounded border border-border px-2 py-1 text-micro text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-                        >
-                          <SquareTerminal className="size-3.5" aria-hidden />
-                          Open its terminal
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
+              <div key={m.name} className="rounded-md border border-border bg-bg px-3 py-2.5">
+                <div className="text-micro text-muted-foreground">{m.name}</div>
+                <div className="mt-0.5 text-body font-medium text-text tabular">
+                  {ram(used)} <span className="text-label font-normal text-faint">of {m.ramGb} GB</span>
+                </div>
+                <Bar value={(used / (m.ramGb * 1024)) * 100} className="mt-2" />
+              </div>
             );
           })}
-          {NO_METRICS.map((m) => (
-            <tr key={m.handle} className="border-t border-border">
-              <td className="py-2 pr-2">
-                <span className="flex items-center gap-2 pl-5.5">
-                  <Monogram handle={m.handle} kind="agent" className="size-5 text-[9px]" />
-                  <span className="text-muted-foreground">{m.handle}</span>
-                </span>
-              </td>
-              <td colSpan={4} className="py-2 text-micro text-faint">
-                {m.why}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        </section>
+
+        <section>
+          <div className="mb-2 flex items-center gap-2">
+            <Button variant="outline" size="xs" onClick={() => setPicked(new Set(idle.map((a) => a.handle)))}>
+              Pick idle for an hour
+              <span className="text-faint">{idle.length}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setPicked(new Set(running.filter((a) => !a.keep).map((a) => a.handle)))}
+            >
+              Pick all but kept
+            </Button>
+          </div>
+
+          <table className="w-full text-label">
+            <thead>
+              <tr className="text-left text-micro text-faint">
+                <th className="w-7 pb-1.5" />
+                <th className="pb-1.5 font-normal">Agent</th>
+                <th className="pb-1.5 font-normal">Machine</th>
+                <th className="w-28 pb-1.5 font-normal">RAM</th>
+                <th className="w-12 pb-1.5 text-right font-normal">CPU</th>
+                <th className="w-14 pb-1.5 text-right font-normal">Idle</th>
+                <th className="w-16 pb-1.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((a) => {
+                const isOpen = open === a.handle;
+                const stopped = a.state === "stopped";
+                return (
+                  <Fragment key={a.handle}>
+                    <tr className={cn("group border-t border-border hover:bg-hairline", isOpen && "bg-hairline")}>
+                      <td className="py-2">
+                        {!stopped && (
+                          <input
+                            type="checkbox"
+                            aria-label={`Pick ${a.handle}`}
+                            checked={picked.has(a.handle)}
+                            onChange={() => toggle(a.handle)}
+                            className="size-3.5 accent-[var(--accent)]"
+                          />
+                        )}
+                      </td>
+                      <td className="cursor-pointer py-2 pr-2" onClick={() => !stopped && setOpen(isOpen ? null : a.handle)}>
+                        <span className="flex items-center gap-2">
+                          <ChevronRight
+                            className={cn(
+                              "size-3.5 flex-shrink-0 text-faint transition-transform",
+                              isOpen && "rotate-90",
+                              stopped && "invisible",
+                            )}
+                            aria-hidden
+                          />
+                          <Monogram handle={a.handle} kind="agent" className={cn("size-5 text-[9px]", stopped && "opacity-50")} />
+                          <span className={stopped ? "text-muted-foreground" : "text-text"}>{a.handle}</span>
+                          <StatusDot tone={STATE[a.state].tone} />
+                          <span className="text-micro text-muted-foreground">{STATE[a.state].word}</span>
+                          <Tooltip content={a.keep ? "Kept running. The quick picks leave it out." : "Keep running"}>
+                            <button
+                              type="button"
+                              aria-label={a.keep ? `Stop keeping ${a.handle} running` : `Keep ${a.handle} running`}
+                              aria-pressed={!!a.keep}
+                              onClick={(e) => e.stopPropagation()}
+                              className={cn(
+                                "grid size-5 place-items-center rounded hover:bg-hairline",
+                                a.keep ? "text-accent" : "text-faint opacity-0 group-hover:opacity-100",
+                              )}
+                            >
+                              <Pin className="size-3" fill={a.keep ? "currentColor" : "none"} />
+                            </button>
+                          </Tooltip>
+                        </span>
+                      </td>
+                      <td className="py-2 pr-2 text-muted-foreground">{a.machine}</td>
+                      <td className="py-2 pr-2">
+                        {!stopped && (
+                          <span className="flex flex-col gap-1">
+                            <span className="tabular text-text">{ram(a.ramMb)}</span>
+                            <Bar value={(a.ramMb / heaviest) * 100} />
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 text-right tabular text-muted-foreground">{stopped ? "" : `${a.cpu}%`}</td>
+                      <td className="py-2 text-right tabular text-muted-foreground">
+                        {a.state === "working" ? "" : a.idleFor}
+                      </td>
+                      <td className="py-2 text-right">
+                        {stopped && (
+                          <Tooltip content="Brings it back in the same conversation">
+                            <Button variant="outline" size="xs">
+                              <Play className="size-3" /> Start
+                            </Button>
+                          </Tooltip>
+                        )}
+                        {a.state === "paused" && (
+                          <Button variant="ghost" size="xs">
+                            Resume
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                    {isOpen && (
+                      <tr className="bg-hairline/50">
+                        <td />
+                        <td colSpan={6} className="px-6 pt-1 pb-3">
+                          <ul className="flex flex-col">
+                            {a.processes.map((p) => (
+                              <li key={p.name} className="flex items-baseline gap-3 py-1">
+                                <span className="w-28 flex-shrink-0 font-mono text-[12px] text-text">{p.name}</span>
+                                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint">{p.command}</span>
+                                <span className="tabular text-muted-foreground">{ram(p.ramMb)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {a.subagents && (
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-muted-foreground">
+                              <span className="text-faint">Subagents inside it</span>
+                              {a.subagents.map((s) => (
+                                <span key={s.handle} className="flex items-center gap-1.5">
+                                  <StatusDot tone={s.state === "working" ? "ok" : "off"} />
+                                  {s.handle}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {a.machine === "This computer" && (
+                            <Button variant="outline" size="xs" className="mt-3">
+                              <SquareTerminal className="size-3" /> Open its terminal
+                            </Button>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {NO_METRICS.map((m) => (
+                <tr key={m.handle} className="border-t border-border">
+                  <td />
+                  <td className="py-2 pr-2">
+                    <span className="flex items-center gap-2 pl-5.5">
+                      <Monogram handle={m.handle} kind="agent" className="size-5 text-[9px]" />
+                      <span className="text-muted-foreground">{m.handle}</span>
+                    </span>
+                  </td>
+                  <td colSpan={5} className="py-2 text-micro text-faint">
+                    {m.why}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      </div>
+
+      {chosen.length > 0 && (
+        <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-surface px-5 py-3">
+          <span className="text-label text-text">{chosen.length} picked</span>
+          <button type="button" onClick={() => setPicked(new Set())} className="text-micro text-muted-foreground hover:text-text">
+            Clear
+          </button>
+          <span className="ml-auto text-micro text-muted-foreground">Stopping frees {ram(frees)}</span>
+          <Tooltip content="Holds their wakes. They stay in memory and resume at once.">
+            <Button variant="outline" size="sm">
+              <Pause className="size-3.5" /> Pause
+            </Button>
+          </Tooltip>
+          <Tooltip content="Ends their processes to free the memory. Start brings each back in the same conversation.">
+            <Button size="sm">
+              <Square className="size-3.5" /> Stop {chosen.length}
+            </Button>
+          </Tooltip>
+        </div>
+      )}
     </div>
   );
 }

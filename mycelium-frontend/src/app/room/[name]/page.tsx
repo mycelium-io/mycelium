@@ -417,7 +417,7 @@ function RoomWorkspace() {
         subtitle="What each one uses on the machine it runs on"
         wide
       >
-        <AgentMetricsView initiallyOpen="builder" />
+        <AgentMetricsView />
       </DetailDrawer>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ResizablePanelGroup
