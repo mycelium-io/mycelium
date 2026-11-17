@@ -866,9 +866,23 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">stop</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>] [<span class="flag">--yes</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">stop</span> [<span class="arg">&lt;handle&gt;</span>] [<span class="flag">--idle</span> <span class="arg">&lt;age&gt;</span>] [<span class="flag">--close</span>] [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>] [<span class="flag">--yes</span>]</code>
         </div>
-        <div class="cmd-ref-body">Stop an agent you own: the machine running it interrupts it and closes its pane. It stays a member, and can be restarted.</div>
+        <div class="cmd-ref-body">Stop an agent you own to free its memory: its machine ends its process and keeps its pane, so <code>agent start</code> brings it back there. <code>--idle 1h</code> stops every agent you own idle that long, except kept ones. <code>--close</code> closes the pane too.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">start</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Start an agent you stopped, in its pane: in its own conversation when its CLI can resume one, like Claude Code. Its machine asks first unless it trusts the hub.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">keep</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--off</span>] [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Keep an agent you own running when agents are stopped in bulk (<code>agent stop --idle</code>, the app's quick picks). <code>--off</code> stops keeping it.</div>
       </div>
 
       <div class="cmd-ref">

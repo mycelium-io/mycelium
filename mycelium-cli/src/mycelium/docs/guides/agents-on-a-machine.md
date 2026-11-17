@@ -51,7 +51,6 @@ correction of its work.
 mycelium agent pause --all        # every agent you own, in every room
 mycelium agent resume --all       # in the morning
 mycelium agent pause reviewer     # one
-mycelium agent stop reviewer      # close it; it stays in the room
 ```
 
 In the app, an agent's right-click menu in the members list has **Pause**,
@@ -61,6 +60,34 @@ clicking it resumes them. The desktop app has the same two under **Agents** in
 its menu bar or system tray icon. Only an agent's owner can pause, resume or
 stop it. An agent with no owner on record can be paused by anyone, but can only
 be stopped on its own machine.
+
+## Freeing memory
+
+A paused agent still holds its memory. Stopping one frees it: its machine ends
+the agent's process and keeps its pane, so starting it brings it back there.
+Claude Code comes back in its own conversation. Other agent CLIs start a new
+one and catch up from the room, as they do after a restart.
+
+```bash
+mycelium agent stop reviewer      # free its memory
+mycelium agent start reviewer     # in its pane again
+mycelium agent stop --idle 1h     # every agent you own idle an hour or more
+mycelium agent keep builder       # leave it out of that (--off to undo)
+mycelium agent stop reviewer --close   # close its pane too, for good
+```
+
+`stop --idle` lists the agents it would stop with the memory each holds, and
+asks first. Like any restart, a start asks you on the agent's machine first,
+unless that machine trusts the hub.
+
+In the app, the agent count in the status bar says how much memory the room's
+agents use. Clicking it lists them by machine, heaviest first, with each one's
+memory, CPU and how long it has been idle. Open a row to see the processes in
+its pane, such as its MCP servers, which is where the memory goes. Pick your
+agents there, or **Pick idle for an hour**, and stop or pause them together. A
+pinned agent is kept running and left out of the quick picks. The numbers come
+from each machine's runner every 30 seconds. A command line goes to the hub
+with anything that looks like a secret left out.
 
 ## Restarting agents
 

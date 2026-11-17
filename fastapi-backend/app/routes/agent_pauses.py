@@ -6,12 +6,12 @@
 POST /agents/pause and POST /agents/resume act on every agent whose manifest
 names the caller as its owner, across rooms or in one (``room``), so stopping
 for the night is one click. GET /agents/paused lists a person's paused agents,
-for the status rail.
+for the status rail, and GET /agents/usage what each of their agents uses.
 """
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.schemas import AgentsControl, AgentsControlRead, PauseRead, refusals
+from app.schemas import AgentsControl, AgentsControlRead, AgentsUsageRead, PauseRead, refusals
 from app.services import actor, agent_control, pauses
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import canonical_room_name, room_exists
@@ -66,3 +66,16 @@ async def list_paused(
     """
     who = norm_handle(actor.bind_optional_actor(request, owner, field="owner"))
     return agent_control.paused_of(who or "")
+
+
+@router.get("/usage", response_model=AgentsUsageRead, responses=refusals(403))
+async def usage_of_mine(
+    request: Request, owner: str = Query(..., description="Whose agents")
+) -> AgentsUsageRead:
+    """What every agent ``owner`` owns uses, across rooms, on the machines
+    running them: for picking which to stop (``mycelium agent stop --idle``).
+
+    With sign-in on, only your own.
+    """
+    who = norm_handle(actor.bind_optional_actor(request, owner, field="owner"))
+    return agent_control.usage(owner=who or "")

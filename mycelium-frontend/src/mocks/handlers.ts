@@ -42,6 +42,7 @@ import {
   learnOnThreadRead,
 } from "./learn";
 import { mockKnowledgeWire } from "./knowledge";
+import { mockAgentsUsage, mockUsageControl } from "./agent-usage";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
@@ -1326,10 +1327,19 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
       }
-      // POST /agents/{handle}/pause|resume|stop — for its owner only.
-      if (sub.length === 3 && ["pause", "resume", "stop"].includes(sub[2]) && method === "POST") {
-        const by = String((await readJson(req)).by ?? "").replace(/^@/, "").toLowerCase();
-        return controlOne(fx, roomName, decodeURIComponent(sub[1]), sub[2], by);
+      // GET /agents/usage — what each agent uses, as its machine's runner said.
+      if (sub[1] === "usage" && sub.length === 2 && method === "GET") {
+        return json(mockAgentsUsage(roomName));
+      }
+      // POST /agents/{handle}/pause|resume|stop|start|keep — for its owner only.
+      if (sub.length === 3 && ["pause", "resume", "stop", "start", "keep"].includes(sub[2]) && method === "POST") {
+        const body = await readJson(req);
+        const by = String(body.by ?? "").replace(/^@/, "").toLowerCase();
+        const handle = decodeURIComponent(sub[1]);
+        const measured = mockUsageControl(roomName, handle, sub[2], by, body.keep as boolean | undefined);
+        if (measured) return measured;
+        if (sub[2] === "start" || sub[2] === "keep") return json({ detail: `No machine has @${handle}.` }, 409);
+        return controlOne(fx, roomName, handle, sub[2], by);
       }
       // POST /agents/{handle}/rename — one a machine runs waits for a yes
       // there (the job is queued, nothing moves); any other is renamed at once,

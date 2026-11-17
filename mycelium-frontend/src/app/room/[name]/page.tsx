@@ -7,7 +7,9 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
-import { useRoom, useRoomRevalidate } from "@/lib/room-data";
+import { useRoom, useRoomAgentsUsage, useRoomRevalidate } from "@/lib/room-data";
+import { DetailDrawer } from "@/components/detail-drawer";
+import { AgentMetricsView, ram, totalMb } from "@/components/agent-metrics";
 import { useAppStream } from "@/lib/stream-hub";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { parseRoomNameParam } from "@/lib/memory-routes";
@@ -96,6 +98,13 @@ function RoomWorkspace() {
   }, []);
 
   const { agents, episodes, openTasks } = useRoomStatus(roomName);
+  // What the room's agents use, as their machines' runners say.
+  const { usage } = useRoomAgentsUsage(roomName);
+  const measured = usage.agents.length > 0;
+  const usedMb = totalMb(usage.agents);
+  // With numbers, the count is of the agents they're for: the ones running.
+  const runningAgents = usage.agents.filter((a) => a.state !== "stopped" && a.state !== "gone").length;
+  const [usageOpen, setUsageOpen] = useState(false);
   const { room, refresh: refreshRoom } = useRoom(roomName);
 
   // A pushed memory/presence event refreshes every reader of this room's data
@@ -360,14 +369,17 @@ function RoomWorkspace() {
       )}
       {agents !== null && (
         <StatusButton
-          onClick={() => openTab("agents")}
-          tooltip="View agents"
+          // With a machine saying what they use, the count says it and opens them.
+          onClick={() => (measured ? setUsageOpen(true) : openTab("agents"))}
+          tooltip={measured ? "What each agent uses" : "View agents"}
           action="rail.agents"
           className="flex-shrink-0"
         >
           <Bot />
           <span className="tabular">
-            {agents} agent{agents === 1 ? "" : "s"}
+            {usedMb > 0
+              ? `${runningAgents} agent${runningAgents === 1 ? " uses" : "s use"} ${ram(usedMb)}`
+              : `${agents} agent${agents === 1 ? "" : "s"}`}
           </span>
         </StatusButton>
       )}
@@ -402,6 +414,15 @@ function RoomWorkspace() {
       statusLeft={statusLeft}
       roomViews={roomViews}
     >
+      <DetailDrawer
+        open={usageOpen}
+        onClose={() => setUsageOpen(false)}
+        title="Agents"
+        subtitle="What each one uses on the machine it runs on"
+        wide
+      >
+        <AgentMetricsView roomName={roomName} />
+      </DetailDrawer>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ResizablePanelGroup
           className="min-h-0 flex-1"

@@ -179,7 +179,7 @@ def _move_folders(old: str, new: str) -> bool:
 
 
 async def _move_room(room: str, old: str, new: str) -> int:
-    from app.services import assignments, pauses, room_people, schedules, subscriptions
+    from app.services import assignments, keeps, pauses, room_people, schedules, subscriptions
     from app.services.room_channels import manager
 
     moved = 0
@@ -194,6 +194,7 @@ async def _move_room(room: str, old: str, new: str) -> int:
     moved += _move_room_meta(room, old, new)
     manager.rename_member(room, old, new)
     pauses.rename(room, old, new)
+    keeps.rename(room, old, new)
     return moved
 
 

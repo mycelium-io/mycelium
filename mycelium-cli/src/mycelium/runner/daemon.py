@@ -87,6 +87,7 @@ from mycelium.runner.hosts import (
     StartHooks,
 )
 from mycelium.runner.log import failing, log, ms, open_log, recovered
+from mycelium.runner.usage import Usage, end_foreground, total_ram_mb
 from mycelium.utils.process import pid_alive
 from mycelium_backend_client import Client
 from mycelium_backend_client.api.auth import whoami_api_whoami_get as whoami_api
@@ -130,6 +131,10 @@ PAUSE_POLL_S = 0.5
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
+#: How often what each agent uses is read; heartbeats between send the last read.
+USAGE_EVERY_S = 30.0
+#: The states an agent has a process in, and so something to measure.
+RUNNING = frozenset({"working", "idle", "blocked"})
 #: How long one long-poll for a job is held by the hub.
 POLL_S = 25.0
 #: How often herdr presence and doorbells are synced.
@@ -559,6 +564,17 @@ class Runner:
         #: ``{(room, handle): (can_reply, why)}`` for each agent here the
         #: runner has a verdict on, sent with every heartbeat.
         self.can_reply: dict[tuple[str, str], tuple[bool, str | None]] = {}
+        #: What each agent's pane uses (``runner/usage.py``), read every
+        #: ``USAGE_EVERY_S`` and sent with every heartbeat between.
+        self._usage = Usage()
+        self._usage_read_at = 0.0
+        self._usage_by_pane: dict[str, dict[str, Any]] = {}
+        #: ``{(room, handle): when it was last seen working}``, wall time, for
+        #: how long it has been idle. An agent not seen working since the runner
+        #: started has been idle at least since then.
+        self._last_working: dict[tuple[str, str], float] = {}
+        self._started_at = time.time()
+        self._ram_total_mb = total_ram_mb()
         #: ``{(room, handle): when its token was last checked with the hub}``.
         self._checked: dict[tuple[str, str], float] = {}
 
@@ -619,7 +635,46 @@ class Runner:
             return None
         recovered(log, "machine report")
         self._count_subagents(report)
+        self._add_usage(report)
         return report
+
+    def _add_usage(self, report: dict[str, Any]) -> None:
+        """Each running agent's RAM, CPU and processes, how long each has been
+        idle, and this machine's memory. Read again every ``USAGE_EVERY_S``; a
+        read that fails leaves the agents without numbers, never the report."""
+        agents = [a for w in report.get("workspaces") or [] for a in w.get("agents") or []]
+        now = time.time()
+        running = {a["pane"] for a in agents if a.get("pane") and a.get("state") in RUNNING}
+        if time.monotonic() - self._usage_read_at >= USAGE_EVERY_S:
+            self._usage_read_at = time.monotonic()
+            infos: dict[str, dict[str, Any]] = {}
+            for pane in running:
+                try:
+                    infos[pane] = self.bridge.process_info(pane)
+                except HerdrError:
+                    continue
+            try:
+                self._usage_by_pane = self._usage.read(infos)
+            except Exception as e:  # noqa: BLE001 - numbers are extra; the report goes anyway
+                self.log.print(f"[dim]couldn't read what agents use: {e}[/dim]")
+                self._usage_by_pane = {}
+        report["ram_total_mb"] = self._ram_total_mb
+        for agent in agents:
+            key = (agent.get("room"), agent.get("handle"))
+            if agent.get("state") == "working":
+                self._last_working[key] = now
+            since = self._last_working.get(key, self._started_at)
+            agent["idle_since"] = (
+                None
+                if agent.get("state") == "working"
+                else datetime.fromtimestamp(since, UTC).isoformat(timespec="seconds")
+            )
+            used = (
+                self._usage_by_pane.get(agent.get("pane") or "")
+                if agent.get("pane") in running
+                else None
+            )
+            agent.update(used or {"ram_mb": None, "cpu": None, "up_s": None, "processes": []})
 
     def _count_subagents(self, report: dict[str, Any]) -> None:
         """Each agent's open and finished subagent steps, as the session
@@ -1322,6 +1377,52 @@ class Runner:
         return result
 
     def stop_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent: end its process to free its memory, keeping its pane
+        and conversation for a start, or with ``close``, close its pane too.
+
+        A hub that predates the difference sends no ``close``, and meant the
+        stop that closes the pane.
+        """
+        if spec.get("close", True):
+            return self._close_agent(spec)
+        return self._end_agent(str(spec["room"]), str(spec["handle"]))
+
+    def _end_agent(self, room: str, handle: str) -> dict[str, Any]:
+        """End what runs in the agent's pane, leaving the pane and its shell.
+
+        The agent's conversation is its CLI's own session, kept on disk, so a
+        start (a ``restart``) brings it back in it, in this same pane. Its
+        mapping is left as it was: a pane still open retires nobody.
+        """
+        host, pane, kind = self._running(room, handle)
+        before = self._usage_by_pane.get(pane, {}).get("ram_mb")
+        try:
+            host.interrupt(pane, kind)
+        except HostError as e:
+            log.info("stop @%s: couldn't interrupt %s first: %s", handle, pane, e)
+        try:
+            ended = end_foreground(self.bridge.process_info(pane))
+        except HerdrError as e:
+            raise JobError(f"herdr couldn't say what runs in @{handle}'s pane {pane}: {e}") from e
+        with self._lock:
+            agent = self.state.agents.get(f"{room}/{handle}")
+            if agent is not None:
+                agent.status = "stopped"
+                # Stopped where it ran, which is still open: started there
+                # again, it is this agent running again.
+                agent.exited = True
+                agent.detail = "stopped to free its memory; start it to bring it back"
+                agent.stopped_at = _now()
+                self.state.save(self._state_path)
+        self._usage_by_pane.pop(pane, None)
+        self.log.print(
+            f"[yellow]stopped[/yellow] @{handle} in {room} ({pane} kept open"
+            f"{f', {before} MB freed' if before else ''})"
+        )
+        return {"pane": pane, "ended": len(ended), "freed_mb": before, "kept_pane": True}
+
+    def _close_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent and close its pane."""
         key = f"{spec['room']}/{spec['handle']}"
         with self._lock:
             agent = self.state.agents.get(key)

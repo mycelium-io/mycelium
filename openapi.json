@@ -82,6 +82,79 @@
         }
       }
     },
+    "/api/rooms/{room_name}/agents/usage": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Agents Usage",
+        "description": "What each agent in the room uses on the machine running it: RAM, CPU,\nits processes and how long it has been idle, as its runner last said, and\neach of those machines' memory.",
+        "operationId": "agents_usage_api_rooms__room_name__agents_usage_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsUsageRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/agents/draft-notes": {
       "post": {
         "tags": [
@@ -517,7 +590,7 @@
           "agents"
         ],
         "summary": "Stop Agent",
-        "description": "Stop an agent and close its pane, on the machine running it. Its owner only;\none with no owner on record can't be stopped from here.",
+        "description": "Stop an agent on the machine running it: end its process to free its\nmemory, keeping its pane and conversation for a start, or with ``close``,\nclose its pane too. Its owner only; one with no owner on record can't be\nstopped from here.",
         "operationId": "stop_agent_api_rooms__room_name__agents__handle__stop_post",
         "parameters": [
           {
@@ -602,6 +675,220 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/agents/{handle}/start": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Start Agent",
+        "description": "Start a stopped agent again in its pane, in its own session when its CLI\ncan resume one. Its machine asks the person there first, as any restart\ndoes. Its owner only.",
+        "operationId": "start_agent_api_rooms__room_name__agents__handle__start_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentControl"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentControlRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/agents/{handle}/keep": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Keep Agent",
+        "description": "Keep an agent running when agents are stopped in bulk (``keep: false`` to\nstop keeping it). Stopping it by name still stops it. Its owner only.",
+        "operationId": "keep_agent_api_rooms__room_name__agents__handle__keep_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentKeep"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentControlRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -819,6 +1106,81 @@
                     "$ref": "#/components/schemas/PauseRead"
                   },
                   "title": "Response List Paused Api Agents Paused Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents/usage": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Usage Of Mine",
+        "description": "What every agent ``owner`` owns uses, across rooms, on the machines\nrunning them: for picking which to stop (``mycelium agent stop --idle``).\n\nWith sign-in on, only your own.",
+        "operationId": "usage_of_mine_api_agents_usage_get",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Whose agents",
+              "title": "Owner"
+            },
+            "description": "Whose agents"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsUsageRead"
                 }
               }
             }
@@ -14302,11 +14664,17 @@
             ],
             "title": "By",
             "description": "Who is asking; the verified caller wins"
+          },
+          "close": {
+            "type": "boolean",
+            "title": "Close",
+            "description": "With stop: close its pane too. Without it, a stop ends its process to free its memory and keeps its pane and conversation for a start",
+            "default": false
           }
         },
         "type": "object",
         "title": "AgentControl",
-        "description": "Pause, resume or stop one agent. Only its owner may."
+        "description": "Pause, resume, stop or start one agent. Only its owner may."
       },
       "AgentControlRead": {
         "properties": {
@@ -14349,6 +14717,17 @@
               }
             ],
             "title": "Job"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
           }
         },
         "type": "object",
@@ -14358,6 +14737,31 @@
         ],
         "title": "AgentControlRead",
         "description": "What happened to one agent."
+      },
+      "AgentKeep": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is asking; the verified caller wins"
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep",
+            "description": "False to stop keeping it",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "AgentKeep",
+        "description": "Keep an agent running when agents are stopped in bulk, or stop keeping it."
       },
       "AgentRead": {
         "properties": {
@@ -14627,6 +15031,155 @@
         "title": "AgentSessionRead",
         "description": "An earlier agent session on a runner's machine, that could be brought into a room.\n\nWhere and when it was, never what was said in it: a title or anything else\nfrom inside the session stays on the machine, so a field the runner sends\nbeyond these is dropped here."
       },
+      "AgentUsageRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "idle",
+              "blocked",
+              "paused",
+              "stopped",
+              "gone",
+              "unknown"
+            ],
+            "title": "State"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "runner": {
+            "type": "string",
+            "title": "Runner"
+          },
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "pane": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pane"
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep",
+            "default": false
+          },
+          "ram_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ram Mb"
+          },
+          "cpu": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu"
+          },
+          "up_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up S"
+          },
+          "idle_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Since"
+          },
+          "processes": {
+            "items": {
+              "$ref": "#/components/schemas/MachineProcessRead"
+            },
+            "type": "array",
+            "title": "Processes"
+          },
+          "subagents_open": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagents Open"
+          },
+          "restartable": {
+            "type": "boolean",
+            "title": "Restartable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle",
+          "state",
+          "runner",
+          "machine"
+        ],
+        "title": "AgentUsageRead",
+        "description": "One agent and what it uses on the machine running it."
+      },
       "AgentsControl": {
         "properties": {
           "by": {
@@ -14670,6 +15223,27 @@
         },
         "type": "object",
         "title": "AgentsControlRead"
+      },
+      "AgentsUsageRead": {
+        "properties": {
+          "machines": {
+            "items": {
+              "$ref": "#/components/schemas/MachineUsageRead"
+            },
+            "type": "array",
+            "title": "Machines"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentUsageRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "title": "AgentsUsageRead",
+        "description": "What each agent uses, on every connected machine running one."
       },
       "Ask": {
         "properties": {
@@ -19717,6 +20291,63 @@
             ],
             "title": "Subagents Finished",
             "description": "How many subagent steps its session has finished since the runner first read it, a count that only goes up (it starts again when the runner does); null when its CLI's session file isn't read"
+          },
+          "ram_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ram Mb",
+            "description": "Resident memory of its pane's processes, in MB; null when not read"
+          },
+          "cpu": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu",
+            "description": "Percent of one core its processes used over the last minute"
+          },
+          "up_s": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up S",
+            "description": "How long its agent process has run, in seconds"
+          },
+          "processes": {
+            "items": {
+              "$ref": "#/components/schemas/MachineProcessRead"
+            },
+            "type": "array",
+            "title": "Processes",
+            "description": "Its pane's processes, heaviest first, with secret-looking arguments left out"
+          },
+          "idle_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Since",
+            "description": "When it was last seen working; the runner's start when not since then. Null while it works"
           }
         },
         "type": "object",
@@ -19775,6 +20406,31 @@
         ],
         "title": "MachineProblemRead",
         "description": "Something wrong on a machine, and the CLI command that fixes it."
+      },
+      "MachineProcessRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "command": {
+            "type": "string",
+            "title": "Command",
+            "description": "Its program and arguments, secrets left out",
+            "default": ""
+          },
+          "ram_mb": {
+            "type": "integer",
+            "title": "Ram Mb",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "MachineProcessRead",
+        "description": "One process in an agent's pane, as its runner reports it."
       },
       "MachineReportRead": {
         "properties": {
@@ -19837,7 +20493,7 @@
           },
           "workspaces": {
             "items": {
-              "$ref": "#/components/schemas/MachineWorkspaceRead"
+              "$ref": "#/components/schemas/MachineWorkspaceRead-Input"
             },
             "type": "array",
             "title": "Workspaces"
@@ -19855,6 +20511,18 @@
             },
             "type": "array",
             "title": "Unenrolled"
+          },
+          "ram_total_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ram Total Mb",
+            "description": "The machine's memory, in MB"
           }
         },
         "type": "object",
@@ -19988,7 +20656,74 @@
         "title": "MachineUnenrolledRead",
         "description": "An agent CLI running in a herdr pane on a machine that no room has yet,\nwhich Members \u2192 Add can bring into a room (an ``adopt`` job)."
       },
-      "MachineWorkspaceRead": {
+      "MachineUsageRead": {
+        "properties": {
+          "runner": {
+            "type": "string",
+            "title": "Runner"
+          },
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "ram_total_mb": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ram Total Mb"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runner",
+          "machine"
+        ],
+        "title": "MachineUsageRead",
+        "description": "A machine running agents, and its memory."
+      },
+      "MachineWorkspaceRead-Input": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/MachineAgentRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "MachineWorkspaceRead",
+        "description": "A herdr workspace on a machine, and the room it's bound to."
+      },
+      "MachineWorkspaceRead-Output": {
         "properties": {
           "id": {
             "type": "string",

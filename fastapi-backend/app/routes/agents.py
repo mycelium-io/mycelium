@@ -8,7 +8,10 @@ hub's Pi from the line a person typed about it, for the Add member dialog.
 
 POST /rooms/{room_name}/agents/{handle}/rename — a new handle for an agent.
 
-POST /rooms/{room_name}/agents/{handle}/pause|resume|stop — for its owner.
+POST /rooms/{room_name}/agents/{handle}/pause|resume|stop|start|keep — for its owner.
+
+GET /rooms/{room_name}/agents/usage — what each agent in the room uses, on the
+machine running it.
 """
 
 import asyncio
@@ -20,9 +23,11 @@ from pydantic import BaseModel, Field
 from app.schemas import (
     AgentControl,
     AgentControlRead,
+    AgentKeep,
     AgentRead,
     AgentRename,
     AgentRenameRead,
+    AgentsUsageRead,
     refusals,
 )
 from app.services import actor, agent_control, agent_rename, notes_draft
@@ -40,6 +45,16 @@ async def list_agents(room_name: str) -> list[AgentRead]:
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     return room_agents(room_name)
+
+
+@router.get("/usage", response_model=AgentsUsageRead, responses=refusals(404))
+async def agents_usage(room_name: str) -> AgentsUsageRead:
+    """What each agent in the room uses on the machine running it: RAM, CPU,
+    its processes and how long it has been idle, as its runner last said, and
+    each of those machines' memory."""
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    return agent_control.usage(room=room_name)
 
 
 class NotesDraftRequest(BaseModel):
@@ -132,7 +147,11 @@ async def rename_agent(
 
 
 def _controlled(
-    room_name: str, handle: str, payload: AgentControl, request: Request, verb: str = "pause"
+    room_name: str,
+    handle: str,
+    payload: AgentControl | AgentKeep,
+    request: Request,
+    verb: str = "pause",
 ):
     """``(handle, by)`` once ``by`` is shown to own the agent, else the refusal."""
     if not room_exists(room_name):
@@ -172,10 +191,38 @@ async def resume_agent(
 async def stop_agent(
     room_name: str, handle: str, payload: AgentControl, request: Request
 ) -> AgentControlRead:
-    """Stop an agent and close its pane, on the machine running it. Its owner only;
-    one with no owner on record can't be stopped from here."""
+    """Stop an agent on the machine running it: end its process to free its
+    memory, keeping its pane and conversation for a start, or with ``close``,
+    close its pane too. Its owner only; one with no owner on record can't be
+    stopped from here."""
     target, by = _controlled(room_name, handle, payload, request, "stop")
     try:
-        return agent_control.stop(room_name, target, by)
+        return agent_control.stop(room_name, target, by, close=payload.close)
     except agent_control.ControlError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+
+@router.post(
+    "/{handle}/start", response_model=AgentControlRead, responses=refusals(403, 404, 409, 422)
+)
+async def start_agent(
+    room_name: str, handle: str, payload: AgentControl, request: Request
+) -> AgentControlRead:
+    """Start a stopped agent again in its pane, in its own session when its CLI
+    can resume one. Its machine asks the person there first, as any restart
+    does. Its owner only."""
+    target, by = _controlled(room_name, handle, payload, request, "start")
+    try:
+        return agent_control.start(room_name, target, by)
+    except agent_control.ControlError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+
+@router.post("/{handle}/keep", response_model=AgentControlRead, responses=refusals(403, 404, 422))
+async def keep_agent(
+    room_name: str, handle: str, payload: AgentKeep, request: Request
+) -> AgentControlRead:
+    """Keep an agent running when agents are stopped in bulk (``keep: false`` to
+    stop keeping it). Stopping it by name still stops it. Its owner only."""
+    target, by = _controlled(room_name, handle, payload, request, "keep")
+    return agent_control.keep(room_name, target, by, on=payload.keep)
