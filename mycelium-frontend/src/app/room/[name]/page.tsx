@@ -38,7 +38,7 @@ import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Bot, Handshake, ListTodo, Lock } from "lucide-react";
+import { Bot, Handshake, ListTodo, Lock, MemoryStick } from "lucide-react";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { AgentMetricsView } from "@/components/agent-metrics";
 import { mockHasMetrics, ram, totalMb } from "@/mocks/agent-metrics";
@@ -366,17 +366,27 @@ function RoomWorkspace() {
       )}
       {agents !== null && (
         <StatusButton
-          // MOCK: with metrics, the count says what the agents use and opens them.
+          // MOCK: with metrics, the count opens the agents and what they use.
           onClick={() => (metrics ? setMetricsOpen(true) : openTab("agents"))}
-          tooltip={metrics ? "What each agent uses" : "View agents"}
+          tooltip="View agents"
           action="rail.agents"
           className="flex-shrink-0"
         >
           <Bot />
           <span className="tabular">
             {agents} agent{agents === 1 ? "" : "s"}
-            {metrics && ` use ${ram(totalMb)}`}
           </span>
+        </StatusButton>
+      )}
+      {metrics && (
+        // MOCK: what this computer's agents use, read on this computer only.
+        <StatusButton
+          onClick={() => setMetricsOpen(true)}
+          tooltip="RAM used by agents on this computer"
+          className="flex-shrink-0"
+        >
+          <MemoryStick />
+          <span className="tabular">{ram(totalMb)} RAM</span>
         </StatusButton>
       )}
     </>
@@ -414,7 +424,7 @@ function RoomWorkspace() {
         open={metricsOpen}
         onClose={() => setMetricsOpen(false)}
         title="Agents"
-        subtitle="What each one uses on the machine it runs on"
+        subtitle="What each agent on this computer uses"
         wide
       >
         <AgentMetricsView />

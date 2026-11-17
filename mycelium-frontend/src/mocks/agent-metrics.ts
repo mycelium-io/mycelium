@@ -2,14 +2,14 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * MOCK: what each agent costs the machine it runs on, as the runner would add
- * it to the machine report it already sends with every heartbeat.
+ * MOCK: what each agent on this computer costs it, read by the desktop app on
+ * this computer. None of it goes to the hub: an agent on another machine has
+ * no numbers here, only its state and where it runs.
  *
  * herdr names each pane's shell and its foreground processes, so an agent's
  * RAM is the sum over its pane's process tree: the agent CLI and whatever it
  * started, such as MCP servers. A subagent runs inside its parent's process,
- * so its memory is its parent's. An engine runs on the hub, and an agent on a
- * machine with no runner reports nothing.
+ * so its memory is its parent's. An engine runs on the hub.
  */
 
 export interface AgentProcess {
@@ -44,10 +44,10 @@ export interface MachineTotal {
   ramGb: number;
 }
 
-export const MACHINES: MachineTotal[] = [
-  { name: "This computer", ramGb: 32 },
-  { name: "morgan-mini", ramGb: 16 },
-];
+export const HERE = "This computer";
+
+/** This computer: the only machine whose numbers the app can read. */
+export const MACHINE: MachineTotal = { name: HERE, ramGb: 32 };
 
 export const AGENT_METRICS: AgentMetrics[] = [
   {
@@ -75,14 +75,12 @@ export const AGENT_METRICS: AgentMetrics[] = [
     kind: "codex",
     machine: "morgan-mini",
     state: "idle",
-    ramMb: 640,
-    cpu: 1,
-    up: "1d",
+    // On another machine: the app reads nothing there, so it has no numbers.
+    ramMb: 0,
+    cpu: 0,
+    up: "",
     idleFor: "40m",
-    processes: [
-      { name: "codex", command: "codex resume", ramMb: 588 },
-      { name: "zsh", command: "-zsh", ramMb: 52 },
-    ],
+    processes: [],
   },
   {
     handle: "research",
@@ -143,7 +141,9 @@ export const AGENT_METRICS: AgentMetrics[] = [
 /** Members that report no metrics, and why. */
 export const NO_METRICS: { handle: string; why: string }[] = [{ handle: "conductor", why: "Runs on the hub" }];
 
-export const totalMb = AGENT_METRICS.reduce((s, a) => s + a.ramMb, 0);
+/** The agents running on this computer, and what they use together. */
+export const here = AGENT_METRICS.filter((a) => a.machine === HERE && a.state !== "stopped");
+export const totalMb = here.reduce((s, a) => s + a.ramMb, 0);
 
 /** "1.2 GB" or "640 MB". */
 export function ram(mb: number): string {

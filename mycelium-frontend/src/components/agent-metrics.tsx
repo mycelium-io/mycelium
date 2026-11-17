@@ -26,7 +26,7 @@ import { Monogram } from "@/components/ui/monogram";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { StatusDot, type Tone } from "@/components/status-items";
-import { AGENT_METRICS, MACHINES, NO_METRICS, ram, type AgentMetrics } from "@/mocks/agent-metrics";
+import { AGENT_METRICS, HERE, MACHINE, NO_METRICS, ram, totalMb, type AgentMetrics } from "@/mocks/agent-metrics";
 import { cn } from "@/lib/utils";
 
 const STATE: Record<AgentMetrics["state"], { word: string; tone: Tone }> = {
@@ -48,7 +48,10 @@ function Bar({ value, className }: { value: number; className?: string }) {
 export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initiallyOpen?: string; initiallyPicked?: string[] }) {
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null);
   const [picked, setPicked] = useState<Set<string>>(new Set(initiallyPicked ?? []));
-  const rows = [...AGENT_METRICS].sort((a, b) => b.ramMb - a.ramMb);
+  // This computer's agents first, heaviest first; then the ones elsewhere.
+  const rows = [...AGENT_METRICS].sort(
+    (a, b) => Number(a.machine !== HERE) - Number(b.machine !== HERE) || b.ramMb - a.ramMb,
+  );
   const heaviest = rows[0]?.ramMb ?? 1;
   const [filter, setFilter] = useState<"all" | "idle">("all");
   const isIdle = (a: AgentMetrics) => !a.keep && (a.state === "idle" || a.state === "paused");
@@ -70,19 +73,17 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
   return (
     <div className="flex min-h-full flex-col">
       <div className="flex flex-1 flex-col gap-6 px-5 py-4">
-        <section className="grid grid-cols-2 gap-2">
-          {MACHINES.map((m) => {
-            const used = AGENT_METRICS.filter((a) => a.machine === m.name).reduce((s, a) => s + a.ramMb, 0);
-            return (
-              <div key={m.name} className="rounded-md border border-border bg-bg px-3 py-2.5">
-                <div className="text-micro text-muted-foreground">{m.name}</div>
-                <div className="mt-0.5 text-body font-medium text-text tabular">
-                  {ram(used)} <span className="text-label font-normal text-faint">of {m.ramGb} GB</span>
-                </div>
-                <Bar value={(used / (m.ramGb * 1024)) * 100} className="mt-2" />
-              </div>
-            );
-          })}
+        <section>
+          <div className="rounded-md border border-border bg-bg px-3 py-2.5">
+            <div className="text-micro text-muted-foreground">{MACHINE.name}</div>
+            <div className="mt-0.5 text-body font-medium text-text tabular">
+              {ram(totalMb)} <span className="text-label font-normal text-faint">of {MACHINE.ramGb} GB</span>
+            </div>
+            <Bar value={(totalMb / (MACHINE.ramGb * 1024)) * 100} className="mt-2" />
+          </div>
+          <p className="mt-2 text-micro text-muted-foreground">
+            Numbers are for this computer only. They never leave it.
+          </p>
         </section>
 
         <section>
@@ -146,6 +147,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
               {shown.map((a) => {
                 const isOpen = open === a.handle;
                 const stopped = a.state === "stopped";
+                const remote = a.machine !== HERE;
                 return (
                   <Fragment key={a.handle}>
                     <tr className={cn("group border-t border-border hover:bg-hairline", isOpen && "bg-hairline")}>
@@ -160,13 +162,16 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                           />
                         )}
                       </td>
-                      <td className="cursor-pointer py-2 pr-2" onClick={() => !stopped && setOpen(isOpen ? null : a.handle)}>
+                      <td
+                        className={cn("py-2 pr-2", !stopped && !remote && "cursor-pointer")}
+                        onClick={() => !stopped && !remote && setOpen(isOpen ? null : a.handle)}
+                      >
                         <span className="flex items-center gap-2">
                           <ChevronRight
                             className={cn(
                               "size-3.5 flex-shrink-0 text-faint transition-transform",
                               isOpen && "rotate-90",
-                              stopped && "invisible",
+                              (stopped || remote) && "invisible",
                             )}
                             aria-hidden
                           />
@@ -192,14 +197,16 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                       </td>
                       <td className="py-2 pr-2 text-muted-foreground">{a.machine}</td>
                       <td className="py-2 pr-2">
-                        {!stopped && (
+                        {!stopped && !remote && (
                           <span className="flex flex-col gap-1">
                             <span className="tabular text-text">{ram(a.ramMb)}</span>
                             <Bar value={(a.ramMb / heaviest) * 100} />
                           </span>
                         )}
                       </td>
-                      <td className="py-2 text-right tabular text-muted-foreground">{stopped ? "" : `${a.cpu}%`}</td>
+                      <td className="py-2 text-right tabular text-muted-foreground">
+                        {stopped || remote ? "" : `${a.cpu}%`}
+                      </td>
                       <td className="py-2 text-right tabular text-muted-foreground">
                         {a.state === "working" ? "" : a.idleFor}
                       </td>
