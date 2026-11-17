@@ -7,9 +7,10 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
-import { useRoom, useRoomAgentsUsage, useRoomRevalidate } from "@/lib/room-data";
+import { useRoom, useRoomRevalidate } from "@/lib/room-data";
+import { useLocalUsage } from "@/lib/desktop";
 import { DetailDrawer } from "@/components/detail-drawer";
-import { AgentMetricsView, ram, totalMb } from "@/components/agent-metrics";
+import { AgentMetricsView, localMb, ram } from "@/components/agent-metrics";
 import { useAppStream } from "@/lib/stream-hub";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { parseRoomNameParam } from "@/lib/memory-routes";
@@ -40,7 +41,7 @@ import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Bot, Handshake, ListTodo, Lock } from "lucide-react";
+import { Bot, Handshake, ListTodo, Lock, MemoryStick } from "lucide-react";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -98,12 +99,9 @@ function RoomWorkspace() {
   }, []);
 
   const { agents, episodes, openTasks } = useRoomStatus(roomName);
-  // What the room's agents use, as their machines' runners say.
-  const { usage } = useRoomAgentsUsage(roomName);
-  const measured = usage.agents.length > 0;
-  const usedMb = totalMb(usage.agents);
-  // With numbers, the count is of the agents they're for: the ones running.
-  const runningAgents = usage.agents.filter((a) => a.state !== "stopped" && a.state !== "gone").length;
+  // What this computer's agents use, read here by the desktop app; the hub never has it.
+  const local = useLocalUsage();
+  const localUsedMb = localMb(local);
   const [usageOpen, setUsageOpen] = useState(false);
   const { room, refresh: refreshRoom } = useRoom(roomName);
 
@@ -369,18 +367,27 @@ function RoomWorkspace() {
       )}
       {agents !== null && (
         <StatusButton
-          // With a machine saying what they use, the count says it and opens them.
-          onClick={() => (measured ? setUsageOpen(true) : openTab("agents"))}
-          tooltip={measured ? "What each agent uses" : "View agents"}
+          // In the desktop app, the count opens the agents and what they use.
+          onClick={() => (local ? setUsageOpen(true) : openTab("agents"))}
+          tooltip="View agents"
           action="rail.agents"
           className="flex-shrink-0"
         >
           <Bot />
           <span className="tabular">
-            {usedMb > 0
-              ? `${runningAgents} agent${runningAgents === 1 ? " uses" : "s use"} ${ram(usedMb)}`
-              : `${agents} agent${agents === 1 ? "" : "s"}`}
+            {agents} agent{agents === 1 ? "" : "s"}
           </span>
+        </StatusButton>
+      )}
+      {local && localUsedMb > 0 && (
+        // What this computer's agents use, read on this computer only.
+        <StatusButton
+          onClick={() => setUsageOpen(true)}
+          tooltip="RAM used by agents on this computer"
+          className="flex-shrink-0"
+        >
+          <MemoryStick />
+          <span className="tabular">{ram(localUsedMb)} RAM</span>
         </StatusButton>
       )}
     </>
@@ -418,7 +425,7 @@ function RoomWorkspace() {
         open={usageOpen}
         onClose={() => setUsageOpen(false)}
         title="Agents"
-        subtitle="What each one uses on the machine it runs on"
+        subtitle="What each agent on this computer uses"
         wide
       >
         <AgentMetricsView roomName={roomName} />

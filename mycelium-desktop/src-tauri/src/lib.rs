@@ -21,6 +21,7 @@ mod signature;
 mod supervisor;
 mod terminal;
 mod updates;
+mod usage;
 mod versions;
 mod zoom;
 
@@ -1360,6 +1361,16 @@ async fn agent_session(
         .map_err(|e| e.to_string())?
 }
 
+/// What each agent on this machine uses (memory, CPU, processes), as the
+/// runner here last wrote it, for the Agents pane. The same rule as
+/// `agent_screen`: it never goes to the hub, and another hub's pages get
+/// nothing.
+#[tauri::command]
+async fn agent_usage(app: AppHandle, webview: Webview) -> Result<Value, String> {
+    own_ui_only(&app, &webview)?;
+    tauri::async_runtime::spawn_blocking(usage::usage).await.map_err(|e| e.to_string())?
+}
+
 /// The `limit` entries of an agent's session before the entry `before`, for
 /// the rendered view's scroll-up, converted on this machine by the local
 /// `mycelium` program. The same rule as `agent_session`.
@@ -1734,6 +1745,7 @@ pub fn run() {
             agent_screen,
             agent_session,
             agent_session_page,
+            agent_usage,
             earlier_sessions,
             run_doctor,
             check_hub,

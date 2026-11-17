@@ -8,7 +8,6 @@ transport, answering in the shapes it really sends."""
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -19,7 +18,6 @@ from mycelium.cli import app
 from tests.conftest import StandInHub, install_stand_in_hub
 
 runner = CliRunner()
-NOW = datetime.now(UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +34,7 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> StandInHub:
     return install_stand_in_hub(monkeypatch)
 
 
-def _row(handle: str, state: str, idle_for: timedelta | None, **over) -> dict:
+def _row(handle: str, state: str, **over) -> dict:
     return {
         "room": "eng",
         "handle": handle,
@@ -44,8 +42,6 @@ def _row(handle: str, state: str, idle_for: timedelta | None, **over) -> dict:
         "state": state,
         "runner": "mac",
         "machine": "Julia's computer",
-        "ram_mb": 700,
-        "idle_since": (NOW - idle_for).isoformat() if idle_for else None,
         **over,
     }
 
@@ -55,48 +51,54 @@ def _controlled(request: httpx.Request) -> dict:
     return {"room": "eng", "handle": handle, "runner": "mac", "job": "ab12"}
 
 
-def test_stop_idle_stops_only_agents_idle_that_long_and_never_kept_ones(hub: StandInHub):
-    usage = {
-        "machines": [{"runner": "mac", "machine": "Julia's computer", "ram_total_mb": 32768}],
+def test_stop_idle_stops_idle_and_paused_agents_but_never_kept_ones(hub: StandInHub, tmp_path):
+    running = {
         "agents": [
-            _row("busy", "working", None),
-            _row("napping", "idle", timedelta(hours=3), ram_mb=1200),
-            _row("paused", "paused", timedelta(hours=2)),
-            _row("fresh", "idle", timedelta(minutes=10)),
-            _row("pinned", "idle", timedelta(hours=5), keep=True),
-            _row("done", "stopped", timedelta(days=1)),
-        ],
+            _row("busy", "working"),
+            _row("napping", "idle"),
+            _row("paused", "paused"),
+            _row("asking", "blocked"),
+            _row("pinned", "idle", keep=True),
+            _row("done", "stopped"),
+            _row("elsewhere", "idle", machine="morgan-mini"),
+        ]
     }
-    hub.answer = lambda r: usage if r.method == "GET" else _controlled(r)
+    hub.answer = lambda r: running if r.method == "GET" else _controlled(r)
+    # What the runner here wrote: numbers for this machine's agents only.
+    usage = tmp_path / ".mycelium" / "runner" / "usage.json"
+    usage.parent.mkdir(parents=True)
+    usage.write_text(json.dumps({"agents": [{"room": "eng", "handle": "napping", "ram_mb": 1200}]}))
 
-    result = runner.invoke(app, ["agent", "stop", "--idle", "1h", "--yes"])
+    result = runner.invoke(app, ["agent", "stop", "--idle", "--yes"])
 
     assert result.exit_code == 0, result.output
-    (asked,) = hub.sent("GET", "/api/agents/usage")
+    (asked,) = hub.sent("GET", "/api/agents/running")
     assert asked.url.params["owner"] == "julia"
     stopped = [r.url.path.split("/")[-2] for r in hub.requests if r.method == "POST"]
-    assert stopped == ["napping", "paused"]
+    # Not one waiting on a person to answer it.
+    assert stopped == ["napping", "paused", "elsewhere"]
     for request in hub.requests[1:]:
         assert json.loads(request.content) == {"by": "julia", "close": False}
     out = " ".join(result.output.split())
-    assert "Stopping them frees about 1.9 GB." in out
+    assert "@napping in eng on Julia's computer 1.2 GB" in out
+    assert "Stopping them frees about 1.2 GB on this computer." in out
     assert "Kept running: @pinned" in out
 
 
 def test_stop_idle_with_nothing_idle_stops_nothing_and_names_the_kept(hub: StandInHub):
-    agents = [_row("busy", "working", None), _row("pinned", "idle", timedelta(hours=5), keep=True)]
-    hub.answer = lambda _r: {"machines": [], "agents": agents}
-    result = runner.invoke(app, ["agent", "stop", "--idle", "1h", "--yes"])
+    agents = [_row("busy", "working"), _row("pinned", "idle", keep=True)]
+    hub.answer = lambda _r: {"agents": agents}
+    result = runner.invoke(app, ["agent", "stop", "--idle", "--yes"])
     assert result.exit_code == 0, result.output
     out = " ".join(result.output.split())
     assert "Nothing to stop" in out
-    # A kept agent idle that long is why, so it's named.
+    # A kept agent idle is why, so it's named.
     assert "Kept running: @pinned" in out
     assert [r for r in hub.requests if r.method == "POST"] == []
 
 
 def test_stop_names_one_agent_or_idle_not_both(hub: StandInHub):
-    assert runner.invoke(app, ["agent", "stop", "scout", "--idle", "1h"]).exit_code == 2
+    assert runner.invoke(app, ["agent", "stop", "scout", "--idle"]).exit_code == 2
     assert runner.invoke(app, ["agent", "stop"]).exit_code == 2
     assert hub.requests == []
 

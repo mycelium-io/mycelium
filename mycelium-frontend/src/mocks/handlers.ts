@@ -42,7 +42,7 @@ import {
   learnOnThreadRead,
 } from "./learn";
 import { mockKnowledgeWire } from "./knowledge";
-import { mockAgentsUsage, mockUsageControl } from "./agent-usage";
+import { mockAgentsRunning, mockRunningControl } from "./agent-usage";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
@@ -1327,17 +1327,17 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
       }
-      // GET /agents/usage — what each agent uses, as its machine's runner said.
-      if (sub[1] === "usage" && sub.length === 2 && method === "GET") {
-        return json(mockAgentsUsage(roomName));
+      // GET /agents/running — the room's agents on connected machines, no numbers.
+      if (sub[1] === "running" && sub.length === 2 && method === "GET") {
+        return json(mockAgentsRunning(roomName));
       }
       // POST /agents/{handle}/pause|resume|stop|start|keep — for its owner only.
       if (sub.length === 3 && ["pause", "resume", "stop", "start", "keep"].includes(sub[2]) && method === "POST") {
         const body = await readJson(req);
         const by = String(body.by ?? "").replace(/^@/, "").toLowerCase();
         const handle = decodeURIComponent(sub[1]);
-        const measured = mockUsageControl(roomName, handle, sub[2], by, body.keep as boolean | undefined);
-        if (measured) return measured;
+        const listed = mockRunningControl(roomName, handle, sub[2], by, body.keep as boolean | undefined);
+        if (listed) return listed;
         if (sub[2] === "start" || sub[2] === "keep") return json({ detail: `No machine has @${handle}.` }, 409);
         return controlOne(fx, roomName, handle, sub[2], by);
       }

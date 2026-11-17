@@ -87,7 +87,7 @@ from mycelium.runner.hosts import (
     StartHooks,
 )
 from mycelium.runner.log import failing, log, ms, open_log, recovered
-from mycelium.runner.usage import Usage, end_foreground, total_ram_mb
+from mycelium.runner.usage import Usage, end_foreground, total_ram_mb, write_private
 from mycelium.utils.process import pid_alive
 from mycelium_backend_client import Client
 from mycelium_backend_client.api.auth import whoami_api_whoami_get as whoami_api
@@ -131,8 +131,10 @@ PAUSE_POLL_S = 0.5
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
-#: How often what each agent uses is read; heartbeats between send the last read.
+#: How often what each agent uses is read again, and where it's written on this
+#: machine, beside the runner's state (``runner_dir()``), for the desktop app.
 USAGE_EVERY_S = 30.0
+USAGE_FILE = "usage.json"
 #: The states an agent has a process in, and so something to measure.
 RUNNING = frozenset({"working", "idle", "blocked"})
 #: How long one long-poll for a job is held by the hub.
@@ -565,8 +567,10 @@ class Runner:
         #: runner has a verdict on, sent with every heartbeat.
         self.can_reply: dict[tuple[str, str], tuple[bool, str | None]] = {}
         #: What each agent's pane uses (``runner/usage.py``), read every
-        #: ``USAGE_EVERY_S`` and sent with every heartbeat between.
+        #: ``USAGE_EVERY_S`` and written to ``usage.json`` on this machine for
+        #: the desktop app. Never in a heartbeat: none of it goes to the hub.
         self._usage = Usage()
+        self._usage_path = self._state_path.with_name(USAGE_FILE)
         self._usage_read_at = 0.0
         self._usage_by_pane: dict[str, dict[str, Any]] = {}
         #: ``{(room, handle): when it was last seen working}``, wall time, for
@@ -635,46 +639,67 @@ class Runner:
             return None
         recovered(log, "machine report")
         self._count_subagents(report)
-        self._add_usage(report)
+        self._note_usage(report)
         return report
 
-    def _add_usage(self, report: dict[str, Any]) -> None:
-        """Each running agent's RAM, CPU and processes, how long each has been
-        idle, and this machine's memory. Read again every ``USAGE_EVERY_S``; a
-        read that fails leaves the agents without numbers, never the report."""
+    def _note_usage(self, report: dict[str, Any]) -> None:
+        """What each agent here uses (RAM, CPU, processes, how long it has
+        been idle) and this machine's memory, written to ``usage.json`` beside
+        the runner's state for the desktop app on this machine to read. The
+        report itself is left as it was: none of this goes to the hub.
+
+        Read again every ``USAGE_EVERY_S``; a read that fails writes no numbers
+        and never stops the heartbeat.
+        """
         agents = [a for w in report.get("workspaces") or [] for a in w.get("agents") or []]
         now = time.time()
+        for agent in agents:
+            if agent.get("state") == "working":
+                self._last_working[(agent.get("room"), agent.get("handle"))] = now
+        if time.monotonic() - self._usage_read_at < USAGE_EVERY_S:
+            return
+        self._usage_read_at = time.monotonic()
         running = {a["pane"] for a in agents if a.get("pane") and a.get("state") in RUNNING}
-        if time.monotonic() - self._usage_read_at >= USAGE_EVERY_S:
-            self._usage_read_at = time.monotonic()
-            infos: dict[str, dict[str, Any]] = {}
-            for pane in running:
-                try:
-                    infos[pane] = self.bridge.process_info(pane)
-                except HerdrError:
-                    continue
+        infos: dict[str, dict[str, Any]] = {}
+        for pane in running:
             try:
-                self._usage_by_pane = self._usage.read(infos)
-            except Exception as e:  # noqa: BLE001 - numbers are extra; the report goes anyway
-                self.log.print(f"[dim]couldn't read what agents use: {e}[/dim]")
-                self._usage_by_pane = {}
-        report["ram_total_mb"] = self._ram_total_mb
+                infos[pane] = self.bridge.process_info(pane)
+            except HerdrError:
+                continue
+        try:
+            self._usage_by_pane = self._usage.read(infos)
+        except Exception as e:  # noqa: BLE001 - numbers are extra; the heartbeat goes anyway
+            self.log.print(f"[dim]couldn't read what agents use: {e}[/dim]")
+            self._usage_by_pane = {}
+        rows = []
         for agent in agents:
             key = (agent.get("room"), agent.get("handle"))
-            if agent.get("state") == "working":
-                self._last_working[key] = now
+            working = agent.get("state") == "working"
             since = self._last_working.get(key, self._started_at)
-            agent["idle_since"] = (
-                None
-                if agent.get("state") == "working"
-                else datetime.fromtimestamp(since, UTC).isoformat(timespec="seconds")
+            pane = agent.get("pane") or ""
+            used = self._usage_by_pane.get(pane) if pane in running else None
+            rows.append(
+                {
+                    "room": agent.get("room"),
+                    "handle": agent.get("handle"),
+                    "pane": pane or None,
+                    "state": agent.get("state"),
+                    "idle_since": None
+                    if working
+                    else datetime.fromtimestamp(since, UTC).isoformat(timespec="seconds"),
+                    **(used or {"ram_mb": None, "cpu": None, "up_s": None, "processes": []}),
+                }
             )
-            used = (
-                self._usage_by_pane.get(agent.get("pane") or "")
-                if agent.get("pane") in running
-                else None
-            )
-            agent.update(used or {"ram_mb": None, "cpu": None, "up_s": None, "processes": []})
+        body = {
+            "at": _now(),
+            "runner": self.id,
+            "ram_total_mb": self._ram_total_mb,
+            "agents": rows,
+        }
+        try:
+            write_private(self._usage_path, json.dumps(body))
+        except OSError as e:
+            self.log.print(f"[dim]couldn't write what agents use: {e}[/dim]")
 
     def _count_subagents(self, report: dict[str, Any]) -> None:
         """Each agent's open and finished subagent steps, as the session

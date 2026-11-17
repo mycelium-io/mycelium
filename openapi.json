@@ -82,14 +82,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/agents/usage": {
+    "/api/rooms/{room_name}/agents/running": {
       "get": {
         "tags": [
           "agents"
         ],
-        "summary": "Agents Usage",
-        "description": "What each agent in the room uses on the machine running it: RAM, CPU,\nits processes and how long it has been idle, as its runner last said, and\neach of those machines' memory.",
-        "operationId": "agents_usage_api_rooms__room_name__agents_usage_get",
+        "summary": "Agents Running",
+        "description": "Every agent in the room a connected machine runs: its machine, its state\nand whether it's kept running. What it uses never comes to the hub.",
+        "operationId": "agents_running_api_rooms__room_name__agents_running_get",
         "parameters": [
           {
             "name": "room_name",
@@ -107,7 +107,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentsUsageRead"
+                  "$ref": "#/components/schemas/AgentsRunningRead"
                 }
               }
             }
@@ -1153,14 +1153,14 @@
         }
       }
     },
-    "/api/agents/usage": {
+    "/api/agents/running": {
       "get": {
         "tags": [
           "agents"
         ],
-        "summary": "Usage Of Mine",
-        "description": "What every agent ``owner`` owns uses, across rooms, on the machines\nrunning them: for picking which to stop (``mycelium agent stop --idle``).\n\nWith sign-in on, only your own.",
-        "operationId": "usage_of_mine_api_agents_usage_get",
+        "summary": "Running Of Mine",
+        "description": "Every agent ``owner`` owns that a connected machine runs, across rooms,\nwith its state: for picking which to stop (``mycelium agent stop --idle``).\n\nWith sign-in on, only your own.",
+        "operationId": "running_of_mine_api_agents_running_get",
         "parameters": [
           {
             "name": "owner",
@@ -1180,7 +1180,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentsUsageRead"
+                  "$ref": "#/components/schemas/AgentsRunningRead"
                 }
               }
             }
@@ -14668,7 +14668,7 @@
           "close": {
             "type": "boolean",
             "title": "Close",
-            "description": "With stop: close its pane too. Without it, a stop ends its process to free its memory and keeps its pane and conversation for a start",
+            "description": "With stop: close its pane too. Without it, a stop ends its process to free its memory and keeps its pane for a start",
             "default": false
           }
         },
@@ -14980,58 +14980,7 @@
         "title": "AgentRenameRead",
         "description": "What a rename moved, or that it waits for a yes on the machine running the agent."
       },
-      "AgentSessionRead": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Id",
-            "description": "The agent CLI's own id"
-          },
-          "folder": {
-            "type": "string",
-            "title": "Folder"
-          },
-          "last_used": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Last Used"
-          },
-          "branch": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Branch",
-            "description": "The git branch it was on"
-          },
-          "member": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SessionMemberRead"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The member it was, when the runner started it for one"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "folder",
-          "last_used"
-        ],
-        "title": "AgentSessionRead",
-        "description": "An earlier agent session on a runner's machine, that could be brought into a room.\n\nWhere and when it was, never what was said in it: a title or anything else\nfrom inside the session stays on the machine, so a field the runner sends\nbeyond these is dropped here."
-      },
-      "AgentUsageRead": {
+      "AgentRunningRead": {
         "properties": {
           "room": {
             "type": "string",
@@ -15100,69 +15049,6 @@
             "title": "Keep",
             "default": false
           },
-          "ram_mb": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ram Mb"
-          },
-          "cpu": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cpu"
-          },
-          "up_s": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Up S"
-          },
-          "idle_since": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Idle Since"
-          },
-          "processes": {
-            "items": {
-              "$ref": "#/components/schemas/MachineProcessRead"
-            },
-            "type": "array",
-            "title": "Processes"
-          },
-          "subagents_open": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subagents Open"
-          },
           "restartable": {
             "type": "boolean",
             "title": "Restartable",
@@ -15177,8 +15063,59 @@
           "runner",
           "machine"
         ],
-        "title": "AgentUsageRead",
-        "description": "One agent and what it uses on the machine running it."
+        "title": "AgentRunningRead",
+        "description": "One agent on a machine: where it runs and in what state, for stopping and\nstarting agents. What it uses never comes here; the desktop app on its own\nmachine reads that there."
+      },
+      "AgentSessionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id",
+            "description": "The agent CLI's own id"
+          },
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "last_used": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Used"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch",
+            "description": "The git branch it was on"
+          },
+          "member": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionMemberRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member it was, when the runner started it for one"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "folder",
+          "last_used"
+        ],
+        "title": "AgentSessionRead",
+        "description": "An earlier agent session on a runner's machine, that could be brought into a room.\n\nWhere and when it was, never what was said in it: a title or anything else\nfrom inside the session stays on the machine, so a field the runner sends\nbeyond these is dropped here."
       },
       "AgentsControl": {
         "properties": {
@@ -15224,26 +15161,19 @@
         "type": "object",
         "title": "AgentsControlRead"
       },
-      "AgentsUsageRead": {
+      "AgentsRunningRead": {
         "properties": {
-          "machines": {
-            "items": {
-              "$ref": "#/components/schemas/MachineUsageRead"
-            },
-            "type": "array",
-            "title": "Machines"
-          },
           "agents": {
             "items": {
-              "$ref": "#/components/schemas/AgentUsageRead"
+              "$ref": "#/components/schemas/AgentRunningRead"
             },
             "type": "array",
             "title": "Agents"
           }
         },
         "type": "object",
-        "title": "AgentsUsageRead",
-        "description": "What each agent uses, on every connected machine running one."
+        "title": "AgentsRunningRead",
+        "description": "Every agent a connected machine runs, with its state and machine."
       },
       "Ask": {
         "properties": {
@@ -20291,63 +20221,6 @@
             ],
             "title": "Subagents Finished",
             "description": "How many subagent steps its session has finished since the runner first read it, a count that only goes up (it starts again when the runner does); null when its CLI's session file isn't read"
-          },
-          "ram_mb": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ram Mb",
-            "description": "Resident memory of its pane's processes, in MB; null when not read"
-          },
-          "cpu": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cpu",
-            "description": "Percent of one core its processes used over the last minute"
-          },
-          "up_s": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Up S",
-            "description": "How long its agent process has run, in seconds"
-          },
-          "processes": {
-            "items": {
-              "$ref": "#/components/schemas/MachineProcessRead"
-            },
-            "type": "array",
-            "title": "Processes",
-            "description": "Its pane's processes, heaviest first, with secret-looking arguments left out"
-          },
-          "idle_since": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Idle Since",
-            "description": "When it was last seen working; the runner's start when not since then. Null while it works"
           }
         },
         "type": "object",
@@ -20406,31 +20279,6 @@
         ],
         "title": "MachineProblemRead",
         "description": "Something wrong on a machine, and the CLI command that fixes it."
-      },
-      "MachineProcessRead": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "command": {
-            "type": "string",
-            "title": "Command",
-            "description": "Its program and arguments, secrets left out",
-            "default": ""
-          },
-          "ram_mb": {
-            "type": "integer",
-            "title": "Ram Mb",
-            "default": 0
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "MachineProcessRead",
-        "description": "One process in an agent's pane, as its runner reports it."
       },
       "MachineReportRead": {
         "properties": {
@@ -20493,7 +20341,7 @@
           },
           "workspaces": {
             "items": {
-              "$ref": "#/components/schemas/MachineWorkspaceRead-Input"
+              "$ref": "#/components/schemas/MachineWorkspaceRead"
             },
             "type": "array",
             "title": "Workspaces"
@@ -20511,18 +20359,6 @@
             },
             "type": "array",
             "title": "Unenrolled"
-          },
-          "ram_total_mb": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ram Total Mb",
-            "description": "The machine's memory, in MB"
           }
         },
         "type": "object",
@@ -20656,74 +20492,7 @@
         "title": "MachineUnenrolledRead",
         "description": "An agent CLI running in a herdr pane on a machine that no room has yet,\nwhich Members \u2192 Add can bring into a room (an ``adopt`` job)."
       },
-      "MachineUsageRead": {
-        "properties": {
-          "runner": {
-            "type": "string",
-            "title": "Runner"
-          },
-          "machine": {
-            "type": "string",
-            "title": "Machine"
-          },
-          "ram_total_mb": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ram Total Mb"
-          }
-        },
-        "type": "object",
-        "required": [
-          "runner",
-          "machine"
-        ],
-        "title": "MachineUsageRead",
-        "description": "A machine running agents, and its memory."
-      },
-      "MachineWorkspaceRead-Input": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "label": {
-            "type": "string",
-            "title": "Label"
-          },
-          "room": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Room"
-          },
-          "agents": {
-            "items": {
-              "$ref": "#/components/schemas/MachineAgentRead"
-            },
-            "type": "array",
-            "title": "Agents"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "label"
-        ],
-        "title": "MachineWorkspaceRead",
-        "description": "A herdr workspace on a machine, and the room it's bound to."
-      },
-      "MachineWorkspaceRead-Output": {
+      "MachineWorkspaceRead": {
         "properties": {
           "id": {
             "type": "string",

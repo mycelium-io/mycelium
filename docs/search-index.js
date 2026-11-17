@@ -881,7 +881,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#agents-on-a-machine-freeing-memory",
     "t": "Freeing memory",
     "s": "Agents › Your Agents on a Machine",
-    "x": "A paused agent still holds its memory. Stopping one frees it: its machine ends the agent's process and keeps its pane, so starting it brings it back there. Claude Code comes back in its own conversation. Other agent CLIs start a new one and catch up from the room, as they do after a restart. mycelium agent stop reviewer # free its memory mycelium agent start reviewer # in its pane again mycelium agent stop --idle 1h ",
+    "x": "A paused agent still holds its memory. Stopping one frees it: its machine ends the agent's process and keeps its pane, so starting it brings it back there. Claude Code comes back in its own conversation. Other agent CLIs start a new one and catch up from the room, as they do after a restart. mycelium agent stop reviewer # free its memory mycelium agent start reviewer # in its pane again mycelium agent stop --idle # e",
     "p": "Guides"
   },
   {
@@ -2203,9 +2203,9 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
-    "t": "mycelium agent stop [<handle>] [--idle <age>] [--close] [--room <room>] [--as <you>] [--yes]",
+    "t": "mycelium agent stop [<handle>] [--idle] [--close] [--room <room>] [--as <you>] [--yes]",
     "s": "CLI Reference",
-    "x": "Stop an agent you own to free its memory: its machine ends its process and keeps its pane, so agent start brings it back there. --idle 1h stops every agent you own idle that long, except kept ones. --close closes the pane too.",
+    "x": "Stop an agent you own to free its memory: its machine ends its process and keeps its pane, so agent start brings it back there. --idle stops every agent you own that's idle or paused, except kept ones. --close closes the pane too.",
     "k": "cmd",
     "p": "Reference"
   },

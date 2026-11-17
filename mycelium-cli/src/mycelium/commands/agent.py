@@ -1807,14 +1807,13 @@ def agent_resume(
 
 @doc_ref(
     usage=(
-        "mycelium agent stop [<handle>] [--idle <age>] [--close] [--room <room>] "
-        "[--as <you>] [--yes]"
+        "mycelium agent stop [<handle>] [--idle] [--close] [--room <room>] [--as <you>] [--yes]"
     ),
     desc=(
         "Stop an agent you own to free its memory: its machine ends its process and "
         "keeps its pane, so <code>agent start</code> brings it back there. "
-        "<code>--idle 1h</code> stops every agent you own idle that long, except kept "
-        "ones. <code>--close</code> closes the pane too."
+        "<code>--idle</code> stops every agent you own that's idle or paused, except "
+        "kept ones. <code>--close</code> closes the pane too."
     ),
     group="agent",
 )
@@ -1826,10 +1825,8 @@ def agent_resume(
 def agent_stop(
     ctx: typer.Context,
     handle: str | None = typer.Argument(None, help="The agent to stop"),
-    idle: str | None = typer.Option(
-        None,
-        "--idle",
-        help="Every agent you own idle at least this long (like 1h or 30m), except kept ones",
+    idle: bool = typer.Option(
+        False, "--idle", help="Every agent you own that's idle or paused, except kept ones"
     ),
     close: bool = typer.Option(False, "--close", help="Close its pane too, as the stop for good"),
     room: str | None = None,
@@ -1842,14 +1839,14 @@ def agent_stop(
     start`` brings it back there: in its own conversation when its CLI can
     resume one, like Claude Code, else in a new one that catches up from the
     room. Unlike a pause, it holds no memory while stopped. ``--close`` also closes
-    its pane, as the stop for good. ``--idle`` stops every agent you own that
-    has been idle that long, leaving out kept ones (``mycelium agent keep``).
+    its pane, as the stop for good. ``--idle`` stops every agent you own that's
+    idle or paused, leaving out kept ones (``mycelium agent keep``).
     """
-    if bool(handle) == bool(idle):
-        console.print("[red]Name one agent to stop, or pass --idle <age>, not both.[/red]")
+    if bool(handle) == idle:
+        console.print("[red]Name one agent to stop, or pass --idle, not both.[/red]")
         raise typer.Exit(2)
     if idle:
-        _stop_idle(ctx, idle, room, str(by), yes=yes, close=close)
+        _stop_idle(ctx, room, str(by), yes=yes, close=close)
         return
     name = str(handle).lstrip("@")
     what = "and close its pane" if close else "to free its memory (its pane stays for a start)"
@@ -1865,66 +1862,71 @@ def _mb(mb: object) -> str:
     return f"{mb / 1024:.1f} GB" if mb >= 1000 else f"{mb} MB"  # noqa: PLR2004
 
 
-def _stop_idle(
-    ctx: typer.Context, idle: str, room: str | None, by: str, *, yes: bool, close: bool
-) -> None:
-    """Stop every agent ``by`` owns that has been idle at least ``idle``,
-    leaving out kept ones: listed with what each holds, asked about once."""
-    from datetime import datetime
+#: What ``--idle`` stops: an agent not working, and not waiting on a person.
+_IDLE_STATES = ("idle", "paused")
 
+
+def _local_usage() -> dict[tuple[str, str], dict[str, Any]]:
+    """What each agent on this machine uses, as the runner here last wrote it
+    (``runner/usage.py``), by ``(room, handle)``. Read from this machine's own
+    file: the hub never has it, so an agent elsewhere has no numbers."""
+    from mycelium.runner.daemon import USAGE_FILE, runner_dir
+    from mycelium.runner.usage import read_local
+
+    rows = read_local(runner_dir() / USAGE_FILE).get("agents") or []
+    return {(r.get("room"), r.get("handle")): r for r in rows if isinstance(r, dict)}
+
+
+def _stop_idle(ctx: typer.Context, room: str | None, by: str, *, yes: bool, close: bool) -> None:
+    """Stop every agent ``by`` owns that's idle or paused, leaving out kept
+    ones: listed, with what each holds when it runs on this machine, and asked
+    about once."""
     import httpx
 
-    from mycelium.chat import parse_stamp
-    from mycelium_backend_client.api.agents import usage_of_mine_api_agents_usage_get as usage_api
-    from mycelium_backend_client.models import AgentsUsageRead
+    from mycelium_backend_client.api.agents import (
+        running_of_mine_api_agents_running_get as running_api,
+    )
+    from mycelium_backend_client.models import AgentsRunningRead
 
     try:
-        cutoff = parse_stamp(idle)
         config = MyceliumConfig.load()
         with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
-            resp = usage_api.sync_detailed(client=client, owner=by)
-        usage = answered(resp, AgentsUsageRead)
-    except typer.BadParameter as e:
-        console.print(f"[red]--idle {idle}:[/red] {e}")
-        raise typer.Exit(2) from None
+            resp = running_api.sync_detailed(client=client, owner=by)
+        running = answered(resp, AgentsRunningRead)
     except httpx.HTTPError as e:
         console.print(f"[red]Couldn't reach the hub:[/red] {e}")
         raise typer.Exit(1) from None
+    agents = running.agents or []
     picked = [
         a
-        for a in usage.agents or []
-        if a.state not in ("working", "stopped", "gone")
-        and not a.keep
-        and isinstance(a.idle_since, datetime)
-        and a.idle_since <= cutoff
-        and (room is None or a.room == room)
+        for a in agents
+        if a.state in _IDLE_STATES and not a.keep and (room is None or a.room == room)
     ]
-    kept = [a for a in usage.agents or [] if a.keep and a.state not in ("stopped", "gone")]
+    kept = [a for a in agents if a.keep and a.state not in ("stopped", "gone")]
     if not picked:
         if ctx.obj and ctx.obj.get("json"):
             print(json_module.dumps({"stopped": []}))
             return
-        console.print(
-            f"Nothing to stop: none of your agents that isn't kept running has been idle "
-            f"{idle} or more."
-        )
+        console.print("Nothing to stop: none of your agents that isn't kept running is idle.")
         if kept:
             console.print(f"[dim]Kept running: {', '.join('@' + a.handle for a in kept)}[/dim]")
         return
     if not (ctx.obj and ctx.obj.get("json")):
-        console.print(f"Idle {idle} or more:")
+        here = _local_usage()
+        console.print("Idle or paused:")
         for a in picked:
-            since = (
-                a.idle_since.astimezone().strftime("%H:%M")
-                if isinstance(a.idle_since, datetime)
-                else "?"
-            )
+            used = here.get((a.room, a.handle), {}).get("ram_mb")
             console.print(
-                f"  @{a.handle} in {a.room} on {a.machine}  {_mb(a.ram_mb)}"
-                f"  [dim]idle since {since}[/dim]"
+                f"  @{a.handle} in {a.room} on {a.machine}"
+                + (f"  {_mb(used)}" if isinstance(used, int) else "")
             )
-        freed = sum(a.ram_mb for a in picked if isinstance(a.ram_mb, int))
-        console.print(f"Stopping them frees about {_mb(freed)}.")
+        freed = sum(
+            m
+            for a in picked
+            if isinstance(m := here.get((a.room, a.handle), {}).get("ram_mb"), int)
+        )
+        if freed:
+            console.print(f"Stopping them frees about {_mb(freed)} on this computer.")
         if kept:
             console.print(f"[dim]Kept running: {', '.join('@' + a.handle for a in kept)}[/dim]")
     if not yes and not typer.confirm(f"Stop these {len(picked)}?"):

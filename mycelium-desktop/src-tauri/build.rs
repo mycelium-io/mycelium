@@ -15,6 +15,7 @@ const COMMANDS: &[&str] = &[
     "agent_screen",
     "agent_session",
     "agent_session_page",
+    "agent_usage",
     "earlier_sessions",
     "run_doctor",
     "check_hub",

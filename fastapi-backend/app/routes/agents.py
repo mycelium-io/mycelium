@@ -10,8 +10,8 @@ POST /rooms/{room_name}/agents/{handle}/rename — a new handle for an agent.
 
 POST /rooms/{room_name}/agents/{handle}/pause|resume|stop|start|keep — for its owner.
 
-GET /rooms/{room_name}/agents/usage — what each agent in the room uses, on the
-machine running it.
+GET /rooms/{room_name}/agents/running — the room's agents on connected
+machines, with each one's machine and state.
 """
 
 import asyncio
@@ -27,7 +27,7 @@ from app.schemas import (
     AgentRead,
     AgentRename,
     AgentRenameRead,
-    AgentsUsageRead,
+    AgentsRunningRead,
     refusals,
 )
 from app.services import actor, agent_control, agent_rename, notes_draft
@@ -47,14 +47,13 @@ async def list_agents(room_name: str) -> list[AgentRead]:
     return room_agents(room_name)
 
 
-@router.get("/usage", response_model=AgentsUsageRead, responses=refusals(404))
-async def agents_usage(room_name: str) -> AgentsUsageRead:
-    """What each agent in the room uses on the machine running it: RAM, CPU,
-    its processes and how long it has been idle, as its runner last said, and
-    each of those machines' memory."""
+@router.get("/running", response_model=AgentsRunningRead, responses=refusals(404))
+async def agents_running(room_name: str) -> AgentsRunningRead:
+    """Every agent in the room a connected machine runs: its machine, its state
+    and whether it's kept running. What it uses never comes to the hub."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    return agent_control.usage(room=room_name)
+    return agent_control.running(room=room_name)
 
 
 class NotesDraftRequest(BaseModel):

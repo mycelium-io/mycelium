@@ -24,7 +24,8 @@ GUARDS = ("local_only(", "own_ui_only(")
 #: What ``own_ui_only`` may answer, and nothing beyond it. ``agent_screen``
 #: and ``agent_session`` (with its earlier pages) hand the app's own hub UI
 #: what a terminal on this machine shows and the session behind it, and
-#: ``earlier_sessions`` the titles of its agent sessions, which is why they're
+#: ``earlier_sessions`` the titles of its agent sessions, and ``agent_usage``
+#: what each agent here uses (memory, CPU, processes), which is why they're
 #: here and never hub routes: none of it leaves the machine.
 OWN_UI = {
     "this_machine",
@@ -32,6 +33,7 @@ OWN_UI = {
     "agent_screen",
     "agent_session",
     "agent_session_page",
+    "agent_usage",
     "earlier_sessions",
 }
 #: The app's own Settings pages, which are pages of the UI's Settings: where

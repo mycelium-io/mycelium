@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Pause, resume, stop, start and keep an agent, for its owner, and what it uses.
+"""Pause, resume, stop, start and keep an agent, for its owner, and list them.
 
 **Pause** keeps the agent's session. The hub records the pause (``pauses``),
 which holds the agent's wakes from then on, and asks the machine running it
@@ -24,8 +24,10 @@ asks the person there first.
 **Keep** marks an agent to keep running: stopping agents in bulk (``mycelium
 agent stop --idle``, the Agents pane's quick picks) leaves it out (``keeps``).
 
-**Usage** is what each agent uses, from the machine reports runners send with
-every heartbeat: its RAM, CPU, processes and how long it has been idle.
+**Running** lists the agents connected machines run, with each one's state,
+machine and keep, from the machine reports runners already send. What an agent
+uses (memory, CPU, processes) never comes to the hub: the desktop app reads it
+on the agent's own machine.
 
 Only an agent's owner may do any of these. An agent with no owner on record
 has nobody to protect it, so anyone may. "My agents" is every agent whose
@@ -38,13 +40,7 @@ import logging
 from datetime import datetime
 from typing import Any, Literal
 
-from app.schemas import (
-    AgentControlRead,
-    AgentsUsageRead,
-    AgentUsageRead,
-    MachineUsageRead,
-    PauseRead,
-)
+from app.schemas import AgentControlRead, AgentRunningRead, AgentsRunningRead, PauseRead
 from app.services import interrupts, keeps, pauses
 from app.services.agent_registry import norm_handle, room_agents
 from app.services.filesystem import list_room_names, same_room
@@ -190,18 +186,18 @@ def keep(room: str, handle: str, by: str, *, on: bool = True) -> AgentControlRea
     return AgentControlRead(room=room, handle=handle, keep=kept)
 
 
-def usage(room: str | None = None, owner: str | None = None) -> AgentsUsageRead:
-    """What each agent uses, from every connected runner's machine report: the
-    agents in ``room``, or every agent ``owner`` owns, or both."""
+def running(room: str | None = None, owner: str | None = None) -> AgentsRunningRead:
+    """Every agent a connected machine runs, from the machine reports runners
+    already send: where each runs, its state, and whether it's kept running.
+    The agents in ``room``, or every agent ``owner`` owns, or both. What an
+    agent uses isn't here: that never leaves its machine."""
     mine = set(owned_by(owner)) if owner else None
-    machines: list[MachineUsageRead] = []
-    rows: list[AgentUsageRead] = []
+    rows: list[AgentRunningRead] = []
     owners: dict[tuple[str, str], str | None] = {}
     for runner in registry.all():
         if not runner.connected or runner.machine is None:
             continue
         report = runner.machine
-        found = False
         for workspace in report.workspaces:
             for seen in workspace.agents:
                 key = (seen.room, seen.handle)
@@ -211,12 +207,11 @@ def usage(room: str | None = None, owner: str | None = None) -> AgentsUsageRead:
                     continue
                 if key not in owners:
                     owners[key] = owner_of(*key)[1]
-                found = True
                 state = seen.state
                 if state in ("working", "idle", "blocked") and pauses.is_paused(*key):
                     state = "paused"
                 rows.append(
-                    AgentUsageRead(
+                    AgentRunningRead(
                         room=seen.room,
                         handle=seen.handle,
                         owner=owners[key],
@@ -226,23 +221,11 @@ def usage(room: str | None = None, owner: str | None = None) -> AgentsUsageRead:
                         machine=report.machine,
                         pane=seen.pane,
                         keep=keeps.is_kept(*key),
-                        ram_mb=seen.ram_mb,
-                        cpu=seen.cpu,
-                        up_s=seen.up_s,
-                        idle_since=seen.idle_since,
-                        processes=seen.processes,
-                        subagents_open=seen.subagents_open,
                         restartable=seen.restartable,
                     )
                 )
-        if found:
-            machines.append(
-                MachineUsageRead(
-                    runner=runner.id, machine=report.machine, ram_total_mb=report.ram_total_mb
-                )
-            )
-    rows.sort(key=lambda r: (-(r.ram_mb or 0), r.handle))
-    return AgentsUsageRead(machines=machines, agents=rows)
+    rows.sort(key=lambda r: (r.machine, r.handle))
+    return AgentsRunningRead(agents=rows)
 
 
 def owned_by(owner: str, room: str | None = None) -> list[tuple[str, str]]:

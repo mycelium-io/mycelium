@@ -11,9 +11,12 @@ time and parent, and the tree is everything under those. RAM is the tree's
 resident memory; CPU is the percent of one core it used over the last minute,
 from the change in its CPU time between reads.
 
-What goes to the hub is numbers and, for each process, its program and its
-arguments with anything that looks like a secret left out (``command_of``).
-Nothing an agent's screen shows is read.
+None of it goes to the hub. The runner writes it to ``usage.json`` beside its
+state on this machine (0600), and the desktop app reads that file for its own
+pages, as it does an agent's session. Each process is shown as its program and
+its arguments with anything that looks like a secret left out
+(``command_of``), since a screen can be shared. Nothing an agent's screen
+shows is read.
 """
 
 from __future__ import annotations
@@ -183,6 +186,37 @@ def name_of(args: str) -> str:
     """A process's program, as a name."""
     first = args.split(None, 1)[0] if args.strip() else ""
     return os.path.basename(first).lstrip("-") or "?"
+
+
+def write_private(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` readable by this user alone (0600), whole or
+    not at all, so the desktop app never reads half a file."""
+    import contextlib
+    import tempfile
+
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def read_local(path: Path) -> dict[str, Any]:
+    """What the runner here last wrote of its agents' usage (``write_private``);
+    ``{}`` when there's nothing, or nothing readable."""
+    import json
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def total_ram_mb() -> int | None:

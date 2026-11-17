@@ -17,7 +17,6 @@ import yaml
 
 from app.schemas import (
     MachineAgentRead,
-    MachineProcessRead,
     MachineReportRead,
     MachineWorkspaceRead,
     RunnerAgentRead,
@@ -228,30 +227,28 @@ async def test_keep_marks_an_agent_for_its_owner(client, rooms, runners):
     assert _jobs(runners) == []
 
 
-def _seen(handle: str, room: str, state: str, **usage) -> MachineAgentRead:
+def _seen(handle: str, room: str, state: str, **more) -> MachineAgentRead:
     return MachineAgentRead.model_validate(
-        {"handle": handle, "room": room, "pane": f"w1:{handle}", "state": state, **usage}
+        {"handle": handle, "room": room, "pane": f"w1:{handle}", "state": state, **more}
     )
 
 
 @pytest.mark.asyncio
-async def test_usage_is_each_agent_from_its_machines_report(client, rooms, runners):
-    claude = MachineProcessRead(name="claude", command="claude --resume …", ram_mb=812)
+async def test_running_lists_each_agent_from_its_machines_report(client, rooms, runners):
     runners.hello(
         RunnerHello(
             id="mac",
             label="Julia's computer",
             machine=MachineReportRead(
                 machine="Julia's computer",
-                ram_total_mb=32768,
                 workspaces=[
                     MachineWorkspaceRead(
                         id="w1",
                         label="pause-room",
                         room=ROOM,
                         agents=[
-                            _seen("coder", ROOM, "idle", ram_mb=900, cpu=0.5, processes=[claude]),
-                            _seen("scout", ROOM, "working", ram_mb=1200, cpu=40.0),
+                            _seen("coder", ROOM, "idle"),
+                            _seen("scout", ROOM, "working"),
                             _seen("loose", ROOM, "gone"),
                             _seen("reviewer", OTHER, "stopped", restartable=True),
                         ],
@@ -263,25 +260,29 @@ async def test_usage_is_each_agent_from_its_machines_report(client, rooms, runne
     await client.post(f"/api/rooms/{ROOM}/agents/coder/pause", json={"by": "julia"})
     await client.post(f"/api/rooms/{ROOM}/agents/coder/keep", json={"by": "julia"})
 
-    room = (await client.get(f"/api/rooms/{ROOM}/agents/usage")).json()
-    # Heaviest first; a closed pane has nothing to show.
-    assert [(a["handle"], a["state"], a["ram_mb"]) for a in room["agents"]] == [
-        ("scout", "working", 1200),
-        ("coder", "paused", 900),
+    room = (await client.get(f"/api/rooms/{ROOM}/agents/running")).json()
+    # A closed pane has nothing to stop or start.
+    assert [(a["handle"], a["state"]) for a in room["agents"]] == [
+        ("coder", "paused"),
+        ("scout", "working"),
     ]
-    coder = room["agents"][1]
+    coder = room["agents"][0]
     assert (coder["owner"], coder["keep"], coder["machine"]) == ("julia", True, "Julia's computer")
-    assert coder["processes"] == [{"name": "claude", "command": "claude --resume …", "ram_mb": 812}]
-    assert room["machines"] == [
-        {"runner": "mac", "machine": "Julia's computer", "ram_total_mb": 32768}
-    ]
 
     # Julia's own, across rooms: not Sam's @scout, and her stopped @reviewer too.
-    mine = (await client.get("/api/agents/usage", params={"owner": "julia"})).json()
+    mine = (await client.get("/api/agents/running", params={"owner": "julia"})).json()
     assert sorted((a["room"], a["handle"], a["state"]) for a in mine["agents"]) == [
         (OTHER, "reviewer", "stopped"),
         (ROOM, "coder", "paused"),
     ]
+
+
+def test_what_an_agent_uses_has_nowhere_to_go_on_the_hub():
+    """Memory, CPU and processes stay on the agent's machine: a report that
+    carried them anyway keeps none of it."""
+    seen = _seen("coder", ROOM, "idle", ram_mb=900, cpu=4.0, processes=[{"name": "claude"}])
+    kept = seen.model_dump()
+    assert not {"ram_mb", "cpu", "processes", "idle_since"} & kept.keys()
 
 
 def test_a_keep_follows_a_rename_and_goes_with_its_room():

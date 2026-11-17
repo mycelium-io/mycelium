@@ -1570,7 +1570,13 @@ def test_a_stop_keeps_the_pane_of_an_agent_the_runner_did_not_start(
     assert r.bridge.registry.get("eng", "planner") == mapping
 
 
-def test_the_heartbeat_says_what_each_agent_uses(make_runner, herdr: Herdr, hub: Hub):
+def test_what_each_agent_uses_stays_on_this_machine(make_runner, herdr: Herdr, hub: Hub):
+    """The runner reads what each agent here uses and writes it to a file on
+    this machine, readable by this user alone, for the desktop app. The
+    heartbeat carries none of it."""
+    import json
+    import stat
+
     from mycelium.runner.usage import Proc, Usage
 
     r = make_runner()
@@ -1591,16 +1597,22 @@ def test_the_heartbeat_says_what_each_agent_uses(make_runner, herdr: Herdr, hub:
         }
 
     r._usage = Usage(ps=ps, clock=lambda: clock[0])
+    written = r._state_path.with_name(daemon.USAGE_FILE)
 
     def agent() -> dict:
         r._usage_read_at = 0.0  # read again now, not after USAGE_EVERY_S
         (ws,) = r.hello_body()["machine"]["workspaces"]
-        return ws["agents"][0]
+        # Nothing about what it uses rides the heartbeat.
+        assert not {"ram_mb", "cpu", "processes", "idle_since"} & ws["agents"][0].keys()
+        (row,) = json.loads(written.read_text())["agents"]
+        return row
 
     first = agent()
+    assert stat.S_IMODE(written.stat().st_mode) == 0o600
+    assert (first["room"], first["handle"], first["pane"]) == ("eng", "scout", "w9:p1")
     assert (first["ram_mb"], first["cpu"], first["up_s"]) == (1040, None, 600)
     assert [p["name"] for p in first["processes"]] == ["claude", "npx", "zsh"]
-    # A value after a flag that names a secret never leaves the machine.
+    # Shown on this machine's screen, which can be shared: a secret's value isn't.
     assert first["processes"][1]["command"] == "npx some-mcp --api-key …"
     assert first["idle_since"] is None
 
@@ -1610,7 +1622,8 @@ def test_the_heartbeat_says_what_each_agent_uses(make_runner, herdr: Herdr, hub:
 
     herdr.live["w9:p1"] = "idle"
     assert agent()["idle_since"] is not None
-    assert r.hello_body()["machine"]["ram_total_mb"] == r._ram_total_mb
+    assert json.loads(written.read_text())["ram_total_mb"] == r._ram_total_mb
+    assert "ram_total_mb" not in r.hello_body()["machine"]
 
 
 def test_the_runner_remembers_its_agents_across_a_restart(make_runner, herdr: Herdr, hub: Hub):

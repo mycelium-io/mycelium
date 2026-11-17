@@ -2468,23 +2468,24 @@ one and catch up from the room, as they do after a restart.
 ```bash
 mycelium agent stop reviewer      # free its memory
 mycelium agent start reviewer     # in its pane again
-mycelium agent stop --idle 1h     # every agent you own idle an hour or more
+mycelium agent stop --idle        # every agent you own that's idle or paused
 mycelium agent keep builder       # leave it out of that (--off to undo)
 mycelium agent stop reviewer --close   # close its pane too, for good
 ```
 
-`stop --idle` lists the agents it would stop with the memory each holds, and
-asks first. Like any restart, a start asks you on the agent's machine first,
-unless that machine trusts the hub.
+`stop --idle` lists the agents it would stop, with the memory each holds on
+this computer, and asks first. Like any restart, a start asks you on the
+agent's machine first, unless that machine trusts the hub.
 
-In the app, the agent count in the status bar says how much memory the room's
-agents use. Clicking it lists them by machine, heaviest first, with each one's
-memory, CPU and how long it has been idle. Open a row to see the processes in
-its pane, such as its MCP servers, which is where the memory goes. Pick your
-agents there, or **Pick idle for an hour**, and stop or pause them together. A
-pinned agent is kept running and left out of the quick picks. The numbers come
-from each machine's runner every 30 seconds. A command line goes to the hub
-with anything that looks like a secret left out.
+In the desktop app, the status bar shows how much memory the agents on this
+computer use. Click it, or the agent count, to see the room's agents: each one
+on this computer with its memory, CPU and how long it has been idle. Open a
+row to see the processes in its pane, such as its MCP servers, which is where
+the memory goes. Agents on other machines show only their state and machine.
+These numbers never leave your computer: the runner reads them every 30
+seconds and only the app here shows them. **Idle** shows the agents that are
+idle or paused, so you can select them all and stop or pause them together. A
+pinned agent is kept running and never shows under Idle.
 
 ## Restarting agents
 

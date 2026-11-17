@@ -2157,60 +2157,30 @@ export async function keepAgent(
   });
 }
 
-/** One process in an agent's pane, its command with secret-looking values left out. */
-export interface AgentProcess {
-  name: string;
-  command: string;
-  ram_mb: number;
-}
-
-/** One agent and what it uses on the machine running it, as its runner last said. */
-export interface AgentUsage {
+/** One agent a connected machine runs: where, in what state, and whether it's
+ *  kept running. What it uses never comes from the hub (`useLocalUsage`). */
+export interface AgentRunning {
   room: string;
   handle: string;
   owner: string | null;
   /** herdr's state, or `paused` when its owner paused it. `stopped`: its
-   *  process ended to free memory, its pane and conversation kept for Start. */
+   *  process ended to free memory, its pane kept for Start. */
   state: "working" | "idle" | "blocked" | "paused" | "stopped" | "gone" | "unknown";
   kind: string | null;
   runner: string;
   machine: string;
   pane: string | null;
   keep: boolean;
-  ram_mb: number | null;
-  /** Percent of one core over the last minute. */
-  cpu: number | null;
-  up_s: number | null;
-  /** When it was last seen working; null while it works. */
-  idle_since: string | null;
-  processes: AgentProcess[];
-  subagents_open: number | null;
   restartable: boolean;
 }
 
-export interface MachineUsage {
-  runner: string;
-  machine: string;
-  ram_total_mb: number | null;
-}
-
-export interface AgentsUsage {
-  machines: MachineUsage[];
-  agents: AgentUsage[];
-}
-
-export const NO_USAGE: AgentsUsage = { machines: [], agents: [] };
-
-/** What each agent in the room uses, from the runners' machine reports. */
-export async function fetchAgentsUsage(roomName: string): Promise<AgentsUsage> {
-  const data = await apiFetch<Partial<AgentsUsage>>(`${roomApiPath(roomName)}/agents/usage`, {
+/** The room's agents on connected machines. */
+export async function fetchAgentsRunning(roomName: string): Promise<AgentRunning[]> {
+  const data = await apiFetch<{ agents?: AgentRunning[] }>(`${roomApiPath(roomName)}/agents/running`, {
     cache: "no-store",
-    fallback: NO_USAGE,
+    fallback: { agents: [] },
   });
-  return {
-    machines: Array.isArray(data.machines) ? data.machines : [],
-    agents: Array.isArray(data.agents) ? data.agents : [],
-  };
+  return Array.isArray(data.agents) ? data.agents : [];
 }
 
 /** Pause or resume every agent `by` owns, in every room. */

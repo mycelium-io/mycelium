@@ -26,8 +26,8 @@ import useSWR, { unstable_serialize, useSWRConfig, type SWRConfiguration } from 
 import useSWRInfinite from "swr/infinite";
 import {
   fetchA2aBridge,
-  fetchAgentsUsage,
-  NO_USAGE,
+  fetchAgentsRunning,
+  type AgentRunning,
   fetchEpisodes,
   fetchSubagents,
   type Subagent,
@@ -112,8 +112,8 @@ const POLL = {
   // the poll only catches a missed one.
   verifierFlags: 60_000,
   uploads: 30_000,
-  // A runner reads what its agents use every 30 seconds.
-  usage: 30_000,
+  // A runner reports its agents' states with every heartbeat.
+  running: 30_000,
   // Read only while a conductor summon is being written; a room's own flows
   // change about as often as its skills.
   protocols: 60_000,
@@ -197,7 +197,7 @@ type RoomResource =
   | "waiting"
   | "a2a"
   | "verifier-flags"
-  | "usage";
+  | "running";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
 function roomKey(room: string, resource: RoomResource, ...rest: (string | number)[]) {
@@ -351,11 +351,14 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   };
 }
 
-/** What each agent in the room uses on the machine running it (RAM, CPU, its
- *  processes, how long it has been idle), and those machines' memory. */
-export function useRoomAgentsUsage(room: string, opts: RoomQueryOptions = {}) {
-  const { data, loading, refresh } = useRoomQuery(room, "usage", fetchAgentsUsage, NO_USAGE, POLL.usage, opts);
-  return { usage: data, loading, refresh };
+const NO_RUNNING: AgentRunning[] = [];
+
+/** The room's agents on connected machines: where each runs, its state and
+ *  whether it's kept running. What they use is this machine's alone
+ *  (`useLocalUsage`); the hub never has it. */
+export function useRoomAgentsRunning(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(room, "running", fetchAgentsRunning, NO_RUNNING, POLL.running, opts);
+  return { running: data, loading, refresh };
 }
 
 /** Everyone in a room from the hub's records: its people (recorded when they
