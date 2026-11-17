@@ -12,11 +12,12 @@
  * long since its last turn. Opening a row lists the processes in its pane,
  * which is where the memory goes, and the subagents running inside it.
  *
- * Agents are picked with their boxes, or all the idle ones at once, and the
- * bar at the foot pauses or stops them. Pause holds an agent's wakes and keeps
- * it in memory. Stop ends its process to free the memory, and Start brings it
- * back in the same conversation. An agent marked Keep running is never picked
- * by the quick picks.
+ * Agents are selected the way any list selects: a box per row, and a box in
+ * the header for every row shown. The Idle filter shows the agents not
+ * working, leaving out ones marked Keep running, so selecting all of them is
+ * one click. The bar at the foot pauses or stops the selection. Pause holds an
+ * agent's wakes and keeps it in memory. Stop ends its process to free the
+ * memory, and Start brings it back in the same conversation.
  */
 
 import { Fragment, useState } from "react";
@@ -36,13 +37,6 @@ const STATE: Record<AgentMetrics["state"], { word: string; tone: Tone }> = {
   stopped: { word: "Stopped", tone: "off" },
 };
 
-/** "5h", "40m", "1d" as minutes, to compare. */
-function minutes(span?: string): number {
-  if (!span) return 0;
-  const n = parseFloat(span);
-  return span.endsWith("d") ? n * 1440 : span.endsWith("h") ? n * 60 : n;
-}
-
 function Bar({ value, className }: { value: number; className?: string }) {
   return (
     <span aria-hidden className={cn("block h-1 overflow-hidden rounded-full bg-hairline", className)}>
@@ -56,8 +50,12 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
   const [picked, setPicked] = useState<Set<string>>(new Set(initiallyPicked ?? []));
   const rows = [...AGENT_METRICS].sort((a, b) => b.ramMb - a.ramMb);
   const heaviest = rows[0]?.ramMb ?? 1;
-  const running = rows.filter((a) => a.state !== "stopped");
-  const idle = running.filter((a) => !a.keep && a.state !== "working" && minutes(a.idleFor) >= 60);
+  const [filter, setFilter] = useState<"all" | "idle">("all");
+  const isIdle = (a: AgentMetrics) => !a.keep && (a.state === "idle" || a.state === "paused");
+  const shown = filter === "idle" ? rows.filter(isIdle) : rows;
+  const selectable = shown.filter((a) => a.state !== "stopped");
+  const allPicked = selectable.length > 0 && selectable.every((a) => picked.has(a.handle));
+  const somePicked = selectable.some((a) => picked.has(a.handle));
   const chosen = rows.filter((a) => picked.has(a.handle));
   const frees = chosen.reduce((s, a) => s + a.ramMb, 0);
 
@@ -88,24 +86,54 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
         </section>
 
         <section>
-          <div className="mb-2 flex items-center gap-2">
-            <Button variant="outline" size="xs" onClick={() => setPicked(new Set(idle.map((a) => a.handle)))}>
-              Pick idle for an hour
-              <span className="text-faint">{idle.length}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => setPicked(new Set(running.filter((a) => !a.keep).map((a) => a.handle)))}
-            >
-              Pick all but kept
-            </Button>
+          <div role="tablist" className="mb-2 inline-flex rounded-md border border-border p-0.5 text-micro">
+            {(
+              [
+                ["all", "All", rows.length],
+                ["idle", "Idle", rows.filter(isIdle).length],
+              ] as const
+            ).map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={filter === value}
+                onClick={() => setFilter(value)}
+                className={cn(
+                  "flex h-6 items-center gap-1.5 rounded px-2.5 transition-colors",
+                  filter === value ? "bg-hairline text-text" : "text-muted-foreground hover:text-text",
+                )}
+              >
+                {label}
+                <span className="text-faint">{count}</span>
+              </button>
+            ))}
           </div>
 
           <table className="w-full text-label">
             <thead>
               <tr className="text-left text-micro text-faint">
-                <th className="w-7 pb-1.5" />
+                <th className="w-7 pb-1.5">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all"
+                    checked={allPicked}
+                    ref={(el) => {
+                      if (el) el.indeterminate = somePicked && !allPicked;
+                    }}
+                    onChange={() =>
+                      setPicked((prev) => {
+                        const next = new Set(prev);
+                        for (const a of selectable) {
+                          if (allPicked) next.delete(a.handle);
+                          else next.add(a.handle);
+                        }
+                        return next;
+                      })
+                    }
+                    className="size-3.5 accent-[var(--accent)]"
+                  />
+                </th>
                 <th className="pb-1.5 font-normal">Agent</th>
                 <th className="pb-1.5 font-normal">Machine</th>
                 <th className="w-28 pb-1.5 font-normal">RAM</th>
@@ -115,7 +143,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
               </tr>
             </thead>
             <tbody>
-              {rows.map((a) => {
+              {shown.map((a) => {
                 const isOpen = open === a.handle;
                 const stopped = a.state === "stopped";
                 return (
@@ -125,7 +153,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                         {!stopped && (
                           <input
                             type="checkbox"
-                            aria-label={`Pick ${a.handle}`}
+                            aria-label={`Select ${a.handle}`}
                             checked={picked.has(a.handle)}
                             onChange={() => toggle(a.handle)}
                             className="size-3.5 accent-[var(--accent)]"
@@ -146,7 +174,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                           <span className={stopped ? "text-muted-foreground" : "text-text"}>{a.handle}</span>
                           <StatusDot tone={STATE[a.state].tone} />
                           <span className="text-micro text-muted-foreground">{STATE[a.state].word}</span>
-                          <Tooltip content={a.keep ? "Kept running. The quick picks leave it out." : "Keep running"}>
+                          <Tooltip content={a.keep ? "Always kept running. It won't show under Idle." : "Keep running"}>
                             <button
                               type="button"
                               aria-label={a.keep ? `Stop keeping ${a.handle} running` : `Keep ${a.handle} running`}
@@ -177,7 +205,7 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
                       </td>
                       <td className="py-2 text-right">
                         {stopped && (
-                          <Tooltip content="Brings it back in the same conversation">
+                          <Tooltip content="Picks up where it left off">
                             <Button variant="outline" size="xs">
                               <Play className="size-3" /> Start
                             </Button>
@@ -246,17 +274,17 @@ export function AgentMetricsView({ initiallyOpen, initiallyPicked }: { initially
 
       {chosen.length > 0 && (
         <div className="sticky bottom-0 flex items-center gap-2 border-t border-border bg-surface px-5 py-3">
-          <span className="text-label text-text">{chosen.length} picked</span>
+          <span className="text-label text-text">{chosen.length} selected</span>
           <button type="button" onClick={() => setPicked(new Set())} className="text-micro text-muted-foreground hover:text-text">
             Clear
           </button>
           <span className="ml-auto text-micro text-muted-foreground">Stopping frees {ram(frees)}</span>
-          <Tooltip content="Holds their wakes. They stay in memory and resume at once.">
+          <Tooltip content="They stop taking new work but stay in memory.">
             <Button variant="outline" size="sm">
               <Pause className="size-3.5" /> Pause
             </Button>
           </Tooltip>
-          <Tooltip content="Ends their processes to free the memory. Start brings each back in the same conversation.">
+          <Tooltip content="Closes them to free up memory. Start picks up where they left off.">
             <Button size="sm">
               <Square className="size-3.5" /> Stop {chosen.length}
             </Button>
