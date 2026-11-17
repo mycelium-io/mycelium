@@ -15,8 +15,14 @@ from datetime import UTC, datetime
 import pytest
 import yaml
 
-from app.schemas import RunnerAgentRead, RunnerHello
-from app.services import agent_control, interrupts, pauses, room_channels, wake_digest
+from app.schemas import (
+    MachineAgentRead,
+    MachineReportRead,
+    MachineWorkspaceRead,
+    RunnerAgentRead,
+    RunnerHello,
+)
+from app.services import agent_control, interrupts, keeps, pauses, room_channels, wake_digest
 from app.services.runners import RunnerRegistry
 
 ROOM = "pause-room"
@@ -171,6 +177,120 @@ async def test_stop_asks_the_machine_and_ends_the_pause(client, rooms, runners):
     # Nothing runs Julia's @reviewer in the other room, so there's nothing to stop.
     nothing = await client.post(f"/api/rooms/{OTHER}/agents/reviewer/stop", json={"by": "julia"})
     assert nothing.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_a_stop_keeps_the_pane_unless_told_to_close_it(client, rooms, runners):
+    """A stop frees an agent's memory and keeps its pane for a start; ``close``
+    is the stop for good."""
+    await client.post(f"/api/rooms/{ROOM}/agents/coder/stop", json={"by": "julia"})
+    await client.post(f"/api/rooms/{ROOM}/agents/coder/stop", json={"by": "julia", "close": True})
+    # Newest first.
+    assert [s["close"] for k, s in _jobs(runners) if k == "stop"] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_a_start_asks_the_machine_to_restart_it_and_only_its_owner_may(
+    client, rooms, runners
+):
+    resp = await client.post(f"/api/rooms/{ROOM}/agents/coder/start", json={"by": "julia"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["runner"] == "mac"
+    # The machine's own restart, which asks the person there first.
+    assert _jobs(runners) == [
+        ("restart", {"all": False, "agents": [{"handle": "coder", "room": ROOM}]})
+    ]
+    sam = await client.post(f"/api/rooms/{ROOM}/agents/coder/start", json={"by": "sam"})
+    assert sam.status_code == 403
+    loose = await client.post(f"/api/rooms/{ROOM}/agents/loose/start", json={"by": "julia"})
+    assert loose.status_code == 403
+    assert "can't be started from here" in loose.json()["detail"]
+    nothing = await client.post(f"/api/rooms/{OTHER}/agents/reviewer/start", json={"by": "julia"})
+    assert nothing.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_keep_marks_an_agent_for_its_owner(client, rooms, runners):
+    on = await client.post(f"/api/rooms/{ROOM}/agents/coder/keep", json={"by": "julia"})
+    assert (on.status_code, on.json()["keep"]) == (200, True)
+    assert keeps.is_kept(ROOM, "coder")
+    sam = await client.post(
+        f"/api/rooms/{ROOM}/agents/coder/keep", json={"by": "sam", "keep": False}
+    )
+    assert sam.status_code == 403
+    off = await client.post(
+        f"/api/rooms/{ROOM}/agents/coder/keep", json={"by": "julia", "keep": False}
+    )
+    assert off.json()["keep"] is False
+    assert not keeps.is_kept(ROOM, "coder")
+    # Nothing on any machine was asked anything.
+    assert _jobs(runners) == []
+
+
+def _seen(handle: str, room: str, state: str, **more) -> MachineAgentRead:
+    return MachineAgentRead.model_validate(
+        {"handle": handle, "room": room, "pane": f"w1:{handle}", "state": state, **more}
+    )
+
+
+@pytest.mark.asyncio
+async def test_running_lists_each_agent_from_its_machines_report(client, rooms, runners):
+    runners.hello(
+        RunnerHello(
+            id="mac",
+            label="Julia's computer",
+            machine=MachineReportRead(
+                machine="Julia's computer",
+                workspaces=[
+                    MachineWorkspaceRead(
+                        id="w1",
+                        label="pause-room",
+                        room=ROOM,
+                        agents=[
+                            _seen("coder", ROOM, "idle"),
+                            _seen("scout", ROOM, "working"),
+                            _seen("loose", ROOM, "gone"),
+                            _seen("reviewer", OTHER, "stopped", restartable=True),
+                        ],
+                    )
+                ],
+            ),
+        )
+    )
+    await client.post(f"/api/rooms/{ROOM}/agents/coder/pause", json={"by": "julia"})
+    await client.post(f"/api/rooms/{ROOM}/agents/coder/keep", json={"by": "julia"})
+
+    room = (await client.get(f"/api/rooms/{ROOM}/agents/running")).json()
+    # A closed pane has nothing to stop or start.
+    assert [(a["handle"], a["state"]) for a in room["agents"]] == [
+        ("coder", "paused"),
+        ("scout", "working"),
+    ]
+    coder = room["agents"][0]
+    assert (coder["owner"], coder["keep"], coder["machine"]) == ("julia", True, "Julia's computer")
+
+    # Julia's own, across rooms: not Sam's @scout, and her stopped @reviewer too.
+    mine = (await client.get("/api/agents/running", params={"owner": "julia"})).json()
+    assert sorted((a["room"], a["handle"], a["state"]) for a in mine["agents"]) == [
+        (OTHER, "reviewer", "stopped"),
+        (ROOM, "coder", "paused"),
+    ]
+
+
+def test_what_an_agent_uses_has_nowhere_to_go_on_the_hub():
+    """Memory, CPU and processes stay on the agent's machine: a report that
+    carried them anyway keeps none of it."""
+    seen = _seen("coder", ROOM, "idle", ram_mb=900, cpu=4.0, processes=[{"name": "claude"}])
+    kept = seen.model_dump()
+    assert not {"ram_mb", "cpu", "processes", "idle_since"} & kept.keys()
+
+
+def test_a_keep_follows_a_rename_and_goes_with_its_room():
+    keeps.keep("r", "old", "julia")
+    keeps.rename("r", "old", "new")
+    assert keeps.kept_in("r").keys() == {"new"}
+    keeps.forget_room("r")
+    assert keeps.kept_in("r") == {}
 
 
 def test_an_owner_of_unknown_is_no_owner(monkeypatch: pytest.MonkeyPatch):

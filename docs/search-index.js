@@ -878,6 +878,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#agents-on-a-machine-freeing-memory",
+    "t": "Freeing memory",
+    "s": "Agents › Your Agents on a Machine",
+    "x": "A paused agent still holds its memory. Stopping one frees it: its machine ends the agent's process and keeps its pane, so starting it brings it back there. Claude Code comes back in its own conversation. Other agent CLIs start a new one and catch up from the room, as they do after a restart. mycelium agent stop reviewer # free its memory mycelium agent start reviewer # in its pane again mycelium agent stop --idle # e",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#agents-on-a-machine-restarting-agents",
     "t": "Restarting agents",
     "s": "Agents › Your Agents on a Machine",
@@ -2196,9 +2203,25 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
-    "t": "mycelium agent stop <handle> [--room <room>] [--as <you>] [--yes]",
+    "t": "mycelium agent stop [<handle>] [--idle] [--close] [--room <room>] [--as <you>] [--yes]",
     "s": "CLI Reference",
-    "x": "Stop an agent you own: the machine running it interrupts it and closes its pane. It stays a member, and can be restarted.",
+    "x": "Stop an agent you own to free its memory: its machine ends its process and keeps its pane, so agent start brings it back there. --idle stops every agent you own that's idle or paused, except kept ones. --close closes the pane too.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent start <handle> [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Start an agent you stopped, in its pane: in its own conversation when its CLI can resume one, like Claude Code. Its machine asks first unless it trusts the hub.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent keep <handle> [--off] [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Keep an agent you own running when agents are stopped in bulk (agent stop --idle, the app's quick picks). --off stops keeping it.",
     "k": "cmd",
     "p": "Reference"
   },

@@ -264,7 +264,11 @@ export function AgentsPanel({
     return owner ? null : ["pause", "resume"];
   };
   const control = (handle: string, verb: AgentControlVerb) => {
-    if (verb === "stop" && !window.confirm(`Stop @${handle} and close its pane? It stays in the room.`)) return;
+    if (
+      verb === "stop" &&
+      !window.confirm(`Stop @${handle} to free its memory? Its pane stays, so it can be started again.`)
+    )
+      return;
     controlAgent(roomName, handle, verb, me)
       .catch(logFetchError(`controlAgent(${roomName}, ${handle}, ${verb})`))
       .finally(refresh);

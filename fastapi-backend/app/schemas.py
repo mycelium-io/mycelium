@@ -1217,9 +1217,48 @@ class AgentRenameRead(BaseModel):
 
 
 class AgentControl(BaseModel):
-    """Pause, resume or stop one agent. Only its owner may."""
+    """Pause, resume, stop or start one agent. Only its owner may."""
 
     by: str | None = Field(None, description="Who is asking; the verified caller wins")
+    close: bool = Field(
+        False,
+        description=(
+            "With stop: close its pane too. Without it, a stop ends its process to free "
+            "its memory and keeps its pane for a start"
+        ),
+    )
+
+
+class AgentKeep(BaseModel):
+    """Keep an agent running when agents are stopped in bulk, or stop keeping it."""
+
+    by: str | None = Field(None, description="Who is asking; the verified caller wins")
+    keep: bool = Field(True, description="False to stop keeping it")
+
+
+class AgentRunningRead(BaseModel):
+    """One agent on a machine: where it runs and in what state, for stopping and
+    starting agents. What it uses never comes here; the desktop app on its own
+    machine reads that there."""
+
+    room: str
+    handle: str
+    owner: str | None = None
+    #: herdr's state on its machine, or ``paused`` when its owner paused it.
+    state: Literal["working", "idle", "blocked", "paused", "stopped", "gone", "unknown"]
+    kind: str | None = None
+    runner: str
+    machine: str
+    #: Its herdr pane, for opening its terminal on that machine.
+    pane: str | None = None
+    keep: bool = False
+    restartable: bool = False
+
+
+class AgentsRunningRead(BaseModel):
+    """Every agent a connected machine runs, with its state and machine."""
+
+    agents: list[AgentRunningRead] = Field(default_factory=list)
 
 
 class AgentsControl(BaseModel):
@@ -1245,10 +1284,12 @@ class AgentControlRead(BaseModel):
     handle: str
     #: The pause it has now: ``None`` once resumed or stopped.
     paused: PauseRead | None = None
-    #: The machine asked to interrupt or stop it, and that job. ``None`` when no
+    #: The machine asked to interrupt, stop or start it, and that job. ``None`` when no
     #: connected machine runs it (a pause still holds its wakes).
     runner: str | None = None
     job: str | None = None
+    #: Whether bulk stops leave it out.
+    keep: bool | None = None
 
 
 class AgentsControlRead(BaseModel):

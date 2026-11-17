@@ -8,6 +8,9 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
 import { useRoom, useRoomRevalidate } from "@/lib/room-data";
+import { useLocalUsage } from "@/lib/desktop";
+import { DetailDrawer } from "@/components/detail-drawer";
+import { AgentMetricsView, localMb, ram } from "@/components/agent-metrics";
 import { useAppStream } from "@/lib/stream-hub";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { parseRoomNameParam } from "@/lib/memory-routes";
@@ -38,7 +41,7 @@ import { useSheetLayout } from "@/lib/use-viewport";
 import { RailSheet } from "@/components/rail-sheet";
 import { RoomMenu } from "@/components/room-menu";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Bot, Handshake, ListTodo, Lock } from "lucide-react";
+import { Bot, Handshake, ListTodo, Lock, MemoryStick } from "lucide-react";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -96,6 +99,10 @@ function RoomWorkspace() {
   }, []);
 
   const { agents, episodes, openTasks } = useRoomStatus(roomName);
+  // What this computer's agents use, read here by the desktop app; the hub never has it.
+  const local = useLocalUsage();
+  const localUsedMb = localMb(local);
+  const [usageOpen, setUsageOpen] = useState(false);
   const { room, refresh: refreshRoom } = useRoom(roomName);
 
   // A pushed memory/presence event refreshes every reader of this room's data
@@ -360,7 +367,8 @@ function RoomWorkspace() {
       )}
       {agents !== null && (
         <StatusButton
-          onClick={() => openTab("agents")}
+          // In the desktop app, the count opens the agents and what they use.
+          onClick={() => (local ? setUsageOpen(true) : openTab("agents"))}
           tooltip="View agents"
           action="rail.agents"
           className="flex-shrink-0"
@@ -369,6 +377,17 @@ function RoomWorkspace() {
           <span className="tabular">
             {agents} agent{agents === 1 ? "" : "s"}
           </span>
+        </StatusButton>
+      )}
+      {local && localUsedMb > 0 && (
+        // What this computer's agents use, read on this computer only.
+        <StatusButton
+          onClick={() => setUsageOpen(true)}
+          tooltip="RAM used by agents on this computer"
+          className="flex-shrink-0"
+        >
+          <MemoryStick />
+          <span className="tabular">{ram(localUsedMb)} RAM</span>
         </StatusButton>
       )}
     </>
@@ -402,6 +421,15 @@ function RoomWorkspace() {
       statusLeft={statusLeft}
       roomViews={roomViews}
     >
+      <DetailDrawer
+        open={usageOpen}
+        onClose={() => setUsageOpen(false)}
+        title="Agents"
+        subtitle="What each agent on this computer uses"
+        wide
+      >
+        <AgentMetricsView roomName={roomName} />
+      </DetailDrawer>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <ResizablePanelGroup
           className="min-h-0 flex-1"

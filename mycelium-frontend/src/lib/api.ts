@@ -2110,32 +2110,77 @@ export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> 
   };
 }
 
-/** What happened to one agent you paused, resumed or stopped. */
+/** What happened to one agent you paused, resumed, stopped, started or kept. */
 export interface AgentControlResult {
   room: string;
   handle: string;
   paused: (AgentPause & { room: string }) | null;
   runner: string | null;
   job: string | null;
+  keep?: boolean | null;
 }
 
-export type AgentControlVerb = "pause" | "resume" | "stop";
+/** `stop` ends an agent's process to free its memory and keeps its pane and
+ *  conversation; `start` brings it back there. */
+export type AgentControlVerb = "pause" | "resume" | "stop" | "start";
 
-/** Pause, resume or stop one agent you own. */
+/** Pause, resume, stop or start one agent you own. A stop with `close`
+ *  closes its pane too. */
 export async function controlAgent(
   roomName: string,
   handle: string,
   verb: AgentControlVerb,
   by: string,
+  { close = false }: { close?: boolean } = {},
 ): Promise<AgentControlResult> {
   return apiFetch<AgentControlResult>(
     `${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/${verb}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ by: by || null }),
+      body: JSON.stringify({ by: by || null, close }),
     },
   );
+}
+
+/** Keep an agent you own running when agents are stopped in bulk, or stop keeping it. */
+export async function keepAgent(
+  roomName: string,
+  handle: string,
+  keep: boolean,
+  by: string,
+): Promise<AgentControlResult> {
+  return apiFetch<AgentControlResult>(`${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/keep`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by: by || null, keep }),
+  });
+}
+
+/** One agent a connected machine runs: where, in what state, and whether it's
+ *  kept running. What it uses never comes from the hub (`useLocalUsage`). */
+export interface AgentRunning {
+  room: string;
+  handle: string;
+  owner: string | null;
+  /** herdr's state, or `paused` when its owner paused it. `stopped`: its
+   *  process ended to free memory, its pane kept for Start. */
+  state: "working" | "idle" | "blocked" | "paused" | "stopped" | "gone" | "unknown";
+  kind: string | null;
+  runner: string;
+  machine: string;
+  pane: string | null;
+  keep: boolean;
+  restartable: boolean;
+}
+
+/** The room's agents on connected machines. */
+export async function fetchAgentsRunning(roomName: string): Promise<AgentRunning[]> {
+  const data = await apiFetch<{ agents?: AgentRunning[] }>(`${roomApiPath(roomName)}/agents/running`, {
+    cache: "no-store",
+    fallback: { agents: [] },
+  });
+  return Array.isArray(data.agents) ? data.agents : [];
 }
 
 /** Pause or resume every agent `by` owns, in every room. */

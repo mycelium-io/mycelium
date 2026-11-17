@@ -83,6 +83,8 @@ class Herdr:
         self.screens_after_keys: list[str] = []
         #: The folder herdr says an agent's process runs in.
         self.agent_cwd: str | None = None
+        #: What ``pane process-info`` says runs in a pane, by pane.
+        self.processes: dict[str, dict] = {}
         self.layout = HerdrLayout(self._pane)
 
     def _pane(self, workspace: str = "w9") -> str:
@@ -139,6 +141,10 @@ class Herdr:
             return _proc(_ok({"agents": agents}))
         if head == "pane read":
             return _proc(_ok({"text": self.screen}))
+        if head == "pane process-info":
+            pane = args[args.index("--pane") + 1]
+            info = {"pane_id": pane, **self.processes.get(pane, {})}
+            return _proc(_ok({"process_info": info, "type": "pane_process_info"}))
         if head in ("pane run", "pane send-keys"):
             if head == "pane send-keys" and self.keys_settle and args[2] in self.live:
                 self.live[args[2]] = "idle"
@@ -1518,6 +1524,106 @@ def test_stop_reaches_an_agent_the_runner_did_not_start(make_runner, herdr: Herd
     mapping = r.bridge.registry.get("eng", "planner")
     assert mapping is not None
     assert mapping.managed is False
+
+
+def test_a_stop_ends_the_agent_and_keeps_its_pane_for_a_start(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """A stop frees the memory and keeps the pane: what ran in it ends, the
+    shell stays, and the agent can be started there again in its session."""
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    info = {"shell_pid": 100, "foreground_processes": [{"pid": 200, "name": "claude"}]}
+    herdr.processes["w9:p1"] = info
+    ended: list[dict] = []
+    monkeypatch.setattr(daemon, "end_foreground", lambda i: ended.append(i) or [200, 201])
+
+    result = r.do({"kind": "stop", "spec": {"room": "eng", "handle": "scout", "close": False}})
+
+    assert result == {"pane": "w9:p1", "ended": 2, "freed_mb": None, "kept_pane": True}
+    assert ended == [{"pane_id": "w9:p1", **info}]
+    assert herdr.of("pane close") == []
+    agent = r.state.agents["eng/scout"]
+    # Stopped where it ran, which is still open: started there again, it's this agent.
+    assert (agent.status, agent.exited) == ("stopped", True)
+    assert r.bridge.registry.get("eng", "scout") is not None
+    # Its workspace is kept, so a start has somewhere to go.
+    assert r.state.owned != {}
+
+
+def test_a_stop_keeps_the_pane_of_an_agent_the_runner_did_not_start(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    pane = herdr._pane("w3")
+    mapping = HerdrPaneMapping(room="eng", handle="planner", pane=pane, kind="claude", managed=True)
+    r.bridge.registry.set(mapping)
+    herdr.live[pane] = "idle"
+    herdr.processes[pane] = {"shell_pid": 10, "foreground_processes": [{"pid": 11}]}
+    monkeypatch.setattr(daemon, "end_foreground", lambda _i: [11])
+    spec = {"room": "eng", "handle": "planner", "close": False}
+    assert r.do({"kind": "stop", "spec": spec})["kept_pane"] is True
+    assert herdr.of("pane close") == []
+    # A pane still open retires nobody, so its mapping stays as it was.
+    assert r.bridge.registry.get("eng", "planner") == mapping
+
+
+def test_what_each_agent_uses_stays_on_this_machine(make_runner, herdr: Herdr, hub: Hub):
+    """The runner reads what each agent here uses and writes it to a file on
+    this machine, readable by this user alone, for the desktop app. The
+    heartbeat carries none of it."""
+    import json
+    import stat
+
+    from mycelium.runner.usage import Proc, Usage
+
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.live["w9:p1"] = "working"
+    herdr.processes["w9:p1"] = {"shell_pid": 100, "foreground_processes": [{"pid": 200}]}
+    cpu = {"claude": 10.0}
+    clock = [0.0]
+
+    def ps() -> dict[int, Proc]:
+        return {
+            100: Proc(100, 1, 40 * 1024, 0.0, 3600, "-zsh"),
+            200: Proc(200, 100, 800 * 1024, cpu["claude"], 600, "claude --resume abc"),
+            # An MCP server the CLI started, under it.
+            300: Proc(300, 200, 200 * 1024, 1.0, 590, "npx some-mcp --api-key sk-123"),
+            # Not in the pane at all.
+            400: Proc(400, 1, 900 * 1024, 50.0, 10, "elsewhere"),
+        }
+
+    r._usage = Usage(ps=ps, clock=lambda: clock[0])
+    written = r._state_path.with_name(daemon.USAGE_FILE)
+
+    def agent() -> dict:
+        r._usage_read_at = 0.0  # read again now, not after USAGE_EVERY_S
+        (ws,) = r.hello_body()["machine"]["workspaces"]
+        # Nothing about what it uses rides the heartbeat.
+        assert not {"ram_mb", "cpu", "processes", "idle_since"} & ws["agents"][0].keys()
+        (row,) = json.loads(written.read_text())["agents"]
+        return row
+
+    first = agent()
+    assert stat.S_IMODE(written.stat().st_mode) == 0o600
+    assert (first["room"], first["handle"], first["pane"]) == ("eng", "scout", "w9:p1")
+    assert (first["ram_mb"], first["cpu"], first["up_s"]) == (1040, None, 600)
+    assert [p["name"] for p in first["processes"]] == ["claude", "npx", "zsh"]
+    # Shown on this machine's screen, which can be shared: a secret's value isn't.
+    assert first["processes"][1]["command"] == "npx some-mcp --api-key …"
+    assert first["idle_since"] is None
+
+    # Thirty seconds and three CPU-seconds later: 10% of a core.
+    clock[0], cpu["claude"] = 30.0, 13.0
+    assert agent()["cpu"] == 10.0
+
+    herdr.live["w9:p1"] = "idle"
+    assert agent()["idle_since"] is not None
+    assert json.loads(written.read_text())["ram_total_mb"] == r._ram_total_mb
+    assert "ram_total_mb" not in r.hello_body()["machine"]
 
 
 def test_the_runner_remembers_its_agents_across_a_restart(make_runner, herdr: Herdr, hub: Hub):

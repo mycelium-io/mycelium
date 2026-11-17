@@ -851,6 +851,14 @@ class HerdrBridge:
         """Close ``pane``, ending whatever runs in it."""
         self._run_json(["pane", "close", pane])
 
+    def process_info(self, pane: str) -> dict:
+        """What runs in ``pane``: ``shell_pid``, ``foreground_process_group_id``
+        and ``foreground_processes`` (each ``pid``, ``name``, ``argv``). ``{}``
+        when herdr doesn't say."""
+        result = self._run_json(["pane", "process-info", "--pane", pane]).get("result", {})
+        info = result.get("process_info") if isinstance(result, dict) else None
+        return info if isinstance(info, dict) else {}
+
     def send_keys(self, pane: str, *keys: str) -> None:
         """Press ``keys`` in ``pane`` (herdr's names: ``esc``, ``enter``...)."""
         self._run_quiet(["pane", "send-keys", pane, *keys])
