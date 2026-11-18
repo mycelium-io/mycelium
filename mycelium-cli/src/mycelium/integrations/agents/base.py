@@ -57,6 +57,10 @@ class AgentKind:
     #: Whether Mycelium can read this CLI's session file for the rendered view
     #: (a converter in this package); a CLI without one shows its terminal only.
     renders: ClassVar[bool] = False
+    #: Whether herdr reads it as ready before its screen takes input, so a start
+    #: waits for the screen to draw before typing its introduction
+    #: (``starting.wait_drawn``). Only these CLIs have their screen looked at for it.
+    draws_late: ClassVar[bool] = False
 
     def session_path(self, folder: str | None, session: str) -> Path | None:  # noqa: ARG002 - a CLI with a converter finds it
         """The file this CLI keeps ``session`` in, begun in ``folder``; ``None``
@@ -90,6 +94,11 @@ class AgentKind:
     def launch_args(self) -> list[str]:
         """Arguments every agent of this kind starts with."""
         return []
+
+    def launch_env(self) -> dict[str, str]:
+        """Environment every agent of this kind starts with, set on the pane it
+        runs in. Only for that pane: never the person's own settings."""
+        return {}
 
     def resume_args(self, session: str) -> list[str] | None:  # noqa: ARG002 - a CLI that can resume says how
         """Arguments that start it in ``session``, its conversation so far; ``None``

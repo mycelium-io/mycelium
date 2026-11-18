@@ -646,6 +646,7 @@ def restart(
     stopped. A session already running in another pane is never started a
     second time.
     """
+    from mycelium.integrations.agents import of_kind
     from mycelium.integrations.herdr.starting import not_ready, start_unblocked
 
     if not agent.restartable:
@@ -680,6 +681,7 @@ def restart(
         "MYCELIUM_AGENT_HANDLE": agent.handle,
         "MYCELIUM_ROOM_ID": agent.room,
         **token,
+        **of_kind(kind).launch_env(),
     }
     try:
         if agent.state == "stopped":
