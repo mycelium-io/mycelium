@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Check,
   CheckCheck,
@@ -15,13 +15,13 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import TextareaAutosize from "react-textarea-autosize";
 import { createTask, sendRoomMessage } from "@/lib/api";
 import { INTENTS, intentById, ready, type IntentId } from "@/lib/intents";
 import { useRoomRevalidate, useRoomRoster } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
 import { Monogram } from "@/components/ui/monogram";
+import { GrowTextarea } from "@/components/ui/grow-textarea";
 
 const FIELD =
   "w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-label text-text placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-1 focus:ring-accent/30";
@@ -59,8 +59,6 @@ export function IntentDialog({
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [group, setGroup] = useState<string[]>([]);
   const [note, setNote] = useState("");
-  const detailsRef = useRef<HTMLTextAreaElement | null>(null);
-  const [detailsScroll, setDetailsScroll] = useState(false);
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
@@ -189,20 +187,12 @@ export function IntentDialog({
               {intent.id === "settle" ? "What they disagree about" : "Details"}{" "}
               <span className="text-faint">(optional)</span>
             </span>
-            <TextareaAutosize
+            <GrowTextarea
               autoFocus={!needsTitle}
               value={note}
               onChange={e => setNote(e.target.value)}
               minRows={2}
               maxRows={6}
-              // Scrolls only once it's grown to its cap (WebKit otherwise draws
-              // a scrollbar for a fraction of a pixel).
-              ref={detailsRef}
-              onHeightChange={() => {
-                const el = detailsRef.current;
-                if (el) setDetailsScroll(el.scrollHeight > el.clientHeight + 1);
-              }}
-              style={{ overflowY: detailsScroll ? "auto" : "hidden" }}
               className={`${FIELD} resize-none leading-relaxed`}
             />
           </label>
