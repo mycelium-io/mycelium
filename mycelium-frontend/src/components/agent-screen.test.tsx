@@ -5,7 +5,8 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Runner } from "@/lib/api";
 import { renderWithSWR } from "@/test/swr";
-import { AgentScreen, STREAMED_LOCALLY, ScreenLines } from "./agent-screen";
+import { parseAnsi } from "@/lib/ansi";
+import { AgentScreen, STREAMED_LOCALLY, ScreenLines, cropScreen } from "./agent-screen";
 
 let runners: Runner[] = [];
 vi.mock("@/lib/runners", async (importOriginal) => ({
@@ -72,6 +73,56 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+});
+
+/** A full-screen interface drawn in the middle of a big terminal, the way
+ *  OpenCode draws its start screen: blank rows and columns all round it. */
+function centered(): string {
+  const rows = Array.from({ length: 40 }, () => " ".repeat(160));
+  rows[12] = " ".repeat(70) + "opencode";
+  rows[13] = " ".repeat(70) + "v1.0";
+  rows[20] = " ".repeat(60) + "\x1b[1m┃ Read your notes\x1b[0m";
+  rows[38] = " ".repeat(140) + "~/checkout";
+  return rows.join("\r\n");
+}
+
+describe("cropping a screen to what's drawn", () => {
+  it("cuts the blank margins, and every run of blank rows inside down to one", () => {
+    const { lines, cols } = cropScreen(parseAnsi(centered()));
+    const text = lines.map((runs) => runs.map((r) => r.text).join("").trimEnd());
+    expect(text).toEqual([
+      "          opencode",
+      "          v1.0",
+      "",
+      "┃ Read your notes",
+      "",
+      "                                                                                ~/checkout",
+    ]);
+    expect(cols).toBe(90);
+    // Styles survive the cut.
+    expect(lines[3].some((r) => r.text.includes("Read") && r.style.bold)).toBe(true);
+  });
+
+  it("is nothing for a screen with nothing drawn on it", () => {
+    expect(cropScreen(parseAnsi(Array(30).fill(" ".repeat(120)).join("\r\n")))).toEqual({ lines: [], cols: 0 });
+  });
+});
+
+describe("an agent's terminal, fitted into a small box", () => {
+  it("shows what a full-screen interface drew, not its blank corner", async () => {
+    inTheApp();
+    builderScreen = centered();
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" fit />);
+    expect(await screen.findByText("opencode")).toBeInTheDocument();
+    expect(screen.getByText("~/checkout")).toBeInTheDocument();
+  });
+
+  it("says it's starting up while its screen is still blank", async () => {
+    inTheApp();
+    builderScreen = Array(30).fill(" ".repeat(120)).join("\r\n");
+    renderWithSWR(<AgentScreen room="checkout" handle="builder" fit />);
+    expect(await screen.findByText("Starting up")).toBeInTheDocument();
+  });
 });
 
 describe("an agent's terminal", () => {

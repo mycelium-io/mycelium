@@ -957,7 +957,7 @@ function LaunchProgress({
           </div>
           {report.pane ? (
             <div className="flex h-48 flex-col">
-              <AgentScreen room={room} handle={handle} openLink={false} />
+              <AgentScreen room={room} handle={handle} openLink={false} fit />
             </div>
           ) : (
             <p className="px-3 py-3 text-label text-faint">
