@@ -23,8 +23,15 @@ def test_a_cli_with_nothing_of_its_own_adds_nothing():
     gemini = agents.of_kind("gemini")
     assert gemini.launch_args() == []
     assert gemini.blocked_hint() is None
+    assert gemini.launch_env() == {}
     unknown = agents.of_kind("someday")
     assert (unknown.id, unknown.launch_args(), unknown.adapter) == ("someday", [], "claude_code")
+
+
+def test_opencode_starts_without_its_update_dialog():
+    """Its update dialog opens over its input while herdr reads it as idle, so a
+    wake would be typed into it and could answer it."""
+    assert agents.of_kind("opencode").launch_env() == {"OPENCODE_DISABLE_AUTOUPDATE": "1"}
 
 
 CLAUDE_HELP = (

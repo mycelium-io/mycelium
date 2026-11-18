@@ -53,6 +53,34 @@ EXIT_POLL_S = 1.0
 #: the start, and keeps it named until the agent is ready or gone; before
 #: taking it, herdr's CLI waits at most 2s for the pane's shell, then answers.
 EXIT_GRACE_S = 3.0
+#: How long a started agent's screen gets to draw before anything is typed into
+#: it, how often it is looked at, and how many looks in a row must find it
+#: unchanged. herdr reads an agent CLI as ready once it is running, which for
+#: some is before their screen takes input, and what is typed then is lost.
+DRAW_WAIT_S = 10.0
+DRAW_POLL_S = 0.25
+DRAW_STEADY = 2
+
+
+def wait_drawn(bridge: Any, pane: str, kind: str) -> None:
+    """For a ``kind`` that draws late (``AgentKind.draws_late``), wait until
+    ``pane``'s screen has drawn and stopped changing, up to :data:`DRAW_WAIT_S`,
+    so what is typed next reaches the agent. Any other kind's screen isn't read.
+
+    Only whether the screen changed is looked at, never what it says, and only
+    here: nothing read leaves this machine."""
+    if not of_kind(kind).draws_late:
+        return
+    deadline = time.monotonic() + DRAW_WAIT_S
+    last: str | None = None
+    steady = 0
+    while time.monotonic() < deadline:
+        screen = bridge.read_pane(pane, lines=40)
+        steady = steady + 1 if screen and screen == last else 0
+        if steady >= DRAW_STEADY:
+            return
+        last = screen
+        time.sleep(DRAW_POLL_S)
 
 
 def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str] | None) -> None:
@@ -186,6 +214,7 @@ def start_unblocked(
     left open: what it waits on is the person's to answer.
     """
     agent = start_when_ready(bridge, handle, kind, pane, room=room, resume=resume)
+    wait_drawn(bridge, pane, kind)
     passed: list[str] = []
     seen = bridge.past_first_run(pane, kind, passed)
     if seen:

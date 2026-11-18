@@ -311,13 +311,14 @@ class HerdrHost:
         hooks: StartHooks | None = None,
         session: str | None = None,
     ) -> Started:
+        from mycelium.integrations.agents import of_kind
         from mycelium.integrations.herdr import ShellNotReadyError
-        from mycelium.integrations.herdr.starting import start_when_ready
+        from mycelium.integrations.herdr.starting import start_when_ready, wait_drawn
 
         hooks = hooks or StartHooks()
         hooks.step(STEP_TERMINAL)
         workspace, pane = self._left_open(state, room, handle, kind, cwd) or self._open_pane(
-            state, room, handle, cwd, env
+            state, room, handle, cwd, {**env, **of_kind(kind).launch_env()}
         )
         # Mapped before anything starts in it, so a sync pass that finds the
         # agent knows whose it is, and the wait below needs no lock against one.
@@ -344,6 +345,10 @@ class HerdrHost:
                     resume=session,
                     on_slow_shell=lambda: hooks.slow_shell(pane),
                 )
+                # Ready by herdr's reading can be before its screen takes
+                # input: an introduction typed then is lost.
+                if came_up is None:
+                    wait_drawn(self.bridge, pane, kind)
         except HerdrError as e:
             # The pane stays open: whatever it shows (a shell still starting, an
             # update or sign-in the agent CLI asks for first) is the person's to

@@ -23,7 +23,7 @@ import pytest
 
 from mycelium import machine
 from mycelium.config import MyceliumConfig
-from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavailableError
+from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavailableError, starting
 from mycelium.integrations.herdr.bridge import CALL_TIMEOUT_S, call_timeout
 from mycelium.runner import approvals, daemon, frameworks
 from mycelium.runner.log import open_log
@@ -1166,10 +1166,28 @@ def test_a_cli_with_no_first_run_screens_never_has_its_screen_read(
 ):
     herdr.screen = SIGN_IN
     r = make_runner()
-    r.launch({"room": "eng", "handle": "scout", "framework": "opencode"})
+    r.launch({"room": "eng", "handle": "scout", "framework": "pi"})
     r.refresh()
     assert herdr.of("pane read") == []
     assert len(herdr.of("agent prompt")) == 1
+
+
+def test_a_cli_that_draws_late_gets_its_introduction_once_its_screen_settles(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """OpenCode reads as ready before its screen takes input. Its pane is also
+    opened with its update dialog off, which a wake would be typed into."""
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.DRAW_POLL_S", 0)
+    herdr.screen = "its input box, drawn"
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "opencode"})
+    heads = [" ".join(c[:2]) for c in herdr.calls]
+    reads = [i for i, h in enumerate(heads) if h == "pane read"]
+    # Looked at until it stayed the same, then the introduction.
+    assert len(reads) >= starting.DRAW_STEADY + 1
+    assert max(reads) < heads.index("agent prompt")
+    opened = next(c for c in herdr.calls if " ".join(c[:2]) in ("workspace create", "pane split"))
+    assert "OPENCODE_DISABLE_AUTOUPDATE=1" in opened
 
 
 def test_a_cli_the_scan_didnt_find_is_started_and_said_to_be_missing_when_it_isnt_there(
