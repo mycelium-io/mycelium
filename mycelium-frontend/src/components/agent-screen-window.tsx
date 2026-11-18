@@ -13,12 +13,18 @@
  * that, each agent's opens where you last left it, put back on screen if the
  * window has shrunk since (`lib/terminal-window.ts`). Esc or × closes it.
  *
- *   {watching && <AgentScreenWindow room handle runner onClose />}
+ * Down its left side is the room's agents, each with its state, and a click
+ * switches the window to that one where it is. A subagent sits under its
+ * parent. The list folds to a strip of avatars, and stays as it was left.
+ *
+ *   {watching && <AgentScreenWindow room handle runner onClose onSwitch />}
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LayoutList, SquareTerminal, X } from "lucide-react";
+import { LayoutList, PanelLeftClose, PanelLeftOpen, SquareTerminal, X } from "lucide-react";
+import { memberState } from "@/lib/agent-card";
+import { useRoomRoster } from "@/lib/room-data";
 import { AgentScreen, type AgentScreenProps, type ScreenView } from "@/components/agent-screen";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -72,8 +78,111 @@ function saveView(view: ScreenView): void {
   } catch {}
 }
 
-export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { onClose: () => void }) {
+/** Whether the list of agents is folded to avatars, for every agent's window. */
+const FOLD_KEY = "mycelium.terminal-agents-folded";
+
+function savedFold(): boolean {
+  try {
+    return localStorage.getItem(FOLD_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The room's agents down the window's left side: each one's avatar, handle and
+ * state, the one shown marked, a subagent under its parent. Folded, only the
+ * avatars and their dots, with the handle on hover.
+ */
+function AgentList({
+  room,
+  current,
+  folded,
+  onSwitch,
+}: {
+  room: string;
+  current: string;
+  folded: boolean;
+  onSwitch: (handle: string) => void;
+}) {
+  const { agents, presence } = useRoomRoster(room);
+  const rows = useMemo(() => {
+    const own = agents.filter((a) => a.adapter !== "engine" && a.adapter !== "a2a");
+    const parents = own.filter((a) => !a.handle.includes(":"));
+    return parents.flatMap((p) => [
+      { agent: p, sub: false },
+      ...own.filter((a) => a.handle.startsWith(`${p.handle}:`)).map((agent) => ({ agent, sub: true })),
+    ]);
+  }, [agents]);
+
+  return (
+    <nav
+      aria-label="Agents in this room"
+      className={cn(
+        "flex flex-none flex-col gap-0.5 overflow-y-auto border-r border-border bg-surface py-2 transition-[width]",
+        folded ? "w-12 items-center" : "w-52 px-2",
+      )}
+    >
+      {rows.map(({ agent, sub }) => {
+        const s = memberState("agent", presence.get(agent.handle.toLowerCase()));
+        const on = agent.handle.toLowerCase() === current.toLowerCase();
+        const name = sub ? agent.handle.slice(agent.handle.indexOf(":") + 1) : agent.handle;
+        const row = (
+          <button
+            key={agent.handle}
+            type="button"
+            aria-current={on ? "true" : undefined}
+            aria-label={`@${agent.handle}, ${s.word}`}
+            onClick={() => onSwitch(agent.handle)}
+            className={cn(
+              "flex flex-none items-center rounded-md text-left transition-colors hover:bg-hairline",
+              on && "bg-hairline",
+              folded ? "relative size-8 justify-center" : cn("h-8 gap-2 px-2", sub && "ml-4"),
+            )}
+          >
+            <Monogram handle={agent.handle} kind="agent" className={cn(sub ? "size-4 text-[8px]" : "size-5 text-[9px]")} />
+            {folded ? (
+              <span
+                aria-hidden
+                className="absolute right-0.5 bottom-0.5 size-1.5 rounded-full ring-2 ring-surface"
+                style={{ background: s.tone }}
+              />
+            ) : (
+              <>
+                <span className={cn("min-w-0 flex-1 truncate text-label", on ? "text-text" : "text-muted-foreground")}>
+                  {name}
+                </span>
+                <span aria-hidden className="size-1.5 flex-none rounded-full" style={{ background: s.tone }} />
+              </>
+            )}
+          </button>
+        );
+        return folded ? (
+          <Tooltip key={agent.handle} side="right" content={`@${agent.handle}`}>
+            {row}
+          </Tooltip>
+        ) : (
+          row
+        );
+      })}
+    </nav>
+  );
+}
+
+export function AgentScreenWindow({
+  onClose,
+  onSwitch,
+  ...props
+}: AgentScreenProps & { onClose: () => void; onSwitch?: (handle: string) => void }) {
   const { handle } = props;
+  const [folded, setFolded] = useState(savedFold);
+  const fold = () =>
+    setFolded((f) => {
+      try {
+        localStorage.setItem(FOLD_KEY, f ? "0" : "1");
+      } catch {}
+      return !f;
+    });
   // It only ever opens from a click, so the window is there to measure.
   const [rect, setRect] = useState<WindowRect>(() => clampRect(savedRect(handle) ?? defaultRect(viewport()), viewport()));
   const drag = useRef<{ dx: number; dy: number } | null>(null);
@@ -153,6 +262,19 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
           drag.current = null;
         }}
       >
+        {onSwitch && (
+          <Tooltip content={folded ? "Show the room's agents" : "Fold the agents list"}>
+            <button
+              type="button"
+              aria-label={folded ? "Show the room's agents" : "Fold the agents list"}
+              aria-pressed={!folded}
+              onClick={fold}
+              className="-ml-1 grid size-6 flex-none place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text"
+            >
+              {folded ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
+            </button>
+          </Tooltip>
+        )}
         <Monogram handle={handle} kind="agent" className="size-5 text-[9px]" />
         <span className="truncate text-label font-medium text-text">@{handle}</span>
         <span className="truncate text-micro text-faint">{props.room}</span>
@@ -189,7 +311,12 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
           <X className="size-3.5" />
         </button>
       </header>
-      <AgentScreen {...props} view={rendered ? shown : "terminal"} onView={choose} />
+      <div className="flex min-h-0 flex-1">
+        {onSwitch && <AgentList room={props.room} current={handle} folded={folded} onSwitch={onSwitch} />}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <AgentScreen {...props} view={rendered ? shown : "terminal"} onView={choose} />
+        </div>
+      </div>
     </section>,
     document.body,
   );
