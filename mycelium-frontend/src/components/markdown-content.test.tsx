@@ -321,6 +321,12 @@ describe("<MarkdownContent /> images", () => {
     expect(screen.getByRole("link", { name: "the chart" })).toHaveAttribute("href", "https://tracker.example/chart.png");
   });
 
+  it("shows a path on the app that isn't an upload as a link, so no reader's app requests it", () => {
+    const { container } = render(<MarkdownContent>{"![x](/api/runners/r1/jobs/next)"}</MarkdownContent>);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "x" })).toBeInTheDocument();
+  });
+
   it("shows even the room's own upload as a link where every image must be one", () => {
     const { container } = render(<MarkdownContent imagesAsLinks>{`![the receipt](${upload})`}</MarkdownContent>);
     expect(container.querySelector("img")).toBeNull();
