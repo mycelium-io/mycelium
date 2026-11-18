@@ -167,7 +167,7 @@ async def upgrade(room: str, ref: str, handle: str, by: str) -> Interrupted:
         sender = norm_handle(record.sender) or ""
         if me != sender:
             raise Refused(403, f"Only @{sender}, who sent {short}, can interrupt with it.")
-        why = asked(record.content).get(who)
+        why = asked(record.content, room).get(who)
         if why is None:
             raise Refused(
                 422,

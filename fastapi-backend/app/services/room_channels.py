@@ -704,7 +704,7 @@ class RoomChannelManager:
             payload_type="message",
         )
         noted: list[str] = []
-        for handle, why in asked(serialize_content(envelope, extra=extra)).items():
+        for handle, why in asked(serialize_content(envelope, extra=extra), room).items():
             if classify_sender(room, handle) != "agent":
                 continue
             wake_log.dropped(

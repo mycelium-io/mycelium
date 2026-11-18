@@ -54,7 +54,7 @@ def _send(hub: room_channels.RoomChannelManager, text: str, sender: str, n: int 
     record = persister.record_from(env, content)
     persister.append_transcript(ROOM, record)
     hook = hub._asked_adapter(ROOM)
-    for handle, why in asks.asked(content).items():
+    for handle, why in asks.asked(content, ROOM).items():
         hook(handle, why, env, text)
     return str(persister.read_id(record))
 
