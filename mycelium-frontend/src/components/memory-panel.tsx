@@ -330,7 +330,12 @@ function TreeRows({
               onMouseLeave={onPeekEnd}
               onFocus={e => node.memory && onPeek(node.memory, e.currentTarget)}
               onBlur={onPeekEnd}
+              // A row off screen skips layout and paint, so a room with
+              // hundreds of memories open costs only the rows in view. The
+              // placeholder is ROW_H, the row's fixed height, so the scrollbar
+              // doesn't move as rows come into view.
               className={`flex w-full items-center gap-1.5 pr-3 transition-[color,background,opacity]
+                [content-visibility:auto] [contain-intrinsic-block-size:auto_22px]
                 ${dimmed ? "opacity-35" : ""}
                 ${isSelected ? "bg-accent/15 text-text" : "hover:bg-muted text-muted-foreground hover:text-text"}`}
             >

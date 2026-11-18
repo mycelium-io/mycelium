@@ -169,6 +169,16 @@ describe("<RoomBoard />", () => {
     expect(document.activeElement).toBe(container.querySelector('[data-board-row="work/double"]'));
   });
 
+  it("skips drawing a row off screen, holding its 26px so the scrollbar stays put", async () => {
+    board = { epics: [APPLE_PAY], tasks: [] };
+    waiting = { handle: "julia", items: [] };
+    const { container } = renderWithSWR(<RoomBoard roomName="checkout" />);
+    await screen.findByText("Fix the double charges");
+    const button = container.querySelector<HTMLElement>('[data-board-row="work/double"]')!;
+    expect(button).toHaveClass("h-[26px]");
+    expect(button.closest("li")).toHaveClass("[content-visibility:auto]", "[contain-intrinsic-block-size:auto_26px]");
+  });
+
   it("shows a task that's waiting on you there, and not again below", async () => {
     board = {
       epics: [],

@@ -414,7 +414,10 @@ function Row({
   onOpen: () => void;
 }) {
   return (
-    <li>
+    // A row off screen skips layout and paint, so a board with hundreds of
+    // rows costs only the ones in view. The placeholder is the
+    // button's fixed 26px, so the scrollbar doesn't move as rows come into view.
+    <li className="[content-visibility:auto] [contain-intrinsic-block-size:auto_26px]">
       <button
         type="button"
         data-board-row={rowKey}
