@@ -24,7 +24,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LayoutList, PanelLeftClose, PanelLeftOpen, SquareTerminal, X } from "lucide-react";
 import { memberState } from "@/lib/agent-card";
-import { useRoomRoster } from "@/lib/room-data";
+import { useRoomRoster, useRoomSubagents } from "@/lib/room-data";
 import { AgentScreen, type AgentScreenProps, type ScreenView } from "@/components/agent-screen";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -91,8 +91,11 @@ function savedFold(): boolean {
 
 /**
  * The room's agents down the window's left side: each one's avatar, handle and
- * state, the one shown marked, a subagent under its parent. Folded, only the
- * avatars and their dots, with the handle on hover.
+ * state, the one shown marked. Under each agent, its running subagents, from
+ * the room's record of them under the parent it names. A subagent has no
+ * terminal of its own, since it runs in its parent's session, so clicking one
+ * shows its parent's. Folded, only the avatars and their dots, with the handle
+ * on hover.
  */
 function AgentList({
   room,
@@ -106,14 +109,32 @@ function AgentList({
   onSwitch: (handle: string) => void;
 }) {
   const { agents, presence } = useRoomRoster(room);
+  const subagents = useRoomSubagents(room);
   const rows = useMemo(() => {
-    const own = agents.filter((a) => a.adapter !== "engine" && a.adapter !== "a2a");
-    const parents = own.filter((a) => !a.handle.includes(":"));
-    return parents.flatMap((p) => [
-      { agent: p, sub: false },
-      ...own.filter((a) => a.handle.startsWith(`${p.handle}:`)).map((agent) => ({ agent, sub: true })),
-    ]);
-  }, [agents]);
+    const running = [...subagents.values()].filter((s) => s.state !== "ended");
+    return agents
+      .filter((a) => a.adapter !== "engine" && a.adapter !== "a2a")
+      .flatMap((a) => [
+        {
+          key: a.handle,
+          handle: a.handle,
+          name: a.handle,
+          opens: a.handle,
+          sub: false,
+          state: memberState("agent", presence.get(a.handle.toLowerCase())),
+        },
+        ...running
+          .filter((s) => s.parent.toLowerCase() === a.handle.toLowerCase())
+          .map((s) => ({
+            key: s.handle,
+            handle: s.handle,
+            name: s.name,
+            opens: a.handle,
+            sub: true,
+            state: { word: s.state === "working" ? "Working" : "Done", tone: s.state === "working" ? "var(--accent)" : "var(--faint)" },
+          })),
+      ]);
+  }, [agents, presence, subagents]);
 
   return (
     <nav
@@ -123,24 +144,22 @@ function AgentList({
         folded ? "w-12 items-center" : "w-52 px-2",
       )}
     >
-      {rows.map(({ agent, sub }) => {
-        const s = memberState("agent", presence.get(agent.handle.toLowerCase()));
-        const on = agent.handle.toLowerCase() === current.toLowerCase();
-        const name = sub ? agent.handle.slice(agent.handle.indexOf(":") + 1) : agent.handle;
+      {rows.map(({ key, handle, name, opens, sub, state: s }) => {
+        const on = !sub && handle.toLowerCase() === current.toLowerCase();
         const row = (
           <button
-            key={agent.handle}
+            key={key}
             type="button"
             aria-current={on ? "true" : undefined}
-            aria-label={`@${agent.handle}, ${s.word}`}
-            onClick={() => onSwitch(agent.handle)}
+            aria-label={`@${handle}, ${s.word}`}
+            onClick={() => onSwitch(opens)}
             className={cn(
               "flex flex-none items-center rounded-md text-left transition-colors hover:bg-hairline",
               on && "bg-hairline",
               folded ? "relative size-8 justify-center" : cn("h-8 gap-2 px-2", sub && "ml-4"),
             )}
           >
-            <Monogram handle={agent.handle} kind="agent" className={cn(sub ? "size-4 text-[8px]" : "size-5 text-[9px]")} />
+            <Monogram handle={handle} kind="agent" className={cn(sub ? "size-4 text-[8px]" : "size-5 text-[9px]")} />
             {folded ? (
               <span
                 aria-hidden
@@ -158,7 +177,7 @@ function AgentList({
           </button>
         );
         return folded ? (
-          <Tooltip key={agent.handle} side="right" content={`@${agent.handle}`}>
+          <Tooltip key={key} side="right" content={`@${handle}`}>
             {row}
           </Tooltip>
         ) : (
@@ -193,14 +212,19 @@ export function AgentScreenWindow({
   const desktop = useIsDesktop();
   const read = useAgentSession(desktop ? { room: props.room, handle } : null);
   const rendered = read.session !== null || read.unavailable !== null;
+  // The view remembered for every agent, and a pick made for the agent shown,
+  // which holds only while it stays the one shown.
   const [view, setView] = useState<ScreenView>(savedView);
-  const [pickedHere, setPickedHere] = useState(false);
-  const shown: ScreenView = read.unavailable && !pickedHere ? "terminal" : view;
+  const [picked, setPicked] = useState<{ handle: string; view: ScreenView } | null>(null);
+  const pickedHere = picked?.handle === handle ? picked.view : null;
+  const shown: ScreenView = pickedHere ?? (read.unavailable ? "terminal" : view);
   const choose = (v: ScreenView) => {
-    setView(v);
-    setPickedHere(true);
+    setPicked({ handle, view: v });
     // A pick made for an agent with nothing to draw doesn't change the others.
-    if (!read.unavailable) saveView(v);
+    if (!read.unavailable) {
+      setView(v);
+      saveView(v);
+    }
   };
 
   useEffect(() => {

@@ -27,18 +27,23 @@ vi.mock("@/lib/desktop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/desktop")>()),
   useIsDesktop: () => true,
 }));
-// The room's agents, for the list down the window's side: two agents, a
-// subagent of one, and an engine, which has no terminal.
+// The room's agents, for the list down the window's side: two agents and an
+// engine, which has no terminal. Subagents have no manifest; they're in the
+// room's record of them, one running under builder and one ended.
 vi.mock("@/lib/room-data", () => ({
   useRoomRoster: () => ({
     agents: [
       { handle: "builder", adapter: "claude" },
       { handle: "reviewer", adapter: "codex" },
-      { handle: "builder:tests", adapter: "claude" },
       { handle: "conductor", adapter: "engine" },
     ],
     presence: new Map([["builder", { handle: "builder", status: "working" }]]),
   }),
+  useRoomSubagents: () =>
+    new Map([
+      ["builder:tests", { handle: "builder:tests", parent: "builder", name: "tests", state: "working" }],
+      ["builder:old", { handle: "builder:old", parent: "builder", name: "old", state: "ended" }],
+    ]),
 }));
 
 import { AgentScreenWindow } from "@/components/agent-screen-window";
@@ -68,18 +73,31 @@ const pick = (name: string) => fireEvent.click(screen.getByRole("radio", { name 
 describe("the list of the room's agents down the window's side", () => {
   const list = () => screen.getByRole("navigation", { name: "Agents in this room" });
 
-  it("lists the room's agents, a subagent under its parent, and no engine", () => {
+  it("lists the room's agents, each running subagent under the parent its record names, and no engine", () => {
     render(<AgentScreenWindow room="checkout" handle="builder" onClose={vi.fn()} onSwitch={vi.fn()} />);
     const names = Array.from(list().querySelectorAll("button")).map((b) => b.getAttribute("aria-label"));
-    expect(names).toEqual(["@builder, Working", "@builder:tests, Not running", "@reviewer, Not running"]);
+    expect(names).toEqual(["@builder, Working", "@builder:tests, Working", "@reviewer, Not running"]);
     expect(screen.getByRole("button", { name: "@builder, Working" })).toHaveAttribute("aria-current", "true");
   });
 
-  it("switches the window to the agent clicked", () => {
+  it("switches the window to the agent clicked, and a subagent's click to its parent's screen", () => {
     const onSwitch = vi.fn();
-    render(<AgentScreenWindow room="checkout" handle="builder" onClose={vi.fn()} onSwitch={onSwitch} />);
+    render(<AgentScreenWindow room="checkout" handle="reviewer" onClose={vi.fn()} onSwitch={onSwitch} />);
+    fireEvent.click(screen.getByRole("button", { name: "@builder:tests, Working" }));
+    expect(onSwitch).toHaveBeenLastCalledWith("builder");
     fireEvent.click(screen.getByRole("button", { name: "@reviewer, Not running" }));
-    expect(onSwitch).toHaveBeenCalledWith("reviewer");
+    expect(onSwitch).toHaveBeenLastCalledWith("reviewer");
+  });
+
+  it("doesn't carry a pick made for one agent over to the next", () => {
+    read = { session: null, unavailable: "No converter for this CLI.", error: null };
+    const { rerender } = render(
+      <AgentScreenWindow room="checkout" handle="builder" onClose={vi.fn()} onSwitch={vi.fn()} />,
+    );
+    pick("What it's doing");
+    expect(screen.getByLabelText("Its terminal").getAttribute("data-view")).toBe("rendered");
+    rerender(<AgentScreenWindow room="checkout" handle="reviewer" onClose={vi.fn()} onSwitch={vi.fn()} />);
+    expect(screen.getByLabelText("Its terminal").getAttribute("data-view")).toBe("terminal");
   });
 
   it("folds to avatars, and stays folded the next time a window opens", () => {
