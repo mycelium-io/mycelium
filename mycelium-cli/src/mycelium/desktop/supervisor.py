@@ -88,7 +88,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from mycelium import themes
+from mycelium import caller, themes
 
 Mode = Literal["hub", "client"]
 State = Literal["starting", "running", "stopped", "failed", "disabled"]
@@ -121,8 +121,13 @@ HUB_RESTART_MARKER = ".hub-restart-requested"
 #: them without stopping them, so the next supervisor reads this to stop what
 #: was the app's own and start it again from the new files. The UI's and the
 #: hub's entries also have their ``port``, so ``mycelium doctor`` looks for
-#: each where it is (:func:`started_port`).
-STARTED_FILE = "desktop-started.json"
+#: each where it is (:func:`started_port`), and an agent given the hub's old
+#: address finds where it is now (``caller.follow_app_hub``).
+STARTED_FILE = caller.STARTED_FILE
+#: How long a port that was just let go gets to come free before the app
+#: takes another, and how often it is looked at meanwhile.
+PORT_WAIT_S = 5.0
+PORT_POLL_S = 0.25
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
 #: How many lines of each component's output are kept to explain a crash.
@@ -455,15 +460,36 @@ def http_ok(url: str, timeout: float = 1.0) -> bool:
 
 
 def port_free(port: int, host: str = HOST) -> bool:
-    """Whether nothing answers on ``port`` and it can be bound here."""
+    """Whether nothing answers on ``port`` and it can be bound here.
+
+    Bound the way the hub and the UI bind it (``SO_REUSEADDR``), so the
+    connections a program that just exited left closing on the port don't
+    count as someone using it. Windows binds such a port anyway, and there the
+    option would let a bind share a port another program holds."""
     if port_open(port, host):
         return False
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if sys.platform != "win32":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
         except OSError:
             return False
     return True
+
+
+def port_comes_free(port: int, host: str = HOST) -> bool:
+    """:func:`port_free`, waiting up to :data:`PORT_WAIT_S` for a port nothing
+    answers on: a program that was on it a moment ago (the app's own, before a
+    restart) can take a few seconds to let it go. Something that answers on it
+    is another program, said at once."""
+    deadline = time.monotonic() + PORT_WAIT_S
+    while True:
+        if port_free(port, host):
+            return True
+        if port_open(port, host) or time.monotonic() >= deadline:
+            return False
+        time.sleep(PORT_POLL_S)
 
 
 def free_port(host: str = HOST) -> int:
@@ -707,7 +733,7 @@ class Supervisor:
         """Before each start of the UI: :data:`UI_PORT`, else the port it had,
         else any free one. A UI already on a port is never used, since the
         window and this launch's token would go to whatever answers there."""
-        if port_free(UI_PORT):
+        if port_comes_free(UI_PORT):
             self.ui_port, c.running_detail = UI_PORT, None
         else:
             if self.ui_port == UI_PORT or not port_free(self.ui_port):
@@ -732,7 +758,7 @@ class Supervisor:
         free one. Reached only when no hub answers on :data:`HUB_PORT`
         (``external``), so something there is another program. Then the CLI,
         and the agents that read its config, are pointed at the hub."""
-        if port_free(HUB_PORT):
+        if port_comes_free(HUB_PORT):
             self.hub_port, c.running_detail = HUB_PORT, None
         else:
             if self.hub_port == HUB_PORT or not port_free(self.hub_port):
