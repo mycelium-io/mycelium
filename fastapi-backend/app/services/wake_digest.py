@@ -786,7 +786,7 @@ def _silent_lines(
     if not named:
         return []
     times = "once" if len(named) == 1 else f"{len(named)} times"
-    lines = ["", f"Named:   you were named without a wake (@~) {times} since your last turn:"]
+    lines = ["", f"Mentioned: you were mentioned silently (@~) {times} since your last turn:"]
     for record in named[:SILENT_SHOWN]:
         when = age(parse_recorded_at(record.recorded_at), now)
         quote = _silent_line(str(record.content.get("content") or ""), me)

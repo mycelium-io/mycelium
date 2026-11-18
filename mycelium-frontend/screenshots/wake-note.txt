@@ -14,7 +14,7 @@ Next:    1. mycelium await --room checkout --handle builder --json --timeout 5
          2. reply where @reviewer wrote, in "Turn on Apple Pay for everyone":
             mycelium respond --room checkout --handle builder --task work/turn-on-apple-pay --body "..."
 
-Named:   you were named without a wake (@~) once since your last turn:
+Mentioned: you were mentioned silently (@~) once since your last turn:
          @operator · 8m ago · in the room: the alert should page whoever holds @~builder's payment rows   (mycelium room messages checkout --id 51c0e8b4)
 
 Tasks:   yours "Turn on Apple Pay for everyone" (40m ago)

@@ -366,9 +366,9 @@ def test_an_ask_past_the_cap_ends_on_how_to_read_the_rest():
 
 def _named_block(digest: str) -> list[str]:
     lines = digest.splitlines()
-    if not any(ln.startswith("Named:") for ln in lines):
+    if not any(ln.startswith("Mentioned:") for ln in lines):
         return []
-    start = next(i for i, ln in enumerate(lines) if ln.startswith("Named:"))
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("Mentioned:"))
     end = next(
         (i for i in range(start + 1, len(lines)) if not lines[i].startswith("   ")), len(lines)
     )
@@ -387,7 +387,7 @@ def test_silent_mentions_since_the_last_turn_ride_along_in_the_next_wake():
     ]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     assert _named_block(digest) == [
-        "Named:   you were named without a wake (@~) 2 times since your last turn:",
+        "Mentioned: you were mentioned silently (@~) 2 times since your last turn:",
         f"         @sam · 30m ago · in the room: cc @~builder for the record"
         f"   (mycelium room messages {ROOM} --id {wake_digest.short_id(records[3])})",
         f'         @hay · 1h ago · in "Fix the receipt tax": as @~builder found, it\'s the rounding'
@@ -418,7 +418,7 @@ def test_silent_mentions_past_a_handful_are_counted_with_where_to_find_them():
 def test_no_silent_mention_no_section():
     records = [_said(1, "builder", "back", 60), _said(2, "hay", "@builder look", 1)]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
-    assert "Named:" not in digest
+    assert "Mentioned:" not in digest
 
 
 def test_a_room_mention_replies_into_the_room():
