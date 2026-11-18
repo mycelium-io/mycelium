@@ -105,6 +105,23 @@ def test_a_line_still_being_written_waits_for_its_newline(room):
     assert persister.load_transcript(room)[-1].message_id == "m3"
 
 
+def test_only_the_rooms_read_most_recently_stay_parsed(room, monkeypatch):
+    monkeypatch.setattr(persister, "_PARSED_ROOMS", 2)
+    for other in ("quiet", "loud"):
+        get_room_dir(other)
+        persister.write_transcript(other, [_record(n) for n in range(2)])
+    persister.load_transcript(room)
+    persister.load_transcript("quiet")
+    persister.load_transcript(room)  # read again: now the most recent
+    persister.load_transcript("loud")
+    kept = {key.split("/rooms/")[1].split("/")[0] for key in persister._parsed}
+    assert kept == {room, "loud"}
+    # The room that fell out is read in full again, and correctly.
+    seen = _parses(monkeypatch)
+    assert [r.message_id for r in persister.load_transcript("quiet")] == ["m0", "m1"]
+    assert seen == [2]
+
+
 def test_the_conversation_grows_the_way_a_full_read_would_build_it(room):
     first = persister.conversational_messages(room)
     persister.append_transcript(room, _record(3, stamped=False))

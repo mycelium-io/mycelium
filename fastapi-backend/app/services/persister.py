@@ -518,12 +518,18 @@ class _Parsed:
     records: list[TranscriptRecord]
 
 
-#: Each room's parsed transcript, by its file. A transcript only grows
-#: (``append_transcript``), so a read after an append parses the new lines
-#: alone; a busy room's transcript is tens of megabytes, and every read
-#: parsing all of it held the event loop for a fifth of a second each time.
+#: The parsed transcripts of the rooms read most recently, by file, oldest
+#: first. A transcript only grows (``append_transcript``), so a read after an
+#: append parses the new lines alone; a busy room's transcript is tens of
+#: megabytes, and every read parsing all of it held the event loop for a fifth
+#: of a second each time.
 _parsed: dict[str, _Parsed] = {}
 _parsed_lock = threading.Lock()
+#: How many rooms keep their parsed transcript. Parsed, a transcript takes about
+#: four times its size on disk, so keeping every room ever read would hold a
+#: few hundred megabytes on a hub with a handful of busy rooms. A room that
+#: falls out is read in full the next time it's read.
+_PARSED_ROOMS = 2
 #: How many of the last bytes read are kept to check the file is the same one.
 _TAIL_BYTES = 256
 
@@ -532,7 +538,8 @@ def load_transcript(room: str) -> list[TranscriptRecord]:
     """Read a room's persisted ``log/transcript.jsonl`` (empty when none exists).
 
     Read once in full, then only what was appended since: the file is
-    append-only, so what was parsed stays parsed. A file that's been replaced
+    append-only, so what was parsed stays parsed, for the few rooms read most
+    recently (``_PARSED_ROOMS``). A file that's been replaced
     or rewritten (its inode, length or the bytes last read differ) is read in
     full again. The records are shared between callers, which only read them;
     the list is each caller's own.
@@ -548,7 +555,7 @@ def load_transcript(room: str) -> list[TranscriptRecord]:
             _parsed.pop(key, None)
         return []
     with _parsed_lock:
-        known = _parsed.get(key)
+        known = _parsed.pop(key, None)
         with path.open("rb") as fh:
             if known is not None and not _same_file(fh, stat, known):
                 known = None
@@ -568,6 +575,8 @@ def load_transcript(room: str) -> list[TranscriptRecord]:
         else:
             tail = known.tail if known is not None else b""
         _parsed[key] = _Parsed(inode=stat.st_ino, offset=offset, tail=tail, records=records)
+        while len(_parsed) > _PARSED_ROOMS:
+            del _parsed[next(iter(_parsed))]
         return list(records)
 
 
