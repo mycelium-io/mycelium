@@ -488,17 +488,24 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
     return _thread_of(room, asked[-1])
 
 
-def _subagents_asked(asked: list[Any], me: str) -> list[str]:
+def _subagents_asked(room: str, asked: list[Any], me: str) -> list[str]:
     """The names of ``me``'s subagents the messages in ``asked`` mention, first
     named first. A subagent has no doorbell, so a mention of one asks its
-    parent (``asks``)."""
+    parent (``asks``). Only ones ``room`` records as ``me``'s: a handle shaped
+    like one, with no record here, is nobody's."""
+    from app.services import subagents
+
     found: dict[str, None] = {}
     for record in asked:
         text = record.content.get("content") if isinstance(record.content, dict) else None
         for handle in parse_mentions(text) if isinstance(text, str) else []:
-            parent, sep, name = _norm(handle).partition(":")
-            if sep and parent == me and name:
-                found.setdefault(name, None)
+            name = _norm(handle)
+            parent, sep, sub = name.partition(subagents.SEPARATOR)
+            if not (sep and parent == me and sub):
+                continue
+            recorded = subagents.record(room, name)
+            if recorded and recorded.get("parent") == me:
+                found.setdefault(sub, None)
     return list(found)
 
 
@@ -518,7 +525,7 @@ def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | 
     """The thread ``wake``'s agent is told to reply in, for the room's "is
     responding in" line; ``None`` for the room itself (:func:`_reply_thread`)."""
     handle = str(wake.get("handle") or "")
-    _, _, since, asked = _since(handle, records, wake.get(READ_FROM))
+    _, _, since, asked = _since(room, handle, records, wake.get(READ_FROM))
     return _reply_thread(room, asked or [r for r, _ in _watched(room, handle, since)])
 
 
@@ -544,7 +551,7 @@ READ_FROM = "read_from"
 
 
 def _since(
-    handle: str, records: list[Any], read_from: int | None = None
+    room: str, handle: str, records: list[Any], read_from: int | None = None
 ) -> tuple[list[Any], int, list[Any], list[Any]]:
     """What ``handle`` hasn't seen: the window read, the index of its last
     message in it (-1 for none), the records it hasn't read, and the ones among
@@ -566,7 +573,7 @@ def _since(
     else:
         start = max(0, read_from - (len(records) - len(window)))
         since = [r for r in window[start:] if _norm(r.sender) != me]
-    asked = [r for r in since if asks(r.content, handle)]
+    asked = [r for r in since if asks(r.content, handle, room)]
     return window, last, since, asked
 
 
@@ -576,7 +583,8 @@ def coverage(wake: dict[str, Any], records: list[Any], room: str | None = None) 
     range its digest summarized (what its agent hadn't read, oldest to
     newest). Text stays in the transcript; the wake log keeps these."""
     handle = str(wake.get("handle") or "")
-    _, _, since, asked = _since(handle, records, wake.get(READ_FROM))
+    # Without a room, no mention is a recorded subagent's: only ids are kept.
+    _, _, since, asked = _since(room or "", handle, records, wake.get(READ_FROM))
     covered: dict[str, Any] = {"messages": [r.message_id for r in asked]}
     if room is not None:
         covered["watching"] = [r.message_id for r, _ in _watched(room, handle, since)]
@@ -644,7 +652,7 @@ def _working_others(room: str, record: Any, me: str) -> str:
     from app.services.asks import asked
     from app.services.room_channels import manager
 
-    others = [h for h in asked(record.content) if h != me and h != _norm(record.sender)]
+    others = [h for h in asked(record.content, room) if h != me and h != _norm(record.sender)]
     working = [h for h in others if manager.herdr_status(room, h) == "working"]
     if not working:
         return ""
@@ -886,7 +894,7 @@ def build(
     handle = str(wake.get("handle") or "")
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
-    window, last, since, asked = _since(handle, records, wake.get(READ_FROM))
+    window, last, since, asked = _since(room, handle, records, wake.get(READ_FROM))
     # The message its sender interrupted it with after sending, when it was one.
     upgraded = (
         next((r for r in asked if r.message_id == wake.get("interrupted")), None)
@@ -974,7 +982,7 @@ def build(
         why = f"{count} you in {_place(room, where)}{latest}"
     lines.append(f"Why:     {why}")
     # A subagent has no doorbell, so what was said to one woke its parent.
-    if subs := _subagents_asked(asked, me):
+    if subs := _subagents_asked(room, asked, me):
         named = ", ".join(f"@{me}:{s}" for s in subs)
         noun = "your subagent" if len(subs) == 1 else "your subagents"
         lines.append(

@@ -152,7 +152,7 @@ async def test_the_paths_agree(room: wake_paths.Room, case: tuple[str, dict]) ->
     await _write(room, message)
 
     records = room.log.records[start:]
-    found = {why for r in records if (why := asks(r.content, agent))}
+    found = {why for r in records if (why := asks(r.content, agent, wake_paths.ROOM))}
     assert len(found) <= 1
     woken = {w.reason for r in records if (w := wakes_for(wake_paths.ROOM, r, agent))}
     # What asks it outranks a subscription on the doorbell, as it does per record.

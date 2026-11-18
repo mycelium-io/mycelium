@@ -547,7 +547,7 @@ def _summon(text: str, *, episode: str, sender: str = "julia") -> Any:
         topic=message_format.topic_urn(ROOM),
         payload_type="message",
     )
-    asking = asked(serialize_content(env, extra={"content": text}))
+    asking = asked(serialize_content(env, extra={"content": text}), ROOM)
     return env, [h for h, why in asking.items() if why != "turn"], text
 
 

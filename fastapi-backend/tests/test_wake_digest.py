@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.services import message_format, room_channels, room_people, wake_digest
+from app.services.asks import asks
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.persister import TranscriptRecord
 from app.services.room_channels import MemberPresence
@@ -311,6 +312,10 @@ def test_a_wake_after_a_day_without_one_says_to_read_the_skill_again(monkeypatch
 
 
 def test_a_mention_of_a_subagent_wakes_its_parent_saying_whose_it_is():
+    from app.services import subagents
+
+    get_room_dir(ROOM)
+    subagents.start(ROOM, "builder", "review")
     records = [
         _said(1, "builder", "back", 60),
         _said(2, "hay", "@builder:review is the retry path covered?", 1),
@@ -321,6 +326,19 @@ def test_a_mention_of_a_subagent_wakes_its_parent_saying_whose_it_is():
         "For:     your subagent @builder:review. Answer it yourself, pass it on in its next "
         "step, or have it check in with `mycelium await --as builder:review`."
     ) in digest
+
+
+def test_a_subagent_handle_the_room_doesnt_have_is_nobodys():
+    """The parent is the room's record, never the name: a handle shaped like
+    a subagent's, recorded in another room or nowhere, asks no parent here."""
+    get_room_dir(ROOM)
+    records = [
+        _said(1, "builder", "back", 60),
+        _said(2, "hay", "quoting them: @builder:hello said hi", 1),
+    ]
+    assert not [r for r in records if asks(r.content, "builder", ROOM)]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert "For:" not in digest
 
 
 def test_a_plain_mention_names_no_subagent():
