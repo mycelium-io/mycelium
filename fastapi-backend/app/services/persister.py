@@ -41,7 +41,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import re
+import threading
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
@@ -504,14 +506,79 @@ def _parse_jsonl(text: str) -> list[TranscriptRecord]:
     return records
 
 
+@dataclass
+class _Parsed:
+    """A room's transcript as far as it has been read: the records, how many
+    bytes they came from, and the last bytes of those, to tell the file that
+    was read from one written over it."""
+
+    inode: int
+    offset: int
+    tail: bytes
+    records: list[TranscriptRecord]
+
+
+#: Each room's parsed transcript, by its file. A transcript only grows
+#: (``append_transcript``), so a read after an append parses the new lines
+#: alone; a busy room's transcript is tens of megabytes, and every read
+#: parsing all of it held the event loop for a fifth of a second each time.
+_parsed: dict[str, _Parsed] = {}
+_parsed_lock = threading.Lock()
+#: How many of the last bytes read are kept to check the file is the same one.
+_TAIL_BYTES = 256
+
+
 def load_transcript(room: str) -> list[TranscriptRecord]:
-    """Read a room's persisted ``log/transcript.jsonl`` (empty when none exists)."""
+    """Read a room's persisted ``log/transcript.jsonl`` (empty when none exists).
+
+    Read once in full, then only what was appended since: the file is
+    append-only, so what was parsed stays parsed. A file that's been replaced
+    or rewritten (its inode, length or the bytes last read differ) is read in
+    full again. The records are shared between callers, which only read them;
+    the list is each caller's own.
+    """
     from app.services.filesystem import get_room_dir
 
     path = get_room_dir(room) / TRANSCRIPT_FILENAME
-    if not path.exists():
+    key = str(path)
+    try:
+        stat = path.stat()
+    except OSError:
+        with _parsed_lock:
+            _parsed.pop(key, None)
         return []
-    return _parse_jsonl(path.read_text(encoding="utf-8"))
+    with _parsed_lock:
+        known = _parsed.get(key)
+        with path.open("rb") as fh:
+            if known is not None and not _same_file(fh, stat, known):
+                known = None
+            start = known.offset if known is not None else 0
+            fh.seek(start)
+            added = fh.read()
+        # A line still being written has no newline yet: leave it for next time.
+        whole = added[: added.rfind(b"\n") + 1]
+        records = (known.records if known is not None else []) + _parse_jsonl(
+            whole.decode("utf-8", errors="replace")
+        )
+        offset = start + len(whole)
+        if whole:
+            tail = whole[-_TAIL_BYTES:]
+            if len(tail) < _TAIL_BYTES and known is not None:
+                tail = (known.tail + tail)[-_TAIL_BYTES:]
+        else:
+            tail = known.tail if known is not None else b""
+        _parsed[key] = _Parsed(inode=stat.st_ino, offset=offset, tail=tail, records=records)
+        return list(records)
+
+
+def _same_file(fh: Any, stat: os.stat_result, known: _Parsed) -> bool:
+    """Whether the open file is the one ``known`` was read from, grown or not."""
+    if stat.st_ino != known.inode or stat.st_size < known.offset:
+        return False
+    if not known.tail:
+        return known.offset == 0
+    fh.seek(known.offset - len(known.tail))
+    return fh.read(len(known.tail)) == known.tail
 
 
 def append_transcript(room: str, record: TranscriptRecord) -> None:
@@ -702,10 +769,17 @@ def stored_message_from_record(
     return msg
 
 
-# Per-room cache of the mapped conversational view, invalidated when the
-# transcript file changes, so a hot UI poll re-stats (cheap) rather than
-# re-parsing the whole file every read.
-_conversational_cache: dict[str, tuple[tuple[int, int], list[StoredMessage]]] = {}
+@dataclass
+class _Projected:
+    """A room's conversational view as far as its transcript was projected:
+    the last record projected (the same object while the transcript only
+    grows, ``load_transcript``), how many records that was, and the last
+    usable stamp among them."""
+
+    last: TranscriptRecord
+    count: int
+    stamp: datetime | None
+    messages: list[StoredMessage]
 
 
 def _stat_stamp(path: Path) -> tuple[int, int] | None:
@@ -715,6 +789,13 @@ def _stat_stamp(path: Path) -> tuple[int, int] | None:
     except OSError:
         return None
     return (st.st_mtime_ns, st.st_size)
+
+
+# Per-room cache of the mapped conversational view. The UI reads it for every
+# thread a board shows, and a busy room appends between most of those reads,
+# so what was appended is projected onto it rather than the whole transcript
+# again; a rewritten transcript is projected in full.
+_conversational_cache: dict[str, _Projected] = {}
 
 
 def _project_transcript(room: str, records: list[TranscriptRecord]) -> list[StoredMessage]:
@@ -753,18 +834,34 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     broadcast both land in the transcript). Event-ledger rows live only in
     ``in_memory_store`` and are merged in by the route.
     """
-    from app.services.filesystem import get_room_dir
-
-    path = get_room_dir(room) / TRANSCRIPT_FILENAME
-    stamp = _stat_stamp(path)
-    if stamp is None:
+    records = load_transcript(room)
+    if not records:
         _conversational_cache.pop(room, None)
         return []
     cached = _conversational_cache.get(room)
-    if cached is not None and cached[0] == stamp:
-        return list(cached[1])
-    messages = _project_transcript(room, load_transcript(room))
-    _conversational_cache[room] = (stamp, messages)
+    if (
+        cached is not None
+        and cached.stamp is not None
+        and 0 < cached.count <= len(records)
+        and records[cached.count - 1] is cached.last
+    ):
+        # The same transcript, grown: project what was appended, each
+        # unstamped record taking the stamp before it, as a whole read would.
+        messages = list(cached.messages)
+        earlier = cached.stamp
+        for record in records[cached.count :]:
+            stamp = parse_recorded_at(record.recorded_at)
+            earlier = stamp or earlier
+            if (msg := stored_message_from_record(room, record, fallback=earlier)) is not None:
+                messages.append(msg)
+    else:
+        messages = _project_transcript(room, records)
+        earlier = next(
+            (s for r in reversed(records) if (s := parse_recorded_at(r.recorded_at))), None
+        )
+    _conversational_cache[room] = _Projected(
+        last=records[-1], count=len(records), stamp=earlier, messages=messages
+    )
     return list(messages)
 
 
