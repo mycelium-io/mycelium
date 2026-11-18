@@ -304,3 +304,26 @@ describe("<MarkdownContent /> thread ids", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 });
+
+describe("<MarkdownContent /> images", () => {
+  const upload = "/api/rooms/checkout/uploads/receipt.png/raw";
+
+  it("loads an image the room uploaded", () => {
+    render(<MarkdownContent>{`![the receipt](${upload})`}</MarkdownContent>);
+    expect(screen.getByRole("img", { name: "the receipt" })).toHaveAttribute("src", upload);
+  });
+
+  it("shows an image from another site as a link to it, and loads nothing from there", () => {
+    const { container } = render(
+      <MarkdownContent>{"![the chart](https://tracker.example/chart.png)"}</MarkdownContent>,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "the chart" })).toHaveAttribute("href", "https://tracker.example/chart.png");
+  });
+
+  it("shows even the room's own upload as a link where every image must be one", () => {
+    const { container } = render(<MarkdownContent imagesAsLinks>{`![the receipt](${upload})`}</MarkdownContent>);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "the receipt" })).toBeInTheDocument();
+  });
+});

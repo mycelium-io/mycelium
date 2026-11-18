@@ -13,6 +13,7 @@ import { MarkdownTable } from "@/components/markdown-table";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
 import { HANDLE_PATTERN, INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { typeset } from "@/lib/typeset";
+import { loadsHere } from "@/lib/room-image";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
 // body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
@@ -219,9 +220,10 @@ interface Props {
   threads?: ReadonlyMap<string, ThreadTarget>;
   /** Opens a thread; without it, thread ids stay text. */
   onOpenThread?: (episode: string) => void;
-  /** Draws an image as a link to it rather than loading it: for text an
-   *  agent wrote on this machine, which shouldn't make the page fetch
-   *  whatever it names. */
+  /** Draws every image as a link to it rather than loading it, even the
+   *  room's own uploads: for text an agent wrote on this machine, which
+   *  shouldn't make the page fetch whatever it names. Without it, only an
+   *  image from another site is drawn as a link. */
   imagesAsLinks?: boolean;
   /** One line: bold, code, links and mentions render, and blocks (paragraphs,
    *  lists, headings) unwrap into the line. For text that must stay a line,
@@ -460,18 +462,19 @@ export function MarkdownContent({
           h4: ({ children }) => <h4>{processNode(children)}</h4>,
           h5: ({ children }) => <h5>{processNode(children)}</h5>,
           h6: ({ children }) => <h6>{processNode(children)}</h6>,
-          ...(imagesAsLinks
-            ? {
-                img: ({ src, alt }) =>
-                  typeof src === "string" && src ? (
-                    <a href={src} target="_blank" rel="noreferrer">
-                      {alt || src}
-                    </a>
-                  ) : (
-                    <>{alt}</>
-                  ),
-              }
-            : {}),
+          // An image loads only when it's the room's own upload (`loadsHere`).
+          // One from another site is a link, so reading it tells that site nothing.
+          img: ({ src, alt }) =>
+            typeof src !== "string" || !src ? (
+              <>{alt}</>
+            ) : imagesAsLinks || !loadsHere(src) ? (
+              <a href={src} target="_blank" rel="noreferrer">
+                {alt || src}
+              </a>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
+              <img src={src} alt={alt ?? ""} />
+            ),
         }}
       >
         {children}
