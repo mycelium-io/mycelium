@@ -16,12 +16,14 @@ describe("page security headers", () => {
     const rule = rules.find((r) => r.source === PAGE_ROUTES);
     const header = (key: string) => rule?.headers.find((h) => h.key === key)?.value;
     expect(header("Content-Security-Policy")).toBe(PAGE_CSP);
-    expect(header("X-Frame-Options")).toBe("DENY");
     expect(header("X-Content-Type-Options")).toBe("nosniff");
+    // It can't name the frames allowed, and would overrule them in an old browser.
+    expect(header("X-Frame-Options")).toBeUndefined();
   });
 
-  it("refuse to let another site frame the app", () => {
-    expect(PAGE_CSP).toContain("frame-ancestors 'none'");
+  it("let only this machine and the published slides frame the app", () => {
+    const ancestors = /frame-ancestors ([^;]+)/.exec(PAGE_CSP)?.[1].split(" ");
+    expect(ancestors).toEqual(["'self'", "http://127.0.0.1:*", "http://localhost:*", "https://mycelium-io.github.io"]);
     expect(PAGE_CSP).toContain("object-src 'none'");
     expect(PAGE_CSP).toContain("base-uri 'none'");
   });
