@@ -47,6 +47,22 @@ describe("<ActivityRail />", () => {
     expect(screen.getByText("2 done")).toBeTruthy();
   });
 
+  it("shows a thread beside the tasks, counted apart and with no board state", () => {
+    const thread: ActivityItem = {
+      ...item("which alert threshold", null, [update("Reply", "@risk")]),
+      subject: "threads/which-alert-threshold",
+      memoryKey: null,
+      episode: "urn:ioc:mycelium:episode:atlas:t3aa11bb",
+      thread: true,
+    };
+    render(<ActivityRail items={[item("claimed one", "claimed", [update("Claimed", "@ana", "claimed")]), thread]} />);
+    expect(screen.getByText("1 task · 1 thread")).toBeTruthy();
+    expect(screen.getByText("Thread")).toBeTruthy();
+    expect(screen.getByText("@risk replied")).toBeTruthy();
+    // Only the task is counted as claimed; the thread stands in no state.
+    expect(screen.getByText(/^1 claimed$/)).toBeTruthy();
+  });
+
   it("folds to its header, keeps the counts and the task that moved last, and remembers", () => {
     localStorage.removeItem("mycelium.activity.folded");
     const items = [
