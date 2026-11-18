@@ -40,6 +40,7 @@ from app.services.persister import (
     _conversational_text,
     parse_mentions,
     parse_recorded_at,
+    parse_silent_mentions,
     read_id,
     record_episode,
 )
@@ -74,6 +75,10 @@ MEMBER_STATES = {"working": "●", "blocked": "▲", "idle": "○", "done": "✓
 MEMBERS_NAMED = 4
 #: How far back the wake log is read for what each working agent is on.
 WAKES_READ = 200
+#: How many silent mentions are listed, newest kept, before the rest are counted.
+SILENT_SHOWN = 5
+#: How much of the line a silent mention was in is quoted.
+SILENT_CHARS = 100
 #: How long without a wake before the digest says to read the skill again: by
 #: then the agent's session may have been compacted or started fresh.
 SKILL_AFTER = timedelta(hours=24)
@@ -754,6 +759,49 @@ def _reply_lines(room: str, me: str, window: list[Any], asked: list[Any]) -> lis
     return lines
 
 
+def _silent_line(text: str, me: str) -> str:
+    """The line of ``text`` that names ``me`` with ``@~``, on one line and cut."""
+    for line in text.splitlines():
+        if me in (_norm(h) for h in parse_silent_mentions(line)):
+            return _short(line.strip(), SILENT_CHARS)
+    return _short(text.strip(), SILENT_CHARS)
+
+
+def _silent_lines(
+    room: str, me: str, said: list[Any], asked: list[Any], now: datetime
+) -> list[str]:
+    """Where the agent was named with ``@~`` since its last turn, newest first.
+
+    A silent mention never wakes anyone; it rides along in the next wake that
+    something else caused, so a member named for reference learns it was. A
+    message that also asks for it is already shown as an ask."""
+    asking = {id(r) for r in asked}
+    named = []
+    for record in reversed(said):
+        text = _conversational_text(record.content)
+        if not text or id(record) in asking:
+            continue
+        if me in (_norm(h) for h in parse_silent_mentions(text)):
+            named.append(record)
+    if not named:
+        return []
+    times = "once" if len(named) == 1 else f"{len(named)} times"
+    lines = ["", f"Named:   you were named without a wake (@~) {times} since your last turn:"]
+    for record in named[:SILENT_SHOWN]:
+        when = age(parse_recorded_at(record.recorded_at), now)
+        quote = _silent_line(str(record.content.get("content") or ""), me)
+        lines.append(
+            f"         @{plain(record.sender)} · {when} · {_in(room, record)}: {quote}"
+            f"   (mycelium room messages {room} --id {short_id(record)})"
+        )
+    if len(named) > SILENT_SHOWN:
+        lines.append(
+            f"         and {len(named) - SILENT_SHOWN} more: "
+            f'mycelium room search "mentions:{me}" --room {room}'
+        )
+    return lines
+
+
 def _other_asks(
     room: str, window: list[Any], asked: list[Any], me: str, now: datetime
 ) -> list[str]:
@@ -1041,6 +1089,9 @@ def build(
     # The others asking for it: whole while they fit, newest first, then named.
     lines += _other_asks(room, window, asked, me, now)
     lines += _watching_lines(room, me, watched, now)
+    # What ``await`` prints hands these messages over itself.
+    if not awaited:
+        lines += _silent_lines(room, me, said, asked, now)
 
     mine, tally = board(room, handle, now)
     lines.append("")
