@@ -27,6 +27,19 @@ vi.mock("@/lib/desktop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/desktop")>()),
   useIsDesktop: () => true,
 }));
+// The room's agents, for the list down the window's side: two agents, a
+// subagent of one, and an engine, which has no terminal.
+vi.mock("@/lib/room-data", () => ({
+  useRoomRoster: () => ({
+    agents: [
+      { handle: "builder", adapter: "claude" },
+      { handle: "reviewer", adapter: "codex" },
+      { handle: "builder:tests", adapter: "claude" },
+      { handle: "conductor", adapter: "engine" },
+    ],
+    presence: new Map([["builder", { handle: "builder", status: "working" }]]),
+  }),
+}));
 
 import { AgentScreenWindow } from "@/components/agent-screen-window";
 import { defaultRect, saveRect, savedRect } from "@/lib/terminal-window";
@@ -51,6 +64,41 @@ beforeEach(() => {
 
 const shown = () => screen.getByLabelText("Its terminal").getAttribute("data-view");
 const pick = (name: string) => fireEvent.click(screen.getByRole("radio", { name }));
+
+describe("the list of the room's agents down the window's side", () => {
+  const list = () => screen.getByRole("navigation", { name: "Agents in this room" });
+
+  it("lists the room's agents, a subagent under its parent, and no engine", () => {
+    render(<AgentScreenWindow room="checkout" handle="builder" onClose={vi.fn()} onSwitch={vi.fn()} />);
+    const names = Array.from(list().querySelectorAll("button")).map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual(["@builder, Working", "@builder:tests, Not running", "@reviewer, Not running"]);
+    expect(screen.getByRole("button", { name: "@builder, Working" })).toHaveAttribute("aria-current", "true");
+  });
+
+  it("switches the window to the agent clicked", () => {
+    const onSwitch = vi.fn();
+    render(<AgentScreenWindow room="checkout" handle="builder" onClose={vi.fn()} onSwitch={onSwitch} />);
+    fireEvent.click(screen.getByRole("button", { name: "@reviewer, Not running" }));
+    expect(onSwitch).toHaveBeenCalledWith("reviewer");
+  });
+
+  it("folds to avatars, and stays folded the next time a window opens", () => {
+    const { unmount } = render(
+      <AgentScreenWindow room="checkout" handle="builder" onClose={vi.fn()} onSwitch={vi.fn()} />,
+    );
+    expect(screen.getByText("reviewer")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Fold the agents list" }));
+    expect(screen.queryByText("reviewer")).toBeNull();
+    unmount();
+    render(<AgentScreenWindow room="checkout" handle="builder" onClose={vi.fn()} onSwitch={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Show the room's agents" })).toBeInTheDocument();
+  });
+
+  it("isn't there when nothing can switch the window", () => {
+    open();
+    expect(screen.queryByRole("navigation", { name: "Agents in this room" })).toBeNull();
+  });
+});
 
 describe("the window's rendered view and terminal", () => {
   it("has no toggle until the app has answered for the agent", () => {
