@@ -1329,7 +1329,7 @@ class RoomPersister:
         from app.services.asks import asked
 
         message_text = content.get("content", "") if isinstance(content, dict) else ""
-        asking = asked(content)
+        asking = asked(content, self.room)
         summons = [h for h, why in asking.items() if why != "turn"]
         for handle in summons:
             try:

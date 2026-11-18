@@ -158,3 +158,74 @@ def test_finished_subagent_steps_are_counted_up_from_the_first_look(tmp_path: Pa
         key, finished_subagents({"entries": [_done("c"), _done("d"), _done("x", "Bash")]})
     )
     assert follower.subagents_finished[key] == 2
+
+
+def _agent_call(call_id: str, *, background: bool = False) -> dict:
+    """An assistant line starting a subagent, as Claude Code writes it."""
+    given: dict[str, Any] = {"description": "look", "prompt": "secret", "subagent_type": "Explore"}
+    if background:
+        given["run_in_background"] = True
+    block = {"type": "tool_use", "id": call_id, "name": "Agent", "input": given}
+    return {"type": "assistant", "message": {"id": f"m-{call_id}", "content": [block]}}
+
+
+def _agent_result(call_id: str, text: str) -> dict:
+    block = {
+        "type": "tool_result",
+        "tool_use_id": call_id,
+        "content": [{"type": "text", "text": text}],
+    }
+    return {"type": "user", "message": {"role": "user", "content": [block]}}
+
+
+def _notified(call_id: str, status: str) -> dict:
+    """The message Claude Code adds when a background step ends."""
+    text = (
+        f"<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>{call_id}</tool-use-id>\n"
+        f"<status>{status}</status>\n<summary>Agent finished</summary>\n</task-notification>"
+    )
+    return {
+        "type": "user",
+        "origin": {"kind": "task-notification"},
+        "message": {"role": "user", "content": text},
+    }
+
+
+LAUNCHED = "Async agent launched successfully.\nagentId: a1"
+
+
+def _steps(*lines: dict) -> tuple[int, set[str]]:
+    from mycelium.integrations.agents.claude_session import convert
+
+    entries, _ = convert(list(lines))
+    body = {"entries": entries}
+    return open_subagents(body), finished_subagents(body)
+
+
+def test_a_background_subagent_is_open_until_the_session_is_told_it_ended():
+    """Its launch coming back isn't its end: counting it as one ended a
+    subagent a minute into its work, and the hub refused all it said after.
+    Lines shaped as Claude Code writes them, through the runner's converter."""
+    # Launched in the background by the harness (no flag) or by the flag: open.
+    assert _steps(_agent_call("bg"), _agent_result("bg", LAUNCHED)) == (1, set())
+    flagged = _agent_call("bg", background=True)
+    assert _steps(flagged, _agent_result("bg", "started")) == (1, set())
+    # Told it ended: finished, however it ended.
+    for status in ("completed", "failed", "killed"):
+        told = _steps(_agent_call("bg"), _agent_result("bg", LAUNCHED), _notified("bg", status))
+        assert told == (0, {"bg"})
+    # Told mid-turn, as a queued command rather than a message of its own.
+    queued = {
+        "type": "attachment",
+        "attachment": {
+            "type": "queued_command",
+            "commandMode": "task-notification",
+            "prompt": _notified("bg", "completed")["message"]["content"],
+        },
+    }
+    assert _steps(_agent_call("bg"), _agent_result("bg", LAUNCHED), queued) == (0, {"bg"})
+    # A foreground one still ends when its result comes back.
+    assert _steps(_agent_call("fg"), _agent_result("fg", "found 3 files")) == (0, {"fg"})
+    # A notification for some other call ends nothing here.
+    other = _steps(_agent_call("bg"), _agent_result("bg", LAUNCHED), _notified("zz", "completed"))
+    assert other == (1, set())

@@ -375,7 +375,7 @@ def test_an_upstream_notice_wakes_nobody():
     from app.services.asks import asks
 
     record = _upstream("work/apple-pay", "Turn on Apple Pay", "review_requested", 1, who="builder")
-    assert not asks(record.content, "builder")
+    assert not asks(record.content, "builder", ROOM)
 
 
 class DeletingPulls(Pulls):

@@ -65,12 +65,11 @@ def test_only_a_loud_mention_asks(case):
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": case["text"]})
-    expected: dict[str, None] = {}
-    for m in case["mentions"]:
-        expected.setdefault(m.lower(), None)
-        if ":" in m:
-            expected.setdefault(m.lower().partition(":")[0], None)
-    assert list(asked(content)) == list(expected)
+    # Room "r" records no subagents, so a mention of ``parent:name`` asks that
+    # handle alone: the parent comes from the room's record, never the name
+    # (``contracts/asks.json`` has the recorded case).
+    expected = dict.fromkeys(m.lower() for m in case["mentions"])
+    assert list(asked(content, "r")) == list(expected)
 
 
 def test_blank_code_keeps_length_lines_and_prose():

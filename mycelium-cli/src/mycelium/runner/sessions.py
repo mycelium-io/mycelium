@@ -229,29 +229,47 @@ class Follower:
 SUBAGENT_TOOLS = frozenset({"Agent", "Task"})
 
 
+def _subagent_steps(body: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """``(open, finished)``: the ids of a read session's subagent steps.
+
+    A step in the foreground is open until its tool call's result comes back.
+    One started in the background gets its result at once, saying it was
+    launched, while the subagent goes on working (the converter marks it
+    ``_meta.background``); it's open until the session is told it ended
+    (``_meta.ended``). Counting the launch as the end is what ended a subagent
+    a minute into its work, and refused everything it said after.
+    """
+    entries = body.get("entries") or []
+    opened: set[str] = set()
+    finished: set[str] = set()
+    for at, e in enumerate(entries):
+        if e.get("sessionUpdate") != "tool_call" or e.get("name") not in SUBAGENT_TOOLS:
+            continue
+        # One with no id can't be followed from one look to the next, but is
+        # still a step to count as open now.
+        call = str(e.get("toolCallId") or f"#{at}")
+        meta = e.get("_meta") if isinstance(e.get("_meta"), dict) else {}
+        if e.get("status") in ("pending", "in_progress"):
+            opened.add(call)
+        elif not meta.get("background") or meta.get("ended"):
+            finished.add(call)
+        # A launch that failed never ran; one that came back launched runs on.
+        elif e.get("status") != "failed":
+            opened.add(call)
+    return opened, finished
+
+
 def open_subagents(body: dict[str, Any]) -> int:
-    """How many subagent steps a read session has open: a subagent tool call
-    whose result hasn't come back. Counted here, so only the number leaves."""
-    return sum(
-        1
-        for e in body.get("entries") or []
-        if e.get("sessionUpdate") == "tool_call"
-        and e.get("name") in SUBAGENT_TOOLS
-        and e.get("status") in ("pending", "in_progress")
-    )
+    """How many subagent steps a read session has open (:func:`_subagent_steps`).
+    Counted here, so only the number leaves."""
+    return len(_subagent_steps(body)[0])
 
 
 def finished_subagents(body: dict[str, Any]) -> set[str]:
-    """The ids of the subagent steps a read session has finished, kept on this
-    machine to count them; only the count leaves (:class:`Follower`)."""
-    return {
-        str(e["toolCallId"])
-        for e in body.get("entries") or []
-        if e.get("sessionUpdate") == "tool_call"
-        and e.get("name") in SUBAGENT_TOOLS
-        and e.get("status") not in ("pending", "in_progress")
-        and e.get("toolCallId")
-    }
+    """The ids of the subagent steps a read session has finished
+    (:func:`_subagent_steps`), kept on this machine to count them; only the
+    count leaves (:class:`Follower`)."""
+    return {call for call in _subagent_steps(body)[1] if not call.startswith("#")}
 
 
 def page(

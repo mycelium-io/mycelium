@@ -130,7 +130,7 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
             continue
         if record.sender and _norm(record.sender) == _norm(handle):
             break
-        if asks(record.content, handle):
+        if asks(record.content, handle, room):
             break
         text = _conversational_text(record.content)
         if text is None:
@@ -427,7 +427,7 @@ async def await_message(
             if subscribed is not None:
                 turn["reason"], turn["why"] = "subscribed", subscribed.why
             else:
-                turn["reason"], turn["why"] = asks(record.content, handle), None
+                turn["reason"], turn["why"] = asks(record.content, handle, room_name), None
             wake = {
                 "handle": handle,
                 "reason": turn["reason"] or "mention",
@@ -634,7 +634,7 @@ def _working_mentioned(room: str, content: dict, wire_id: str | None) -> list[st
     manager = room_channels.manager
     return [
         h
-        for h, why in asked(content).items()
+        for h, why in asked(content, room).items()
         if why == "mention"
         and manager.herdr_status(room, h) == "working"
         and manager.held_for(room, h, wire_id)
