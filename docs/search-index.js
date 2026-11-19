@@ -825,7 +825,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-when-the-agent-cli-isnt-found",
     "t": "When the agent CLI isn't found",
     "s": "Agents › Start Agents From the App",
-    "x": "If the CLI isn't installed, the start stops and says so, with a link to the CLI's install page. Install it, then open a new terminal window and run its command, such as opencode. Mycelium starts agents the way a new terminal window starts, so if the command runs there, it will run for the agent too. Add the agent again. If the new window says the command isn't found, the installer put it in a folder your terminal doe",
+    "x": "If the agent CLI isn't installed, the agent doesn't open. Add member says the CLI isn't installed and links to its install page. Install it, then open a new terminal window and run its command, such as opencode. Mycelium starts agents the way a new terminal window starts, so if the command runs there, it will run for the agent too. Add the agent again. If the new window says the command isn't found, the installer put",
     "p": "Guides"
   },
   {

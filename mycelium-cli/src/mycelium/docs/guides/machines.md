@@ -52,8 +52,8 @@ CLI is ever started with its option that skips permissions entirely.
 
 ### When the agent CLI isn't found
 
-If the CLI isn't installed, the start stops and says so, with a link to the
-CLI's install page.
+If the agent CLI isn't installed, the agent doesn't open. **Add member** says
+the CLI isn't installed and links to its install page.
 
 Install it, then open a new terminal window and run its command, such as
 `opencode`. Mycelium starts agents the way a new terminal window starts, so if
