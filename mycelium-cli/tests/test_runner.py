@@ -1824,6 +1824,8 @@ def test_a_launch_from_a_hub_the_runner_does_not_own_waits_for_a_yes(
     [waiting] = approvals.pending(base=tmp_path)
     assert waiting["title"] == f"Start @a on {r.label}?"
     assert "Asked for by @bob" in waiting["message"]
+    # The runner says it's waiting before it hands the request on.
+    _until(lambda: asked)
     assert asked == [waiting]
 
     approvals.answer("a1b2c3d4", yes=True, base=tmp_path)
