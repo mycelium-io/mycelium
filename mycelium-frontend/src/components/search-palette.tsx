@@ -25,6 +25,7 @@ import {
 } from "@/lib/search";
 import { eventToChord, matchBinding } from "@/lib/keymap";
 import { Kbd } from "@/components/ui/kbd";
+import { MODAL_BACKDROP, ModalDialog } from "@/components/ui/modal-dialog";
 
 const ICONS: Record<SearchResultType, LucideIcon> = {
   room: Boxes,
@@ -68,35 +69,29 @@ export function SearchPalette({ open, onClose, onPick, search, mac }: Props) {
   const [scope, setScope] = useState<SearchScope>(EMPTY_SCOPE);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const restoreTo = useRef<HTMLElement | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  // Picking a result closes the dialog itself, and that close isn't a
+  // dismissal.
   const picked = useRef(false);
 
   useEffect(() => {
     if (!open) return;
-    // Capturing what to restore focus to reads document.activeElement, so the
-    // rest of the on-open reset stays here with it.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery("");
     setResults([]);
     setScope(EMPTY_SCOPE);
     setError(null);
     picked.current = false;
-    restoreTo.current = document.activeElement as HTMLElement | null;
 
-    // The app's keys are inert behind an open dialog, so this handles its own
-    // dismissal — including the chord that opened it, as a toggle.
+    // The app's keys are inert behind an open dialog, so the chord that opened
+    // search is handled here, as a toggle. The dialog handles Escape.
     const onKey = (e: KeyboardEvent) => {
-      const closing =
-        e.key === "Escape" || matchBinding(eventToChord(e, mac), ["global"])?.id === "search.open";
-      if (!closing) return;
+      if (matchBinding(eventToChord(e, mac), ["global"])?.id !== "search.open") return;
       e.preventDefault();
       onClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      if (!picked.current) restoreTo.current?.focus?.();
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, mac]);
 
   // Debounced, latest-wins. Responses can land out of order, so a stale one is
@@ -142,101 +137,98 @@ export function SearchPalette({ open, onClose, onPick, search, mac }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-6 pt-[12vh]">
-      <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] motion-safe:animate-in motion-safe:fade-in-0"
-        onClick={onClose}
-        aria-hidden
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Search"
-        className="relative flex w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
-      >
-        {/* shouldFilter={false}: the server ranked these across types already. */}
-        <Command label="Search" loop shouldFilter={false}>
-          <CommandInput
-            autoFocus
-            value={query}
-            onValueChange={setQuery}
-            placeholder="Search memories, episodes, messages…"
-          />
+    <ModalDialog
+      ref={dialogRef}
+      onClose={() => {
+        if (!picked.current) onClose();
+      }}
+      aria-label="Search"
+      className={`mx-auto mt-[12vh] w-[calc(100%-3rem)] max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-2xl open:flex motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 ${MODAL_BACKDROP}`}
+    >
+      {/* shouldFilter={false}: the server ranked these across types already. */}
+      <Command label="Search" loop shouldFilter={false}>
+        <CommandInput
+          autoFocus
+          data-autofocus
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Search memories, episodes, messages…"
+        />
 
-          {hasScope(scope) && (
-            <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-4 py-2">
-              {chips.map(chip => (
-                <span
-                  key={chip}
-                  className="rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-micro text-accent"
-                >
-                  {chip}
-                </span>
-              ))}
-            </div>
+        {hasScope(scope) && (
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-1.5 border-b border-border px-4 py-2">
+            {chips.map(chip => (
+              <span
+                key={chip}
+                className="rounded-full border border-border bg-surface px-2 py-0.5 font-mono text-micro text-accent"
+              >
+                {chip}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <CommandList>
+          {error ? (
+            <p role="alert" className="py-8 text-center text-label text-red">
+              {error}
+            </p>
+          ) : (
+            <CommandEmpty>
+              {!searching
+                ? "Type to search. #room, @agent, memory: and kind: narrow it."
+                : pending
+                  ? "Searching…"
+                  : "Nothing matched."}
+            </CommandEmpty>
           )}
 
-          <CommandList>
-            {error ? (
-              <p role="alert" className="py-8 text-center text-label text-red">
-                {error}
-              </p>
-            ) : (
-              <CommandEmpty>
-                {!searching
-                  ? "Type to search. #room, @agent, memory: and kind: narrow it."
-                  : pending
-                    ? "Searching…"
-                    : "Nothing matched."}
-              </CommandEmpty>
-            )}
+          {results.length > 0 && (
+            <CommandGroup>
+              {results.map(hit => {
+                const Icon = ICONS[hit.type];
+                return (
+                  <CommandItem
+                    key={`${hit.type}:${hit.room}:${hit.id}`}
+                    value={`${hit.type}:${hit.room}:${hit.id}`}
+                    onSelect={() => {
+                      picked.current = true;
+                      dialogRef.current?.close();
+                      onPick(hit);
+                    }}
+                  >
+                    <Icon className="text-faint" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-text">{hit.title}</span>
+                      {(hit.subtitle || hit.snippet) && (
+                        <span className="block truncate text-micro text-muted-foreground">
+                          {[hit.subtitle, hit.snippet].filter(Boolean).join(" — ")}
+                        </span>
+                      )}
+                    </span>
+                    <span className="ml-auto flex-shrink-0 text-micro text-faint">
+                      {TYPE_LABELS[hit.type]}
+                    </span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          )}
+        </CommandList>
+      </Command>
 
-            {results.length > 0 && (
-              <CommandGroup>
-                {results.map(hit => {
-                  const Icon = ICONS[hit.type];
-                  return (
-                    <CommandItem
-                      key={`${hit.type}:${hit.room}:${hit.id}`}
-                      value={`${hit.type}:${hit.room}:${hit.id}`}
-                      onSelect={() => {
-                        picked.current = true;
-                        onPick(hit);
-                      }}
-                    >
-                      <Icon className="text-faint" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-text">{hit.title}</span>
-                        {(hit.subtitle || hit.snippet) && (
-                          <span className="block truncate text-micro text-muted-foreground">
-                            {[hit.subtitle, hit.snippet].filter(Boolean).join(" — ")}
-                          </span>
-                        )}
-                      </span>
-                      <span className="ml-auto flex-shrink-0 text-micro text-faint">
-                        {TYPE_LABELS[hit.type]}
-                      </span>
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            )}
-          </CommandList>
-        </Command>
-
-        <footer className="flex flex-shrink-0 items-center gap-3 border-t border-border px-4 py-2 text-micro text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <Kbd size="xs" tone="muted">↑↓</Kbd> navigate
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Kbd size="xs" tone="muted">↵</Kbd> open
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Kbd size="xs" tone="muted">Esc</Kbd> close
-          </span>
-          {pending && <span className="ml-auto">searching…</span>}
-        </footer>
-      </div>
-    </div>
+      <footer className="flex flex-shrink-0 items-center gap-3 border-t border-border px-4 py-2 text-micro text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">↑↓</Kbd> navigate
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">↵</Kbd> open
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">Esc</Kbd> close
+        </span>
+        {pending && <span className="ml-auto">searching…</span>}
+      </footer>
+    </ModalDialog>
   );
 }

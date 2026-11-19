@@ -762,10 +762,33 @@ def respond(
             typer.echo(json_module.dumps(replied.to_dict()))
         else:
             where = f"{room_name}/{task}" if task else room_name
-            typer.secho(f"  ⟫  @{handle} replied in {where}", fg=typer.colors.GREEN)
+            short = replied.id[:8] if isinstance(replied.id, str) else None
+            line = f"  ⟫  @{handle} replied in {where}" + (f" · {short}" if short else "")
+            typer.secho(line, fg=typer.colors.GREEN)
+            # A hub from before this names no one.
+            working = [str(h) for h in replied.working] if isinstance(replied.working, list) else []
+            for note in working_note(room_name, handle or "", short, working):
+                typer.echo(note)
     except KeyboardInterrupt:
         typer.echo("\n  [Stopped]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from e
+
+
+def working_note(room: str, sender: str, message: str | None, working: list[str]) -> list[str]:
+    """What ``respond`` says when members its reply mentions are mid-turn
+    (they see it when their turn ends), and the command that interrupts them."""
+    if not working or not message:
+        return []
+    names = " and ".join(f"@{h}" for h in working)
+    one = len(working) == 1
+    lines = [
+        f"     {names} {'is' if one else 'are'} working. To interrupt {'it' if one else 'them'}:"
+    ]
+    lines += [
+        f"       mycelium room interrupt {message} @{h} --room {room} --as {sender}"
+        for h in working
+    ]
+    return lines

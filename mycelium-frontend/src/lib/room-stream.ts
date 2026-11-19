@@ -104,6 +104,8 @@ export function streamEventOf(raw: Record<string, unknown>, room: string): Strea
 
   if (mtype !== "l9_exchange" && !CHAT_TYPES.has(mtype)) return null;
   if (pingOf(content)) return null;
+  // A reaction is drawn on the message it's on, never as a line of its own.
+  if ((l9.header as Record<string, unknown> | undefined)?.subkind === "reaction" || raw.reacts) return null;
 
   const notice = noticeOf(content);
   if (notice) {

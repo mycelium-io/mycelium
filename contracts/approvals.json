@@ -19,6 +19,10 @@
     "kind. A choose's `choices` may be empty: none of its options. An answer",
     "from before kinds carries its note as `reason`.",
     "",
+    "Any kind can be skipped instead: the person isn't answering this one. A",
+    "skipped answer carries `skipped: true` and none of its kind's fields, only",
+    "an optional note, and the agent carries on with its own judgment.",
+    "",
     "Bound by: fastapi-backend/app/services/approvals.py (the hub),",
     "mycelium-cli/src/mycelium/commands/ask.py (`mycelium ask`) and",
     "mycelium-frontend/src/lib/approvals.ts (the card). Asserted by",
@@ -45,8 +49,9 @@
   "decisions": ["approved", "declined"],
   "answer_fields": {
     "required": ["ask", "kind", "question", "for", "by", "at"],
-    "optional": ["decision", "choices", "chosen", "text"]
+    "optional": ["decision", "choices", "chosen", "text", "skipped"]
   },
+  "skipped_field": "skipped",
   "answer_kind_fields": {
     "approve": ["decision"],
     "choose": ["choices", "chosen"],

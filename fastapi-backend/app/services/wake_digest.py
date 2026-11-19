@@ -31,14 +31,18 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.services import assignments, message_format
 from app.services.agent_registry import norm_handle
 from app.services.persister import (
     _conversational_text,
+    parse_mentions,
     parse_recorded_at,
+    parse_silent_mentions,
+    reaction_of,
+    reaction_text,
     read_id,
     record_episode,
 )
@@ -65,6 +69,21 @@ NAME_CHARS = 32
 BOARD_NOTICES = message_format.NOTICE_SUBKINDS - {"floor", "upstream", "check"}
 #: How far back the transcript is read for the agent's last turn.
 SCAN = 2000
+#: The live states the ``Members`` block groups the room's agents by, in its
+#: order, each with its mark: the busy and the stuck first, since those are
+#: who a message crosses or nobody hears.
+MEMBER_STATES = {"working": "●", "blocked": "▲", "idle": "○", "done": "✓"}
+#: How many agents a state names before it counts the rest.
+MEMBERS_NAMED = 4
+#: How far back the wake log is read for what each working agent is on.
+WAKES_READ = 200
+#: How many silent mentions are listed, newest kept, before the rest are counted.
+SILENT_SHOWN = 5
+#: How much of the line a silent mention was in is quoted.
+SILENT_CHARS = 100
+#: How long without a wake before the digest says to read the skill again: by
+#: then the agent's session may have been compacted or started fresh.
+SKILL_AFTER = timedelta(hours=24)
 
 
 def _norm(handle: str | None) -> str:
@@ -148,7 +167,15 @@ def _where(room: str, episode: str | None) -> tuple[str, str] | None:
 
 
 def _place(room: str, where: tuple[str, str] | None) -> str:
-    return f'"{where[1]}" ({where[0]})' if where else f"the room ({room})"
+    return f'{_kind(where)}"{where[1]}" ({where[0]})' if where else f"the room ({room})"
+
+
+def _kind(where: tuple[str, str]) -> str:
+    """``thread `` for a thread started from a message, which no one holds, so
+    a wake doesn't read it as a task; nothing for a task's own thread."""
+    from app.services.threads import is_message_thread
+
+    return "thread " if is_message_thread(where[0]) else ""
 
 
 def _rows(room: str) -> list[tuple[str, dict, str]]:
@@ -301,6 +328,93 @@ def _upstream_notice(record: Any) -> dict[str, Any] | None:
     return data if data.get("subkind") == "upstream" else None
 
 
+def _on(room: str, wake: dict[str, Any] | None, now: datetime) -> str:
+    """What a working agent is on, from the last wake it was handed: who it's
+    answering and where, or the task it was given, and how long ago, since an
+    old wake can be one it has moved on from. Empty when it was handed none
+    (started by hand, say): nothing is guessed."""
+    if not wake:
+        return ""
+    when = age(parse_recorded_at(str(wake["at"])) if wake.get("at") else None, now)
+    place = _where(room, wake.get("episode"))
+    if wake.get("reason") in ("assigned", "handback") and (place or wake.get("task")):
+        key = place[0] if place else str(wake["task"])
+        title = (
+            place[1] if place else next((_title(k, c) for k, _m, c in _rows(room) if k == key), key)
+        )
+        return f'on "{_short(title, TITLE_CHARS)}", {when}'
+    where = f'in "{_short(place[1], TITLE_CHARS)}"' if place else "in the room"
+    sender = _norm(wake.get("from"))
+    doing = f"answering @{sender} {where}" if sender else f"woken {where}"
+    return f"{doing}, {when}"
+
+
+def members(room: str, handle: str, now: datetime | None = None) -> list[str]:
+    """The room's other agents and what each is doing now, as a small members
+    pane: grouped by the live state its host reports, in
+    :data:`MEMBER_STATES`' order. A working agent's row says what it's on
+    (:func:`_on`), a blocked one that it's waiting on its machine, and the idle
+    and the done share a line. Agents only, never the one being woken; one
+    that's away, or whose state no host reports, isn't listed, since there's
+    nothing true to say about it. Empty when none is."""
+    from app.services import room_channels, room_people, wake_log
+
+    me = _norm(handle)
+    now = now or datetime.now(UTC)
+    try:
+        agents = {_norm(a.get("handle")) for a in room_people.roster(room)["agents"]}
+        present = room_channels.manager.presence(room)
+    except Exception:  # a digest without the block is still a digest
+        return []
+    by_state: dict[str, list[str]] = {state: [] for state in MEMBER_STATES}
+    for name, info in present.items():
+        agent = _norm(name)
+        if agent in agents and agent != me and info.status in by_state:
+            by_state[info.status].append(agent)
+    total = sum(len(names) for names in by_state.values())
+    if not total:
+        return []
+    last_wake: dict[str, dict[str, Any]] = {}
+    if by_state["working"]:
+        try:
+            wakes = wake_log.read(room, limit=WAKES_READ)
+        except Exception:  # what it's on is extra; the state is the news
+            wakes = []
+        for wake in wakes:  # newest first: the first one per agent is its last
+            agent = _norm(wake.get("agent"))
+            if wake.get("outcome") in ("handed", "delivered"):
+                last_wake.setdefault(agent, wake)
+    for names in by_state.values():
+        names.sort()
+    # The notes line up after the longest name of the rows that carry one.
+    noted = by_state["working"][:MEMBERS_NAMED] + by_state["blocked"][:MEMBERS_NAMED]
+    width = max((len(n) for n in noted), default=0)
+    noun = "agent" if total == 1 else "agents"
+    lines = [f"Members ({total} other {noun})"]
+    for state, mark in MEMBER_STATES.items():
+        names = by_state[state]
+        if not names:
+            continue
+        label = f"  {mark} {state:<9} "
+        pad = " " * len(label)
+        rest = len(names) - MEMBERS_NAMED
+        if state in ("working", "blocked"):
+            for n, name in enumerate(names[:MEMBERS_NAMED]):
+                note = (
+                    _on(room, last_wake.get(name), now)
+                    if state == "working"
+                    else "waiting for input on its machine"
+                )
+                row = f"@{name:<{width}}  {note}".rstrip()
+                lines.append(f"{label if n == 0 else pad}{row}")
+            if rest > 0:
+                lines.append(f"{pad}and {rest} more")
+        else:
+            shown = "  ".join(f"@{n}" for n in names[:MEMBERS_NAMED])
+            lines.append(f"{label}{shown}{f'  +{rest}' if rest > 0 else ''}")
+    return lines
+
+
 def moves(room: str, handle: str, since: list[Any], now: datetime) -> list[str]:
     """Everything that moved in ``since``, newest first: the board's changes and
     the changes to the pull requests behind the agent's rows, in one list.
@@ -376,6 +490,27 @@ def _reply_thread(room: str, asked: list[Any]) -> str | None:
     return _thread_of(room, asked[-1])
 
 
+def _subagents_asked(room: str, asked: list[Any], me: str) -> list[str]:
+    """The names of ``me``'s subagents the messages in ``asked`` mention, first
+    named first. A subagent has no doorbell, so a mention of one asks its
+    parent (``asks``). Only ones ``room`` records as ``me``'s: a handle shaped
+    like one, with no record here, is nobody's."""
+    from app.services import subagents
+
+    found: dict[str, None] = {}
+    for record in asked:
+        text = record.content.get("content") if isinstance(record.content, dict) else None
+        for handle in parse_mentions(text) if isinstance(text, str) else []:
+            name = _norm(handle)
+            parent, sep, sub = name.partition(subagents.SEPARATOR)
+            if not (sep and parent == me and sub):
+                continue
+            recorded = subagents.record(room, name)
+            if recorded and recorded.get("parent") == me:
+                found.setdefault(sub, None)
+    return list(found)
+
+
 def _floor_line(room: str, thread: str | None, me: str) -> str | None:
     """Whose turn it is in ``thread``, when its floor doesn't admit ``me``."""
     if thread is None:
@@ -392,7 +527,7 @@ def reply_episode(room: str, wake: dict[str, Any], records: list[Any]) -> str | 
     """The thread ``wake``'s agent is told to reply in, for the room's "is
     responding in" line; ``None`` for the room itself (:func:`_reply_thread`)."""
     handle = str(wake.get("handle") or "")
-    _, _, since, asked = _since(handle, records, wake.get(READ_FROM))
+    _, _, since, asked = _since(room, handle, records, wake.get(READ_FROM))
     return _reply_thread(room, asked or [r for r, _ in _watched(room, handle, since)])
 
 
@@ -418,7 +553,7 @@ READ_FROM = "read_from"
 
 
 def _since(
-    handle: str, records: list[Any], read_from: int | None = None
+    room: str, handle: str, records: list[Any], read_from: int | None = None
 ) -> tuple[list[Any], int, list[Any], list[Any]]:
     """What ``handle`` hasn't seen: the window read, the index of its last
     message in it (-1 for none), the records it hasn't read, and the ones among
@@ -440,7 +575,7 @@ def _since(
     else:
         start = max(0, read_from - (len(records) - len(window)))
         since = [r for r in window[start:] if _norm(r.sender) != me]
-    asked = [r for r in since if asks(r.content, handle)]
+    asked = [r for r in since if asks(r.content, handle, room)]
     return window, last, since, asked
 
 
@@ -450,7 +585,8 @@ def coverage(wake: dict[str, Any], records: list[Any], room: str | None = None) 
     range its digest summarized (what its agent hadn't read, oldest to
     newest). Text stays in the transcript; the wake log keeps these."""
     handle = str(wake.get("handle") or "")
-    _, _, since, asked = _since(handle, records, wake.get(READ_FROM))
+    # Without a room, no mention is a recorded subagent's: only ids are kept.
+    _, _, since, asked = _since(room or "", handle, records, wake.get(READ_FROM))
     covered: dict[str, Any] = {"messages": [r.message_id for r in asked]}
     if room is not None:
         covered["watching"] = [r.message_id for r, _ in _watched(room, handle, since)]
@@ -468,12 +604,24 @@ def _named(where: tuple[str, str]) -> str:
 def _in(room: str, record: Any) -> str:
     """Where ``record`` was said, for a box's header."""
     where = _where(room, record_episode(record))
-    return f"in {_named(where)}" if where else "in the room"
+    return f"in {_kind(where)}{_named(where)}" if where else "in the room"
 
 
-def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
+def _ask_box(
+    room: str,
+    record: Any,
+    now: datetime,
+    limit: int,
+    *,
+    me: str = "",
+    interrupted: bool = False,
+) -> list[str]:
     """One message asking for the agent, as a box: who, when, where and its id,
-    then its text in full, or up to ``limit`` with the command that reads the rest."""
+    then its text in full, or up to ``limit`` with the command that reads the rest.
+
+    ``interrupted`` marks the message its sender interrupted the agent with
+    after sending it. The footer names anyone else it asks who is working, so
+    an agent knows they won't see it yet."""
     # What asked (``asks.py``) always has text, a tick included.
     text = str(record.content.get("content") or "").strip()
     rid = short_id(record)
@@ -481,8 +629,11 @@ def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
     header = (
         f"@{record.sender} · {age(parse_recorded_at(record.recorded_at), now)} · {place} · {rid}"
     )
+    if interrupted:
+        header += " · interrupted you just now"
+    working = _working_others(room, record, me)
     if len(text) <= limit:
-        return box(header, text)
+        return box(header, text, working)
     head = text[:limit]
     # On a line's end where there is one near the limit, so a table or a code
     # block isn't left with half a row.
@@ -494,7 +645,21 @@ def _ask_box(room: str, record: Any, now: datetime, limit: int) -> list[str]:
         f"cut at {len(head):,} of {len(text):,} characters · read it all: "
         f"mycelium room messages {room} --id {rid}"
     )
-    return box(header, head, footer)
+    return box(header, head, " · ".join(p for p in (working, footer) if p))
+
+
+def _working_others(room: str, record: Any, me: str) -> str:
+    """``also for @a, @b (working)``: the others a message asks who are
+    mid-turn, so won't see it until their turn ends. Empty when none are."""
+    from app.services.asks import asked
+    from app.services.room_channels import manager
+
+    others = [h for h in asked(record.content, room) if h != me and h != _norm(record.sender)]
+    working = [h for h in others if manager.herdr_status(room, h) == "working"]
+    if not working:
+        return ""
+    names = ", ".join(f"@{h}" for h in working)
+    return f"also for {names} (working)"
 
 
 def _shown(room: str, me: str) -> dict[str, datetime]:
@@ -515,6 +680,32 @@ def _shown(room: str, me: str) -> dict[str, datetime]:
             if str(mid) not in shown or when < shown[str(mid)]:
                 shown[str(mid)] = when
     return shown
+
+
+def _last_wake(room: str, me: str) -> datetime | None:
+    """When a wake was last handed over for ``me`` in ``room``; ``None`` if never.
+
+    Read before this wake is logged, so it is the one before."""
+    from app.services import wake_log
+
+    for w in wake_log.read(room, agent=me, limit=WAKES_READ):
+        if w.get("outcome") in ("handed", "delivered"):
+            return parse_recorded_at(str(w.get("at") or ""))
+    return None
+
+
+def _skill_line(room: str, me: str, now: datetime) -> str | None:
+    """A reminder to read the skill again, when the agent hasn't been woken
+    here for :data:`SKILL_AFTER`, or ever."""
+    last = _last_wake(room, me)
+    if last is not None and now - last < SKILL_AFTER:
+        return None
+    if last is None:
+        return "Skill:   this is your first wake here; run `mycelium skill print` to read how Mycelium works"
+    return (
+        f"Skill:   your last wake here was {age(last, now)}; "
+        "run `mycelium skill print` to re-read how Mycelium works"
+    )
 
 
 def _replied(room: str, window: list[Any], asked: list[Any], me: str) -> set[int]:
@@ -578,6 +769,104 @@ def _reply_lines(room: str, me: str, window: list[Any], asked: list[Any]) -> lis
     return lines
 
 
+def _silent_line(text: str, me: str) -> str:
+    """The line of ``text`` that names ``me`` with ``@~``, on one line and cut."""
+    for line in text.splitlines():
+        if me in (_norm(h) for h in parse_silent_mentions(line)):
+            return _short(line.strip(), SILENT_CHARS)
+    return _short(text.strip(), SILENT_CHARS)
+
+
+def _reactions_to(me: str, reacted: list[Any]) -> list[Any]:
+    """The emoji put on the agent's messages that are still on, newest first.
+
+    A reaction names its message's author with ``@~``; one taken off again
+    names nobody, and takes its earlier one with it."""
+    latest: dict[tuple[str, str, str], Any] = {}
+    for record in reacted:
+        header = record.content.get("l9", {}).get("header", {})
+        found = reaction_of(
+            record.subkind, header.get("message", {}).get("parents"), record.content
+        )
+        if found is not None:
+            latest[(found[0], found[1], _norm(record.sender))] = (record, found[2])
+    kept = [
+        record
+        for record, on in latest.values()
+        if on
+        and me in (_norm(h) for h in parse_silent_mentions(reaction_text(record.content) or ""))
+    ]
+    return list(reversed(kept))
+
+
+def _reaction_line(room: str, record: Any, window: list[Any], now: datetime) -> str:
+    """``@julia reacted 👍 · 2m · in the room, to: <the message's first line>``."""
+    header = record.content.get("l9", {}).get("header", {})
+    target, emoji, _ = reaction_of(
+        record.subkind, header.get("message", {}).get("parents"), record.content
+    ) or ("", "", True)
+    on = next((r for r in window if r.message_id == target), None)
+    when = age(parse_recorded_at(record.recorded_at), now)
+    line = f"         @{plain(record.sender)} reacted {emoji} · {when} · {_in(room, record)}"
+    if on is None:
+        return line
+    first = (_conversational_text(on.content) or "").strip().splitlines()
+    quote = _short(first[0], SILENT_CHARS) if first else ""
+    return f"{line}, to: {quote}   (mycelium room messages {room} --id {short_id(on)})"
+
+
+def _silent_lines(
+    room: str,
+    me: str,
+    said: list[Any],
+    asked: list[Any],
+    now: datetime,
+    *,
+    reacted: list[Any] | None = None,
+    window: list[Any] | None = None,
+) -> list[str]:
+    """Where the agent was named with ``@~`` since its last turn, newest first.
+
+    A silent mention never wakes anyone; it rides along in the next wake that
+    something else caused, so a member named for reference learns it was. A
+    message that also asks for it is already shown as an ask. An emoji put on
+    one of its messages names it the same way, and is shown as the reaction it
+    is."""
+    asking = {id(r) for r in asked}
+    named = []
+    for record in reversed(said):
+        text = _conversational_text(record.content)
+        if not text or id(record) in asking:
+            continue
+        if me in (_norm(h) for h in parse_silent_mentions(text)):
+            named.append(record)
+    reactions = _reactions_to(me, reacted or [])
+    named = sorted(
+        named + reactions, key=lambda r: parse_recorded_at(r.recorded_at) or now, reverse=True
+    )
+    if not named:
+        return []
+    times = "once" if len(named) == 1 else f"{len(named)} times"
+    lines = ["", f"Mentioned: you were mentioned silently (@~) {times} since your last turn:"]
+    is_reaction = {id(r) for r in reactions}
+    for record in named[:SILENT_SHOWN]:
+        if id(record) in is_reaction:
+            lines.append(_reaction_line(room, record, window or [], now))
+            continue
+        when = age(parse_recorded_at(record.recorded_at), now)
+        quote = _silent_line(str(record.content.get("content") or ""), me)
+        lines.append(
+            f"         @{plain(record.sender)} · {when} · {_in(room, record)}: {quote}"
+            f"   (mycelium room messages {room} --id {short_id(record)})"
+        )
+    if len(named) > SILENT_SHOWN:
+        lines.append(
+            f"         and {len(named) - SILENT_SHOWN} more: "
+            f'mycelium room search "mentions:{me}" --room {room}'
+        )
+    return lines
+
+
 def _other_asks(
     room: str, window: list[Any], asked: list[Any], me: str, now: datetime
 ) -> list[str]:
@@ -611,7 +900,7 @@ def _other_asks(
         size = len(str(record.content.get("content") or "").strip())
         if size <= budget:
             budget -= size
-            lines += ["", *_ask_box(room, record, now, OTHERS_CHARS)]
+            lines += ["", *_ask_box(room, record, now, OTHERS_CHARS, me=_norm(me))]
             continue
         rid = short_id(record)
         place = _in(room, record)
@@ -662,7 +951,13 @@ def build(
     handle = str(wake.get("handle") or "")
     me = _norm(handle)
     reason = wake.get("reason") or "mention"
-    window, last, since, asked = _since(handle, records, wake.get(READ_FROM))
+    window, last, since, asked = _since(room, handle, records, wake.get(READ_FROM))
+    # The message its sender interrupted it with after sending, when it was one.
+    upgraded = (
+        next((r for r in asked if r.message_id == wake.get("interrupted")), None)
+        if reason == "interrupt" and wake.get("interrupted")
+        else None
+    )
     # What its subscriptions caught, kept apart from what asks it. With no ask,
     # the newest of these is what it answers, so it sets where to reply.
     watched = _watched(room, handle, since)
@@ -710,6 +1005,16 @@ def build(
     elif reason == "turn":
         who = f"@{asked[-1].sender}" if asked and asked[-1].sender else sender
         why = f"it's your turn in {_place(room, where)}; {who} is asking"
+    elif reason == "interrupt" and upgraded is not None:
+        # A plain mention its sender turned into an interrupt after sending it:
+        # the message is older than the stop, which is why it says when.
+        sent = age(parse_recorded_at(upgraded.recorded_at), now)
+        why = (
+            f"{sender} interrupted you with a message they sent {sent} in "
+            f"{_place(room, where)}, while you were working, which stops your turn. "
+            "Read it and act on it, then carry on with what you were doing unless it "
+            "says otherwise."
+        )
     elif reason == "interrupt":
         # Its turn was probably stopped to deliver this, so say why: without it an
         # agent reads the stop as "the person stopped me" and waits. Worded as
@@ -733,6 +1038,14 @@ def build(
         count = f"{n} messages mention" if n > 1 else f"{sender} mentioned"
         why = f"{count} you in {_place(room, where)}{latest}"
     lines.append(f"Why:     {why}")
+    # A subagent has no doorbell, so what was said to one woke its parent.
+    if subs := _subagents_asked(room, asked, me):
+        named = ", ".join(f"@{me}:{s}" for s in subs)
+        noun = "your subagent" if len(subs) == 1 else "your subagents"
+        lines.append(
+            f"For:     {noun} {named}. Answer it yourself, pass it on in its next "
+            f"step, or have it check in with `mycelium await --as {me}:{subs[0]}`."
+        )
     # A thread whose floor is held for someone else: it was named, but the
     # conductor (or whoever holds it) asks in turn, so its writes wait till then.
     if (turn := _floor_line(room, here, me)) is not None:
@@ -754,6 +1067,9 @@ def build(
     if elsewhere:
         rest.append(f"{elsewhere} elsewhere")
     lines.append(f"Since:   {first}: " + ", ".join(rest))
+    # A wake ``await`` prints is a turn the agent is already taking, not a wake.
+    if not awaited and (skill := _skill_line(room, me, now)) is not None:
+        lines.append(skill)
     # Someone else pausing one of its schedules is said here, once, rather than
     # with a message that woke it (the herdr-wakes route marks it said).
     from app.services import schedules
@@ -769,11 +1085,16 @@ def build(
         found, schedule_change = _schedule_lines(room, str(wake["title"]))
         lines += ["", *found]
 
-    # The message that woke it, whole, then what to do about it.
+    # The message that woke it, whole, then what to do about it. An interrupt
+    # made with a message already sent shows that message, whichever came last.
     if asked:
-        lines += ["", *_ask_box(room, asked[-1], now, LATEST_CHARS)]
+        woke = upgraded if upgraded is not None else asked[-1]
+        lines += [
+            "",
+            *_ask_box(room, woke, now, LATEST_CHARS, me=me, interrupted=upgraded is not None),
+        ]
     elif answering and _conversational_text(answering[-1].content):
-        lines += ["", *_ask_box(room, answering[-1], now, LATEST_CHARS)]
+        lines += ["", *_ask_box(room, answering[-1], now, LATEST_CHARS, me=me)]
     lines.append("")
     if reason == "assigned" and wake.get("key"):
         key = wake["key"]
@@ -796,10 +1117,13 @@ def build(
         # capped and stops at the previous ask).
         noun = "was" if more == 1 else "were"
         extra = f"; {more} more {noun} said since your last turn" if more > 0 else ""
-        # ``await`` comes first: it is what marks these read and says the agent
-        # is on it. Then a reply where each unanswered ask was made, the one
-        # that woke it first: an older ask can be a flow's turn in another
-        # thread, with a floor and a deadline there.
+        # ``await`` comes first: it marks these read, and it returns anything
+        # said between the wake and now, which this note can't show. Agents
+        # read the step as an acknowledgement and throw its output away, so
+        # the step says the output is the point. Then a reply where each
+        # unanswered ask was made, the one that woke it first: an older ask
+        # can be a flow's turn in another thread, with a floor and a deadline
+        # there.
         replies = _reply_lines(room, me, window, asked)
         # Handed over by ``await``, these are already read: the reply is all
         # that's left to do, and it is the one step.
@@ -807,7 +1131,7 @@ def build(
         if not awaited:
             lines += [
                 f"Next:    1. mycelium await --room {room} --handle {me} --json --timeout 5",
-                f"            (marks these read and says you're on it{extra})",
+                f"            (marks messages as read and shows any messages that came in since{extra})",
             ]
         # An agent asked in a task's thread tends to answer in the main
         # channel, weighing a hint against its own sense of where a topic
@@ -830,6 +1154,10 @@ def build(
     # The others asking for it: whole while they fit, newest first, then named.
     lines += _other_asks(room, window, asked, me, now)
     lines += _watching_lines(room, me, watched, now)
+    # What ``await`` prints hands these messages over itself.
+    if not awaited:
+        reacted = [r for r in since if id(r) in after_turn and reaction_text(r.content)]
+        lines += _silent_lines(room, me, said, asked, now, reacted=reacted, window=window)
 
     mine, tally = board(room, handle, now)
     lines.append("")
@@ -862,6 +1190,10 @@ def build(
         if pointers:
             lines.append(f"Agreed:  {pointers[0]}")
             lines.extend(f"         {p}" for p in pointers[1:])
+    # Who else is busy right now and on what, so it doesn't act across them:
+    # a small members pane, set off on its own.
+    if pane := members(room, me, now):
+        lines += ["", *pane, ""]
 
     # One line, so an agent that needs more than this digest holds knows the
     # room's whole history can be asked rather than paged through.

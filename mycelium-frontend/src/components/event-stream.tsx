@@ -9,7 +9,15 @@ import {
   fetchMessages,
   logFetchError,
 } from "@/lib/api";
-import { useMessageSearch, useRoomSettings, type ThreadOwner } from "@/lib/room-data";
+import {
+  useCachedChannelPage,
+  useChannelPage,
+  useMessageSearch,
+  useMessageThreadsByEpisode,
+  useRoomMemories,
+  useRoomSettings,
+  type ThreadOwner,
+} from "@/lib/room-data";
 import { boardMovesInChat } from "@/lib/room-settings";
 import {
   NOTICE_TYPE,
@@ -19,7 +27,7 @@ import {
   threadShortId,
   upstreamInChat,
 } from "@/lib/threads";
-import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { CHAT_TYPES, parseEvent, withReaction, type Event } from "@/lib/room-events";
 import { foldAnswers } from "@/lib/approvals";
 import { conductorLineOf, runProgress, type RunProgress } from "@/lib/conductor-line";
 import {
@@ -47,6 +55,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JumpToLatest } from "@/components/jump-to-latest";
 import { useFollowLatest } from "@/components/messages/use-follow-latest";
+import { useBatchedRows } from "@/components/messages/use-batched-rows";
 import {
   FeedRow,
   RAISE_UP_TYPES,
@@ -55,6 +64,7 @@ import {
   nameActivity,
   useFeedContext,
 } from "@/components/messages/feed-row";
+import { INTERRUPTED_FRAME, type Interrupted } from "@/components/messages/mention-wakes";
 import { Loader2, MessageSquare, MessagesSquare } from "lucide-react";
 import { RespondingNames } from "@/components/agent-opener";
 import { Shimmer, SporeMark } from "@/components/responding-mark";
@@ -373,6 +383,31 @@ const CHANNEL_PAGE = 200;
  *  amendment already folded into a message on screen would otherwise unfold
  *  itself into a second copy. An event with no id is kept — there is nothing to
  *  compare it by, and dropping it would lose a row to save a duplicate. */
+/** The channel's newest page: its events, and whether the room has more before them. */
+interface ChannelPage {
+  page: Event[];
+  more: boolean;
+}
+
+/** Where reading back starts from, after `page`. */
+function readBackFrom({ page, more }: ChannelPage) {
+  const cursor = oldestAt(page);
+  return { cursor, exhausted: !more || cursor === null, loading: false };
+}
+
+const byTime = (a: Event, b: Event) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0);
+
+/**
+ * A fresh read of the newest page, over what was drawn from the cache: the
+ * page's copy of each event it has, and everything else kept (older pages read
+ * back, and what arrived live since).
+ */
+function withFresh(existing: Event[], page: Event[]): Event[] {
+  const keyOf = (e: Event) => e.messageId ?? e.id;
+  const fresh = new Set(page.map(keyOf));
+  return [...existing.filter((e) => !fresh.has(keyOf(e))), ...page].sort(byTime);
+}
+
 function mergePage(existing: Event[], page: Event[]): Event[] {
   const seen = new Set(existing.map((e) => e.messageId).filter(Boolean));
   const fresh = page.filter((e) => !e.messageId || !seen.has(e.messageId));
@@ -451,6 +486,20 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
+/** Fold a live reaction into the message it's on. The hub folds a read; live,
+ *  the reaction arrives as a message of its own and is never a row. Its message
+ *  is matched by its envelope id when it arrived live, or by its read id when
+ *  it was read from history. One whose message isn't here is dropped. */
+export function foldReaction(events: Event[], reaction: Event): Event[] {
+  const r = reaction.reacts;
+  if (!r) return events;
+  return events.map((e) =>
+    (r.messageId !== null && e.messageId === r.messageId) || (e.wireId !== null && e.wireId === r.wireId)
+      ? { ...e, reactions: withReaction(e.reactions, r.emoji, reaction.sender, r.on) }
+      : e,
+  );
+}
+
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
@@ -474,8 +523,9 @@ interface Props {
 }
 
 export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onOpenMemory, onOpenThread, focusMessageId = null, onFocusConsumed, openFind = 0, onCountChange }: Props) {
-  const [events, setEvents] = useState<Event[]>([]);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  // A room opened again starts from the page it had, in this first render.
+  const seed = useCachedChannelPage<ChannelPage>(roomName);
+  const [events, setEvents] = useState<Event[]>(() => (seed ? [...seed.page].sort(byTime) : []));
   const connected = useRoomConnected(roomName);
 
   // Surface connection state to status bar; one home for the signal.
@@ -497,6 +547,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // off the room's shared reads, so none of it costs a request of its own.
   const feed = useFeedContext(roomName, { onOpenThread, onOpenMemory });
   const { threads, rowNames, refreshFlags } = feed;
+  const messageThreads = useMessageThreadsByEpisode(roomName);
+  const { refresh: refreshMemories } = useRoomMemories(roomName);
   // Which board moves the room shows in its chat (a room setting).
   const { settings: roomSettings } = useRoomSettings(roomName);
   const boardMoves = useMemo(() => boardMovesInChat(roomSettings), [roomSettings]);
@@ -506,9 +558,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // whether both reads have run out, and whether one is in flight. Refs rather
   // than state because the scroll handler reads them on every wheel tick and
   // must not be re-bound to see the current values.
-  const older = useRef({ cursor: null as string | null, exhausted: false, loading: false });
+  const [seedBack] = useState(() => (seed ? readBackFrom(seed) : null));
+  const older = useRef(seedBack ?? { cursor: null as string | null, exhausted: false, loading: false });
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [reachedStart, setReachedStart] = useState(false);
+  const [reachedStart, setReachedStart] = useState(seedBack?.exhausted ?? false);
 
   // Two reads, one feed.
   //
@@ -542,26 +595,24 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     [roomName],
   );
 
+  // The newest page comes from the app's cache (`useChannelPage`), so a room
+  // opened again draws what it had at once, then takes the fresh page when it
+  // lands. Reading back starts from the first page drawn, whichever read it was.
+  const { loaded: historyLoaded, error: newestError } = useChannelPage(
+    roomName,
+    () => readPage(null),
+    (page, first) => {
+      const sorted = [...page.page].sort(byTime);
+      setEvents((prev) => (prev.length === 0 ? sorted : withFresh(prev, sorted)));
+      if (!first) return;
+      older.current = readBackFrom(page);
+      setReachedStart(older.current.exhausted);
+    },
+    seed,
+  );
   useEffect(() => {
-    let live = true;
-    older.current = { cursor: null, exhausted: false, loading: false };
-    readPage(null)
-      .then(({ page, more }) => {
-        if (!live) return;
-        older.current.cursor = oldestAt(page);
-        older.current.exhausted = !more || older.current.cursor === null;
-        setReachedStart(older.current.exhausted);
-        setEvents([...page].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)));
-        setHistoryLoaded(true);
-      })
-      .catch((err) => {
-        logFetchError("fetchMessages")(err);
-        if (live) setHistoryLoaded(true);
-      });
-    return () => {
-      live = false;
-    };
-  }, [roomName, readPage]);
+    if (newestError) logFetchError("fetchMessages")(newestError);
+  }, [newestError]);
 
   // The page before the one on screen, fetched when the reader nears the top.
   //
@@ -597,6 +648,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // handle's next message ends it too, whether or not the ending frame arrived;
   // and an entry nobody has heard from within its TTL expires on the tick below.
   const [responding, setResponding] = useState<Responding[]>([]);
+  // Interrupts made with sent messages since the history was read, by message id.
+  const [liveInterrupts, setLiveInterrupts] = useState<ReadonlyMap<string, Interrupted[]>>(() => new Map());
   useEffect(() => {
     if (responding.length === 0) return;
     const tick = setInterval(() => setResponding((prev) => expireActivity(prev, Date.now())), 1_000);
@@ -674,6 +727,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     }
     // A schedule ran or changed: the Schedules tab's business, never a line here.
     if (msg.type === "schedule_changed") return;
+    // A sender interrupted someone with a message already sent: a ⚡ on that
+    // message, never a line of its own.
+    if (msg.type === INTERRUPTED_FRAME) {
+      const id = String(msg.message_id ?? "");
+      const mark = { by: String(msg.by ?? ""), handle: String(msg.handle ?? ""), at: String(msg.at ?? "") };
+      if (id) setLiveInterrupts((prev) => new Map(prev).set(id, [...(prev.get(id) ?? []), mark]));
+      return;
+    }
     const event = parseEvent(msg);
     // The verifier raised a line or someone dismissed one: re-read the flags.
     if (isVerifierCheck(event)) {
@@ -681,7 +742,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       return;
     }
     setResponding((prev) => settleActivity(prev, event.sender));
+    // A reply in a thread started from a message: the line under that message
+    // says so, and it reads what's been said off the room's memory list.
+    if (event.type === PING_TYPE && event.thread && messageThreads.has(event.thread)) {
+      refreshMemories();
+    }
     setEvents((prev) => {
+      if (event.reacts) return foldReaction(prev, event);
       if (event.amends) return foldAmendment(prev, event);
       // A catch-up may have read it from the hub before its live frame landed.
       if (event.messageId !== null && prev.some((x) => x.messageId === event.messageId)) return prev;
@@ -730,7 +797,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return out;
   }, [events, roomName]);
 
-  const inChannel = useMemo(
+  // A ping from a thread started from a message draws nothing in the chat,
+  // where the line under that message says it; on the rail it moves the
+  // thread up, as a reply in a task's thread moves the task.
+  const onTimeline = useMemo(
     () =>
       events.filter(
         (e) =>
@@ -740,6 +810,28 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       ),
     [events, roomName],
   );
+  const inChannel = useMemo(
+    () => onTimeline.filter((e) => !(e.type === PING_TYPE && e.thread && messageThreads.has(e.thread))),
+    [onTimeline, messageThreads],
+  );
+
+  // Who each message's sender interrupted with it, for the ⚡ by its time: what
+  // the history read carries on the message, and what arrived live since.
+  const interruptedByMessage = useMemo(() => {
+    const out = new Map<string, Interrupted[]>();
+    const add = (id: string, mark: Interrupted) => {
+      const seen = out.get(id) ?? [];
+      if (!seen.some((m) => m.handle === mark.handle)) out.set(id, [...seen, mark]);
+    };
+    for (const e of events) {
+      const marks = e.wire?.interrupted;
+      if (!e.messageId || !Array.isArray(marks)) continue;
+      for (const m of marks as Interrupted[]) add(e.messageId, m);
+    }
+    for (const [id, marks] of liveInterrupts) for (const m of marks) add(id, m);
+    return out;
+  }, [events, liveInterrupts]);
+  const feedCtx = useMemo(() => ({ ...feed, interruptedByMessage }), [feed, interruptedByMessage]);
 
   const candidates = useMemo(
     () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e, boardMoves)),
@@ -815,7 +907,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // per burst. Sorted by what moved last, which is the order a reader wants.
   const activity = useMemo<ActivityItem[]>(() => {
     const bySubject = new Map<string, Event[]>();
-    for (const event of inChannel) {
+    for (const event of onTimeline) {
       if (!isActivity(event)) continue;
       const subject = subjectOf(event, threads);
       if (!subject) continue;
@@ -826,31 +918,38 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return [...bySubject.entries()]
       .map(([subject, members]) => {
         const latest = members[members.length - 1];
-        const { title, episode } = nameActivity(subject, members, threads, rowNames);
+        // A thread started from a message is a conversation, not a task: it
+        // has no board state, and opening it opens the thread.
+        const started = members.map((m) => m.thread && messageThreads.get(m.thread)).find(Boolean);
+        const named = nameActivity(subject, members, threads, rowNames);
+        const title = started ? started.title : named.title;
+        const episode = started ? started.episode : named.episode;
         // The last board move the task made is the state it is standing in —
         // the one thing about a row worth seeing without opening it.
         const standing = [...members]
           .reverse()
           .find((m) => m.type === NOTICE_TYPE)?.raw.subkind as string | undefined;
+        const ownRow = !started && !subject.startsWith("urn:");
         return {
           subject,
           title,
           episode,
+          thread: Boolean(started),
           // A thread nobody's row is bound to has no details to open — the
           // conversation is the whole of what the room knows about it.
-          memoryKey: subject.startsWith("urn:") ? null : subject,
+          memoryKey: ownRow ? subject : null,
           actors: actorsOf(members),
           lastActor: actorOf(latest),
           time: latest.time,
-          standing: standing ?? null,
-          note: subject.startsWith("urn:") ? null : (rowNames.get(subject)?.note ?? null),
+          standing: started ? null : (standing ?? null),
+          note: ownRow ? (rowNames.get(subject)?.note ?? null) : null,
           updates: members.map((member) => {
             const { label, detail } = activityLine(member);
             return {
               id: member.id,
               time: member.time,
               at: Date.parse(member.at) || 0,
-              label,
+              label: started && member.type === PING_TYPE ? "Reply" : label,
               detail,
               subkind: member.type === NOTICE_TYPE ? ((member.raw.subkind as string) || "filed") : null,
             };
@@ -865,7 +964,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         const stalled = (x: { standing: string | null }) => (x.standing === "blocked" ? 0 : 1);
         return stalled(a) - stalled(b) || b.at - a.at;
       });
-  }, [inChannel, threads, rowNames]);
+  }, [onTimeline, threads, rowNames, messageThreads]);
 
   // Arriving from search: mark the named message and scroll it into sight once
   // history has landed. The mark outlives the request that carried it — a
@@ -1060,12 +1159,21 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // here once its thread prose and churn are placed elsewhere). A live message
   // must not pull the view off a hit the reader stepped to, or off a message
   // they arrived at from search; what they just sent takes them back down.
+  // The newest rows draw first, the rest a batch a frame. A find or a message
+  // to stand on needs every row, so those draw them all.
+  const { drawn, skipped, done: allDrawn } = useBatchedRows(visible, {
+    ready: historyLoaded,
+    all: Boolean(highlight || (findOpen && query.trim())),
+  });
+
   const newestPending = pending[pending.length - 1]?.id ?? null;
-  const rowIds = useMemo(() => (historyLoaded ? visible.map((e) => e.id) : null), [historyLoaded, visible]);
+  const rowIds = useMemo(() => (historyLoaded ? drawn.map((e) => e.id) : null), [historyLoaded, drawn]);
   const follow = useFollowLatest(scroller, {
     rows: rowIds,
     holding: Boolean(highlight || activeId),
-    onNearTop: loadOlder,
+    // While rows are still drawing in, the view can look short of full; it
+    // isn't, so reading back waits until every row it has is drawn.
+    onNearTop: allDrawn ? loadOlder : undefined,
     sent: newestPending,
     resetKey: roomName,
   });
@@ -1165,14 +1273,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
           <div className="py-3 text-center text-micro text-muted-foreground">Beginning of the room</div>
         ) : null}
         <NowProvider>
-        {visible.map((ev, idx) => {
+        {drawn.map((ev, idx) => {
               const marked = highlight !== null && ev.messageId === highlight;
               return (
                 <FeedRow
                   key={ev.id}
                   ev={ev}
-                  prev={visible[idx - 1]}
-                  ctx={feed}
+                  prev={visible[skipped + idx - 1]}
+                  ctx={feedCtx}
                   pingLine={pingLines.get(ev.id)}
                   run={runs.get(runEpisode(ev) ?? "")}
                   marked={marked}

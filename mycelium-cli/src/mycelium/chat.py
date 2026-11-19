@@ -52,7 +52,9 @@ def post(
     from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType, MessageRead
     from mycelium_backend_client.types import UNSET
 
-    with _typed_client(config) as client:
+    # As the sender, so an agent's pane posts only as its agent or one of its
+    # subagents, as `respond` does (``caller.credential``).
+    with _typed_client(config, handle=sender_handle) as client:
         body = MessageCreate(
             sender_handle=sender_handle,
             message_type=MessageCreateMessageType.BROADCAST,
@@ -197,6 +199,20 @@ def plain(text: str) -> str:
     return " ".join(_CONTROL.sub("", text).split())
 
 
+def reactions_line(reactions: Any) -> str:
+    """The emoji on a message and who put each on: ``👍 @julia @lead   🎉 @lead``.
+
+    Empty when there are none. Takes the read's ``reactions`` as the typed client
+    gives them (objects) or as plain JSON (dicts)."""
+    parts = []
+    for r in reactions or []:
+        emoji = r.get("emoji") if isinstance(r, dict) else getattr(r, "emoji", None)
+        by = r.get("by") if isinstance(r, dict) else getattr(r, "by", None)
+        if emoji and by:
+            parts.append(" ".join([emoji, *(f"@{h}" for h in by)]))
+    return "   ".join(parts)
+
+
 def box(header: str, text: str, footer: str = "") -> list[str]:
     """``text`` as a box: the header, each line behind a ``│``, then the close.
 
@@ -328,6 +344,9 @@ def read(
             header += " · edited"
         lines = box(header, text)
         typer.echo("\n".join(f"  {line}" for line in lines))
+        reacted = reactions_line(getattr(m, "reactions", None))
+        if reacted:
+            typer.echo(f"    {reacted}")
         for line in checks.get(str(m.id), []):
             typer.secho(f"    ⚠ verifier: {line}", fg=typer.colors.YELLOW)
         typer.echo()

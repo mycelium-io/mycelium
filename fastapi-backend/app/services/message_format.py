@@ -59,13 +59,22 @@ EXCHANGE_MOVE_SUBKINDS = frozenset({"counter", "accept", "reject"})
 # (:func:`app.services.persister.collapse_amendments`).
 AMEND_SUBKIND = "amend"
 
+# An ``exchange:reaction`` puts an emoji on an earlier message, or takes one off.
+# Its ``message.parents`` carries the id of the message it reacts to, and its
+# content carries ``reaction: {emoji, on}``. Its text silently mentions the
+# message's author (``@~author 👍``), so the author reads it on their next wake
+# and nobody is woken. The read path folds every reaction into the message it is
+# on (:func:`app.services.persister.collapse_reactions`).
+REACTION_SUBKIND = "reaction"
+
 # Kind -> allowed subkinds. An empty/None subkind is always valid. A failed
 # negotiation commits as ``rejected``.
 VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
     Kind.knowledge: frozenset({"query", "distillation", "extraction", "feedback"}),
     Kind.commit: frozenset({"converged", "resolved", "rejected"}),
     Kind.intent: frozenset({"coordinator-assignment", "mission"}),
-    Kind.exchange: frozenset({"team-formation", AMEND_SUBKIND}) | EXCHANGE_MOVE_SUBKINDS,
+    Kind.exchange: frozenset({"team-formation", AMEND_SUBKIND, REACTION_SUBKIND})
+    | EXCHANGE_MOVE_SUBKINDS,
     Kind.contingency: frozenset({"negotiation"}),
 }
 

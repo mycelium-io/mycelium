@@ -1,9 +1,8 @@
 # Run It on a Server
 
 Run Mycelium with the CLI on Linux, on a server your team shares or anywhere
-you'd rather run the hub in Docker. On a Mac the installer below installs
-[the desktop app](#desktop) instead, which needs no Docker. Pass `--docker` to get
-this path on a Mac.
+you'd rather run the hub in Docker. On an Apple silicon Mac the installer
+below installs [the desktop app](#desktop) instead, which needs no Docker.
 
 This page sets up a hub on one machine. To let teammates on other machines use
 it, continue with [Hub & Spoke](#hub-and-spoke).
@@ -38,8 +37,9 @@ an older one, the installer fetches 3.12 for the CLI instead of failing.
 The installer puts the `mycelium` CLI on your PATH. `mycelium install` then
 sets up its config in `~/.mycelium/` and starts the hub. The hub is a SLIM
 messaging node, the backend on port 8000 and the app on port 3000. Along the
-way it asks for a model provider and API key. Rooms and memory work without
-one, and you can add one later. See [Models](#models).
+way it asks for a model provider and API key. Only the hub's engines use the
+model. Rooms, tasks, memory and your own agents work without one, and you can
+add one later. See [Models](#models).
 
 To manage the hub after that:
 
@@ -101,8 +101,7 @@ mycelium board new "Ship passkey login" --assign @planner
 mycelium board                       # what needs you right now
 ```
 
-See [board](#board) for the rest. To put a whole team of agents on one task,
-see [Swarm](#swarm).
+See [board](#board) for the rest.
 
 ## Which command when
 

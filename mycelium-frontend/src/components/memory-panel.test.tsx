@@ -30,7 +30,8 @@ vi.mock("@/lib/api", () => ({
   get MEMORIES_MAX() {
     return limits.max;
   },
-  fetchMemories: vi.fn(),
+  fetchMemorySummaries: vi.fn(),
+  fetchMemory: vi.fn(),
   searchMemories: vi.fn(),
   deleteMemory: vi.fn(),
 }));
@@ -40,9 +41,18 @@ vi.mock("@/lib/clipboard", () => ({
   absoluteUrl: (path: string) => `http://app${path}`,
 }));
 
-import { deleteMemory, fetchMemories } from "@/lib/api";
+import { deleteMemory, fetchMemory, fetchMemorySummaries, type Memory } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { memoryEditPending } from "@/lib/memory-edit-request";
+import { summaryOf } from "@/test/memory-summary";
+
+/** The room holds `memories`: the list names them, and each is read by its key. */
+const listed = (memories: Omit<Memory, "file_path">[]) => {
+  vi.mocked(fetchMemorySummaries).mockResolvedValue(memories.map(summaryOf));
+  vi.mocked(fetchMemory).mockImplementation(
+    async (_room, key) => (memories.find((m) => m.key === key) as Memory | undefined) ?? null,
+  );
+};
 
 const treeMemory = {
   key: "decisions/ship-it",
@@ -66,14 +76,14 @@ describe("<MemoryPanel /> count", () => {
   });
 
   it("counts every memory it holds", async () => {
-    vi.mocked(fetchMemories).mockResolvedValue([treeMemory, { ...treeMemory, key: "agents/scout" }]);
+    listed([treeMemory, { ...treeMemory, key: "agents/scout" }]);
     renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
     expect(await screen.findByText(/^2 memories/)).toBeInTheDocument();
   });
 
   it("says it holds only the newest when the room reaches the cap", async () => {
     limits.max = 2;
-    vi.mocked(fetchMemories).mockResolvedValue([treeMemory, { ...treeMemory, key: "agents/scout" }]);
+    listed([treeMemory, { ...treeMemory, key: "agents/scout" }]);
     renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
     expect(await screen.findByText(/^Newest 2 memories \(↵ searches them all\)/)).toBeInTheDocument();
   });
@@ -81,7 +91,7 @@ describe("<MemoryPanel /> count", () => {
 
 describe("<MemoryPanel /> opening a memory", () => {
   beforeEach(() => {
-    vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
+    listed([treeMemory]);
   });
 
   it("opens a picked memory in the room's tabs; the panel only lists", async () => {
@@ -92,6 +102,14 @@ describe("<MemoryPanel /> opening a memory", () => {
     fireEvent.click(await screen.findByText("ship-it.md"));
 
     expect(onOpenMemory).toHaveBeenCalledWith("decisions/ship-it");
+  });
+
+  it("skips drawing a row off screen, holding its 22px so the scrollbar stays put", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
+    await expandDecisions();
+    const row = (await screen.findByText("ship-it.md")).closest<HTMLElement>("[style]")!;
+    expect(row.style.height).toBe("22px");
+    expect(row).toHaveClass("[content-visibility:auto]", "[contain-intrinsic-block-size:auto_22px]");
   });
 
   it("opens a memory arrived at from search, and says it's done", async () => {
@@ -136,7 +154,7 @@ describe("<MemoryPanel /> opening a memory", () => {
 describe("<MemoryPanel /> preview hovercard", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
+    listed([treeMemory]);
   });
 
   afterEach(() => {
@@ -200,7 +218,7 @@ describe("<MemoryPanel /> preview hovercard", () => {
 
 describe("<MemoryPanel /> right-click", () => {
   beforeEach(() => {
-    vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
+    listed([treeMemory]);
     vi.mocked(copyText).mockClear();
     vi.mocked(deleteMemory).mockReset().mockResolvedValue(undefined);
   });

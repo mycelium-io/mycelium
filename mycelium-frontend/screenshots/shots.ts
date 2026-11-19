@@ -174,20 +174,6 @@ const BASE: Shot[] = [
     caption: "A flow at the top of a task's thread: the steps, the one it's on, and who has the floor.",
   },
   {
-    id: "swarm-dialog",
-    route: "/room/checkout",
-    theme: "dark",
-    viewport: "desktop",
-    steps: ["Board"],
-    actions: [
-      'click:css=button:has-text("Swarm")',
-      'click:[role="dialog"] textarea',
-      "typekeys:Write the release notes for the spring sale",
-      "sleep:400",
-    ],
-    caption: "Starting a swarm: how many agents, and where they run.",
-  },
-  {
     id: "machines",
     route: "/machines",
     theme: "dark",

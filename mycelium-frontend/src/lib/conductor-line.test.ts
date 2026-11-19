@@ -158,19 +158,19 @@ describe("a concord or accord step, as a reader follows it", () => {
   });
 });
 
-const turn = { event: "turn", protocol: "swarm", step: "check-in", to: "agent-2", turn: 1, cap: 4 };
+const turn = { event: "turn", protocol: "fan-out", step: "gather", to: "agent-2", turn: 1, cap: 6 };
 
 describe("conductorLineOf", () => {
   it("reads the line a reload carries in the message's metadata", () => {
-    expect(conductorLineOf({ content: "swarm · check-in · …", metadata: { conductor: turn } })).toEqual(
+    expect(conductorLineOf({ content: "fan-out · gather · …", metadata: { conductor: turn } })).toEqual(
       turn,
     );
   });
 
   it("reads the line the live stream carries in the envelope's payload", () => {
     const content = JSON.stringify({
-      content: "swarm · check-in · …",
-      l9: { payload: { type: "message", data: { step: "check-in", conductor: turn } } },
+      content: "fan-out · gather · …",
+      l9: { payload: { type: "message", data: { step: "gather", conductor: turn } } },
     });
     expect(conductorLineOf({ content })).toEqual(turn);
   });
@@ -188,19 +188,19 @@ describe("describeConductorLine", () => {
     expect(
       describeConductorLine({
         event: "open",
-        protocol: "swarm",
+        protocol: "fan-out",
         roles: { lead: "agent-1" },
         members: ["agent-2", "agent-3"],
         steps: [],
       }),
-    ).toBe("Running swarm · agent-1 as lead · agent-2, agent-3");
-    expect(describeConductorLine(turn as never)).toBe("check-in → agent-2 · turn 1 of 4");
+    ).toBe("Running fan-out · agent-1 as lead · agent-2, agent-3");
+    expect(describeConductorLine(turn as never)).toBe("gather → agent-2 · turn 1 of 6");
     expect(
       describeConductorLine({ event: "edge", step: "review", who: "sec", stance: "reject", next: "propose" }),
     ).toBe("review: sec blocked, on to propose");
     expect(
-      describeConductorLine({ event: "close", protocol: "swarm", outcome: "resolved", steps: 2, reason: "" }),
-    ).toBe("swarm done · 2 steps");
+      describeConductorLine({ event: "close", protocol: "fan-out", outcome: "resolved", steps: 2, reason: "" }),
+    ).toBe("fan-out done · 2 steps");
   });
 });
 

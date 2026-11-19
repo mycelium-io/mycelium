@@ -46,10 +46,10 @@ const KINDS: { kind: MemberKind; icon: LucideIcon; label: string; hint: string; 
   {
     kind: "running",
     icon: Play,
-    label: "Running agent",
-    hint: "Already running",
+    label: "Existing agent",
+    hint: "Running or past",
     about:
-      "An agent already running on your machine that isn't in a room yet. It keeps its session and joins this room as a member.",
+      "Bring in an agent that's running now, or pick up an earlier session where it left off.",
   },
   {
     kind: "engine",
@@ -277,9 +277,7 @@ function EngineMember({ roomName, onAdded }: { roomName: string; onAdded: (handl
             setHandle(v);
             setTouched(true);
             setError(null);
-          }}
-          hint={`Summon it in a message with @${trimmed || engine}.`}
-        />
+          }}        />
 
         {noted && (
           <InstructionsEditor
@@ -350,9 +348,7 @@ function A2aMember({ roomName, onAdded }: { roomName: string; onAdded: (handle: 
           onChange={(v) => {
             setHandle(v);
             setError(null);
-          }}
-          hint="How the room mentions it. The hub calls the service each time."
-        />
+          }}        />
         <div className="space-y-1.5">
           <label htmlFor="a2a-card" className="block text-micro font-medium text-muted-foreground">
             Agent card URL
@@ -510,9 +506,7 @@ function SessionMember({ roomName, onDone }: { roomName: string; onDone: () => v
           onChange={(v) => {
             setHandle(v);
             setError(null);
-          }}
-          hint="The member the session joins as. It gets a join code for it."
-        />
+          }}        />
         <div>
           <p id="code-lifetime-label" className="mb-2 text-micro font-medium text-muted-foreground">
             The code works for

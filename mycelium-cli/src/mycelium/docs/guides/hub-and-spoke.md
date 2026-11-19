@@ -40,7 +40,7 @@ The hub is the Docker stack. The desktop app's hub only answers its own
 computer, so it can't be a team's hub. On the hub machine:
 
 ```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on a Mac: bash -s -- --docker
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on an Apple silicon Mac: bash -s -- --docker
 mycelium install
 ```
 
@@ -138,7 +138,8 @@ the hub itself.
 ### `doctor` says "spoke mode" on the hub
 
 `doctor` decides whether this machine is the hub from `server.api_url`. If it
-points to a backend on this machine, this machine is the hub. If the backend runs here at a different address, set `server.api_url` to
+points to a backend on this machine, this machine is the hub. If the backend
+runs here at a different address, set `server.api_url` to
 `http://localhost:8000` or run `mycelium doctor --mode hub`.
 
 See [Troubleshooting](#troubleshooting) for more.

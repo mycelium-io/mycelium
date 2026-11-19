@@ -51,7 +51,6 @@ export const TARGETS: Record<string, Target[]> = {
   // The docs' concept and guide pages.
   "board-epic": [{ dir: DOCS_DIR, name: "app-board-epic", retina: true }],
   "thread-flow": [{ dir: DOCS_DIR, name: "app-thread-flow", retina: true }],
-  "swarm-dialog": [{ dir: DOCS_DIR, name: "app-swarm", retina: true }],
   machines: [{ dir: DOCS_DIR, name: "app-machines", retina: true }],
   "metrics-usage": [{ dir: DOCS_DIR, name: "app-metrics", retina: true }],
   // The docs walkthrough. It also uses app-room-empty and app-room-board.

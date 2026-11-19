@@ -129,7 +129,7 @@ describe("projectActivity", () => {
         { id: "2", message_type: "coordination_consensus", sender_handle: "conductor", content: "{}", created_at: "2026-08-22T10:01:00Z" },
       ],
       memories: [
-        { key: "decisions/cutover", value: "phased", version: 2, created_by: "conductor", updated_by: "growth", updated_at: "2026-08-22T10:00:00Z" },
+        { key: "decisions/cutover", version: 2, created_by: "conductor", updated_by: "growth", updated_at: "2026-08-22T10:00:00Z" },
       ],
     });
     expect(events).toHaveLength(1);

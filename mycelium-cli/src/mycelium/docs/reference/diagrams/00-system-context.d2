@@ -1,5 +1,5 @@
-# Mycelium — system context (thousand-foot view)
-# Rendered with D2. See README for the render command.
+# Mycelium system context (thousand-foot view)
+# Rendered with D2: d2 00-system-context.d2 00-system-context.svg
 
 vars: {
   d2-config: {
@@ -9,7 +9,7 @@ vars: {
 }
 
 title: |md
-  # Mycelium — data over the wire
+  # Mycelium: data over the wire
   ### Every transport, one view. Blue = HTTP · Violet = SLIM/MLS · Orange = A2A over HTTPS
 | {near: top-center; style.font-size: 24}
 
@@ -36,7 +36,7 @@ hub: Mycelium backend  (the hub / moderator) {
   router: FastAPI router\nparticipate.py · a2a_server.py {class: comp}
   moderator: Moderator\nRoomChannelManager + SlimClient\nHOLDS the MLS group key {class: comp}
   persister: Persister\ndurable transcript · presence leases\ndurable inbox {class: comp}
-  engines: Engines\nconductor · synthesizer\nA2A responder {class: comp}
+  engines: Engines\nconductor · persona · worker\nsynthesizer · A2A responder {class: comp}
   custody: Custodial MLS sessions\n(opt-in, per actor) {class: comp}
   files: Room files\nmarkdown memory + JSONL index {class: store}
 }

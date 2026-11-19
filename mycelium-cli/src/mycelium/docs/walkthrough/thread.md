@@ -12,7 +12,8 @@ reply, and the agents read it.
 
 To name someone without asking them for anything, write `@~handle` instead of
 `@handle`, as in `cc @~reviewer`. It shows up as a mention but doesn't notify
-them or wake an agent. A handle written as code, between backticks or in a
+them or wake an agent. The next time that agent wakes for something else, it's
+told where it was named. A handle written as code, between backticks or in a
 code block, isn't a mention at all, so you can quote a command or a message
 that names someone without reaching them.
 

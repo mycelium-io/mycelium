@@ -72,7 +72,7 @@ vi.mock("@/components/current-user", () => ({
 
 vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemorySummaries: vi.fn().mockResolvedValue([]),
   fetchMemory: vi.fn(),
   fetchMemoryExpanded: vi.fn(),
 }));
@@ -138,6 +138,14 @@ describe("<MemoryView />", () => {
     act(() => thread.set(["m1", "m2", "m3", "m4"]));
     expect(box.top()).toBe(0);
     expect(screen.getByRole("button", { name: "Jump to latest, 1 new" })).toBeInTheDocument();
+  });
+
+  it("offers no editor for an upload, and says why in its place", async () => {
+    const upload = { ...MEMORY, key: "uploads/plan.md" };
+    vi.mocked(fetchMemory).mockResolvedValue(upload);
+    renderWithSWR(<MemoryView roomName="demo" memoryKey={upload.key} onOpenMemory={vi.fn()} />);
+    expect(await screen.findByLabelText(/Upload the file again/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
 
   it("gives the body more room full page, where someone came to read it", async () => {

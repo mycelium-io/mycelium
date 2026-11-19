@@ -38,10 +38,11 @@ import {
   isLearnScenario,
   learnOnLaunch,
   learnOnMessage,
-  learnOnSwarm,
   learnOnTask,
   learnOnThreadRead,
 } from "./learn";
+import { mockKnowledgeWire } from "./knowledge";
+import { mockAgentsRunning, mockRunningControl } from "./agent-usage";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
@@ -59,13 +60,18 @@ import { handleVoice } from "./voice";
 import { VERIFIER, handleVerifierFlags, verifierSettingsRead } from "./verifier";
 import type {
   A2aBridgeState,
+  Memory,
   MemoryGraph,
   MemoryGraphEdge,
   MemoryLink,
+  MemorySummary,
   Protocol,
   Schedule,
   ScheduleRun,
 } from "@/lib/api";
+import { memorySummaryOf } from "@/lib/memory-preview";
+import { kindOf } from "@/lib/memory-kinds";
+import { withReaction } from "@/lib/room-events";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -120,11 +126,6 @@ const MOCK_PROTOCOLS: Protocol[] = [
     roles: ["author", "reviewer"],
   },
   { name: "round-robin", description: "Every member speaks in turn, for a fixed number of rounds.", roles: [] },
-  {
-    name: "swarm",
-    description: "A team kicks off a task: each member checks in, then the lead splits the work.",
-    roles: ["lead"],
-  },
 ].map((p) => ({ ...p, source: "builtin" as const }));
 
 /** A graph edge's `raw` markdown, synthesized for display — the fixtures only
@@ -187,6 +188,26 @@ function publishNotice(fx: RoomFixture, room: string, data: Parameters<typeof no
   publish(room, frame);
 }
 
+/** Where each member a message mentions stands, kept per message for the mock server's life. */
+type MockWake = { handle: string; status: "working" | "idle" | "blocked" | "done" | null; wake: "held" | "read" | "interrupted"; at?: string | null };
+const wakeStore = globalThis as typeof globalThis & { __myceliumMentionWakes?: Map<string, MockWake[]> };
+function mentionWakes(room: string, message: { id: string; content: string }): MockWake[] {
+  const store = (wakeStore.__myceliumMentionWakes ??= new Map());
+  const key = `${room}/${message.id}`;
+  let wakes = store.get(key);
+  if (!wakes) {
+    const handles = [...new Set([...message.content.matchAll(/(?:^|[^\w@~!])@([A-Za-z0-9][\w-]*)/g)].map((m) => m[1]))];
+    // The mock room's agents: builder is mid-turn, the others have read it.
+    wakes = handles.map((handle) =>
+      handle === "builder"
+        ? { handle, status: "working", wake: "held" }
+        : { handle, status: "idle", wake: "read", at: new Date(Date.now() - 60_000).toISOString() },
+    );
+    store.set(key, wakes);
+  }
+  return wakes;
+}
+
 /** A task's key fragment, as `services/tasks.py:slugify` makes it. */
 function slug(title: string): string {
   const s = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48).replace(/-+$/, "");
@@ -218,6 +239,30 @@ function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
     room_name: memory.room_name ?? room,
     created_at: updated,
     updated_at: updated,
+  };
+}
+
+/** A memory as `GET /memory/summaries` lists it: named, with no text. */
+function memorySummary(room: string, memory: MockMemory, messages: MockMessage[]): MemorySummary {
+  const read = memoryRead(room, memory) as unknown as Memory & { created_at: string };
+  const summary: MemorySummary = { ...memorySummaryOf(read), created_at: read.created_at };
+  if (memory.key.startsWith("threads/") && memory.episode) summary.thread = threadReplies(messages, memory.episode);
+  return summary;
+}
+
+/** What's been said in a thread, as the hub works it out on read: replies,
+ *  the newest few who replied (newest first), and the newest reply. */
+function threadReplies(messages: MockMessage[], episode: string): NonNullable<MemorySummary["thread"]> {
+  const said = messages
+    .filter((m) => m.episode === episode && (m.message_type === "broadcast" || m.message_type === "l9_exchange"))
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const last = said.at(-1);
+  const repliers = [...new Set([...said].reverse().map((m) => m.sender_handle))].slice(0, 3);
+  return {
+    replies: said.length,
+    repliers,
+    last_reply: last ? (last.content.split("\n").find((l) => l.trim())?.trim() ?? null) : null,
+    last_reply_at: last?.created_at ?? null,
   };
 }
 
@@ -297,6 +342,17 @@ async function handleRunners(req: Request, method: string, rest: string[]): Prom
     const spec = { room: String(body.room ?? ""), handle: String(body.handle ?? ""), pane };
     const by = typeof body.created_by === "string" ? body.created_by : null;
     return json(queueJob(runner.id, "adopt", spec, by), 201);
+  }
+  if (sub === "resume" && method === "POST") {
+    // Proposed: an earlier session resumed as a member, queued like a launch.
+    const body = await readJson(req);
+    const framework = runner.frameworks.find((f) => f.id === body.framework);
+    if (!framework?.sessions?.some((s) => s.id === body.session)) {
+      return json({ detail: `No such earlier session on ${runner.label}.` }, 422);
+    }
+    const spec = { room: String(body.room ?? ""), handle: String(body.handle ?? ""), framework: framework.id, root: String(body.folder ?? "") };
+    const by = typeof body.created_by === "string" ? body.created_by : null;
+    return json(queueJob(runner.id, "launch", spec, by), 201);
   }
   if (sub === "agents" && method === "POST") {
     if (a !== undefined && b !== undefined && c === "stop") {
@@ -636,7 +692,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub.length === 2 && method === "PUT") {
         const done = setRoomSettingMock(roomName, id, await readJson(req));
         if ("ok" in done) return json(done.ok);
-        return json({ detail: { error: "room_setting", message: done.message, key: `settings/${id}` } }, done.status);
+        return json({ detail: { error: "memory.setting_invalid", message: done.message, key: `settings/${id}` } }, done.status);
       }
       if (sub.length === 2 && method === "DELETE") {
         const reset = resetRoomSettingMock(roomName, id);
@@ -671,14 +727,22 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const items = body.items ?? [];
 
         for (const item of items) {
+          // A kind nobody edits is refused before anything is saved, with the
+          // hub's code and sentence (contracts/memory-kinds.json).
+          const kind = kindOf(item.key);
+          if (kind.edit === "none") {
+            return json({ detail: { error: "memory.read_only", message: kind.says, key: item.key } }, 409);
+          }
           const existing = fx.memories.find((m) => m.key === item.key);
           const currentVersion = existing?.version ?? 0;
           if (item.base_version !== undefined && item.base_version !== currentVersion) {
             return json({
-              error: "stale_base",
-              message: `Write for '${item.key}' expected version ${item.base_version} but current version is ${currentVersion}`,
-              key: item.key,
-              current_version: currentVersion,
+              detail: {
+                error: "memory.stale_base",
+                message: `Write for '${item.key}' expected version ${item.base_version} but current version is ${currentVersion}`,
+                key: item.key,
+                current_version: currentVersion,
+              },
             }, 409);
           }
         }
@@ -725,6 +789,18 @@ export async function handleMock(req: Request): Promise<Response | null> {
         return new Response(null, { status: 204 });
       }
       if (method !== "GET") return null;
+      // GET /memory/summaries?prefix=&limit=&offset= — the list without text.
+      if (sub.length === 2 && sub[1] === "summaries") {
+        const prefix = searchParams.get("prefix");
+        const offset = Number(searchParams.get("offset") ?? "0");
+        const limit = Number(searchParams.get("limit") ?? "100");
+        return json(
+          fx.memories
+            .filter((m) => !prefix || m.key.startsWith(prefix))
+            .slice(offset, offset + limit)
+            .map((m) => memorySummary(roomName, m, fx.messages)),
+        );
+      }
       // GET /memory/:key — the key is a path, so it spans the remaining segments.
       if (sub.length > 1) {
         const key = sub.slice(1).map(decodeURIComponent).join("/");
@@ -807,6 +883,59 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub[1] === "search" && method === "GET") {
         return json(mockMessageSearch(fx, searchParams.get("q") ?? "", Number(searchParams.get("limit") ?? "20")));
       }
+      // POST /messages/{id}/interrupt — the sender turning a plain mention of a
+      // working member into an interrupt, once, as the hub does
+      // (`services/interrupts.py:upgrade`), with its refusals.
+      // POST /messages/{id}/reactions — put an emoji on a message or take
+      // yours off. Kept on the message, as the hub folds it on read, and said
+      // live as the reaction it is, which the open channel folds the same way.
+      if (sub[1] && sub[2] === "reactions") {
+        if (method !== "POST") return null;
+        const message = fx.messages.find((m) => m.id.startsWith(sub[1]));
+        if (!message) return notFound(`No message ${sub[1]} in ${roomName}.`);
+        const body = await readJson(req);
+        const emoji = String(body.emoji ?? "").trim();
+        const on = body.on !== false;
+        const who = String(body.sender_handle ?? "operator");
+        if (!emoji || /[\x20-\x7e]/.test(emoji)) return json({ detail: `'${emoji}' isn't an emoji` }, 422);
+        message.reactions = withReaction(message.reactions ?? [], emoji, who, on);
+        publish(roomName, {
+          id: `r-${Date.now()}`,
+          sender_handle: who,
+          message_type: "broadcast",
+          content: on && who !== message.sender_handle ? `@~${message.sender_handle} ${emoji}` : emoji,
+          reacts: message.id,
+          reaction: { emoji, on, message: message.id },
+          created_at: new Date().toISOString(),
+          room_name: roomName,
+          episode: message.episode ?? null,
+        });
+        return json({ ...message, room_name: roomName }, 201);
+      }
+      if (sub[1] && sub[2] === "interrupt") {
+        if (method !== "POST") return null;
+        const message = fx.messages.find((m) => m.id.startsWith(sub[1]));
+        if (!message) return notFound(`No message ${sub[1]} in ${roomName}.`);
+        const wakes = mentionWakes(roomName, message);
+        const body = await readJson(req);
+        const handle = String(body.handle ?? "").replace(/^@/, "");
+        const by = String(body.by ?? "");
+        const short = message.id.slice(0, 8);
+        const wake = wakes.find((w) => w.handle === handle);
+        const no = (status: number, detail: string) => json({ detail }, status);
+        if (by !== message.sender_handle) return no(403, `Only @${message.sender_handle}, who sent ${short}, can interrupt with it.`);
+        if (!wake) return no(422, `${short} doesn't mention @${handle}. To ask it now, send a message with @!${handle}.`);
+        if (wake.wake === "interrupted") return no(409, `@${handle} was already interrupted with ${short}. It's once per member per message.`);
+        if (wake.wake === "read") return no(409, `@${handle} has ${short} already, so there's nothing to interrupt it for.`);
+        if (wake.status !== "working") return no(409, `@${handle} isn't working right now, so it reads ${short} next without being stopped.`);
+        wake.wake = "interrupted";
+        const mark = { by, handle, at: new Date().toISOString() };
+        // Kept on the message, as the hub keeps it beside the transcript, so a
+        // history read carries it; and said live, with no line in the room.
+        message.interrupted = [...(message.interrupted ?? []), mark];
+        publish(roomName, { type: "message_interrupted", room_name: roomName, message_id: message.id, ...mark });
+        return json(mark, 201);
+      }
       if (sub[1] === "wire" && method === "GET") {
         const limit = Number(searchParams.get("limit") ?? "200");
         const before = searchParams.get("before");
@@ -829,9 +958,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
         // before the count, as the backend counts it — `total` is what is older
         // than the cursor, which is how a reader knows it has reached the start.
         const before = searchParams.get("before");
+        // `?id=` reads one message by its id (or the start of it).
+        const id = searchParams.get("id");
         if (episode && isLearnScenario()) learnOnThreadRead(fx, roomName, episode);
         const scoped = fx.messages.filter(
-          (m) => (!episode || m.episode === episode) && olderThan(m.created_at, before),
+          (m) =>
+            (!id || m.id.startsWith(id)) &&
+            (!episode || m.episode === episode) &&
+            olderThan(m.created_at, before),
         );
         const ordered = [...scoped].reverse();
         const messages = limit > 0 ? ordered.slice(0, limit) : ordered;
@@ -938,7 +1072,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const note = text("text") ?? text("reason");
         let decided: Record<string, unknown>;
         let said: string;
-        if (ask.kind === "approve") {
+        if (body.skipped === true) {
+          // Skipped instead of answered: no answer of its own, at most a note.
+          if (body.decision || body.choices !== undefined) {
+            return json({ detail: "A skipped ask takes no decision or choices, only a note" }, 422);
+          }
+          decided = { skipped: true };
+          said = `Skipped "${String(ask.question)}"`;
+        } else if (ask.kind === "approve") {
           if (body.decision !== "approved" && body.decision !== "declined") return json({ detail: "An approve needs a decision." }, 422);
           decided = { decision: body.decision };
           said = `${body.decision === "approved" ? "Approved" : "Declined"} "${String(ask.question)}"`;
@@ -1019,6 +1160,68 @@ export async function handleMock(req: Request): Promise<Response | null> {
       });
       if (isDemoScenario()) demoOnTask(fx, roomName, row);
       if (isLearnScenario()) learnOnTask(fx, roomName, row);
+      return json(memoryRead(roomName, row), 201);
+    }
+
+    case "subagents":
+      return method === "GET" && sub.length === 1 ? json(fx.subagents ?? []) : null;
+
+    case "knowledge":
+      return method === "GET" && sub.length === 1 ? json(mockKnowledgeWire(roomName)) : null;
+
+    case "threads": {
+      if (method !== "POST") return null;
+      const body = await readJson(req);
+      const by = String(body.handle ?? "user");
+      // POST /threads/{key}/task — a task filed from a thread, pointing back
+      // at it (`relates-to`); one that has a task answers with it.
+      if (sub.length > 2 && sub[sub.length - 1] === "task") {
+        const threadKey = sub.slice(1, -1).map(decodeURIComponent).join("/");
+        const thread = fx.memories.find((m) => m.key === threadKey);
+        if (!thread) return notFound(`thread ${threadKey} not found (mock)`);
+        const made = fx.memories.find((m) => m.key.startsWith("work/") && m.meta?.["relates-to"] === threadKey);
+        if (made) return json(memoryRead(roomName, made), 200);
+        const title = memText(thread).split("\n")[0] || threadKey;
+        const row: MockMemory = {
+          key: `work/${slug(title)}`,
+          value: `${title}\n\nFrom the thread [[${threadKey}]].`,
+          meta: { kind: "action", status: "open", "relates-to": threadKey },
+          created_by: by,
+          updated_by: by,
+          version: 1,
+          updated_at: new Date().toISOString(),
+          episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/work/${title}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+        };
+        fx.memories.push(row);
+        publish(roomName, memoryChangedFrame(row.key, 1, by));
+        return json(memoryRead(roomName, row), 201);
+      }
+      // POST /threads — a thread started from a message in the channel: a
+      // `threads/` memory naming the message, named after its first line, with
+      // a thread of its own like a task's, and on no board, so no `filed` notice.
+      if (sub.length !== 1) return null;
+      const from = String(body.from ?? "");
+      const existing = fx.memories.find((m) => m.key.startsWith("threads/") && m.meta?.from === from);
+      if (existing) return json(memoryRead(roomName, existing), 200);
+      const message = fx.messages.find((m) => m.id === from && !m.episode);
+      if (!message) return notFound(`No message ${from} in the channel to start a thread from (mock)`);
+      const line = message.content.split("\n").find((l) => l.trim())?.trim() ?? "Thread";
+      const title = line.length > 80 ? `${line.slice(0, 80).replace(/\s+\S*$/, "")}…` : line;
+      let key = `threads/${slug(title)}`;
+      for (let n = 2; fx.memories.some((m) => m.key === key); n++) key = `threads/${slug(title)}-${n}`;
+      const row: MockMemory = {
+        key,
+        value: title,
+        content_text: title,
+        meta: { from },
+        created_by: by,
+        updated_by: by,
+        version: 1,
+        updated_at: new Date().toISOString(),
+        episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${key}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+      };
+      fx.memories.push(row);
+      publish(roomName, memoryChangedFrame(key, 1, by));
       return json(memoryRead(roomName, row), 201);
     }
 
@@ -1142,15 +1345,6 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json({ code: "k7mq-2xpa-9vtd", room: roomName, handle, expires_at: expires }, 201);
     }
 
-    case "swarms": {
-      // POST /swarms — a team put on a task. Only a Learn take plays one; the
-      // default fixtures have no workers to run it.
-      if (sub.length !== 1 || method !== "POST") return null;
-      const started = isLearnScenario() ? learnOnSwarm(fx, roomName) : null;
-      if (!started) return json({ detail: "The mock runs no swarms in this room." }, 501);
-      return json({ room: roomName, ...started, job: null }, 201);
-    }
-
     case "agents": {
       // POST /agents/draft-notes — the hub's model expanding a brief; here a
       // canned expansion that keeps what was typed.
@@ -1160,10 +1354,19 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
       }
-      // POST /agents/{handle}/pause|resume|stop — for its owner only.
-      if (sub.length === 3 && ["pause", "resume", "stop"].includes(sub[2]) && method === "POST") {
-        const by = String((await readJson(req)).by ?? "").replace(/^@/, "").toLowerCase();
-        return controlOne(fx, roomName, decodeURIComponent(sub[1]), sub[2], by);
+      // GET /agents/running — the room's agents on connected machines, no numbers.
+      if (sub[1] === "running" && sub.length === 2 && method === "GET") {
+        return json(mockAgentsRunning(roomName));
+      }
+      // POST /agents/{handle}/pause|resume|stop|start|keep — for its owner only.
+      if (sub.length === 3 && ["pause", "resume", "stop", "start", "keep"].includes(sub[2]) && method === "POST") {
+        const body = await readJson(req);
+        const by = String(body.by ?? "").replace(/^@/, "").toLowerCase();
+        const handle = decodeURIComponent(sub[1]);
+        const listed = mockRunningControl(roomName, handle, sub[2], by, body.keep as boolean | undefined);
+        if (listed) return listed;
+        if (sub[2] === "start" || sub[2] === "keep") return json({ detail: `No machine has @${handle}.` }, 409);
+        return controlOne(fx, roomName, handle, sub[2], by);
       }
       // POST /agents/{handle}/rename — one a machine runs waits for a yes
       // there (the job is queued, nothing moves); any other is renamed at once,
