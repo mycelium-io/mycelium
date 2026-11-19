@@ -59,8 +59,25 @@ def test_while_a_code_waits_every_address(where):
 
 
 def test_once_paired_only_the_network_the_machine_came_in_on(where):
+    # WireGuard's address is its whole network (/32): that one address.
     _paired(where, "10.8.0.2")
     assert listen.hub_hosts(**where, here=[WIREGUARD, WIFI]) == ["127.0.0.1", "10.8.0.2"]
+    assert json.loads((where["config_path"].parent / listen.REMEMBERED).read_text()) == {
+        "1": "10.8.0.2/32"
+    }
+    # A home network (/24): this computer's address on it, whatever it is now.
+    _paired(where, "192.168.1.20", mid="2")
+    home = Address("en0", "192.168.1.20", 24)
+    assert listen.hub_hosts(**where, here=[WIREGUARD, home]) == [
+        "127.0.0.1",
+        "10.8.0.2",
+        "192.168.1.20",
+    ]
+    assert listen.hub_hosts(**where, here=[WIREGUARD, Address("en0", "192.168.1.77", 24)]) == [
+        "127.0.0.1",
+        "10.8.0.2",
+        "192.168.1.77",
+    ]
 
 
 def test_the_hub_follows_a_new_address_on_the_same_network(where):

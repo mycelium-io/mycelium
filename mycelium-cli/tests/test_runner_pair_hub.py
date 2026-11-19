@@ -94,26 +94,36 @@ def test_only_requests_to_the_paired_hub_carry_the_token():
     assert client.machine_headers("http://127.0.0.1:3718") == {}
 
 
-def test_a_machine_that_paired_uses_that_hub_and_says_so(monkeypatch):
-    """One rule: whatever the environment says, and whether or not anything
-    answers there, a machine that paired uses the hub it paired with."""
+def test_a_machine_that_paired_uses_that_hub_in_place_of_its_config(monkeypatch, _home: Path):
+    """One rule: the paired hub takes the place of this machine's config, and
+    says so; the environment still wins, so another hub is reachable on purpose."""
     from mycelium.config import MyceliumConfig
 
-    with socket.socket() as listening:
-        # A hub that answers on the address an agent was started with.
-        listening.bind(("127.0.0.1", 0))
-        listening.listen(1)
-        alive = f"http://127.0.0.1:{listening.getsockname()[1]}"
-        monkeypatch.setenv("MYCELIUM_API_URL", alive)
-        # Not paired: the environment's hub, as before.
-        config = MyceliumConfig.load()
-        assert config.server.api_url == alive
-        assert caller.hub(config) == caller.Answer(alive, caller.ENVIRONMENT)
+    config_file = _home / ".mycelium" / "config.toml"
+    config_file.parent.mkdir(parents=True, exist_ok=True)
+    config_file.write_text('[server]\napi_url = "http://10.8.0.1:8000"\n')
+    pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
+    config = MyceliumConfig.load()
+    assert config.server.api_url == HUB
+    assert caller.hub(config) == caller.Answer(HUB, caller.PAIRED)
 
-        pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
-        config = MyceliumConfig.load()
-        assert config.server.api_url == HUB
-        assert caller.hub(config) == caller.Answer(HUB, caller.PAIRED)
+    # This machine's own hub, named on purpose: the environment wins.
+    monkeypatch.setenv("MYCELIUM_API_URL", "http://10.8.0.1:8000")
+    config = MyceliumConfig.load()
+    assert config.server.api_url == "http://10.8.0.1:8000"
+    assert caller.hub(config) == caller.Answer("http://10.8.0.1:8000", caller.ENVIRONMENT)
+
+
+def test_nothing_switches_hub_because_a_connection_failed(monkeypatch):
+    """An agent given a hub that isn't answering (a hub restarting) keeps it."""
+    from mycelium.config import MyceliumConfig
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        dead = f"http://127.0.0.1:{s.getsockname()[1]}"
+    pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
+    monkeypatch.setenv("MYCELIUM_API_URL", dead)
+    assert MyceliumConfig.load().server.api_url == dead
 
 
 def test_a_folder_that_joined_a_hub_keeps_its_own(monkeypatch, _home: Path):

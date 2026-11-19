@@ -1244,8 +1244,9 @@ class MyceliumConfig(BaseModel):
         env_overrides = cls._load_from_env()
         config_dict = cls._deep_merge(config_dict, env_overrides)
 
-        # A machine that paired with a hub uses it, over the environment too
-        # (``caller.paired_hub``); ``save`` writes back what the files said.
+        # A machine that paired with a hub uses it in place of this machine's
+        # config, unless the environment names one (``caller.paired_hub``);
+        # ``save`` writes back what the files said.
         if config_path is None:
             from mycelium import caller
 

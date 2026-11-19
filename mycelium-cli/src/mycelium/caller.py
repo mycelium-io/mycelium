@@ -281,15 +281,18 @@ def _desktop_hub_over(files_hub: str | None) -> str | None:
 
 def paired_hub() -> str | None:
     """The hub this machine paired with (``mycelium runner pair --hub``), when
-    it has, and the folder hasn't joined a hub of its own (``mycelium join``).
+    that's the answer: it has paired, nothing in the environment names a hub,
+    and the folder hasn't joined one of its own (``mycelium join``).
 
-    Pairing is how this machine reaches someone's hub, so once it has paired,
-    that hub is the answer for every command, agent and runner here, over the
-    environment and this machine's config. It's the answer whether or not it
+    It takes the place of this machine's config in the order (a flag, the
+    environment, the folder, then this machine), so ``MYCELIUM_API_URL``
+    still reaches any hub on purpose. It's the answer whether or not it
     answers: nothing here moves to another hub because a connection failed.
     ``mycelium runner unpair --hub`` takes it back."""
     from mycelium.runner import pairing
 
+    if os.environ.get(HUB_ENV):
+        return None
     paired = pairing.paired_hub()
     if paired is None or find_membership() is not None:
         return None
@@ -298,10 +301,10 @@ def paired_hub() -> str | None:
 
 def hub(config: MyceliumConfig) -> Answer:
     """Which hub. ``config.server.api_url`` already holds the answer; this says why."""
-    if (paired := paired_hub()) is not None:
-        return Answer(paired, PAIRED)
     if os.environ.get(HUB_ENV):
         return Answer(os.environ[HUB_ENV], ENVIRONMENT)
+    if (paired := paired_hub()) is not None:
+        return Answer(paired, PAIRED)
     member = find_membership()
     if member is not None:
         return Answer(member.hub, MEMBERSHIP)
