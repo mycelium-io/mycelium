@@ -55,15 +55,16 @@ CLI is ever started with its option that skips permissions entirely.
 If the agent CLI isn't installed, the agent doesn't open. **Add member** says
 the CLI isn't installed and links here.
 
-Install it. herdr's [Agents](https://herdr.dev/docs/agents/) page lists the
-agent CLIs it can start. Then open a new terminal window and run its command,
-such as `opencode`. Mycelium starts agents the way a new terminal window
-starts, so if the command runs there, it will run for the agent too. Add the
-agent again.
+Install it, then open a new terminal window and run its command, such as
+`opencode`. Mycelium starts agents the way a new terminal window starts, so if
+the command runs there, it will run for the agent too. Add the agent again.
 
 If the new window says the command isn't found, the installer put it in a
 folder your terminal doesn't look in yet. The installer's last lines usually
 say what to add to your shell's startup file.
+
+herdr's [Agents](https://herdr.dev/docs/agents/) page lists every agent CLI
+Mycelium can start.
 
 ## Adding your own harness
 
