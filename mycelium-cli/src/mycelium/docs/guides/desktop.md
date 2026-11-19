@@ -6,7 +6,7 @@ your coding agents for you when you ask.
 
 | Your computer | Download | Needs |
 |---|---|---|
-| Mac | **[Mycelium for Mac](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)** | Apple silicon, macOS 13 or later |
+| Mac | **[macOS disk image](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-macos-arm64.dmg)** | Apple silicon, macOS 13 or later |
 | Linux (preview) | **[Linux AppImage](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-linux-x86_64.AppImage)** | x86-64, glibc 2.35 or later (Ubuntu 22.04, Fedora 36, Debian 12 or newer) |
 | Windows (preview) | **[Windows installer](https://github.com/mycelium-io/mycelium/releases/latest/download/Mycelium-windows-x86_64-setup.exe)** | x64, Windows 10 or later |
 
@@ -28,10 +28,12 @@ The app then asks a few questions:
 - **Where your rooms live.** **On this computer** runs a hub here. **On my
   team's hub** joins rooms that someone else runs. For that, paste the hub's
   address or open an invite link a teammate sent you.
-- **A model.** The [engines](#engines) use it. You can add it later.
+- **A model**, for a hub on this computer. Only the [engines](#engines) use
+  it, so you can skip it and add one later. See [Models](#models).
 - **Agents on this computer.** It shows the agent CLIs it found and the folder
   agents may work in. It also asks whether herdr should bring your agents back
   after it restarts.
+- **Talk instead of type**, for a hub on this computer. See [Voice](#voice).
 - **Usage stats.** These are off unless you tick the box. See
   [Metrics](#metrics) for what would be sent.
 
@@ -61,17 +63,21 @@ To type to an agent, open the agents terminal. **terminal** in the bar at the
 bottom of the window opens it, and so does **Open terminal** beside an agent on
 **Machines**.
 
-To watch an agent without leaving the room, open its terminal read-only:
+To watch an agent without leaving the room, open its window:
 
 - **Members:** click the agent.
 - **Machines:** press **View** on its row.
 - **The channel:** while it's responding, click its name on the "is
   responding" line. Rest the pointer on the name to see its last few lines.
 
-The view says "Streamed from this machine. Nothing is sent to the hub." The app
-reads the terminal from herdr itself. A key or private code on screen never
-leaves your computer. For an agent on another computer, the view says where it
-runs instead.
+The window shows the agent's terminal, read-only. For a Claude Code agent it
+can also show **What it's doing**: what it was asked, what it said and each
+tool it called, which you can open to see the result.
+
+The window says "Streamed from this machine. Nothing is sent to the hub." The
+app reads the agent from herdr and its session files on this computer, so a
+key or private code on screen never leaves it. For an agent on another
+computer, the window says where it runs instead.
 
 ## The app's menu
 
@@ -116,11 +122,6 @@ Both open from **Logs** in the menu:
 
 ## The command line
 
-On an Apple silicon Mac, the install script installs the app and puts its
-`mycelium` CLI on your path:
-
-```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-```
-
-`mycelium desktop serve` runs the same hub without the window.
+On an Apple silicon Mac, the [install script](#quickstart) installs the app
+and puts its `mycelium` CLI on your path. `mycelium desktop serve` runs the
+same hub without the window.

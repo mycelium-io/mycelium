@@ -343,6 +343,28 @@ def parse_memory_file(path: Path) -> tuple[dict[str, Any], str]:
     return meta, content
 
 
+# ── Change counters ──────────────────────────────────────────────────────────
+#
+# A count per folder of memories, raised by every write and delete through this
+# module. Something derived from a whole room (the knowledge graph) keeps what it
+# built with the count it saw and builds again once the count has moved, so a
+# read in between costs nothing. A file changed on disk by hand moves no count;
+# `POST /rooms/{room}/reindex` (the step after one) moves it.
+
+_changes: dict[str, int] = {}
+
+
+def changes_in(base_dir: Path) -> int:
+    """How many memory writes and deletes ``base_dir`` has seen in this process."""
+    return _changes.get(str(base_dir.resolve()), 0)
+
+
+def note_change(base_dir: Path) -> None:
+    """Count a change to the memories under ``base_dir``."""
+    key = str(base_dir.resolve())
+    _changes[key] = _changes.get(key, 0) + 1
+
+
 # ── File operations ──────────────────────────────────────────────────────────
 
 
@@ -375,6 +397,7 @@ def write_memory_file(
         extra_meta=extra_meta,
     )
     file_path.write_text(text, encoding="utf-8")
+    note_change(base_dir)
     logger.debug("Wrote memory file: %s", file_path)
     return file_path
 
@@ -398,6 +421,7 @@ def delete_memory_file(base_dir: Path, key: str) -> bool:
         return False
     if file_path.exists():
         file_path.unlink()
+        note_change(base_dir)
         # Clean up empty parent directories
         _cleanup_empty_dirs(file_path.parent, base_dir)
         return True
@@ -498,6 +522,7 @@ def remove_room_dir(room_name: str) -> bool:
     existed = room_dir.exists()
     if existed:
         shutil.rmtree(room_dir)
+        note_change(room_dir)
 
     # Remove session sub-rooms: same-prefix directories with ":session:" suffix.
     prefix = room_name + ":session:"

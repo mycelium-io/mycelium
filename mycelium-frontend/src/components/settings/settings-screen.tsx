@@ -15,6 +15,7 @@ import { AppExperiencesPage } from "./app-experiences-page";
 import { AppHealthPage } from "./app-health-page";
 import { AppModelPage } from "./app-model-page";
 import { AppVersionPage } from "./app-version-page";
+import { AppWidgetsPage } from "./app-widgets-page";
 import { AppPrivacyPage, AppVoicePage } from "./app-voice-privacy";
 import { ProfilePage } from "./profile-page";
 import { GeneralPage } from "./general-page";
@@ -40,6 +41,7 @@ const APP_PAGES: RailItem[] = [
   { page: "agents", label: "Agents" },
   { page: "voice", label: "Voice" },
   { page: "experiences", label: "Experiences" },
+  { page: "widgets", label: "Widgets" },
   { page: "privacy", label: "Privacy" },
   { page: "version", label: "Version" },
   { page: "health", label: "Health check" },
@@ -137,6 +139,7 @@ export function SettingsScreen({ page }: { page: SettingsPage }) {
         {app && page === "agents" && <AppAgentsPage />}
         {app && page === "voice" && <AppVoicePage />}
         {app && page === "experiences" && <AppExperiencesPage />}
+        {app && page === "widgets" && <AppWidgetsPage />}
         {app && page === "privacy" && <AppPrivacyPage />}
         {app && page === "version" && <AppVersionPage />}
         {app && page === "health" && <AppHealthPage />}

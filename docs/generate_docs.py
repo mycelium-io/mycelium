@@ -42,7 +42,7 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "Set up Mycelium from nothing, one step at a time with screenshots: the desktop app, a room, two coding agents, the room's engines, and a task they work on together."),
     ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
      "CON-001", "CONCEPTS · ROOMS · BOARD · MEMORY · EPISODES",
-     "How Mycelium works: rooms, the board, memory, episodes, swarms, users and identity, and SLIM."),
+     "How Mycelium works: rooms, the board, memory, episodes, users and identity, and SLIM."),
     ("engines", "engines.html", "Engines · mycelium", "Engines",
      "ENG-001", "ENGINES · CONDUCTOR · SYNTHESIZER · PERSONA · WORKER · VERIFIER",
      "The engines a room runs on the hub: the conductor, the synthesizer, personas, workers, the verifier and hello."),
@@ -78,7 +78,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/board.md",             "board",              "concepts",    "Concepts",     "Board"),
     ("concepts/memory.md",            "memory",             "concepts",    "Concepts",     "Memory"),
     ("concepts/episodes.md",          "episodes",           "concepts",    "Concepts",     "Episodes"),
-    ("concepts/swarm.md",             "swarm",              "concepts",    "Concepts",     "Swarm"),
     ("concepts/principals.md",        "users",              "concepts",    "Concepts",     "Users & Identity"),
     ("concepts/slim.md",              "slim",               "concepts",    "Concepts",     "SLIM"),
     # ── engines (engines.html), the overview, then one section per kind ──
@@ -165,6 +164,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("skill", "skill", "skill"),
     ("schedule", "schedule", "schedule"),
     ("subscribe", "subscribe", "subscribe"),
+    ("subagent", "subagent", "subagent"),
     ("theme", "theme", "theme"),
     ("file", "file", "file"),
     ("negotiate", "negotiate", "negotiate"),
@@ -623,6 +623,7 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     import mycelium.commands.pattern  # noqa: F401
     import mycelium.commands.room  # noqa: F401
     import mycelium.commands.skill  # noqa: F401
+    import mycelium.commands.subagent  # noqa: F401
     import mycelium.commands.ui  # noqa: F401
     import mycelium.commands.version  # noqa: F401
     from mycelium.doc_ref import get_registry

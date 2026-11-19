@@ -16,6 +16,7 @@ import {
 import { paletteFilter, paletteSections, type PaletteCommand } from "@/lib/commands";
 import { eventToChord, formatChord, matchBinding } from "@/lib/keymap";
 import { Kbd } from "@/components/ui/kbd";
+import { MODAL_BACKDROP, ModalDialog } from "@/components/ui/modal-dialog";
 
 interface Props {
   open: boolean;
@@ -42,34 +43,26 @@ interface Props {
  *  query, which is why nothing here parses the text itself — cmdk scores it. */
 export function CommandPalette({ open, onClose, commands, recent, onRun, mac }: Props) {
   const [query, setQuery] = useState("");
-  const restoreTo = useRef<HTMLElement | null>(null);
-  // A command that moves focus (the composer, a dialog) must keep it: restoring
-  // only makes sense when the palette was dismissed without running anything.
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  // Running a command closes the dialog itself, and that close isn't a
+  // dismissal.
   const ran = useRef(false);
 
   useEffect(() => {
     if (!open) return;
-    // Capturing what to restore focus to reads document.activeElement, so the
-    // rest of the on-open reset stays here with it.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery("");
     ran.current = false;
-    restoreTo.current = document.activeElement as HTMLElement | null;
 
-    // The app's keys are inert behind an open dialog, so the palette handles
-    // its own dismissal — including the chord that opened it, as a toggle.
+    // The app's keys are inert behind an open dialog, so the chord that opened
+    // the palette is handled here, as a toggle. The dialog handles Escape.
     const onKey = (e: KeyboardEvent) => {
-      const closing =
-        e.key === "Escape" || matchBinding(eventToChord(e, mac), ["global"])?.id === "palette.open";
-      if (!closing) return;
+      if (matchBinding(eventToChord(e, mac), ["global"])?.id !== "palette.open") return;
       e.preventDefault();
       onClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      if (!ran.current) restoreTo.current?.focus?.();
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, mac]);
 
   const sections = useMemo(() => paletteSections(commands, recent, query), [commands, recent, query]);
@@ -78,62 +71,61 @@ export function CommandPalette({ open, onClose, commands, recent, onRun, mac }: 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-6 pt-[12vh]">
-      <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] motion-safe:animate-in motion-safe:fade-in-0"
-        onClick={onClose}
-        aria-hidden
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Command palette"
-        className="relative flex w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
-      >
-        <Command label="Command palette" loop filter={filter}>
-          <CommandInput
-            autoFocus
-            value={query}
-            onValueChange={setQuery}
-            placeholder="Search rooms, panes, actions…"
-          />
-          <CommandList>
-            <CommandEmpty>No matching commands.</CommandEmpty>
-            {sections.map(section => (
-              <CommandGroup key={section.heading} heading={section.heading}>
-                {section.commands.map(command => (
-                  <CommandItem
-                    key={command.id}
-                    value={command.id}
-                    keywords={[command.title, command.group, ...(command.keywords ?? [])]}
-                    onSelect={() => {
-                      ran.current = true;
-                      onRun(command.id);
-                    }}
-                  >
-                    <span className="truncate">{command.title}</span>
-                    {command.shortcut && (
-                      <CommandShortcut>{formatChord(command.shortcut, mac)}</CommandShortcut>
-                    )}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            ))}
-          </CommandList>
-        </Command>
+    <ModalDialog
+      ref={dialogRef}
+      onClose={() => {
+        if (!ran.current) onClose();
+      }}
+      aria-label="Command palette"
+      className={`mx-auto mt-[12vh] w-[calc(100%-3rem)] max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-2xl open:flex motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 ${MODAL_BACKDROP}`}
+    >
+      <Command label="Command palette" loop filter={filter}>
+        <CommandInput
+          autoFocus
+          data-autofocus
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Search rooms, panes, actions…"
+        />
+        <CommandList>
+          <CommandEmpty>No matching commands.</CommandEmpty>
+          {sections.map(section => (
+            <CommandGroup key={section.heading} heading={section.heading}>
+              {section.commands.map(command => (
+                <CommandItem
+                  key={command.id}
+                  value={command.id}
+                  keywords={[command.title, command.group, ...(command.keywords ?? [])]}
+                  onSelect={() => {
+                    // Closed before the command runs, so the page is no
+                    // longer inert and a command can move focus into it.
+                    ran.current = true;
+                    dialogRef.current?.close();
+                    onRun(command.id);
+                  }}
+                >
+                  <span className="truncate">{command.title}</span>
+                  {command.shortcut && (
+                    <CommandShortcut>{formatChord(command.shortcut, mac)}</CommandShortcut>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))}
+        </CommandList>
+      </Command>
 
-        <footer className="flex flex-shrink-0 items-center gap-3 border-t border-border px-4 py-2 text-micro text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <Kbd size="xs" tone="muted">↑↓</Kbd> navigate
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Kbd size="xs" tone="muted">↵</Kbd> run
-          </span>
-          <span className="flex items-center gap-1.5">
-            <Kbd size="xs" tone="muted">Esc</Kbd> close
-          </span>
-        </footer>
-      </div>
-    </div>
+      <footer className="flex flex-shrink-0 items-center gap-3 border-t border-border px-4 py-2 text-micro text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">↑↓</Kbd> navigate
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">↵</Kbd> run
+        </span>
+        <span className="flex items-center gap-1.5">
+          <Kbd size="xs" tone="muted">Esc</Kbd> close
+        </span>
+      </footer>
+    </ModalDialog>
   );
 }

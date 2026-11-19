@@ -50,9 +50,10 @@ from typing import TYPE_CHECKING, Any
 from app.services import assignments
 from app.services.filesystem import (
     EPISODE_META,
-    get_room_dir,
     list_room_names,
     read_memory_file,
+    room_exists,
+    room_path,
     system_meta,
 )
 from app.services.status import discovery, registry
@@ -74,7 +75,9 @@ _sweep_task: asyncio.Task[None] | None = None
 
 
 def _seen_path(room: str):
-    return get_room_dir(room) / SEEN_FILE
+    # Never ``get_room_dir``, which makes the folder: a room is its folder, so a
+    # sweep that made one would bring a deleted room back.
+    return room_path(room) / SEEN_FILE
 
 
 def load_seen(room: str) -> dict[str, dict[str, Any]]:
@@ -87,10 +90,20 @@ def load_seen(room: str) -> dict[str, dict[str, Any]]:
 
 
 def _save_seen(room: str, seen: dict[str, dict[str, Any]]) -> None:
+    """Keep what the room last saw, unless the room has been deleted since.
+
+    Writing into a missing folder fails rather than making it, so a room
+    deleted between the check and the write stays deleted too.
+    """
     path = _seen_path(room)
+    if not path.parent.is_dir():
+        return
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(seen, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(json.dumps(seen, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, path)
+    except FileNotFoundError:
+        return
 
 
 def _reading(cached: CachedStatus) -> dict[str, Any] | None:
@@ -105,7 +118,7 @@ def _row_for(room: str, origins: tuple[str, ...], now: datetime) -> tuple[str, d
     """The row a change is told on: the first that mentions the ref and is still
     open, else the first that mentions it. One notice per change, however many
     rows link the pull request, so the timeline says it once."""
-    room_dir = get_room_dir(room)
+    room_dir = room_path(room)
     rows: list[tuple[str, dict, str]] = []
     for origin in origins:
         if not origin.startswith("memory:"):
@@ -163,6 +176,11 @@ async def sweep(
 
     raised: list[tuple[str, str, str]] = []
     for room, items in found.items():
+        # Deleted while the refresh was out: raising a notice in it would write
+        # its history, and saving what it saw its seen file, each making its
+        # folder again.
+        if not room_exists(room):
+            continue
         # Never looked at before: everything in it is a baseline, even news.
         first_sweep = not _seen_path(room).exists()
         seen = load_seen(room)

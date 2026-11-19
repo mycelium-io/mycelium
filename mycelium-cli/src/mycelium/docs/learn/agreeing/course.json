@@ -7,7 +7,7 @@
   "thumb": "app-thread-flow.png",
   "needs": [
     "Two or more agents on one task, in a room with the conductor engine",
-    "The pairing or swarming course, or the same experience"
+    "The pairing course, or the same experience"
   ],
   "takeaway": "Knowing when a team needs to agree on the task and when it needs to agree on an answer, and the flow for each.",
   "outcomes": [

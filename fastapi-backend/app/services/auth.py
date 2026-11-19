@@ -48,6 +48,10 @@ ALLOWED_ALGORITHMS = frozenset(
     {"RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512"}
 )
 
+#: What a person whose sign-in gives no handle yet may still reach: who they
+#: are, and picking a handle (``POST /api/whoami/handle``).
+HANDLE_PICK_PATHS = frozenset({"/api/whoami", "/api/whoami/handle"})
+
 #: Paths served without a token even when the gate is on. Health is here because
 #: orchestrator probes (the compose healthcheck, `mycelium doctor`) are
 #: unauthenticated by nature and reveal no room content; the schema/docs routes
@@ -99,6 +103,9 @@ class Principal:
     role: PrincipalRole
     issuer: str
     claims: dict[str, Any] = field(default_factory=dict)
+    #: A person signed in whose sign-in gives no handle yet (the short one is
+    #: taken, or isn't a valid handle): they pick one before anything else.
+    needs_handle: bool = False
 
 
 class AuthError(HTTPException):
@@ -342,16 +349,29 @@ async def verify_token(token: str) -> Principal:
     except jwt.PyJWTError as exc:
         raise AuthError(f"token rejected: {exc}")
 
-    handle = normalize_handle(claims.get(settings.AUTH_HANDLE_CLAIM))
-    if handle is None:
+    claimed = normalize_handle(claims.get(settings.AUTH_HANDLE_CLAIM))
+    if claimed is None:
         raise AuthError(f"token carries no {settings.AUTH_HANDLE_CLAIM!r} claim")
+    subject = str(claims.get("sub") or claimed)
+
+    # A member token this hub signed already names a short handle. A sign-in's
+    # claim (often an email) is the person's way in, not their handle: they
+    # get the short one bound to their sign-in (``services/identities.py``).
+    handle: str | None = claimed
+    if entry.issuer != member_tokens.ISSUER:
+        from app.services import identities, short_handles
+
+        handle = identities.resolve(entry.issuer, subject, claimed)
+        if handle is not None:
+            await short_handles.settle(entry.issuer, subject, claimed, handle)
 
     return Principal(
-        subject=str(claims.get("sub") or handle),
-        handle=handle,
+        subject=subject,
+        handle=handle or "",
         role=_resolve_role(claims, entry),
         issuer=entry.issuer,
         claims=claims,
+        needs_handle=handle is None,
     )
 
 
@@ -414,6 +434,15 @@ async def auth_gate(request: Request) -> Principal | None:
 
     principal = await verify_token(_bearer_token(request))
     request.state.principal = principal
+    if principal.needs_handle and path not in HANDLE_PICK_PATHS:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "auth.handle_needed",
+                "message": "Pick a handle first, in the app: the one your sign-in gives "
+                "is taken here, or isn't a valid handle.",
+            },
+        )
     return principal
 
 

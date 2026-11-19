@@ -167,11 +167,9 @@ function MachineCard({ runner, keyId }: { runner: Runner; keyId: string | null }
             <table className="w-full text-left text-label">
               <tbody>
                 {frameworks.map((f) => (
-                  <tr key={f.id} className={`h-7 ${f.installed ? "" : "opacity-50"}`}>
+                  <tr key={f.id} className={`h-7 ${f.launchable ? "" : "opacity-50"}`}>
                     <td className="pr-3 text-text">{f.name}</td>
-                    <td className="pr-3 font-mono text-micro text-muted-foreground">
-                      {f.installed ? (f.version ?? "installed") : "not found"}
-                    </td>
+                    <td className="pr-3 font-mono text-micro text-muted-foreground">{f.version ?? ""}</td>
                     <td className="hidden pr-3 font-mono text-micro text-faint sm:table-cell">
                       {f.path ?? f.command}
                     </td>
@@ -260,7 +258,6 @@ function PairingLine({ pairing: p, mine }: { pairing: RunnerPairing; mine: boole
   const covers = [
     p.folders.length ? p.folders.join(", ") : "all runner folders",
     p.clis.length ? p.clis.join(", ") : "any agent CLI",
-    p.swarms ? "swarms allowed" : "no swarms",
   ].join(" · ");
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-label">

@@ -22,7 +22,9 @@ export function useUsers(): { users: User[]; loading: boolean } {
   return { users: data ?? [], loading: isLoading };
 }
 
-/** Handle (lowercased, no `@`) → the name that person gave themselves. */
+/** Handle (lowercased, no `@`) → the name that person gave themselves. A
+ *  handle they had before (`was`, the email their sign-in gave before they
+ *  had a short one) maps to the same name, so their past messages show it. */
 export function useNames(): Map<string, string> {
   const { users } = useUsers();
   return useMemo(
@@ -30,7 +32,9 @@ export function useNames(): Map<string, string> {
       new Map(
         users
           .filter(u => u.display_name?.trim())
-          .map(u => [u.handle.toLowerCase(), u.display_name.trim()] as const),
+          .flatMap(u =>
+            [u.handle, ...(u.was ?? [])].map(h => [h.toLowerCase(), u.display_name.trim()] as const),
+          ),
       ),
     [users],
   );

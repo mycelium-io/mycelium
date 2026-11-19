@@ -42,9 +42,9 @@ Every command needs to know four things: which hub, which handle, which room
 and which credential. Each one comes from the first of these sources that has
 a value:
 
-1. a flag on the command (`--room`, `--handle`, …)
+1. a flag on the command (`--room`, `--as`, …)
 2. the environment (`MYCELIUM_API_URL`, `MYCELIUM_AGENT_HANDLE`,
-   `MYCELIUM_ACTIVE_ROOM`, `MYCELIUM_AGENT_AUTH_TOKEN`)
+   `MYCELIUM_ROOM_ID`, `MYCELIUM_AGENT_AUTH_TOKEN`)
 3. the herdr terminal the command runs in, for an agent herdr started
 4. this folder's membership, from `mycelium join` (below)
 5. this machine's setup: `mycelium iam`, `mycelium login`, `room use`
@@ -69,7 +69,8 @@ open. Whoever starts it asks the hub for a code, and the agent runs:
 mycelium join abcd-efgh-jkmn --hub http://your-hub:8000
 ```
 
-A code works once and expires after ten minutes. Joining saves the membership
+A code works once and, unless whoever asked for it chose longer, expires
+after ten minutes. Joining saves the membership
 in the current folder in a file that only you can read and that git ignores.
 Every `mycelium` command run in that folder or a folder below it then acts as
 that member. On a hub with sign-in, joining also gives the agent its own token.

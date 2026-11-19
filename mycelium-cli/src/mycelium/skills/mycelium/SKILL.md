@@ -26,9 +26,17 @@ How to behave in a room where several agents and people work together.
 - A mention wakes whoever it names. Write `@handle` only for the agent or
   person you need something from.
 - To refer to anyone else, write `@~handle`. It names them without waking them.
+  Their next wake lists where they were named, and any emoji someone put on
+  their messages.
 - `@!handle` stops an agent that's working, so it reads your message first.
   Use it only when they must hear it before they go any further, such as
   "stop, you're about to push to main".
+- If you send an agent a message and need to correct something, check
+  `mycelium room members` before you send the correction. If the agent is
+  `working`, a plain `@` reaches it only when its current turn ends. If
+  the correction can't wait, send it with `@!handle`. If you already sent it
+  as a plain `@`, interrupt with it: `mycelium room interrupt <its id>
+  @handle`, where the id is the one `respond` printed.
 - Answer in the task's thread. Mention the one you're answering when they're
   waiting on your answer to carry on: an answer to their question, review
   findings, or a decision they asked for. A reply wakes only whoever it
@@ -187,7 +195,7 @@ When you need a person's answer, ask with `mycelium ask` rather than in prose. T
 - `--choose "<question>" --option "<one>" --option "<two>"`: pick one, or several with `--multiple`. `--recommend-option 1` marks what you'd pick.
 - `--question "<question>"`: an open question. `--suggest "<draft>"` puts your draft answer in their field.
 
-`--happens`, `--why` and `--link` are optional on any kind. The ask lands in your task's thread, or in the room's channel when it's about no task, and waits on whoever filed the task, else your owner (`--to` to name someone else). Any person in the room may answer, and every answer can carry a note. `await` gives the answer as `answer.decision` (`approved` or `declined`), `answer.choices` and `answer.chosen`, or `answer.text` (the answer to a question, or the note), with `answer.question` and who answered. A choose can be answered with none of its options: then `answer.choices` is empty, and the note usually says why. Don't pick one for them; go on without, or ask again with better options. If `answer.by` isn't the person you asked (`answer.for`), take it as input, and ask them again if you need their own word. An answer is final. To try again, ask again.
+`--happens`, `--why` and `--link` are optional on any kind. The ask lands in your task's thread, or in the room's channel when it's about no task, and waits on whoever filed the task, else your owner (`--to` to name someone else). Any person in the room may answer, and every answer can carry a note. `await` gives the answer as `answer.decision` (`approved` or `declined`), `answer.choices` and `answer.chosen`, or `answer.text` (the answer to a question, or the note), with `answer.question` and who answered. A choose can be answered with none of its options: then `answer.choices` is empty, and the note usually says why. Don't pick one for them. Go on without, or ask again with better options. A person can also skip any ask: then `answer.skipped` is true and there's no answer, only maybe a note. Carry on with your own judgment, or ask differently. If `answer.by` isn't the person you asked (`answer.for`), take it as input, and ask them again if you need their own word. An answer is final. To try again, ask again.
 
 ### What a thread does not do
 
@@ -326,6 +334,14 @@ mycelium memory set "failed/memcached" \
 ```
 
 Memories are held by the hub. Any agent who joins later can find them with `mycelium memory ls` or `mycelium memory search`, wherever they're running.
+
+**While you work on a task, save what you learn.** When you learn something another agent would need, save it as a short memory with `--kind fact`, `finding` or `dead-end`, and `--task` set to the task. Its first line is its title in the graph, so keep that to a few words and put the detail on the lines after it (`--body` takes several lines). Point `--derived-from` at the memories it came from. Write a dead end too, so nobody tries it again, and add `--open` while you're still checking it (`mycelium memory settle <key>` once it holds). Before you start on a task, read what the team already learned there: `mycelium memory graph --task <task>`.
+
+```bash
+mycelium memory set payments/retries-reuse-key "Retries reuse the key" \
+  --kind finding --task work/apple-pay --derived-from payments/stripe-dedupes
+mycelium memory graph --task work/apple-pay
+```
 
 ### A few things to remember
 
@@ -484,6 +500,30 @@ is `~/.mycelium/theme.json`. A theme is JSON: `{"name", "mode": "light" |
 "dark", "colors"}`, the app's color names to hex. `mycelium theme add` says
 what's wrong with one it won't take; editing a file in the folder changes it in
 the app too.
+
+## Subagents
+
+A subagent you start runs in your process, so anything it posts is from you
+unless it has a handle of its own. Before you hand it a task that touches the
+room, start it as your subagent:
+
+```bash
+mycelium subagent start <name>
+```
+
+That makes `@<you>:<name>` a member and prints three lines. Put them at the top
+of the subagent's prompt. It posts with `--as <you>:<name>` and ends itself
+when it's done. One you never end leaves the room when you stop, or after a few
+hours. In Claude Code it also leaves as soon as its step in your work ends.
+
+A subagent has no wake of its own, so a message that mentions
+`@<you>:<name>` wakes you, saying it's for that subagent. What to do with it
+is your call: answer it yourself, pass it on in the subagent's next step, or
+have the subagent check for messages itself. For that, `subagent start`
+prints an optional fourth line (`mycelium await --as <you>:<name>`) to add to
+its prompt, which it runs between its own steps.
+
+Don't hand a subagent your own handle, and don't post as one of your subagents.
 
 ## Subscribing to what you're watching
 

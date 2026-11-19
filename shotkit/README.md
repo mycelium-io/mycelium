@@ -22,8 +22,8 @@ standalone version, usable from any project.
 ## Install
 
 ```bash
-git clone https://github.com/juliarvalenti/shotkit ~/Documents/GitHub/shotkit
-cd ~/Documents/GitHub/shotkit && npm install && npm link   # puts `shot` on PATH
+git clone https://github.com/juliarvalenti/shotkit
+cd shotkit && npm install && npm link   # puts `shot` on PATH
 shot doctor
 ```
 
@@ -34,10 +34,10 @@ Chromium is on disk; `shot doctor` says what it found.
 
 `skills/shotkit/SKILL.md` teaches a coding agent to use `shot`. Link it into
 your personal skills so it is available in every project, and stays current
-with `git pull`:
+with `git pull`. From the checkout:
 
 ```bash
-ln -s ~/Documents/GitHub/shotkit/skills/shotkit ~/.claude/skills/shotkit
+mkdir -p ~/.claude/skills && ln -s "$PWD/skills/shotkit" ~/.claude/skills/shotkit
 ```
 
 ## The project
@@ -123,6 +123,7 @@ speedup: 13.1x
 | `shot code <file>` | a syntax-highlighted code card |
 | `shot html <file\|->` | render an HTML document; with a page option (`--do`, `--wait`, `--full-page`) it opens the file as a page |
 | `shot video [route]` | record a short take — see **Video** |
+| `shot profile [route]` | time how long an interaction holds the page — see **Profile** |
 | `shot open` / `do` / `shoot` / `close` | drive a page held open — see **Navigation** |
 | `shot flows` | the project's committed flows — see **Flows** |
 | `shot warm` / `status` / `stop` / `serve` | the daemon |
@@ -194,7 +195,10 @@ Save, not a `<save>` element. Words that are also tag names are no exception:
 only of tag names and spaces needs saying explicitly: `css=nav button`.
 
 `wait:<sel>` waits for an element; `wait:<ms>` (a bare number) or `sleep:<ms>`
-pauses for a fixed time, for a transition after a click. A step that fails says
+pauses for a fixed time, for a transition after a click. `drag:<sel>@<dx>,<dy>`
+presses on the middle of an element, moves the pointer that many pixels and
+lets go, for panning a canvas or moving a handle; in a take, the drawn pointer
+carries the press along. A step that fails says
 which one, in one line: `[shot] error: step 2, click:Save: …`. `--verbose` (or
 `SHOTKIT_DEBUG=1`) adds the stack and Playwright's call log.
 
@@ -251,6 +255,14 @@ shot url https://staging.example.com/dashboard --storage-state ~/.shotkit/stagin
 shotkit never reads, prints or copies it. Re-saving it (the session expired, the
 shots show the login page again) takes effect on the next shot, since contexts
 are pooled per file *and* its modification time.
+
+A flow that needs a browser permission headless can't ask for, like a Copy
+button writing to the clipboard, gets it with `--grant` (repeatable):
+
+```bash
+shot open /room/checkout --session c --grant clipboard-write --grant clipboard-read
+shot do click:Copy image "eval:navigator.clipboard.read().then(i => i[0].types)" --session c
+```
 
 The file is a session credential: keep it in your home directory, never in a
 repo, and never in `.shotkit/`, which is only gitignored, not private.
@@ -312,6 +324,33 @@ own transitions included; `--capture shots` falls back to a screenshot loop.
 Whichever it is, a frame is written every 1/fps whether the page changed or not,
 so the file's timeline is wall-clock and a still stretch costs repeats of one
 JPEG.
+
+## Profile
+
+`shot profile` measures how long an interaction holds the page. The flows and
+`--do` steps bring it to where it starts, unmeasured. Then the `--measure` steps
+run, and the page counts as usable once `--until` is met and the main thread
+has gone 500 ms without a stall.
+
+```sh
+shot profile /room/a --base-url http://localhost:3000 \
+  --do "wait:[data-event-id]" \
+  --measure "click:a[href='/room/b']" --until "wait-url:**/room/b" \
+  --engine webkit --runs 5
+```
+
+A stall is any stretch over 50 ms when the page couldn't answer a click or a
+key. A timer in the page catches these the same way in every engine, so
+`--engine webkit` (Safari's, and a Tauri app's on macOS) reads like Chromium.
+Each run is a fresh page. The summary on stderr gives each run's time to usable
+and its stalls, with their medians over the runs.
+
+In Chromium, it also takes a CPU profile. Each run's `.cpuprofile` is saved to
+`.shotkit/`, which Chrome DevTools' Performance panel opens, and its path goes
+to stdout. The summary lists the functions with the most self time (`--top`).
+When the app serves source maps and `source-map-js` can be imported, those
+functions are named by their source file and line, not the minified chunk.
+`--json` prints every run in full.
 
 ## Sound
 

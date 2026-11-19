@@ -11,6 +11,7 @@ import { MachineFromUrl } from "@/components/machine-from-url";
 import { AuthSessionProvider } from "@/components/auth-session";
 import { LoginGate } from "@/components/login-gate";
 import { NamePrompt } from "@/components/name-prompt";
+import { HandlePicker } from "@/components/handle-picker";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { StrayDropGuard } from "@/components/stray-drop-guard";
@@ -75,6 +76,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         {children}
                         {/* Asks a browser that hasn't said who it is, once. */}
                         <NamePrompt />
+                        {/* Asks a signed-in person whose sign-in gives no handle to pick one. */}
+                        <HandlePicker />
                       </KeymapProvider>
                     </TooltipProvider>
                   </NotificationsProvider>

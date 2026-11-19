@@ -23,8 +23,15 @@ def test_a_cli_with_nothing_of_its_own_adds_nothing():
     gemini = agents.of_kind("gemini")
     assert gemini.launch_args() == []
     assert gemini.blocked_hint() is None
+    assert gemini.launch_env() == {}
     unknown = agents.of_kind("someday")
     assert (unknown.id, unknown.launch_args(), unknown.adapter) == ("someday", [], "claude_code")
+
+
+def test_opencode_starts_without_its_update_dialog():
+    """Its update dialog opens over its input while herdr reads it as idle, so a
+    wake would be typed into it and could answer it."""
+    assert agents.of_kind("opencode").launch_env() == {"OPENCODE_DISABLE_AUTOUPDATE": "1"}
 
 
 CLAUDE_HELP = (
@@ -119,6 +126,32 @@ def test_an_older_codex_without_auto_review_picks_the_sandbox_and_asks_on_reques
     assert args[:4] == ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
 
 
+CURSOR_HELP = (
+    "  -f, --force                  Force allow commands unless explicitly denied\n"
+    "  --auto-review                Use Auto-review (Smart Auto): a server classifier\n"
+    "  --trust                      Trust the current workspace without prompting"
+)
+
+
+def test_cursor_trusts_the_folder_it_was_started_in_and_runs_in_auto_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _installed(tmp_path, monkeypatch, **{"cursor-agent": CURSOR_HELP})
+    args = agents.of_kind("cursor").launch_args()
+    assert args == ["--trust", "--auto-review"]
+    # Never the flags that run every command.
+    assert not {"--force", "-f", "--yolo"} & set(args)
+
+
+def test_an_older_cursor_starts_with_only_the_flags_it_has(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _installed(tmp_path, monkeypatch, **{"cursor-agent": "  --trust   Trust the current workspace"})
+    assert agents.of_kind("cursor").launch_args() == ["--trust"]
+    _installed(tmp_path, monkeypatch, **{"cursor-agent": "  -p, --print"})
+    assert agents.of_kind("cursor").launch_args() == []
+
+
 def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -126,7 +159,7 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     a Node CLI's ``#!/usr/bin/env node`` needs the node installed beside it.
     Asked any other way, it says nothing, and Codex would start without the
     flags it has."""
-    from mycelium.runner import frameworks
+    from mycelium import terminal_path
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # the runner's own: no codex
@@ -138,7 +171,7 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     codex = nvm / "codex"
     codex.write_text("#!/usr/bin/env fakenode\n")
     codex.chmod(0o755)
-    monkeypatch.setattr(frameworks, "install_dirs", lambda: [nvm])
+    monkeypatch.setattr(terminal_path, "install_dirs", lambda: [nvm])
 
     args = agents.of_kind("codex").launch_args()
     assert args[0] == "--approve-for-me"
@@ -396,7 +429,9 @@ def test_each_cli_is_recorded_under_its_manifest_family(framework, adapter):
         "runner/hosts.py",
         "runner/daemon.py",
         "integrations/herdr/bridge.py",
-        "commands/swarm.py",
+        "integrations/herdr/starting.py",
+        "runner/worktrees.py",
+        "live_view.py",
         "machine.py",
     ],
 )

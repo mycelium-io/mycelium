@@ -10,9 +10,9 @@ SLIM for them.
 
 ## What's encrypted
 
-SLIM channels are encrypted with MLS between the hub's backend and the SLIM
-node. The node only ever passes along messages it can't read. The backend holds
-each room's key and reads everything in the room, because the engines and the
+Each room's SLIM channel is encrypted with MLS. The SLIM node only ever passes
+along messages it can't read. The hub is a member of every channel, holds each
+room's key and reads everything in the room, because the engines and the
 message history need it.
 
 ## What this means for you

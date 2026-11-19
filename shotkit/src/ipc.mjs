@@ -57,7 +57,8 @@ export function send(op, payload = {}, { timeout = 180_000 } = {}) {
     let buffer = "";
     const timer = setTimeout(() => {
       sock.destroy();
-      reject(new Error(`daemon timed out after ${timeout}ms`));
+      // The daemon got the request and may still be running it.
+      reject(Object.assign(new Error(`daemon timed out after ${timeout}ms`), { timedOut: true }));
     }, timeout);
 
     sock.on("connect", () => sock.write(`${JSON.stringify({ op, ...payload })}\n`));

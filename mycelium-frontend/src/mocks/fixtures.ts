@@ -35,6 +35,7 @@ import type {
   RoomFloor,
   RoomSubscription,
   Schedule,
+  Subagent,
   VerifierFlag,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
@@ -101,6 +102,10 @@ export interface MockMessage {
   episode?: string | null;
   /** A structured line a surface draws instead of the prose (a conductor post's). */
   metadata?: Record<string, unknown> | null;
+  /** Who its sender interrupted with it after sending it (`MessageRead.interrupted`). */
+  interrupted?: { by: string; handle: string; at: string }[] | null;
+  /** The emoji on it and who put each on (`MessageRead.reactions`). */
+  reactions?: { emoji: string; by: string[] }[];
 }
 
 /** A subscription as the hub sends it (`WakeSubscriptionRead`): the app reads
@@ -125,6 +130,8 @@ export interface RoomFixture {
   floors?: RoomFloor[];
   /** What the room's agents subscribed to, served beside presence. */
   subscriptions?: MockSubscription[];
+  /** The room's agents' subagents, served at GET /subagents. */
+  subagents?: Subagent[];
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
@@ -330,7 +337,12 @@ const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((
  * list. The conversational read drops it; the transcript replay is where it
  * survives a reload.
  */
-function checkoutPing(message: string, sender: string, minutesAgo: number): Record<string, unknown> {
+function checkoutPing(
+  message: string,
+  sender: string,
+  minutesAgo: number,
+  episode: string = LAUNCH_THREAD,
+): Record<string, unknown> {
   return {
     id: `ping-${message}`,
     sender_handle: "system",
@@ -345,7 +357,7 @@ function checkoutPing(message: string, sender: string, minutesAgo: number): Reco
           message: { id: `ping-${message}`, parents: [], episode: CHECKOUT_LIVE },
           participants: { actors: [{ id: "system", role: "coordinator" }] },
         },
-        payload: { type: "ping", data: { episode: LAUNCH_THREAD, sender, message } },
+        payload: { type: "ping", data: { episode, sender, message } },
       },
     },
   };
@@ -1192,6 +1204,17 @@ const checkout: RoomFixture = {
     mas_id: "mas_7c1e9a2b",
   },
   memories: [
+    // A thread started from a message (h6), not a task: no board row, just the
+    // conversation, under the message in the channel.
+    {
+      key: "threads/when-should-the-payment-alert-fire",
+      value: "When should the payment alert fire?",
+      meta: { from: "h6" },
+      created_by: "reviewer",
+      version: 1,
+      updated_at: iso(70),
+      episode: checkoutEpisode("e7a1c3"),
+    },
     {
       key: "agents/builder",
       value: agentManifest("Writes the checkout code: Apple Pay and the double-charge fix."),
@@ -1302,12 +1325,19 @@ const checkout: RoomFixture = {
     // ── setting the room up, and the early work (a day ago) ──
     { id: "h1", sender_handle: "operator", message_type: "broadcast", content: "setting up checkout for the spring sale. two things: add apple pay, and stop the double charges. @builder @reviewer can you take the code and the testing?", created_at: iso(60 * 25) },
     { id: "h2", sender_handle: "builder", message_type: "broadcast", content: "on it. moving card payments to stripe first, apple pay is easier on top of that.", created_at: iso(1440) },
-    { id: "h3", sender_handle: "builder", message_type: "broadcast", content: "stripe payments are merged (#499). starting on apple pay.", created_at: iso(1400) },
+    { id: "h3", sender_handle: "builder", message_type: "broadcast", content: "stripe payments are merged (#499). starting on apple pay.", created_at: iso(1400), reactions: [{ emoji: "🎉", by: ["operator", "reviewer"] }, { emoji: "🚀", by: ["reviewer"] }] },
     // ── Apple Pay gets built, and the work hanging off it ──
     { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is approved and green, so it can go to staging.", created_at: iso(140) },
     { id: "h5", sender_handle: "reviewer", message_type: "broadcast", content: "i'll do the testing. i need it on staging to try real phones and real cards.", created_at: iso(130) },
     { id: "h6", sender_handle: "operator", message_type: "broadcast", content: "adding an alert for when payments start failing, so we hear about it before customers email us.", created_at: iso(95) },
+    // The thread started from h6, in its own episode: it reads under h6 as one line.
+    { id: "t6a", sender_handle: "reviewer", message_type: "broadcast", content: "what counts as failing? a single declined card is normal.", created_at: iso(90), episode: checkoutEpisode("e7a1c3") },
+    { id: "t6b", sender_handle: "builder", message_type: "broadcast", content: "more than 5% of payments failing over ten minutes. one bad card won't trip it.", created_at: iso(80), episode: checkoutEpisode("e7a1c3") },
+    { id: "t6c", sender_handle: "operator", message_type: "broadcast", content: "good. send it to the room and to my phone, not email.", created_at: iso(70), episode: checkoutEpisode("e7a1c3") },
     { id: "h7", sender_handle: "builder", message_type: "broadcast", content: "some order emails are going out twice when stripe retries a webhook. filing it, i'll fix it after apple pay.", created_at: iso(58) },
+    // Builder's subagents posting as themselves.
+    { id: "s1", sender_handle: "builder:tests", message_type: "broadcast", content: "refund tests pass on staging: 41 of 41, including the double-click case.", created_at: iso(3) },
+    { id: "s2", sender_handle: "builder:review", message_type: "broadcast", content: "#504's retry path looks right. one gap: a timeout after the charge but before the reply isn't refunded. adding a test for it.", created_at: iso(1) },
     // Builder forgets #499 merged yesterday (h3): the verifier's darker line.
     { id: "h7b", sender_handle: "builder", message_type: "broadcast", content: "apple pay sits on top of #499, which still needs a review before it can merge.", created_at: iso(55) },
     // ── the test-first correction ──
@@ -1473,6 +1503,30 @@ const checkout: RoomFixture = {
         },
       },
     },
+    // An open approve written in markdown: the card renders it as a message does.
+    {
+      id: "k4",
+      sender_handle: "builder",
+      recipient_handle: "operator",
+      message_type: "broadcast",
+      content: "Turn Apple Pay on for **everyone** on Friday at 9:00?",
+      created_at: iso(1),
+      metadata: {
+        ask: {
+          id: "c41f7d02",
+          kind: "approve",
+          to: "operator",
+          question:
+            "Turn Apple Pay on for **everyone** on Friday at 9:00?\n\n" +
+            "It's been on for staff since Monday:\n" +
+            "- 212 orders, none charged twice\n" +
+            "- the iPhone test passed on a real card",
+          happens: "The `apple_pay` switch goes on for all customers, and the button shows at checkout.",
+          undo: "Turn `apple_pay` off. See [[work/turn-on-apple-pay]] for the steps.",
+          recommend: "approve",
+        },
+      },
+    },
     // The parts' own threads, so each running part has a latest line.
     { id: "p1", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is up, with the button behind the switch.", created_at: iso(26), episode: APPLE_PAY_THREAD },
     { id: "p2", sender_handle: "reviewer", message_type: "broadcast", content: "approved #502. ci is green, so it can go to staging.", created_at: iso(18), episode: APPLE_PAY_THREAD },
@@ -1545,8 +1599,15 @@ const checkout: RoomFixture = {
   // await lease. Both are agents in the roster, so the board projects a resident
   // row for each — the presence signal that a live SLIM node would otherwise supply.
   presence: [
-    { handle: "builder", kind: "slim", last_seen: null },
+    // Builder is mid-turn, so a plain `@builder` waits for its turn to end.
+    { handle: "builder", kind: "slim", last_seen: null, status: "working" },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
+  ],
+  // Two of builder's subagents, each with its own handle: one still at it,
+  // one just finished.
+  subagents: [
+    { handle: "builder:review", parent: "builder", name: "review", state: "working", started_at: iso(6), ended_at: null },
+    { handle: "builder:tests", parent: "builder", name: "tests", state: "done", started_at: iso(9), ended_at: null },
   ],
   // The verifier couldn't find an approval for #502, which builder called
   // approved: nobody in the room had reviewed it yet.
@@ -1715,6 +1776,10 @@ const checkout: RoomFixture = {
     checkoutNotice("claimed", "work/turn-on-apple-pay", "Turn on Apple Pay for everyone", LAUNCH_THREAD, "builder", 23),
     checkoutPing("t2", "reviewer", 21),
     checkoutPing("t3", "builder", 20),
+    // The replies in the thread started from the payment-alert message (h6).
+    checkoutPing("t6a", "reviewer", 90, checkoutEpisode("e7a1c3")),
+    checkoutPing("t6b", "builder", 80, checkoutEpisode("e7a1c3")),
+    checkoutPing("t6c", "operator", 70, checkoutEpisode("e7a1c3")),
   ],
   // Three work rows name pull requests; the hub resolved them. The first row
   // mentions two, one green and one failing, so it shows the failing one and says
@@ -2605,7 +2670,6 @@ export function usageKpis(days: number) {
     },
     flows: {
       review: { resolved: n(14), rejected: n(2) },
-      swarm: { resolved: n(5), rejected: n(1) },
       gated: { resolved: n(3), rejected: n(1) },
     },
     negotiations: { converged: n(6), rejected: n(1) },

@@ -177,8 +177,8 @@ def test_a_silent_mention_is_not_a_turn():
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": "@reviewer look, cc @~claude-code-agent"})
-    assert asks(content, "reviewer")
-    assert not asks(content, "claude-code-agent")
+    assert asks(content, "reviewer", "r")
+    assert not asks(content, "claude-code-agent", "r")
 
 
 @pytest.mark.asyncio
@@ -198,8 +198,8 @@ async def test_await_does_not_serve_a_handle_quoted_in_code(wired):
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": text})
-    assert asks(content, "reviewer")
-    assert not asks(content, "claude-code-agent")
+    assert asks(content, "reviewer", "r")
+    assert not asks(content, "claude-code-agent", "r")
 
     log = persister.DeliveryLog()
     log.record(persister.record_from(env, content), delivered_to=set(), recipients=["reviewer"])
@@ -220,7 +220,7 @@ def test_an_interrupting_mention_addresses_by_text():
         payload_type="message",
     )
     content = serialize_content(env, extra={"content": "@!Coder stop, wrong checkout"})
-    assert asks(content, "coder")
+    assert asks(content, "coder", "r")
 
 
 @pytest.mark.asyncio

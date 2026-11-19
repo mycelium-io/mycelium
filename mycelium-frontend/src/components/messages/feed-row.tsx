@@ -5,13 +5,16 @@
 
 import { useMemo, useRef, useState } from "react";
 import { AtSign, Braces, Copy, Link2, MessageSquare, Reply, TextQuote } from "lucide-react";
-import type { VerifierFlag } from "@/lib/api";
+import type { Subagent, VerifierFlag } from "@/lib/api";
 import type { Event } from "@/lib/room-events";
 import {
+  useMessageThreads,
   useRoomAgents,
+  useRoomSubagents,
   useRoomRowNames,
   useRoomThreads,
   useRoomVerifierFlags,
+  type MessageThread,
   type RowNaming,
   type ThreadOwner,
 } from "@/lib/room-data";
@@ -43,11 +46,14 @@ import { AgentCardHover } from "@/components/agent-card";
 import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
 import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
 import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
+import { InterruptMark, type Interrupted } from "@/components/messages/mention-wakes";
+import { ThreadReplies } from "@/components/messages/thread-replies";
 import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { AskCard } from "@/components/approval-card";
+import { ReactionChips } from "@/components/messages/reactions";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -138,6 +144,14 @@ export interface FeedContext {
   /** The room's threads by short id, for linking a thread id quoted in a
    *  message to its task. Leaves out the thread the list is of. */
   threadIds?: ReadonlyMap<string, ThreadTarget>;
+  /** Threads started from a message, by that message's id; drawn under it. */
+  messageThreads?: ReadonlyMap<string, MessageThread>;
+  /** Who each message's sender interrupted with it, by message id; marked on
+   *  the message, never a line of its own. */
+  interruptedByMessage?: ReadonlyMap<string, Interrupted[]>;
+  /** The room's subagents by handle (lowercased), ended ones too, from the
+   *  hub's record: a message from one wears its parent's face. */
+  subagents?: ReadonlyMap<string, Subagent>;
   rowNames: Map<string, RowNaming>;
   flagsByMessage: Map<string, VerifierFlag[]>;
   refreshFlags: () => void;
@@ -160,6 +174,8 @@ export function useFeedContext(
 ): FeedContext {
   const { agents } = useRoomAgents(roomName);
   const threads = useRoomThreads(roomName);
+  const messageThreads = useMessageThreads(roomName);
+  const subagents = useRoomSubagents(roomName);
   const rowNames = useRoomRowNames(roomName);
   const { byMessage: flagsByMessage, refresh: refreshFlags } = useRoomVerifierFlags(roomName);
   const threadIds = useMemo(() => {
@@ -179,6 +195,8 @@ export function useFeedContext(
       agentOwners: new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
       threads,
       threadIds,
+      messageThreads,
+      subagents,
       rowNames,
       flagsByMessage,
       refreshFlags,
@@ -186,7 +204,7 @@ export function useFeedContext(
       onOpenMemory,
       episode,
     }),
-    [roomName, agents, threads, threadIds, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
+    [roomName, agents, threads, threadIds, messageThreads, subagents, rowNames, flagsByMessage, refreshFlags, onOpenThread, onOpenMemory, episode],
   );
 }
 
@@ -691,12 +709,18 @@ export function MessageRow({
 }) {
   const { roomName, agentHandles, engineHandles, agentTags, agentOwners, flagsByMessage, refreshFlags } = ctx;
   const drawsValues = Boolean(replyContext?.rated);
-  const isAgent = agentHandles.has(ev.sender);
+  // A message from an agent's subagent wears its parent's face, by its own
+  // name, from the hub's record, which outlasts the subagent.
+  const subagent = ctx.subagents?.get(ev.sender.toLowerCase());
+  const isAgent = agentHandles.has(ev.sender) || Boolean(subagent);
   // Match the members panel so one sender isn't two colors in two places: an
   // agent wears its own stable tint (Monogram's default), a human the neutral seat.
   const color = isAgent ? undefined : "var(--avatar-neutral)";
   const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
   const flags = ev.messageId ? flagsByMessage.get(ev.messageId) : undefined;
+  // A thread started from this message, in the channel; inside a thread it's
+  // the thread's own message, so nothing is drawn under it there.
+  const startedThread = ev.messageId && !ctx.episode ? ctx.messageThreads?.get(ev.messageId) : undefined;
   return (
     <MessageMenu
       roomName={roomName}
@@ -718,13 +742,20 @@ export function MessageRow({
             <AgentCardHover room={roomName} handle={ev.sender}>
               <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
                 <Monogram
-                  handle={ev.sender}
+                  handle={subagent?.parent ?? ev.sender}
                   color={color}
                   className="size-6 text-[10px]"
                   kind={engineHandles.has(ev.sender) ? "engine" : isAgent ? "agent" : "person"}
                 />
               </span>
             </AgentCardHover>
+          )}
+          {/* A message under its sender's name has no time of its own to sit
+              beside, so its ⚡ sits where the name's avatar would. */}
+          {grouped && ev.messageId && (
+            <span className="flex h-5 items-center justify-center">
+              <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />
+            </span>
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -739,7 +770,8 @@ export function MessageRow({
                   <SenderName
                     handle={ev.sender}
                     highlight={hit}
-                    tag={isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
+                    named={subagent?.name}
+                    tag={subagent ? "subagent" : isAgent ? (agentTags.get(ev.sender) ?? "agent") : undefined}
                   />
                 </span>
               </AgentCardHover>
@@ -749,6 +781,7 @@ export function MessageRow({
                 </span>
               )}
               <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
+              {ev.messageId && <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />}
             </div>
           )}
           {/* A rating reply leads with its ratings as bars; its prose says the
@@ -774,7 +807,11 @@ export function MessageRow({
               (edited)
             </span>
           )}
+          <ReactionChips roomName={roomName} messageId={ev.messageId} reactions={ev.reactions} />
           {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
+          {startedThread && (
+            <ThreadReplies thread={startedThread} onOpen={ctx.onOpenThread} />
+          )}
         </div>
         <MessageActions
           roomName={roomName}
@@ -783,10 +820,13 @@ export function MessageRow({
           content={ev.content}
           sender={ev.sender}
           wire={ev.wire}
+          reactions={ev.reactions}
           onOpenThread={ctx.onOpenThread}
           // Every message says when on hover, in the bar, the first under a
           // name too, with its day when that isn't today.
           time={shortStamp(ev.at) || ev.time.slice(0, 5)}
+          threads={!ctx.episode}
+          thread={startedThread ?? null}
         />
       </div>
     </MessageMenu>

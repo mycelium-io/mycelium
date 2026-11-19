@@ -84,6 +84,7 @@ export const SETTINGS_PAGES = [
   "agents",
   "voice",
   "experiences",
+  "widgets",
   "privacy",
   "version",
   "health",

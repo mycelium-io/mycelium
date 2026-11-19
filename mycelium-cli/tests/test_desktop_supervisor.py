@@ -12,13 +12,16 @@ runs, where programs are found, and that stopping stops the children.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from mycelium.desktop import supervisor as sv
@@ -590,14 +593,51 @@ def test_a_taken_ui_port_is_said_and_the_ui_goes_on_another(monkeypatch: pytest.
     assert (sup.ui_port, ui.running_detail) == (port, None)
 
 
-def test_the_ui_s_port_is_written_down_for_doctor(tmp_path: Path):
-    """Whichever port the UI went on, `mycelium doctor` reads it from the file
-    of what the app started."""
+def test_a_port_a_program_just_closed_is_free(monkeypatch: pytest.MonkeyPatch):
+    """The hub's own port, seconds after the old hub exited: its connections
+    are still closing on it, which used to send a restarted hub to another port."""
+    import socket
+
+    with socket.socket() as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((sv.HOST, 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+        with socket.create_connection((sv.HOST, port)) as client:
+            conn, _ = server.accept()
+            conn.close()  # the server closes first, so its side is left closing
+            client.recv(1)
+    assert sv.port_free(port)
+
+
+def test_a_port_still_held_is_waited_for_and_one_in_use_is_not(monkeypatch: pytest.MonkeyPatch):
+    import socket
+    import threading
+
+    monkeypatch.setattr(sv, "PORT_POLL_S", 0.02)
+    held = socket.socket()
+    held.bind((sv.HOST, 0))  # bound, not answering: a program on its way out
+    port = held.getsockname()[1]
+    threading.Timer(0.3, held.close).start()
+    assert sv.port_comes_free(port)
+
+    monkeypatch.setattr(sv, "PORT_WAIT_S", 30.0)
+    with socket.socket() as taken:
+        taken.bind((sv.HOST, 0))
+        taken.listen(16)  # it never accepts, so it needs room for each look
+        began = time.monotonic()
+        assert not sv.port_comes_free(taken.getsockname()[1])
+        assert time.monotonic() - began < 1, "another program answering is said at once"
+
+
+def test_the_ui_s_and_hub_s_ports_are_written_down_for_doctor(tmp_path: Path):
+    """Whichever ports the UI and the hub went on, `mycelium doctor` reads them
+    from the file of what the app started."""
     started = tmp_path / "started.json"
     events = Events()
     first, ui = comp("hub", SLEEP), comp("ui", SLEEP)
     sup = hub(events, [first, ui], started_path=started)
-    sup.ui_port = 55329
+    sup.ui_port, sup.hub_port = 55329, 55330
     seen: list[dict] = []
 
     def written() -> bool:
@@ -607,9 +647,197 @@ def test_the_ui_s_port_is_written_down_for_doctor(tmp_path: Path):
 
     run_until(sup, written)
     assert seen[0]["ui"]["port"] == 55329
-    assert "port" not in seen[0]["hub"]
-    # Stopped cleanly, the app leaves nothing written down: doctor checks UI_PORT.
+    assert seen[0]["hub"]["port"] == 55330
+    # Stopped cleanly, the app leaves nothing written down: doctor checks the defaults.
     assert sv.started_ui_port(started) is None
+    assert sv.started_port("hub", started) is None
+
+
+class _Answers(BaseHTTPRequestHandler):
+    """A server on the hub's port: someone's own program, or a hub."""
+
+    status = 404
+    body: dict = {"detail": "Not Found"}
+    #: The paths asked for, so a test knows its question reached this server.
+    asked: list[str] = []
+
+    def do_GET(self) -> None:
+        self.asked.append(self.path)
+        payload = json.dumps(self.body).encode()
+        self.send_response(self.status)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - the stdlib's name
+        pass
+
+
+#: Taken before conftest's ``_never_a_real_hub`` swaps it out, so a test can
+#: reach the server it started itself, and nothing else.
+_REAL_TRANSPORT = httpx.HTTPTransport.handle_request
+
+
+@contextlib.contextmanager
+def _serving(handler: type[BaseHTTPRequestHandler], monkeypatch: pytest.MonkeyPatch):
+    server = ThreadingHTTPServer((sv.HOST, 0), handler)
+    port = server.server_address[1]
+    refused = httpx.HTTPTransport.handle_request
+
+    def only_ours(self: httpx.HTTPTransport, request: httpx.Request) -> httpx.Response:
+        if request.url.host == sv.HOST and request.url.port == port:
+            return _REAL_TRANSPORT(self, request)
+        return refused(self, request)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", only_ours)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield port
+    finally:
+        server.shutdown()
+        server.server_close()
+        monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refused)
+
+
+class _AHub(_Answers):
+    status = 200
+    body: dict = {"status": "ok", "service": "mycelium-backend", "version": "3.0.79"}
+
+
+def _hub_and_ui(sup: Supervisor) -> tuple[Component, Component]:
+    by_name = {c.name: c for c in sup._components()}
+    return by_name["hub"], by_name["ui"]
+
+
+def _cli_points_at(url: str) -> None:
+    from mycelium.config import MyceliumConfig
+
+    config = MyceliumConfig.load()
+    config.server.api_url = url
+    config.save()
+
+
+def _cli_url() -> str:
+    from mycelium.config import MyceliumConfig
+
+    return MyceliumConfig.load().server.api_url
+
+
+def test_a_program_that_isn_t_a_hub_on_the_port_is_never_used_as_one(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Someone's own server on the hub's port answers everything with a 404.
+    The app starts its hub on another port, says why, and points its UI and
+    this machine's CLI at it."""
+    _Answers.asked.clear()
+    with _serving(_Answers, monkeypatch) as port:
+        monkeypatch.setattr(sv, "HUB_PORT", port)
+        _cli_points_at(f"http://localhost:{port}")
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None), ui_token="t")
+        hub_c, ui = _hub_and_ui(sup)
+        assert hub_c.external is not None
+        assert hub_c.external() is False
+        assert _Answers.asked == ["/health"], "it asked the program and was told 404"
+        assert hub_c.prepare is not None
+        hub_c.prepare()
+        assert sup.hub_port != port
+        assert sup.api_url == f"http://{sv.HOST}:{sup.hub_port}"
+        assert f"another program is using port {port}" in (hub_c.running_detail or "")
+        assert ui.prepare is not None
+        ui.prepare()
+        assert ui.env["MYCELIUM_INTERNAL_API_URL"] == sup.api_url
+        assert _cli_url() == sup.api_url
+
+
+def test_a_hub_on_the_port_is_used(isolated_home: Path, monkeypatch: pytest.MonkeyPatch):
+    with _serving(_AHub, monkeypatch) as port:
+        monkeypatch.setattr(sv, "HUB_PORT", port)
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+        hub_c, _ = _hub_and_ui(sup)
+        assert hub_c.external is not None
+        assert hub_c.external() is True
+
+
+def test_a_docker_install_s_hub_is_used_where_it_listens(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The app's hub moved off 8000, where the Docker install's stays. A hub
+    found there is used, on its port, rather than starting a second one."""
+    with _serving(_AHub, monkeypatch) as port:
+        monkeypatch.setattr(sv, "HUB_PORT", sv.free_port())
+        monkeypatch.setattr(sv, "DOCKER_HUB_PORT", port)
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+        hub_c, _ = _hub_and_ui(sup)
+        assert hub_c.external is not None
+        assert hub_c.external() is True
+        assert sup.api_url == f"http://{sv.HOST}:{port}"
+
+
+def test_the_hub_goes_back_on_the_port_it_had_last_time(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Agents started last time were given the hub's address then, so a hub
+    moved off its port goes where it was before when that port is free."""
+    before = sv.free_port()
+    _cli_points_at(f"http://127.0.0.1:{before}")
+    with _serving(_Answers, monkeypatch) as port:
+        monkeypatch.setattr(sv, "HUB_PORT", port)
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+        hub_c, _ = _hub_and_ui(sup)
+        assert hub_c.prepare is not None
+        hub_c.prepare()
+    assert sup.hub_port == before
+    assert _cli_url() == f"http://{sv.HOST}:{before}"
+
+
+def test_a_free_port_leaves_the_cli_s_config_as_it_was(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The usual case: nothing else on the port, and a config that already
+    names it (as `localhost`) isn't written again."""
+    port = sv.free_port()
+    monkeypatch.setattr(sv, "HUB_PORT", port)
+    _cli_points_at(f"http://localhost:{port}")
+    config = isolated_home / ".mycelium" / "config.toml"
+    before = config.read_text()
+    sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+    hub_c, _ = _hub_and_ui(sup)
+    assert hub_c.prepare is not None
+    hub_c.prepare()
+    assert (sup.hub_port, hub_c.running_detail) == (port, None)
+    assert config.read_text() == before
+
+
+def test_a_cli_pointed_at_a_hub_running_here_is_left_alone(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A hub the person runs themselves on another port of this machine is
+    theirs to point the CLI at, whichever port the app's hub is on."""
+    monkeypatch.setattr(sv, "HUB_PORT", sv.free_port())
+    with _serving(_AHub, monkeypatch) as theirs:
+        _cli_points_at(f"http://localhost:{theirs}")
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+        hub_c, _ = _hub_and_ui(sup)
+        assert hub_c.prepare is not None
+        hub_c.prepare()
+        assert sup.hub_port == sv.HUB_PORT
+        assert _cli_url() == f"http://localhost:{theirs}"
+
+
+def test_a_cli_pointed_at_a_hub_elsewhere_is_left_alone(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _cli_points_at("https://hub.example.com")
+    with _serving(_Answers, monkeypatch) as port:
+        monkeypatch.setattr(sv, "HUB_PORT", port)
+        sup = Supervisor("hub", emit=Events(), env={}, locator=Locator(None, None))
+        hub_c, _ = _hub_and_ui(sup)
+        assert hub_c.prepare is not None
+        hub_c.prepare()
+    assert sup.hub_port != port
+    assert _cli_url() == "https://hub.example.com"
 
 
 def test_the_ui_counts_as_up_only_once_it_proves_it_holds_the_token(
@@ -742,3 +970,98 @@ def test_a_hub_that_exits_without_the_marker_is_a_crash(tmp_path: Path):
     run_until(sup, lambda: crashing.state == "failed")
     details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
     assert not any("restarting to apply" in d for d in details)
+
+
+def test_a_herdr_that_was_already_running_and_stops_is_started_again(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """After an update the new app finds herdr left running by the old one and
+    takes it as running. When that one stops, the app starts its own rather
+    than going on calling it running with nothing there."""
+    monkeypatch.setattr(sv, "WATCH_S", 0.02)
+    monkeypatch.setattr(sv, "GONE_S", 0.1)
+    there = threading.Event()
+    there.set()
+    events = Events()
+    herdr = comp(
+        "herdr",
+        SLEEP,
+        external=there.is_set,
+        outlives=True,
+        replaced_when_gone=True,
+        process_alive=lambda: there.is_set(),
+    )
+
+    def taken_then_gone() -> bool:
+        if herdr.state == "running" and herdr.proc is None:
+            there.clear()  # taken as running, then it stops
+        return herdr.proc is not None
+
+    try:
+        run_until(hub(events, [herdr]), taken_then_gone)
+        assert any("stopped; starting it" in str(e.get("line")) for e in events.all)
+    finally:
+        if herdr.proc is not None:
+            herdr.proc.kill()
+            herdr.proc.wait()
+
+
+def test_a_herdr_gone_only_briefly_is_not_started_again():
+    """A restart of herdr's server takes it away for a moment; only one gone
+    for GONE_S is replaced, so a second server never races the first."""
+    answers = [False]
+    herdr = comp(
+        "herdr",
+        SLEEP,
+        external=lambda: answers[0],
+        replaced_when_gone=True,
+        process_alive=lambda: False,
+    )
+    sup = hub(Events(), [herdr])
+    t = 100.0
+    seen = []
+    for _ in range(3):
+        seen.append(sup._gone(herdr, now=t))
+        t += sv.WATCH_S
+    assert seen == [False, False, False]  # gone 30s so far, under GONE_S
+    answers[0] = True  # back
+    assert sup._gone(herdr, now=t) is False
+    answers[0] = False
+    for _ in range(4):
+        t += sv.WATCH_S
+        last = sup._gone(herdr, now=t)
+    assert last is True  # gone GONE_S since it last answered
+    # Checked only every WATCH_S, never on every tick.
+    assert sup._gone(herdr, now=t + 1) is False
+
+
+@pytest.mark.parametrize(("alive", "replaced"), [(True, False), (None, False), (False, True)])
+def test_a_herdr_too_slow_to_answer_is_never_started_twice(alive: bool | None, replaced: bool):
+    """Not answering isn't gone: a busy server can be too slow to list its
+    agents. A second one beside a live one could cut every agent off, so it's
+    started only once its process has surely gone, never when it's still
+    there or when the machine can't tell."""
+    herdr = comp(
+        "herdr",
+        SLEEP,
+        external=lambda: False,
+        replaced_when_gone=True,
+        process_alive=lambda: alive,
+    )
+    sup = hub(Events(), [herdr])
+    t = 100.0
+    gone = False
+    for _ in range(10):  # well past GONE_S without an answer
+        gone = sup._gone(herdr, now=t)
+        t += sv.WATCH_S
+    assert gone is replaced
+
+
+def test_any_running_tells_a_server_from_no_list(monkeypatch: pytest.MonkeyPatch):
+    from mycelium.desktop import herdr_server
+
+    monkeypatch.setattr(herdr_server, "_listed", lambda: None)
+    assert herdr_server.any_running() is None
+    assert herdr_server.running() == []
+    monkeypatch.setattr(herdr_server, "_listed", list)
+    assert herdr_server.any_running() is False
