@@ -39,6 +39,7 @@ import { describeJob, JOB_STATUS_LABEL, pairingNote, useRunnerJobs, useRunners }
 import { fmtAgo } from "@/lib/metrics-format";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Monogram } from "@/components/ui/monogram";
 import { EmptyNote } from "@/components/empty-state";
 import { ConnectMachine } from "@/components/runner-fields";
 import { RestartDialog } from "@/components/machine-agents";
@@ -201,13 +202,22 @@ function NeedsYou({ machines, onShow }: { machines: Runner[]; onShow: (id: strin
               key={`${runner.id}/${problem.kind}`}
               className="flex items-start gap-3 rounded-lg border border-border bg-surface px-4 py-3"
             >
-              <AlertTriangle
-                className={cn(
-                  "mt-0.5 size-4 flex-shrink-0",
-                  SERIOUS.has(problem.kind) ? "text-red" : "text-yellow",
-                )}
-                aria-hidden
-              />
+              {problem.handles.length > 0 ? (
+                // A problem about agents shows who, by face, overlapping.
+                <span className="flex w-14 flex-shrink-0 -space-x-1.5 pt-0.5" aria-hidden>
+                  {problem.handles.slice(0, 3).map((h) => (
+                    <Monogram key={h} handle={h} kind="agent" className="size-6 text-[10px] ring-2 ring-surface" />
+                  ))}
+                </span>
+              ) : (
+                <AlertTriangle
+                  className={cn(
+                    "mt-1 mr-10 ml-1 size-4 flex-shrink-0",
+                    SERIOUS.has(problem.kind) ? "text-red" : "text-yellow",
+                  )}
+                  aria-hidden
+                />
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <p className="text-label font-medium text-text">{problemTitle(problem, runner)}</p>
@@ -393,8 +403,12 @@ function Agents({ runner, here }: { runner: Runner; here: boolean }) {
             {live.map((a) => (
               <tr key={`${a.room}/${a.handle}`} className="h-10 border-t border-hairline">
                 <td className="pr-3">
-                  <span className="font-mono text-text">@{a.handle}</span>
-                  {a.kind && <span className="ml-2 text-micro text-faint">{a.kind}</span>}
+                  <span className="flex items-center gap-2.5">
+                    {/* Each agent wears the face it wears in its room. */}
+                    <Monogram handle={a.handle} kind="agent" className="size-6 text-[10px]" />
+                    <span className="font-mono text-text">@{a.handle}</span>
+                    {a.kind && <span className="text-micro text-faint">{a.kind}</span>}
+                  </span>
                 </td>
                 <td className="pr-3">
                   <Link
