@@ -41,10 +41,16 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Whether the app runs its own hub (not client mode), as the app itself says. */
 async function runsOwnHub(): Promise<boolean> {
   try {
-    return (await appCall<AppState>("get_state")).settings?.mode === "hub";
+    return startedItsOwnHub(await appCall<AppState>("get_state"));
   } catch {
     return false;
   }
+}
+
+/** The app runs a hub (not client mode), and it's the one it started, not
+ *  another already on its port (a Docker one, say). */
+function startedItsOwnHub(state: AppState | undefined): boolean {
+  return state?.settings?.mode === "hub" && !state.status?.existing_hub;
 }
 
 type Way = "pair" | "add";
@@ -116,7 +122,7 @@ function PairForm({ onClose }: { onClose: () => void }) {
   // The app's own hub: the address of each network this computer is on, from
   // the app (not the hub), for a machine that isn't connected yet.
   const { data: appState } = useApp<AppState>("get_state");
-  const joinable = desktop && appState?.settings?.mode === "hub" ? (appState.status?.join_addresses ?? []) : [];
+  const joinable = desktop && startedItsOwnHub(appState) ? (appState?.status?.join_addresses ?? []) : [];
   const keyId = useDeviceKeyId();
   const revalidate = useRunnersRevalidate();
   const [code, setCode] = useState("");

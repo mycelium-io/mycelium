@@ -11,7 +11,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchRunnerJob: (...args: unknown[]) => fetchRunnerJob(...args),
   expectPairing: (...args: unknown[]) => expectPairing(...args),
 }));
-const desktop = { on: false, mode: "hub" };
+const desktop = { on: false, mode: "hub", existing: null as unknown };
 vi.mock("@/lib/desktop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/desktop")>()),
   useIsDesktop: () => desktop.on,
@@ -20,6 +20,7 @@ vi.mock("@/lib/desktop", async (importOriginal) => ({
 const appState = () => ({
   settings: { mode: desktop.mode },
   status: {
+    existing_hub: desktop.existing,
     join_addresses: [
       { interface: "utun8", address: "10.8.0.2", url: "http://10.8.0.2:3718" },
       { interface: "en0", address: "192.168.68.52", url: "http://192.168.68.52:3718" },
@@ -69,6 +70,7 @@ describe("AddMachineDialog", () => {
     pairRunner.mockReset();
     fetchRunnerJob.mockReset();
     desktop.mode = "hub";
+    desktop.existing = null;
     expectPairing.mockReset().mockResolvedValue({ offer: "K7QM", until: "2026-10-01T12:10:00Z" });
     pairRequest.mockReset().mockResolvedValue({ body, keyId: "59802479f5b1936d" });
   });
@@ -93,11 +95,16 @@ describe("AddMachineDialog", () => {
     expect(pairRunner).toHaveBeenCalledTimes(2);
   });
 
-  it("never sends the code to a hub that isn't the app's own (client mode)", async () => {
+  it.each([
+    ["client mode", { mode: "client", existing: null }],
+    ["a hub on its port it didn't start", { mode: "hub", existing: { owner: "docker" } }],
+  ])("never sends the code to a hub that isn't the app's own: %s", async (_, how) => {
     desktop.on = true;
-    desktop.mode = "client";
+    desktop.mode = how.mode;
+    desktop.existing = how.existing;
     pairRunner.mockRejectedValue(new ApiError("No machine is waiting to pair with that code.", 404));
     renderWithSWR(<AddMachineDialog open onClose={() => {}} />);
+    expect(screen.queryByDisplayValue(/--hub/)).toBeNull();
     fireEvent.change(screen.getByPlaceholderText("K7QM-4XHD-9RWA"), { target: { value: "K7QM-4XHD-9RWA" } });
     fireEvent.click(screen.getByRole("button", { name: "Pair" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("No machine is waiting");

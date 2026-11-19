@@ -52,6 +52,8 @@ export interface AppState {
     runner_signed_out_of?: string | null;
     /** This computer's hub at each network it's on, for `runner pair --hub` on another machine. */
     join_addresses?: JoinAddress[];
+    /** A hub on the app's port that the app is using but didn't start (a Docker one, say). */
+    existing_hub?: unknown;
   } | null;
 }
 
