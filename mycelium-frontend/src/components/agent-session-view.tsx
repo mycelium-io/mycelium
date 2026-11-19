@@ -22,7 +22,6 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRightLeft,
-  Bell,
   Bot,
   Brain,
   Braces,
@@ -60,6 +59,7 @@ import {
   type Unavailable,
 } from "@/lib/agent-session";
 import { MarkdownContent } from "@/components/markdown-content";
+import { WakeRow } from "@/components/wake-row";
 import { cn } from "@/lib/utils";
 
 const TOOL_ICON: Record<ToolKind, typeof Wrench> = {
@@ -291,7 +291,7 @@ function RowView({ row, nested = false }: { row: Row; nested?: boolean }) {
       return <PlanView plan={row} />;
     case "user_message":
       return row._meta.from === "wake" ? (
-        <Fold icon={Bell} label="Woken by the room" detail={textOf(row.content)} mono />
+        <WakeRow text={textOf(row.content)} />
       ) : (
         <Prompt text={textOf(row.content)} queued={row._meta.queued} nested={nested} />
       );
