@@ -25438,6 +25438,24 @@
               }
             ],
             "title": "Ended At"
+          },
+          "ended_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "finished",
+                  "end",
+                  "parent",
+                  "timeout"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended By",
+            "description": "Why it ended: its step finished, `subagent end`, its parent stopped, or it timed out"
           }
         },
         "type": "object",

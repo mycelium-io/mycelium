@@ -109,6 +109,28 @@ describe("the Widgets card", () => {
     expect(container.querySelector("span[style*='--green']")).toBeNull();
   });
 
+  it("shows a command kept running as up with its last line, and why it stopped once it has", async () => {
+    inTheApp({
+      config: "/Users/you/.mycelium/config.toml",
+      error: null,
+      widgets: [
+        widget({ label: "box", every: "always", run: { ...ran, ok: true, value: null, exit: null, running: true } }),
+        widget({ label: "logs", every: "always", run: { ...ran, ok: true, value: "tailing", exit: null, running: true } }),
+        widget({
+          label: "tunnel",
+          every: "always",
+          run: { ...ran, ok: false, value: null, exit: 255, error: "connect to host box port 22: Operation timed out" },
+        }),
+      ],
+    });
+    const { container } = wrap(<WidgetsCard />);
+    expect(await screen.findByText("Running")).toBeTruthy();
+    expect(screen.getByText("tailing")).toBeTruthy();
+    expect(screen.getByText("connect to host box port 22: Operation timed out")).toBeTruthy();
+    expect(container.querySelectorAll("span[style*='--green']")).toHaveLength(2);
+    expect(container.querySelectorAll("span[style*='--red']")).toHaveLength(1);
+  });
+
   it("is nothing at all with no widgets", async () => {
     inTheApp({ config: "/Users/you/.mycelium/config.toml", error: null, widgets: [] });
     const { container } = wrap(<WidgetsCard />);

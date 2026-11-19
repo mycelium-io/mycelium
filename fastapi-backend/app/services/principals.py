@@ -239,7 +239,7 @@ def post_rejection_reason(room: str, handle: str, *, allow_unregistered: bool) -
             "drive it with `mycelium engine invoke`."
         )
     if kind == "subagent":
-        if subagents.parent_of(room, handle) is not None:
+        if subagents.acting_parent(room, handle) is not None:
             return None
         return f"@{_norm(handle)} has ended; its parent can start it again with `subagent start`."
     if kind == "unknown" and not allow_unregistered:

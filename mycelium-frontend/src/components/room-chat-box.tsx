@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import TextareaAutosize from "react-textarea-autosize";
+import { GrowTextarea } from "@/components/ui/grow-textarea";
 import {
   ApiError,
   createEngine,
@@ -1346,7 +1346,7 @@ export function RoomChatBox({
                 className={cn(COMPOSER_TEXT, "text-text")}
               />
             )}
-            <TextareaAutosize
+            <GrowTextarea
               ref={inputRef}
               value={content}
               onChange={handleChange}
@@ -1372,20 +1372,7 @@ export function RoomChatBox({
               placeholder={placeholder}
               minRows={1}
               maxRows={COMPOSER_MAX_ROWS}
-              // Scrolls only once it's grown to its cap, judged by the height the
-              // box was given rather than by how its text measures: WebKit (the
-              // desktop app on a Mac) can measure the box a fraction short of its
-              // text, by more than a pixel when the page is zoomed out, and would
-              // draw a scrollbar for nothing.
-              onHeightChange={(height, { rowHeight }) => {
-                const el = inputRef.current;
-                if (!el) return;
-                const s = getComputedStyle(el);
-                const frame = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"] as const;
-                const cap = rowHeight * COMPOSER_MAX_ROWS + frame.reduce((sum, k) => sum + parseFloat(s[k]), 0);
-                setScrolls(height >= cap - 1 && el.scrollHeight > el.clientHeight + 1);
-              }}
-              style={{ overflowY: scrolls ? "auto" : "hidden" }}
+              onScrollsChange={setScrolls}
               className={cn(
                 "relative block w-full resize-none bg-transparent focus:outline-none placeholder:truncate placeholder:text-faint",
                 COMPOSER_TEXT,

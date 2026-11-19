@@ -17,6 +17,31 @@ describe("<MarkdownContent inline />", () => {
   });
 });
 
+describe("<MarkdownContent /> with what a member wrote", () => {
+  it("shows HTML in a message as its text, never as elements", () => {
+    const { container } = render(
+      <MarkdownContent>{'hi <img src=x onerror="alert(1)"> <script>alert(2)</script> <iframe src="/"></iframe>'}</MarkdownContent>,
+    );
+    expect(container.querySelector("img, script, iframe, [onerror]")).toBeNull();
+  });
+
+  it("drops a link's address when it would run script or load a document of its own", () => {
+    const { container } = render(
+      <MarkdownContent>
+        {"[a](javascript:alert(1)) [b](JaVaScRiPt:alert(1)) [c](data:text/html,<b>x</b>) [d](vbscript:x) [e](mycelium://update)"}
+      </MarkdownContent>,
+    );
+    const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
+    expect(hrefs).toHaveLength(5);
+    for (const href of hrefs) expect(href).toBe("");
+  });
+
+  it("drops an image's address when it would run script", () => {
+    const { container } = render(<MarkdownContent>{"![x](javascript:alert(1))"}</MarkdownContent>);
+    expect(container.querySelector("img")?.getAttribute("src") ?? "").toBe("");
+  });
+});
+
 describe("<MarkdownContent /> links", () => {
   it("opens a link to another site in a new tab", () => {
     render(<MarkdownContent>{"see [the PR](https://github.com/coffee-shop/web/pull/504)"}</MarkdownContent>);

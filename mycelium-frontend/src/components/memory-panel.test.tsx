@@ -104,6 +104,14 @@ describe("<MemoryPanel /> opening a memory", () => {
     expect(onOpenMemory).toHaveBeenCalledWith("decisions/ship-it");
   });
 
+  it("skips drawing a row off screen, holding its 22px so the scrollbar stays put", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" onOpenMemory={vi.fn()} />);
+    await expandDecisions();
+    const row = (await screen.findByText("ship-it.md")).closest<HTMLElement>("[style]")!;
+    expect(row.style.height).toBe("22px");
+    expect(row).toHaveClass("[content-visibility:auto]", "[contain-intrinsic-block-size:auto_22px]");
+  });
+
   it("opens a memory arrived at from search, and says it's done", async () => {
     const onOpenMemory = vi.fn();
     const onFocusConsumed = vi.fn();

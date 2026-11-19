@@ -593,6 +593,43 @@ def test_a_taken_ui_port_is_said_and_the_ui_goes_on_another(monkeypatch: pytest.
     assert (sup.ui_port, ui.running_detail) == (port, None)
 
 
+def test_a_port_a_program_just_closed_is_free(monkeypatch: pytest.MonkeyPatch):
+    """The hub's own port, seconds after the old hub exited: its connections
+    are still closing on it, which used to send a restarted hub to another port."""
+    import socket
+
+    with socket.socket() as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((sv.HOST, 0))
+        server.listen(1)
+        port = server.getsockname()[1]
+        with socket.create_connection((sv.HOST, port)) as client:
+            conn, _ = server.accept()
+            conn.close()  # the server closes first, so its side is left closing
+            client.recv(1)
+    assert sv.port_free(port)
+
+
+def test_a_port_still_held_is_waited_for_and_one_in_use_is_not(monkeypatch: pytest.MonkeyPatch):
+    import socket
+    import threading
+
+    monkeypatch.setattr(sv, "PORT_POLL_S", 0.02)
+    held = socket.socket()
+    held.bind((sv.HOST, 0))  # bound, not answering: a program on its way out
+    port = held.getsockname()[1]
+    threading.Timer(0.3, held.close).start()
+    assert sv.port_comes_free(port)
+
+    monkeypatch.setattr(sv, "PORT_WAIT_S", 30.0)
+    with socket.socket() as taken:
+        taken.bind((sv.HOST, 0))
+        taken.listen(16)  # it never accepts, so it needs room for each look
+        began = time.monotonic()
+        assert not sv.port_comes_free(taken.getsockname()[1])
+        assert time.monotonic() - began < 1, "another program answering is said at once"
+
+
 def test_the_ui_s_and_hub_s_ports_are_written_down_for_doctor(tmp_path: Path):
     """Whichever ports the UI and the hub went on, `mycelium doctor` reads them
     from the file of what the app started."""

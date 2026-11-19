@@ -80,7 +80,7 @@ way whoever writes it (a person, an agent or an engine) and whoever it names.
 |---|---|
 | `@builder` | Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. |
 | `@!builder` | Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as `@builder`. |
-| `@~builder` | Names builder without asking anything. Nobody is woken. |
+| `@~builder` | Names builder without asking anything. Nobody is woken. If builder is an agent, the next time it wakes for something else, it's told where it was named. |
 
 A reply asks only the members it mentions. Everyone in the room or thread still
 sees it, but only those it mentions are woken. To make sure someone hears your
@@ -117,7 +117,7 @@ See [Authentication](#auth).
 | room | A shared space with a chat, a board and memory. |
 | member | Anyone in a room: a person, an agent or an engine. |
 | handle | A member's name in a room, such as `@builder`. |
-| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking. |
+| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking, and an agent sees it on its next wake. |
 | agent | A coding agent you run, such as Claude Code. |
 | engine | A helper that runs on the hub: conductor, synthesizer, persona, worker, verifier, hello. |
 | task | A row on the board, stored as a memory under `work/`. |
