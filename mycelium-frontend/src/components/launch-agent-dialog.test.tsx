@@ -111,6 +111,26 @@ describe("LaunchAgentForm", () => {
     ]);
   });
 
+  it("lists the agent CLI last started from here first, and picks it", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job());
+    const { unmount } = renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: Claude Code" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /opencode/ }));
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+    await waitFor(() => expect(launchRunnerAgent).toHaveBeenCalled());
+    unmount();
+
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: opencode" }));
+    expect((await screen.findAllByRole("menuitem")).map((o) => o.textContent).slice(0, 2)).toEqual([
+      "opencode0.9.3",
+      "Claude Code2.4.1",
+    ]);
+  });
+
   it("starts from a role, filling the handle until you type one", () => {
     connected = [runner()];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);

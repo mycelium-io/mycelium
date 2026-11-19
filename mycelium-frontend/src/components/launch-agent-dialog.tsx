@@ -32,7 +32,10 @@ import {
   hostOf,
   jobSettled,
   pairingNote,
+  lastFramework,
+  lastUsedFirst,
   launchable,
+  rememberFramework,
   runnerName,
   startHelp,
   startReport,
@@ -126,7 +129,9 @@ export function LaunchAgentForm({
   const [jobId, setJobId] = useState<string | null>(null);
 
   const runner = connected.find((r) => r.id === here) ?? connected[0];
-  const startable = useMemo(() => (runner ? launchable(runner) : []), [runner]);
+  // The agent CLI last started from here leads the list and is picked first.
+  const [last] = useState(lastFramework);
+  const startable = useMemo(() => (runner ? lastUsedFirst(launchable(runner), last) : []), [runner, last]);
   const framework = startable.find((f) => f.id === frameworkPick) ?? startable[0];
   const folderShown = folderTyped ?? tildePath(runner?.roots[0] ?? "");
   // Only herdr needs asking: an Omnigent session gets its own worktree anyway.
@@ -177,6 +182,7 @@ export function LaunchAgentForm({
         signature,
       });
       setJobId(queued.id);
+      rememberFramework(framework.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start the agent");
     } finally {
@@ -267,6 +273,7 @@ export function LaunchAgentForm({
 
       <RunsOn
         runner={runner}
+        startable={startable}
         frameworkId={framework?.id ?? null}
         folder={folderShown}
         worktree={worktree}
@@ -599,6 +606,7 @@ const fieldClass =
  */
 function RunsOn({
   runner,
+  startable,
   frameworkId,
   folder,
   worktree,
@@ -608,6 +616,7 @@ function RunsOn({
   children,
 }: {
   runner: Runner;
+  startable: Runner["frameworks"];
   frameworkId: string | null;
   folder: string;
   worktree: boolean;
@@ -616,7 +625,6 @@ function RunsOn({
   onWorktree: (worktree: boolean) => void;
   children: React.ReactNode;
 }) {
-  const startable = launchable(runner);
   const roots = runner.roots.map(tildePath);
   const label = "text-label text-muted-foreground";
   return (
