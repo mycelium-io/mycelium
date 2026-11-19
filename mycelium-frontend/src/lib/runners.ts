@@ -324,11 +324,11 @@ export function startHelp(
     // Shown as plain text: the command as typed, no code marks around it.
     const run = command ?? cli;
     return {
-      happened: `${cli} isn't installed on ${machine}, or a new terminal window there can't find ${run}.`,
+      happened: `${cli} isn't installed on ${machine}.`,
       steps: [
-        `Install ${cli} on ${machine}${install ? ", from the page linked below" : ""}.`,
-        `Check that ${run} runs in a new terminal window on ${machine}.`,
-        `Then add @${handle} again.`,
+        `Install ${cli} on ${machine}${install ? " from the page linked below" : ""}.`,
+        `Open a new terminal window on ${machine} and run ${run}. If it runs there, it will run for the agent too.`,
+        `Add @${handle} again.`,
       ],
       short: `${cli} isn't installed on ${machine}`,
       ...(install ? { link: { label: `How to install ${cli}`, href: install } } : {}),

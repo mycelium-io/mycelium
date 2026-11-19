@@ -63,13 +63,11 @@ describe("a start that stopped", () => {
       command: "codex",
       install: "https://github.com/openai/codex",
     });
-    expect(missing.happened).toBe(
-      "Codex isn't installed on studio-mini, or a new terminal window there can't find codex.",
-    );
+    expect(missing.happened).toBe("Codex isn't installed on studio-mini.");
     expect(missing.steps).toEqual([
-      "Install Codex on studio-mini, from the page linked below.",
-      "Check that codex runs in a new terminal window on studio-mini.",
-      "Then add @reviewer again.",
+      "Install Codex on studio-mini from the page linked below.",
+      "Open a new terminal window on studio-mini and run codex. If it runs there, it will run for the agent too.",
+      "Add @reviewer again.",
     ]);
     expect(missing.link).toEqual({ label: "How to install Codex", href: "https://github.com/openai/codex" });
     expect(startHelp("missing", names).link).toBeUndefined();

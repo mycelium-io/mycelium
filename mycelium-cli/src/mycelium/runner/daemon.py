@@ -1232,11 +1232,10 @@ class Runner:
             why = "missing"
             command = known.binaries[0] if known.binaries else known.id
             install = known.install_url
-            how = f"Install it ({install})" if install else "Install it"
+            how = f"Install it from {install}." if install else "Install it."
             message = (
-                f"{name} isn't installed on {self.label}, or a new terminal window there "
-                f"can't find `{command}`. {how}, check that `{command}` runs in a new "
-                f"terminal window, then add @{handle} again."
+                f"{name} isn't installed on {self.label}. {how} Then open a new terminal "
+                f"window there and run `{command}`. When it runs there, add @{handle} again."
             )
         elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
             # What it printed on the way out is on its screen, which stays on

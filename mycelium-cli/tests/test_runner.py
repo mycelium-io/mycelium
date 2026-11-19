@@ -1239,9 +1239,8 @@ def test_a_cli_its_shell_cant_find_is_said_to_be_missing_with_where_to_install_i
     r = make_runner()
     with pytest.raises(daemon.JobError, match="Codex isn't installed on") as failed:
         r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
-    assert "or a new terminal window there can't find `codex`" in str(failed.value)
-    assert "Install it (https://github.com/openai/codex)" in str(failed.value)
-    assert "check that `codex` runs in a new terminal window" in str(failed.value)
+    assert "Install it from https://github.com/openai/codex." in str(failed.value)
+    assert "open a new terminal window there and run `codex`" in str(failed.value)
     assert failed.value.result is not None
     assert failed.value.result["why"] == "missing"
     assert failed.value.result["install"] == "https://github.com/openai/codex"

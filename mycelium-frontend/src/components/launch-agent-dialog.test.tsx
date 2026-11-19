@@ -352,7 +352,7 @@ describe("LaunchAgentForm", () => {
       job({
         status: "failed",
         spec: { framework: "claude" },
-        error: "Claude Code isn't installed on julias-mbp, or a new terminal window there can't find `claude`.",
+        error: "Claude Code isn't installed on studio-mini.",
         result: {
           step: "agent",
           why: "missing",
@@ -366,8 +366,8 @@ describe("LaunchAgentForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("or a new terminal window there can't find claude");
-    expect(alert).toHaveTextContent("Check that claude runs in a new terminal window on julias-mbp");
+    expect(alert).toHaveTextContent(/Claude Code isn't installed on \S+\./);
+    expect(alert).toHaveTextContent(/Open a new terminal window on \S+ and run claude\./);
     expect(screen.getByRole("link", { name: "How to install Claude Code" })).toHaveAttribute(
       "href",
       "https://code.claude.com/docs/en/setup",

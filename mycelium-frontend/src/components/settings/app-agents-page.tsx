@@ -38,7 +38,7 @@ export function AppAgentsPage() {
 
   return (
     <SettingsPage title="Agents" scope={`The agent programs on this ${machine}, and where agents may work.`}>
-      <Section title="herdr can start">
+      <Section title="Agent CLIs">
         {scanError && <Note tone="error">{String(scanError.message ?? scanError)}</Note>}
         {!scan && !scanError && <Row label="Looking…" />}
         {found.map((f) => (
@@ -47,7 +47,7 @@ export function AppAgentsPage() {
           </Row>
         ))}
         {scan && found.length === 0 && (
-          <Row label="None yet" help="herdr isn't running, or is too old to start any agent CLI." />
+          <Row label="No agent CLIs" help={`Needs herdr 0.9.3 or newer running on this ${machine}.`} />
         )}
         {herdr && (
           <Row label="herdr" help="Where agents run.">

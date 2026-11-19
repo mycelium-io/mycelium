@@ -335,7 +335,7 @@ def agent_clis() -> CheckResult:
     return CheckResult(
         name="Agent CLIs",
         status="warning",
-        message="none that herdr can start",
+        message="None",
         details=[
             "Install one, like Claude Code (https://claude.com/claude-code), then check again."
         ],

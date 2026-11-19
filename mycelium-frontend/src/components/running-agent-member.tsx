@@ -59,7 +59,7 @@ export function earlierSessions(runners: Runner[]): EarlierSession[] {
 
 /** Which agent CLIs' sessions can be brought in, as a sentence. */
 export function sessionsNote(supported: string[]): string {
-  if (supported.length === 0) return "Sessions can't be brought in from these machines yet.";
+  if (supported.length === 0) return "Sessions can't be brought in from your machines yet.";
   const names = new Intl.ListFormat("en", { type: "conjunction" }).format(supported);
   return `Sessions can be brought in from ${names} so far.`;
 }
