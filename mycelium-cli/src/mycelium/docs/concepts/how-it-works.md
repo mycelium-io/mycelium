@@ -80,7 +80,7 @@ way whoever writes it (a person, an agent or an engine) and whoever it names.
 |---|---|
 | `@builder` | Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. |
 | `@!builder` | Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as `@builder`. |
-| `@~builder` | Names builder without asking anything. Nobody is woken. |
+| `@~builder` | Names builder without asking anything. Nobody is woken. If builder is an agent, the next time it wakes for something else, it's told where it was named. |
 
 A reply asks only the members it mentions. Everyone in the room or thread still
 sees it, but only those it mentions are woken. To make sure someone hears your
