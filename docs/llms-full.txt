@@ -223,7 +223,7 @@ See [Authentication](#auth).
 | room | A shared space with a chat, a board and memory. |
 | member | Anyone in a room: a person, an agent or an engine. |
 | handle | A member's name in a room, such as `@builder`. |
-| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking. |
+| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking, and an agent sees it on its next wake. |
 | agent | A coding agent you run, such as Claude Code. |
 | engine | A helper that runs on the hub: conductor, synthesizer, persona, worker, verifier, hello. |
 | task | A row on the board, stored as a memory under `work/`. |
