@@ -1,0 +1,49 @@
+{
+  "_comment": "Wakes the hub builds (app/services/wake_digest.py), with what the app's wake parser should find in each. Written by fastapi-backend/tests/test_wake_digest_contract.py, which fails when a wake changes; read by mycelium-frontend/src/lib/wake-digest.test.ts, which parses every sample. To write it again after changing the wake: MYCELIUM_WRITE_CONTRACTS=1 uv run pytest tests/test_wake_digest_contract.py",
+  "samples": [
+    {
+      "name": "mention in a task's thread, with another ask",
+      "text": "mycelium wake for @builder in digest-room\n\nWhy:     2 messages mention you in \"Fix the receipt tax\" (work/fix-the-receipt-tax), latest 2m ago\nSince:   your last turn, 41m ago: 2 in this thread (@reviewer 1, @scout 1), 1 elsewhere\nSkill:   this is your first wake here; run `mycelium skill print` to read how Mycelium works\n\n┌ @scout · 2m ago · in \"Fix the receipt tax\" · 92f662b4\n│ Pulled 40 orders from last week where the total was off. Every one of them has at least three line items with a fractional tax, and the drift is always in the customer's favor, so we've been under-collecting rather than over-charging.\n│\n│ @builder, can you take the fix? I'd round once on the order total like finance wants, and keep per-line amounts unrounded for display only. Pulled 40 orders from last week where the total was off. Every one of them has at least three line items with a fractional tax, and the drift is always in the customer's favor, so we've been under-collecting rather than over-charging.\n│\n│ @builder, can you take the fix? I'd round once on the order total like finance wants, and keep per-line amounts unrounded for display only. Pulled 40 orders from last week where the total was off. Every one of them has at least three line items with a fractional tax, and the drift is always in the customer's favor, so we've been under-collecting rather than over-charging.\n│\n│ @builder, can you take the fix? I'd round once on the order total like finance wants, and keep per-line amounts unrounded for display only.\n└\n\nNext:    1. mycelium await --room digest-room --handle builder --json --timeout 5\n            (marks messages as read and shows any messages that came in since; 1 more was said since your last turn)\n         2. reply where @scout wrote, in \"Fix the receipt tax\":\n            mycelium respond --room digest-room --handle builder --task work/fix-the-receipt-tax --body \"...\"\n\nAlso asking you (1):\n\n┌ @reviewer · 40m ago · in \"Fix the receipt tax\" · 7d0a9599\n│ @builder I went through the receipt code. Two places round.\n└\n\nTasks:   claimed \"Fix the receipt tax\" (1h ago)\nBoard:   @builder claimed \"Fix the receipt tax\"\n         open now: 1 held\nFind:    mycelium room search \"<words> from:<handle> task:<row> after:1d\" --room digest-room   (any message, any field; --facets for counts)",
+      "expect": {
+        "handle": "builder",
+        "room": "digest-room",
+        "messages": [
+          {
+            "sender": "scout",
+            "id": "92f662b4",
+            "also": false
+          },
+          {
+            "sender": "reviewer",
+            "id": "7d0a9599",
+            "also": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "a task given to it",
+      "text": "mycelium wake for @builder in digest-room\n\nWhy:     @hay gave you a task: \"Fix the receipt tax\" (work/fix-the-receipt-tax)\nSince:   your last turn, 30m ago: 1 in the room (@hay 1)\nSkill:   this is your first wake here; run `mycelium skill print` to read how Mycelium works\n\nHeld:   it's yours until you resolve it or hand it back; no claim needed\nRead:   mycelium board messages work/fix-the-receipt-tax --room digest-room\nPost:   mycelium board send work/fix-the-receipt-tax --room digest-room --as builder --body \"...\"\n\nTasks:   claimed \"Fix the receipt tax\" (1h ago)\nBoard:   1 held\nFind:    mycelium room search \"<words> from:<handle> task:<row> after:1d\" --room digest-room   (any message, any field; --facets for counts)",
+      "expect": {
+        "handle": "builder",
+        "room": "digest-room",
+        "messages": []
+      }
+    },
+    {
+      "name": "its turn in the room, named silently, with the members pane",
+      "text": "mycelium wake for @builder in digest-room\n\nWhy:     it's your turn in the room (digest-room); @hay is asking\nSince:   your last turn, 50m ago: 2 in the room (@hay 2)\nSkill:   this is your first wake here; run `mycelium skill print` to read how Mycelium works\n\n┌ @hay · 1m ago · in the room · cf86af1e\n│ @builder does the rounding cover refunds?\n└\n\nNext:    1. mycelium await --room digest-room --handle builder --json --timeout 5\n            (marks messages as read and shows any messages that came in since; 1 more was said since your last turn)\n         2. reply where @hay wrote, in the room:\n            mycelium respond --room digest-room --handle builder --body \"...\"\n\nMentioned: you were mentioned silently (@~) once since your last turn:\n         @hay · 20m ago · in the room: cc @~builder for the record   (mycelium room messages digest-room --id 7d0a9599)\n\nTasks:   claimed \"Fix the receipt tax\" (1h ago)\nBoard:   1 held\n\nMembers (3 other agents)\n  ● working   @desktop  answering @hay in the room, 4m ago\n  ▲ blocked   @themes   waiting for input on its machine\n  ✓ done      @research\n\nFind:    mycelium room search \"<words> from:<handle> task:<row> after:1d\" --room digest-room   (any message, any field; --facets for counts)",
+      "expect": {
+        "handle": "builder",
+        "room": "digest-room",
+        "messages": [
+          {
+            "sender": "hay",
+            "id": "cf86af1e",
+            "also": false
+          }
+        ]
+      }
+    }
+  ]
+}

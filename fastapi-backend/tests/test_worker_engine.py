@@ -226,7 +226,7 @@ async def test_what_a_worker_says_is_posted_as_it_said_it(monkeypatch: pytest.Mo
 
     ((env, text),) = _posted(managed)
     assert text == said
-    asking = asked(serialize_content(env, extra={"content": text}))
+    asking = asked(serialize_content(env, extra={"content": text}), _ROOM)
     assert asking == {"agent-2": "mention", "aligner": "mention", "agent-3": "interrupt"}
     assert manager.pings == ["agent-1"]
 
@@ -414,7 +414,7 @@ def test_a_role_named_beside_a_conductor_is_not_asked_anything():
     engine, _managed, _manager = _engine()
     env = _env("julia", message_format.live_episode_urn(_ROOM))
     engine.handle_summon(
-        _ROOM, "agent-1", env, ["conductor", "agent-1"], "@conductor swarm @agent-1: go"
+        _ROOM, "agent-1", env, ["conductor", "agent-1"], "@conductor review @agent-1: go"
     )
     assert engine._tasks == set()
 
@@ -712,7 +712,7 @@ async def test_a_tooled_worker_works_in_its_own_checkout(monkeypatch: pytest.Mon
     assert turn["cwd"] is not None
     assert turn["cwd"].name == "agent-1"
     assert (turn["cwd"] / ".git").exists()
-    assert "swarm/agent-1" in turn["prompt"]
+    assert "worker/agent-1" in turn["prompt"]
     assert "in your checkout" in turn["prompt"]
     assert "You have tools" in turn["system"]
 

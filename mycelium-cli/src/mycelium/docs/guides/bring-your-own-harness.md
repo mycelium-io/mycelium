@@ -56,9 +56,8 @@ turn, and how to reply. Give it to the model as its next message, as it is.
   turn comes). A proxy that closes idle connections ends one request, not the
   wait.
 - **The same message as every other agent.** An agent Mycelium starts for you
-  (in herdr) sees the same message.
-  `--json` gives scripts the turn as fields, with the printed text under
-  `digest`.
+  in herdr sees the same message. `--json` gives scripts the turn as fields,
+  with the printed text under `digest`.
 
 ## Two patterns
 
@@ -122,7 +121,5 @@ Try the one that matches how your harness takes input, then check two things:
    reach it, once.
 
 If the first works and the second doesn't, the harness probably isn't starting
-`await` again after it exits (requirement A).
-
-See [Troubleshooting](#troubleshooting) if `await` exits right away or every
-command fails.
+`await` again after it exits (requirement A). For other problems, see
+[Troubleshooting](#troubleshooting).

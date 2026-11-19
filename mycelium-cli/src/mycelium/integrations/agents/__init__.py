@@ -3,7 +3,7 @@
 
 """Every agent CLI Mycelium knows, and what it knows about each, in one place.
 
-The runner's scan, herdr and Omnigent starting an agent, ``mycelium swarm`` and
+The runner's scan, herdr and Omnigent starting an agent, and
 ``mycelium agent create`` all ask here; nothing outside this package names a
 CLI. A CLI with something of its own (arguments, wording for its prompts, files
 its agents need) has a module beside this one; the rest are :class:`AgentKind`
@@ -16,6 +16,7 @@ from mycelium.integrations.agents.base import AgentKind, ResidentIntegration
 from mycelium.integrations.agents.claude import Claude
 from mycelium.integrations.agents.codex import Codex
 from mycelium.integrations.agents.cursor import Cursor, CursorIntegration
+from mycelium.integrations.agents.opencode import OpenCode
 
 __all__ = [
     "KNOWN",
@@ -32,7 +33,7 @@ KNOWN: tuple[AgentKind, ...] = (
     Codex("codex", "Codex", ("codex",), "codex"),
     AgentKind("gemini", "Gemini CLI", ("gemini",), "gemini"),
     Cursor("cursor", "Cursor Agent", ("cursor-agent",), "cursor"),
-    AgentKind("opencode", "OpenCode", ("opencode",), "opencode"),
+    OpenCode("opencode", "OpenCode", ("opencode",), "opencode"),
     AgentKind("pi", "Pi", ("pi",), "pi"),
     AgentKind("copilot", "GitHub Copilot CLI", ("copilot",), "copilot"),
     AgentKind("amp", "Amp", ("amp",), "amp"),

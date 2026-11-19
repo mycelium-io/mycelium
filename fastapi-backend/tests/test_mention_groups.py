@@ -130,26 +130,26 @@ async def test_a_sent_group_asks_exactly_the_members_it_reached_then():
     _said("reviewer", "I'll test it", episode)
 
     content = _sent("julia", "@here can you two agree on the rollout?", episode)
-    assert asked(content) == {"builder": "mention", "reviewer": "mention"}
-    assert asks(content, "lead") is None
-    assert asks(content, "julia") is None
+    assert asked(content, ROOM) == {"builder": "mention", "reviewer": "mention"}
+    assert asks(content, "lead", ROOM) is None
+    assert asks(content, "julia", ROOM) is None
 
     # Kept on the message: someone posting later isn't asked by it.
     _said("lead", "joining in", episode)
-    assert asks(content, "lead") is None
+    assert asks(content, "lead", ROOM) is None
 
     # A message sent now reaches who takes part now, lead included. Interrupt
     # and silent read the same way they do for one member.
-    assert asked(_sent("julia", "@!here stop", episode)) == {
+    assert asked(_sent("julia", "@!here stop", episode), ROOM) == {
         "builder": "interrupt",
         "reviewer": "interrupt",
         "lead": "interrupt",
     }
     silent = _sent("julia", "fyi @~here", episode)
-    assert asked(silent) == {}
+    assert asked(silent, ROOM) == {}
     assert set(silent[groups.CONTENT_KEY]["named"]) == {"builder", "reviewer", "lead"}
     # A member named one way and asked another is asked.
-    assert asked(_sent("julia", "@~here and @all", episode))["builder"] == "mention"
+    assert asked(_sent("julia", "@~here and @all", episode), ROOM)["builder"] == "mention"
 
 
 @pytest.mark.asyncio

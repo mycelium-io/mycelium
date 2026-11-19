@@ -5,7 +5,7 @@
 
 Run it once and leave it running. It looks for the agent CLIs installed here,
 tells the hub what it found, and starts agents in herdr when someone asks for
-one from the app (a single agent, or a whole swarm). It only ever dials out to
+one from the app. It only ever dials out to
 the hub, so it works the same against a hub on this laptop or one elsewhere.
 
 The app can only start what the scan found, in folders you allowed with
@@ -124,7 +124,7 @@ def runner(
 ) -> None:
     """Connect this machine to the hub so the app can start agents on it.
 
-    Each agent or team the app asks for waits until you say yes here, with
+    Each agent the app asks for waits until you say yes here, with
     `mycelium runner approve <id>`, since anyone who can reach the hub can ask.
     A device paired with `mycelium runner pair` skips the question, within
     what the pairing allows.
@@ -367,7 +367,7 @@ def _local_lines(local: dict | None) -> list[str]:
 )
 @app.command("requests")
 def runner_requests() -> None:
-    """What is waiting for your yes: agents and teams the hub asked this machine to start."""
+    """What is waiting for your yes: agents the hub asked this machine to start."""
     from mycelium.runner import approvals
 
     waiting = approvals.pending()
@@ -394,28 +394,28 @@ def _answer(job_id: str, *, yes: bool) -> None:
 
 @doc_ref(
     usage="mycelium runner approve <id>",
-    desc="Say yes to an agent or team the hub asked this machine to start.",
+    desc="Say yes to an agent the hub asked this machine to start.",
     group="agent",
 )
 @app.command("approve")
 def runner_approve(job_id: str = typer.Argument(..., help="The request's id")) -> None:
-    """Start an agent or team the hub asked for (see `mycelium runner requests`)."""
+    """Start an agent the hub asked for (see `mycelium runner requests`)."""
     _answer(job_id, yes=True)
 
 
 @doc_ref(
     usage="mycelium runner decline <id>",
-    desc="Say no to an agent or team the hub asked this machine to start.",
+    desc="Say no to an agent the hub asked this machine to start.",
     group="agent",
 )
 @app.command("decline")
 def runner_decline(job_id: str = typer.Argument(..., help="The request's id")) -> None:
-    """Refuse an agent or team the hub asked for; the app is told it was declined."""
+    """Refuse an agent the hub asked for; the app is told it was declined."""
     _answer(job_id, yes=False)
 
 
 @doc_ref(
-    usage="mycelium runner pair [--folder <folder>]... [--cli <id>]... [--swarms] [--days <n>]",
+    usage="mycelium runner pair [--folder <folder>]... [--cli <id>]... [--days <n>]",
     desc="Pair another computer with this machine so its requests start without approval.",
     group="agent",
 )
@@ -429,7 +429,6 @@ def runner_pair(
     cli: list[str] = typer.Option(
         None, "--cli", help="An agent CLI it can start, by id (repeatable; default: any)"
     ),
-    swarms: bool = typer.Option(False, "--swarms", help="Allow swarms"),
     days: int = typer.Option(
         90, "--days", min=0, help="Days until the pairing expires (0: no expiry)"
     ),
@@ -437,7 +436,7 @@ def runner_pair(
     """Print a code to pair another computer, so its requests start here without approval.
 
     Use this on a machine where no one is around to approve requests.
-    Launches, swarms and restarts signed by the paired computer start
+    Launches and restarts signed by the paired computer start
     without approval, within the folders, agent CLIs and duration you set
     here. Everything else still needs approval. Run it on this machine,
     with the runner running.
@@ -456,7 +455,7 @@ def runner_pair(
             "start it with `mycelium runner --detach`, then try again."
         )
         raise typer.Exit(1)
-    limits = pairing.Limits.make(folders=folder, clis=cli, swarms=swarms, days=days)
+    limits = pairing.Limits.make(folders=folder, clis=cli, days=days)
     code = pairing.offer(limits)
     covers = ", ".join(limits.folders) or "all runner folders"
     clis = ", ".join(limits.clis) or "any agent CLI"
@@ -465,7 +464,7 @@ def runner_pair(
         f"\nPairing code: [bold cyan]{pairing.show_code(code)}[/bold cyan]\n\n"
         "On your computer, open the Machines page, click Add machine → Pair, "
         "and enter this code.\n"
-        f"[dim]Limits: {covers}; {clis}; {'swarms allowed' if swarms else 'no swarms'}; {ends}. "
+        f"[dim]Limits: {covers}; {clis}; {ends}. "
         f"The code can be used once and expires in "
         f"{int(pairing.OFFER_TTL.total_seconds() // 60)} minutes.[/dim]\n"
     )
@@ -514,7 +513,7 @@ def runner_pairings(as_json: bool = False) -> None:
         console.print("[dim]No paired computers. Pair one with: mycelium runner pair[/dim]")
         return
     table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
-    for col in ("Computer", "Key", "Folders", "Agent CLIs", "Swarms", "Expires"):
+    for col in ("Computer", "Key", "Folders", "Agent CLIs", "Expires"):
         table.add_column(col)
     for p in found:
         ends = p.limits.expires_at[:10] if p.limits.expires_at else "never"
@@ -523,7 +522,6 @@ def runner_pairings(as_json: bool = False) -> None:
             pairing.fingerprint(p.key),
             "\n".join(p.limits.folders) or "[dim]all runner folders[/dim]",
             ", ".join(p.limits.clis) or "[dim]any[/dim]",
-            "yes" if p.limits.swarms else "no",
             f"[red]ended {ends}[/red]" if p.expired() else ends,
         )
     console.print(table)

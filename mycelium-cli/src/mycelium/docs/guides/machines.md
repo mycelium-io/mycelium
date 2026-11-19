@@ -1,7 +1,6 @@
 # Start Agents From the App
 
-The app can start coding agents on your own computer, one at a time or as a
-swarm on a task. The program that does this is the **runner**, which runs on
+The app can start coding agents on your own computer. The program that does this is the **runner**, which runs on
 that computer. The runner also wakes your agents when someone mentions them,
 gives them a turn or assigns them a task.
 
@@ -21,10 +20,9 @@ The runner only ever connects out to the hub. The hub never reaches into your
 machine, so this works whether or not your computer can be reached from
 outside.
 
-The runner looks on your `PATH` for the agent CLIs it knows, such as Claude
-Code, Codex and OpenCode. It starts agents in [herdr](#herdr) terminals, and
-needs herdr 0.9.3 or newer. The desktop app includes herdr. After you install a
-new agent CLI, press **Rescan** in the app or run `mycelium runner scan`.
+The runner starts agents in [herdr](#herdr) terminals, and needs herdr 0.9.3 or
+newer. The desktop app includes herdr. The app offers every agent CLI herdr can
+start, such as Claude Code, Codex and OpenCode.
 
 ## Starting an agent
 
@@ -52,6 +50,37 @@ mode. They work without asking you before each command.
 This applies to that session only. Your CLI settings aren't changed. Neither
 CLI is ever started with its option that skips permissions entirely.
 
+### When the agent CLI isn't found
+
+If the agent CLI isn't installed, the agent doesn't open. **Add member** says
+the CLI isn't installed and links here.
+
+Install it, then open a new terminal window and run its command, such as
+`opencode`. Mycelium starts agents the way a new terminal window starts, so if
+the command runs there, it will run for the agent too. Add the agent again.
+
+If the new window says the command isn't found, the installer put it in a
+folder your terminal doesn't look in yet. The installer's last lines usually
+say what to add to your shell's startup file.
+
+herdr's [Agents](https://herdr.dev/docs/agents/) page lists every agent CLI
+Mycelium can start.
+
+## Adding your own harness
+
+Mycelium can start any agent CLI that herdr can start. When herdr adds one,
+update the desktop app, which brings its own herdr, and press **Rescan** in
+**Add member**. Without the app, update herdr itself. For a CLI herdr can't
+start yet, herdr needs to support it first:
+
+- [Agents](https://herdr.dev/docs/agents/) lists the agent CLIs herdr can
+  start today.
+- [Add Herdr support to your agent](https://herdr.dev/docs/add-herdr-support/)
+  says how to add support for another one.
+
+An agent that runs some other way, such as a script around a model's API, can
+still join a room. See [Bring Your Own Harness](#bring-your-own-harness).
+
 ## Bringing in an agent that's already running
 
 If you started an agent CLI in herdr yourself, open **Members → Add → Running
@@ -62,13 +91,6 @@ agent's terminal. Once the agent is idle, the runner types a short introduction
 that names the room and the agent's handle. The agent keeps its own session.
 Pressing **Stop** for it later takes it out of the room but leaves its terminal
 open.
-
-## A swarm on your machine
-
-In the **Start a swarm** dialog, pick a connected machine under **Where**. The
-team then runs as your own agent CLI in a new herdr workspace on that machine,
-in the folder you choose. This is the same as running [`mycelium swarm`](#swarm)
-in that folder.
 
 ## Which folders
 
@@ -127,7 +149,6 @@ same key fingerprint.
 |---|---|---|
 | `--folder` | Folders agents can start in | all of the runner's folders |
 | `--cli` | Agent CLIs it can start | any |
-| `--swarms` | Whether swarms are allowed | no |
 | `--days` | How long the pairing lasts (`0` means no expiry) | 90 |
 
 A request outside these limits, or from another computer, still asks. The
@@ -137,8 +158,8 @@ them. `mycelium runner pairings` lists pairings, and
 
 ## Only your machines are listed
 
-The Machines page, behind the laptop icon beside the bell, shows only your own
-machines. In a browser, add a machine with the code `mycelium runner` prints
+The Machines page, behind the laptop icon in the bar at the bottom of the
+window, shows only your own machines. In a browser, add a machine with the code `mycelium runner` prints
 when it starts. With the hub's [sign-in](#auth) on, the hub shows each person
 only the machines they own.
 

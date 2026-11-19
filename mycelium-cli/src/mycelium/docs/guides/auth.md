@@ -19,8 +19,10 @@ up separately. See [Running a Shared Hub](#security-planes).
 ## Turning it on
 
 You need an OIDC identity provider such as Keycloak, Dex, ZITADEL, Authentik or
-your company's SSO. To try it without one, see
-[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md).
+your company's SSO. To try it on one machine first,
+[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md)
+runs a local Keycloak with a ready-made realm from a checkout of the
+repository.
 
 Enable auth and set an audience:
 
@@ -99,9 +101,7 @@ token, which is what you want with a hub that has auth off.
 
 Your sign-in is kept in the system keychain, with one entry for each hub. Where
 there's no keychain, it's kept in `~/.mycelium/token.json`, which only you can
-read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else. If you signed
-in before the CLI used the keychain, the first command that reads your sign-in
-moves it from `token.json` into the keychain and deletes the file.
+read. Set `MYCELIUM_TOKEN_FILE` to keep that file somewhere else.
 
 The sign-in renews itself, so you don't have to sign in again on a schedule.
 Renewal needs the `offline_access` scope, which is in the default
@@ -175,6 +175,9 @@ from a hub that has sign-in on.
   you can revoke one agent without affecting the others.
 - **A token from somewhere else.** See below.
 
+An agent you start from the app or with `mycelium machine restart` is joined with a code for you, so it has its own
+token with nothing to set up.
+
 To give agents their own clients, point the machine at the issuer your agents
 use. Then set each agent's client secret:
 
@@ -210,12 +213,6 @@ The hub also has to trust whoever issued it, so add another `[[auth.issuers]]`
 block for that issuer with `role = "agent"`. `MYCELIUM_AGENT_AUTH_TOKEN_FILE`
 names a file holding the token instead, read on every command.
 
-An agent you start from the app, with `mycelium swarm` or with
-`mycelium machine restart` gets its own token this way, with nothing to set up.
-Whoever starts it asks the hub for a join code for the agent and redeems it,
-keeps the token the hub signs in a file only you can read, and gives the
-agent's pane that file's path.
-
 ### Agent settings
 
 | Key | Default | What it does |
@@ -249,6 +246,30 @@ one, and otherwise from the `role` on the issuer's block.
 Some providers, such as Keycloak, put a UUID in `sub`. With those, set
 `auth.handle_claim = "preferred_username"`, or every person shows up as a UUID.
 
+## People's handles
+
+If your sign-in uses email addresses, each person's handle is the part of
+their email before the @. For example, avery.quinn@example.com is
+@avery.quinn. The email is used only to sign in. It doesn't appear in rooms.
+
+If that handle already belongs to someone else, the app asks the person to
+choose another one the first time they sign in. After that, their handle
+doesn't change.
+
+### Updating a hub that used email handles
+
+Each person's handle changes the first time they sign in after the update.
+Mycelium moves everything kept under their old handle to the new one. That
+includes the agents they own and the tasks they hold.
+
+Past messages keep the old handle. The app shows them under the person's
+name.
+
+A mention of the old handle no longer reaches the person. Update notes and
+instructions that mention people by email.
+
+The hub records what it moved in `migrations.jsonl`, in its data folder.
+
 ## Who wrote it
 
 With auth on, every write is recorded under the handle in the token. That
@@ -275,10 +296,8 @@ mycelium agent create bot --owner alice          # alice can await --handle bot
 mycelium agent create bot --allow-from ops-lead  # and so can @ops-lead
 ```
 
-`await --loop` stops on a 401 or 403 instead of retrying.
-
-With auth off, anyone can await as any handle. That's another reason to turn
-auth on for a hub other people can reach.
+`await --loop` stops on a 401 or 403 instead of retrying. With auth off,
+anyone can await as any handle.
 
 ## Rotating signing keys
 
@@ -305,6 +324,7 @@ These stay open even with auth on:
 - `/`, `/health` and `/healthz`, for health checks. They don't include any room
   content.
 - `/docs`, `/redoc` and `/openapi.json`, which describe the API.
+- `/api/joins/redeem`, where an agent trades a join code for its token.
 - A room's A2A agent card (`/.well-known/agent-card.json`), which only lists the
   room's name and skills. The room's A2A endpoint itself needs a token.
 
@@ -320,13 +340,4 @@ section that shows the trusted issuers and any warnings.
 | `503` | Auth is on but can't work: no trusted issuers are configured, or the issuer's signing keys can't be fetched and none are cached. |
 
 The hub accepts only tokens with asymmetric signatures (`RS*`, `PS*` or
-`ES*`). It refuses `none` and `HS*` before checking anything else. That stops
-anyone from using the provider's public key as a shared secret to forge a
-token.
-
-## Trying it locally
-
-To try sign-in on one machine before setting up a real provider, see
-[Keycloak / OIDC setup](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docker/keycloak/README.md)
-in the source. It runs a local Keycloak with a ready-made realm from a checkout
-of the repository.
+`ES*`). It refuses `none` and `HS*`.

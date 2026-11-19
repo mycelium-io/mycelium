@@ -12,8 +12,6 @@ interface Props {
   actor: string;
   now: string;
   onCapture: (parsed: ParsedCapture) => void;
-  /** Hand what is typed to a team instead of filing it: opens the swarm dialog. */
-  onSwarm?: (text: string) => void;
   /** What the empty box says. The capture grammar (@owner, !urgent, #tag, ?
    *  for a decision) is the field's tooltip, not its placeholder: a cheat
    *  sheet in every empty box is the loudest thing on the board. */
@@ -25,7 +23,7 @@ interface Props {
  * sigils teach themselves and nothing is filed with fields the writer didn't see.
  */
 export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCapture(
-  { actor, now, onCapture, onSwarm, placeholder = "Add a task…" },
+  { actor, now, onCapture, placeholder = "Add a task…" },
   ref,
 ) {
   const [text, setText] = useState("");
@@ -48,8 +46,7 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSwarm) onSwarm(text.trim());
-              else if (e.key === "Enter") file();
+              if (e.key === "Enter") file();
               if (e.key === "Escape") (e.target as HTMLInputElement).blur();
             }}
             placeholder={placeholder}
@@ -58,9 +55,7 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
           />
         </div>
-        {/* One line, two outcomes: a row someone picks up later, or a team on
-            it now. The keys show once there is something to send, and each
-            is also a click. A swarm costs model turns, so it asks first. */}
+        {/* The key shows once there is something to send, and is also a click. */}
         {armed && (
           <div role="group" aria-label="Send it" className="flex shrink-0 items-center gap-2 text-micro text-faint">
             <button
@@ -71,16 +66,6 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             >
               <Kbd size="xs" tone="muted">↵</Kbd> to file
             </button>
-            {onSwarm && (
-              <button
-                type="button"
-                onClick={() => onSwarm(text.trim())}
-                title="Have a team of agents work on it now"
-                className="flex items-center gap-1 rounded px-1 transition-colors hover:bg-hairline hover:text-text"
-              >
-                <Kbd size="xs" tone="muted">⌘↵</Kbd> for a team
-              </button>
-            )}
           </div>
         )}
       </div>

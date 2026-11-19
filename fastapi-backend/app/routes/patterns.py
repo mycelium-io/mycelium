@@ -21,8 +21,8 @@ own pack (``mycelium pattern use --from``) and is off when
 that would start a worker.
 
 Each write goes through the route that owns it (rooms, engines, memory, tasks,
-messages), as ``routes/swarms.py`` does, so who may write is checked exactly as
-the same calls made one at a time. The room name is claimed atomically, so two
+messages), so who may write is checked exactly as the same calls made one at a
+time. The room name is claimed atomically, so two
 callers loading the same pattern at once get two rooms, not one shared one. A
 step that fails takes the room away again.
 """

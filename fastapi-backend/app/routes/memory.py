@@ -9,6 +9,7 @@ database.
 
 POST   /rooms/{room}/memory              — create/upsert memories (batch support)
 GET    /rooms/{room}/memory              — list memories (prefix filter, pagination)
+GET    /rooms/{room}/memory/summaries    — the same list with titles, without text
 GET    /rooms/{room}/memory/{key:path}   — get a specific memory by key
 DELETE /rooms/{room}/memory/{key:path}   — delete a memory
 POST   /rooms/{room}/memory/search       — semantic vector search
@@ -22,6 +23,7 @@ import fnmatch
 import hashlib
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -37,19 +39,24 @@ from app.schemas import (
     MemorySearchRequest,
     MemorySearchResponse,
     MemorySearchResult,
+    MemorySummaryRead,
     SubscriptionCreate,
     SubscriptionRead,
+    ThreadRepliesRead,
     refusals,
 )
 from app.services import (
     actor,
     hold_sweep,
     in_memory_store,
+    knowledge,
     links,
+    memory_kinds,
     memory_sync,
     principals,
     room_settings,
     search_index,
+    subagents,
     uploads,
 )
 from app.services.embedding import embed_text
@@ -156,6 +163,54 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
     )
 
 
+def _memory_summary_from_file(
+    room_name: str, key: str, meta: dict, content: str
+) -> MemorySummaryRead:
+    """A memory's list entry: its title and frontmatter, without its text."""
+    created_at, updated_at = recover_timestamps(meta, get_room_dir(room_name) / f"{key}.md")
+    value = _reconstruct_value(meta, content)
+    return MemorySummaryRead(
+        key=key,
+        title=memory_title(key, value, content),
+        structured=isinstance(value, list) or (isinstance(value, dict) and "text" not in value),
+        created_by=meta.get("created_by", "unknown"),
+        updated_by=meta.get("updated_by"),
+        version=meta.get("version", 1),
+        tags=meta.get("tags"),
+        meta=unmanaged_meta(meta) or None,
+        episode=meta.get(EPISODE_META),
+        expandable=links.is_expandable(meta),
+        created_at=created_at,
+        updated_at=updated_at,
+    )
+
+
+#: How long a title is at most, the app's ``firstLine`` cap.
+TITLE_CHARS = 120
+
+
+def memory_title(key: str, value: Any, content: str | None) -> str:
+    """What a memory is called: a structured value's ``title``, else the first
+    line of its text, else its key. The app's ``memoryTitle``
+    (``lib/memory-preview.ts``) says the same, so a list and an opened memory
+    never disagree."""
+    if isinstance(value, dict):
+        title = value.get("title")
+        if isinstance(title, str) and title.strip():
+            return title.strip()
+    if isinstance(value, str):
+        body = value
+    elif isinstance(value, dict) and isinstance(value.get("text"), str):
+        body = value["text"]
+    else:
+        body = content or key
+    line = next(
+        (ln.strip() for ln in body.split("\n") if ln.strip() and not ln.strip().startswith("---")),
+        "",
+    )
+    return re.sub(r"^#+\s*", "", line)[:TITLE_CHARS] or key
+
+
 def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> None:
     """Publish a memory-change event to the room channel and matching subscribers."""
     payload = {
@@ -188,6 +243,8 @@ def _broadcast_memory_write(
     created_by: str,
     updated_by: str,
     updated_at: str,
+    tags: list[str] | None = None,
+    meta: dict[str, Any] | None = None,
 ) -> None:
     """Schedule an ``extraction`` knowledge push mirroring a direct memory write.
 
@@ -208,6 +265,8 @@ def _broadcast_memory_write(
         created_by=created_by,
         updated_by=updated_by,
         updated_at=updated_at,
+        tags=tags,
+        meta=meta,
     )
     recipients = room_channels.manager.members(room_name)
     task = asyncio.create_task(_send_memory_write_knowledge(room_name, managed, write, recipients))
@@ -260,8 +319,16 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
         item.created_by = actor.bind_delegated_actor(
             request, room_name, item.created_by, field="created_by"
         )
+        if _is_agent_manifest(item.key) and subagents.SEPARATOR in item.key:
+            # A colon is a subagent's alone, recorded with its parent: no agent
+            # is named like one.
+            raise HTTPException(
+                status_code=422,
+                detail=f"An agent's handle can't have a colon: {item.key}. "
+                "A subagent is started with `mycelium subagent start <name>`.",
+            )
         _guard_manifest(request, room_name, item.key, item.value)
-    return await upsert_memories(room_name, payload)
+    return await upsert_memories(room_name, payload, people=True)
 
 
 def _guard_manifest(
@@ -282,7 +349,10 @@ def _guard_manifest(
         room_name, key.removeprefix("agents/"), content, principal.handle, deleting=deleting
     )
     if refusal:
-        raise HTTPException(status_code=403, detail=refusal)
+        raise HTTPException(
+            status_code=memory_kinds.CODES["memory.not_owner"],
+            detail={"error": "memory.not_owner", "message": refusal, "key": key},
+        )
 
 
 async def upsert_memories(
@@ -291,6 +361,8 @@ async def upsert_memories(
     *,
     notify: bool = True,
     system: dict[str, Any] | None = None,
+    people: bool = False,
+    keep_version: bool = False,
 ) -> list[MemoryRead]:
     """The write itself, with ``created_by`` already resolved to its true author.
 
@@ -310,6 +382,15 @@ async def upsert_memories(
 
     It is **write-once**: a value already on the row wins, so a task stays bound
     to the thread its history is in for the row's whole life.
+
+    ``people`` is a write from the memory route (the app's editor, ``memory
+    set``, an agent): each item is checked against its kind
+    (``services/memory_kinds.py``) before any is saved, so a refused batch
+    saves nothing. The hub's own writers leave it off: they own what a kind
+    keeps from people (a run's record, a lease's claim fields).
+
+    ``keep_version`` leaves the version as it is, for a write that only
+    re-dates a lease: an editor open on the row isn't told it was edited.
     """
     _require_room(room_name)
     if system and not set(system) <= SYSTEM_META:
@@ -320,35 +401,53 @@ async def upsert_memories(
 
     from app.services.metrics import record_memory_write
 
-    results: list[MemoryRead] = []
-    write_metrics: list[bool] = []
-    for item in payload.items:
+    # Every item is checked before any is saved, so a refused batch saves
+    # nothing: its kind (from the memory route), a room setting's value, and
+    # the version it was written over.
+    drawn: dict[int, str] = {}
+    setting_values: dict[int, Any] = {}
+    for i, item in enumerate(payload.items):
         value = item.value if isinstance(item.value, dict) else {"text": item.value}
-        content_text = item.content_text or _flatten_value(item.value)
-        body = value_to_content(value)
-
         existing = read_memory_file(room_dir, item.key)
         existing_meta = existing[0] if existing else {}
         current_version = existing_meta.get("version", 0) if existing else 0
 
+        if people:
+            try:
+                redrawn = memory_kinds.check(item.key, value_to_content(value), item.meta, existing)
+            except memory_kinds.Refused as e:
+                raise HTTPException(status_code=e.status, detail=e.detail(item.key)) from e
+            if redrawn is not None:
+                drawn[i] = redrawn
+            # What a memory says it is as knowledge: its kind, its task and
+            # what it came from (``services/knowledge.py``).
+            try:
+                item.meta = knowledge.check(room_name, item.key, item.meta or {}, existing_meta)
+            except knowledge.Refused as e:
+                raise HTTPException(
+                    status_code=memory_kinds.CODES[e.code],
+                    detail={"error": e.code, "message": e.message, "key": item.key},
+                ) from e
+
         # A room setting is checked against the room settings table here, at the
         # one write path, so every writer gets the same refusal.
-        setting_value: Any = None
         if room_settings.is_setting_key(item.key):
             try:
-                setting_value = room_settings.check_write(item.key, item.meta, existing_meta)
+                setting_values[i] = room_settings.check_write(item.key, item.meta, existing_meta)
             except room_settings.RoomSettingError as exc:
+                unknown = isinstance(exc, room_settings.UnknownSetting)
+                code = "memory.setting_unknown" if unknown else "memory.setting_invalid"
                 raise HTTPException(
-                    status_code=422,
-                    detail={"error": "room_setting", "message": str(exc), "key": item.key},
+                    status_code=memory_kinds.CODES[code],
+                    detail={"error": code, "message": str(exc), "key": item.key},
                 ) from exc
 
         # Conflict check: a supplied base_version must match what's on disk.
         if item.base_version is not None and item.base_version != current_version:
             raise HTTPException(
-                status_code=409,
+                status_code=memory_kinds.CODES["memory.stale_base"],
                 detail={
-                    "error": "stale_base",
+                    "error": "memory.stale_base",
                     "message": (
                         f"Write for '{item.key}' expected version {item.base_version} "
                         f"but current version is {current_version}"
@@ -362,12 +461,29 @@ async def upsert_memories(
                 },
             )
 
+    results: list[MemoryRead] = []
+    write_metrics: list[bool] = []
+    for i, item in enumerate(payload.items):
+        value = item.value if isinstance(item.value, dict) else {"text": item.value}
+        content_text = item.content_text or _flatten_value(item.value)
+        if i in drawn:
+            # A body drawn from its field (a summary, a decision): the field
+            # this write changed is the source, so the text follows it.
+            value = {"text": drawn[i]}
+            content_text = drawn[i]
+        body = value_to_content(value)
+
+        existing = read_memory_file(room_dir, item.key)
+        existing_meta = existing[0] if existing else {}
+        current_version = existing_meta.get("version", 0) if existing else 0
+        setting_value = setting_values.get(i)
+
         now = datetime.now(UTC)
         # A write that names no tags keeps the ones the memory has, like the rest
         # of its frontmatter; an empty list clears them.
         tags = item.tags if item.tags is not None else existing_meta.get("tags")
         if existing:
-            new_version = current_version + 1
+            new_version = current_version if keep_version else current_version + 1
             created_by = existing_meta.get("created_by", item.created_by)
             created_at = parse_timestamp(existing_meta.get("created_at")) or now
         else:
@@ -487,6 +603,10 @@ async def upsert_memories(
             created_by=created_by,
             updated_by=item.created_by,
             updated_at=now.isoformat(),
+            # The whole of both, empty included, so a field this write cleared
+            # is cleared on every copy too.
+            tags=list(tags) if isinstance(tags, list) else [],
+            meta=unmanaged_meta(extra_meta),
         )
         # A board row appearing for the first time is the room filing work: raise
         # a `filed` notice into the timeline, naming the task, its kind (so it
@@ -537,19 +657,70 @@ async def list_memories(
     Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
     changed.
     """
+    return _listed(room_name, request, prefix, limit, offset, _memory_read_from_file)
+
+
+@router.get("/summaries", response_model=list[MemorySummaryRead], responses=refusals(404))
+async def list_memory_summaries(
+    room_name: str,
+    request: Request,
+    prefix: str | None = Query(None, description="Key prefix filter"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+):
+    """List memories in a room as a list shows them: titles and frontmatter, no text.
+
+    Paged and cached like the full list, newest first. A memory's text is
+    read one memory at a time (``GET /memory/{key}``). A thread started from a
+    message also says what has been said in it (``thread``), so the cache
+    stamp follows the room's history as well as its memories.
+    """
+    from app.services import threads
+    from app.services.persister import TRANSCRIPT_FILENAME, _stat_stamp
+
+    said: dict[str, dict[str, Any]] | None = None
+
+    def build(room: str, key: str, meta: dict, content: str) -> MemorySummaryRead:
+        nonlocal said
+        summary = _memory_summary_from_file(room, key, meta, content)
+        if threads.is_message_thread(key) and summary.episode:
+            # One pass over the history for the page, and only for a page holding one.
+            if said is None:
+                said = threads.replies(room)
+            summary.thread = ThreadRepliesRead(**said.get(summary.episode, {}))
+        return summary
+
+    # Checked before the history is stamped: looking a room's folder up makes it.
+    _require_room(room_name)
+    history = _stat_stamp(get_room_dir(room_name) / TRANSCRIPT_FILENAME)
+    return _listed(room_name, request, prefix, limit, offset, build, salt=str(history))
+
+
+def _listed(
+    room_name: str,
+    request: Request,
+    prefix: str | None,
+    limit: int,
+    offset: int,
+    build: Any,
+    *,
+    salt: str = "",
+) -> Response:
+    """A page of a room's memories, newest first, each made by ``build``, with
+    an ETag (from the newest write, and ``salt``) so a caller that has it
+    already gets a 304."""
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
     file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
 
     latest_ts = max((str(meta.get("updated_at", "")) for _, meta, _ in file_entries), default="")
-    etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
+    stamp = f"{latest_ts}{salt}"
+    etag = '"' + hashlib.md5(stamp.encode()).hexdigest() + '"' if latest_ts else '"empty"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
     page = file_entries[offset : offset + limit]
-    memories = [
-        _memory_read_from_file(room_name, key, meta, content) for key, meta, content in page
-    ]
+    memories = [build(room_name, key, meta, content) for key, meta, content in page]
 
     from fastapi.encoders import jsonable_encoder
 

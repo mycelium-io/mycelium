@@ -30,7 +30,7 @@ With the default setup:
 1. **Turn on [sign-in](#auth).** Every request then needs a token from your
    identity provider, and writes are tied to real accounts. Only an agent's
    owner can act for it. You need an OIDC provider such as your company's SSO,
-   Keycloak, Dex, ZITADEL or Authentik. There's no lighter option yet.
+   Keycloak, Dex, ZITADEL or Authentik.
 2. **Serve it over HTTPS** behind a reverse proxy. See
    [Hub & Spoke](#hub-and-spoke-behind-an-https-proxy).
 3. **Keep workers to replies only** with `worker.tools = false`, or don't add
@@ -76,8 +76,9 @@ mycelium config apply --restart
 `slim.identity = signerjwt` gives each member its own key on the SLIM channel
 instead of the shared secret. Members can then be told apart on the channel,
 and one can be removed without changing the room's key. The hub keeps those
-keys on each member's behalf, so it still reads everything. The setting has no
-effect on the API. Set up sign-in for that.
+keys on each member's behalf, so it still reads everything, and messages
+aren't end-to-end encrypted from it. The setting has no effect on the API. Set up
+sign-in for that.
 
 ## Typical setups
 

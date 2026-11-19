@@ -106,7 +106,6 @@
         <a href="concepts.html#board" class="nav-link sub">Board</a>
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
-        <a href="concepts.html#swarm" class="nav-link sub">Swarm</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
         <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
@@ -187,6 +186,7 @@
           <a href="#cli-agent" class="nav-link sub">agent</a>
           <a href="#cli-memory" class="nav-link sub">memory</a>
           <a href="#cli-skill" class="nav-link sub">skill</a>
+          <a href="#cli-subagent" class="nav-link sub">subagent</a>
           <a href="#cli-file" class="nav-link sub">file</a>
           <a href="#cli-config" class="nav-link sub">config</a>
           <a href="#cli-other" class="nav-link sub">watch</a>
@@ -213,13 +213,13 @@
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-herdr" class="nav-link sub">herdr</a>
-          <a href="#config-swarm" class="nav-link sub">swarm</a>
           <a href="#config-runner" class="nav-link sub">runner</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
           <a href="#config-telemetry" class="nav-link sub">telemetry</a>
           <a href="#config-health" class="nav-link sub">health</a>
           <a href="#config-a2a" class="nav-link sub">a2a</a>
           <a href="#config-patterns" class="nav-link sub">patterns</a>
+          <a href="#config-statusline" class="nav-link sub">statusline</a>
         </div>
       </div>
       <div class="nav-group" data-nav-group="reference:dependencies">
@@ -364,11 +364,44 @@
       <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
       <p>A <a href="concepts.html#board">task</a> is a memory under <code>work/</code>. Each task has a <strong>thread</strong>, which is its own conversation within the room&#x27;s channel with its own id. A thread isn&#x27;t a separate encrypted group. Everyone in the room can read every thread.</p>
       <p><strong>Every board row keeps one thread for good.</strong> The hub gives every memory a thread the first time it&#x27;s written, however it was written. No command can change the thread id, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) files a task and returns its thread id.</p>
-      <p>A flow or negotiation run on a task is an <a href="concepts.html#episodes">episode</a> inside the task&#x27;s thread. Its state shows on the task&#x27;s row as read-only fields (<code>thread_state</code>, <code>participants</code>, <code>rounds</code>). It never changes the task&#x27;s own status or holder.</p>
-      <p><strong>The room&#x27;s chat shows short updates, not thread conversations.</strong> Two kinds of update appear there:</p>
+      <p>A conductor run on a task is an <a href="concepts.html#episodes">episode</a> inside the task&#x27;s thread. Its state shows on the task&#x27;s row as read-only fields (<code>thread_state</code>, <code>participants</code>). It never changes the task&#x27;s own status or holder.</p>
+      <p>A thread&#x27;s conversation stays in the thread. The room&#x27;s chat shows two kinds of short update:</p>
       <ul>
         <li>A <strong>ping</strong> appears when a thread gets a new message. It includes the thread, the sender and the message id.</li>
-        <li>A <strong>notice</strong> appears when the board changes. It includes the task, who changed it and the thread to open. The kinds are <code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code> and <code>floor</code>. A <code>floor</code> notice appears when the member whose turn it is in a thread changes.</li>
+        <li>A <strong>notice</strong> appears when something happens to a task. It includes the task, who changed it and the thread to open. Its kind says what happened:
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Kind</th>
+              <th>When</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>filed</code>, <code>claimed</code>, <code>released</code>, <code>resolved</code>, <code>blocked</code>, <code>unblocked</code>, <code>expired</code></td>
+              <td>The task moved on the board.</td>
+            </tr>
+            <tr>
+              <td><code>quiet</code></td>
+              <td>Nothing has happened on a held task for a few hours.</td>
+            </tr>
+            <tr>
+              <td><code>upstream</code></td>
+              <td>A pull request the task links to changed.</td>
+            </tr>
+            <tr>
+              <td><code>floor</code></td>
+              <td>The member whose turn it is in a thread changed.</td>
+            </tr>
+            <tr>
+              <td><code>check</code></td>
+              <td>The <a href="engines.html#verifier">verifier</a> couldn&#x27;t confirm a claim in a message.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+        </li>
       </ul>
       <p>Neither one is addressed to an agent, so neither wakes one.</p>
       <p>Pings and notices are live only. The stored history (<code>GET /messages</code>) doesn&#x27;t include either of them.</p>
@@ -594,6 +627,13 @@
           <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">amend</span> &lt;message-id&gt; &quot;&lt;new content&gt;<span class="str">&quot; | <span class="flag">--body</span> &quot;</span><span class="arg">&lt;markdown&gt;</span>&quot; | <span class="flag">--file</span> <span class="arg">&lt;path&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Revise a message you sent. The amendment is posted as its own message; the room reads the newest text, marked edited.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">interrupt</span> &lt;message-id&gt; @<span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;handle&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Turn a plain @mention in a message you sent into an interrupt: the member stops its turn, reads it now and carries on. Only while it hasn't read it yet, once per member per message.</div>
       </div>
 
       <div class="cmd-ref">
@@ -826,9 +866,23 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">stop</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>] [<span class="flag">--yes</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">stop</span> [<span class="arg">&lt;handle&gt;</span>] [<span class="flag">--idle</span>] [<span class="flag">--close</span>] [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>] [<span class="flag">--yes</span>]</code>
         </div>
-        <div class="cmd-ref-body">Stop an agent you own: the machine running it interrupts it and closes its pane. It stays a member, and can be restarted.</div>
+        <div class="cmd-ref-body">Stop an agent you own to free its memory: its machine ends its process and keeps its pane, so <code>agent start</code> brings it back there. <code>--idle</code> stops every agent you own that's idle or paused, except kept ones. <code>--close</code> closes the pane too.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">start</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Start an agent you stopped, in its pane: in its own conversation when its CLI can resume one, like Claude Code. Its machine asks first unless it trusts the hub.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">keep</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--off</span>] [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--as</span> <span class="arg">&lt;you&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Keep an agent you own running when agents are stopped in bulk (<code>agent stop --idle</code>, the app's quick picks). <code>--off</code> stops keeping it.</div>
       </div>
 
       <div class="cmd-ref">
@@ -891,6 +945,20 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">graph</span> [<span class="flag">--task</span> <span class="arg">&lt;task&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">What the team learned: facts, findings, dead ends and decisions, each under what it came from, with who wrote it and whether it's still open. With <code>--task</code>, one task's lens: what it produced, and what those came from or fed elsewhere. Read it before you start on a task.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">settle</span> <span class="arg">&lt;key&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Mark a fact or finding as holding, so it's no longer open.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> <span class="arg">&lt;key&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Read a memory by exact key from the hub.</div>
@@ -949,7 +1017,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">work</span></code>
         </div>
-        <div class="cmd-ref-body">Show what's been built: filters to <code>work/*</code> memories as a table.</div>
+        <div class="cmd-ref-body">Show the room's tasks: filters to <code>work/*</code> memories, one per task, as a table.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1008,6 +1076,22 @@
           <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">print</span></code>
         </div>
         <div class="cmd-ref-body">Print the Mycelium agent skill (SKILL.md): how an agent takes part in a room. Save it where your agent CLI reads skills, e.g. <code>~/.claude/skills/mycelium/SKILL.md</code>.</div>
+      </div>
+
+      <h2 id="cli-subagent">subagent</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">subagent</span> <span class="cmd">start</span> <span class="arg">&lt;name&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Give a subagent its own handle, <code>&lt;you&gt;:&lt;name&gt;</code>, so what it posts is its own. Prints three lines to put at the top of its prompt, and an optional fourth that has it check for messages to it between its steps.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">subagent</span> <span class="cmd">end</span> <span class="arg">&lt;handle&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">End a subagent: it leaves the room's members, and its messages stay its own.</div>
       </div>
 
       <h2 id="cli-file">file</h2>
@@ -1345,12 +1429,6 @@
 <span class="comment"># How many agent panes a herdr tab holds before the next agent opens a new tab in the room&#x27;s workspace.</span>
 <span class="arg">panes_per_tab</span> = 4
 
-<span class="comment"># What ``mycelium swarm`` starts when it runs your own agents.</span>
-<span class="cmd" id="config-swarm">[swarm]</span>
-
-<span class="comment"># The agent CLI a local swarm starts in herdr, as the command herdr runs. Asked for, and saved here, the first time you swarm without one.</span>
-<span class="arg">agent</span> = <span class="str">&quot;&quot;</span>
-
 <span class="comment"># Where this machine&#x27;s runner starts the agents the app asks for.</span>
 <span class="cmd" id="config-runner">[runner]</span>
 
@@ -1421,7 +1499,13 @@
 <span class="arg">allow_inline</span> = <span class="flag">true</span>
 
 <span class="comment"># Refuse any scenario with a member that is not a persona or a person, so this hub never starts a worker (Pi with tools) for a caller.</span>
-<span class="arg">personas_only</span> = <span class="flag">false</span></code></pre>
+<span class="arg">personas_only</span> = <span class="flag">false</span>
+
+<span class="comment"># The desktop app&#x27;s Widgets card, read and run on this computer only.</span>
+<span class="cmd" id="config-statusline">[statusline]</span>
+
+<span class="comment"># The rows of the Widgets card, in order, as [[statusline.widget]] tables: label, then command (with every, timeout) or text, and optionally icon (a Lucide icon name like memory-stick, or one emoji), color (accent, green, yellow, red, muted), state (ok, warn, bad, off), meter (0 to 100) and tooltip. Text and tooltip are inline markdown: **bold**, *italic*, `code`. A command can print one JSON object instead of a line to set any of these for that run, e.g. {&quot;text&quot;: &quot;**38%** free&quot;, &quot;icon&quot;: &quot;memory-stick&quot;, &quot;state&quot;: &quot;warn&quot;, &quot;meter&quot;: 38, &quot;tooltip&quot;: &quot;Swap is *2.1G*&quot;}. Checked by the desktop app, which notes any field it ignored in Settings &gt; Widgets. every = &quot;always&quot; keeps a command running while the app is open, and its row shows whether it&#x27;s running. Every command gets the port of the hub the app runs as $MYCELIUM_HUB_PORT.</span>
+<span class="arg">widget</span> = []</code></pre>
     </section>
     <nav class="doc-pager" data-pager-for="configuration" aria-label="Previous and next sections">
       <a class="doc-pager-link prev" href="#cli-reference">
@@ -1621,7 +1705,7 @@
             </tr>
             <tr>
               <td><code>assignment</code></td>
-              <td>Whether someone holds it: <code>unclaimed</code>, <code>held</code>, <code>released</code>, <code>expired</code>, <code>resolved</code>. A hold has no timer unless <code>claim --ttl</code> set one.</td>
+              <td>Whether someone holds it: <code>unclaimed</code>, <code>held</code>, <code>released</code>, <code>expired</code>, <code>resolved</code>.</td>
             </tr>
             <tr>
               <td><code>depends-on</code></td>
@@ -1643,7 +1727,7 @@
         </table>
       </div>
       <h2 id="board-reference-when-a-hold-ends">When a hold ends</h2>
-      <p>A hold has no timer. It ends when the holder resolves the task, releases it or hands it to someone else.</p>
+      <p>A hold has no timer unless <code>claim --ttl</code> gave it one. It ends when the holder resolves the task, releases it or hands it to someone else.</p>
       <p>It also ends when the hub sees the holder is gone. That happens when the holder&#x27;s herdr pane closes, or when the holder is removed from the room.</p>
       <p>Sometimes the hub can&#x27;t see the holder at all, because it has no pane and no connection to the room. Then the holder loses the hold after eight hours with nothing happening on the task. A hub that has just started doesn&#x27;t decide this straight away. It waits ten minutes, or until that agent&#x27;s machine reports in.</p>
       <p>Each time a hold ends this way, the room gets a notice that says why.</p>
@@ -1725,7 +1809,7 @@
           </tbody>
         </table>
       </div>
-      <p>The hub announces each change once, on one row: the first open row that mentions the pull request. When the hub sees a pull request for the first time, it announces it only if the pull request was opened in the last hour, because that means the task has just got its pull request. Linking one that was opened earlier, or is already merged or closed, announces nothing. The first time the hub checks a room (for example, right after it&#x27;s given a token), it only records where everything stands. The hub keeps what the room last saw in the room&#x27;s folder, so a change made while the hub was off is still announced once it is back.</p>
+      <p>The hub announces each change once, on the first open row that mentions the pull request. A newly linked pull request is announced only if it was opened in the last hour, so linking an older, merged or closed one announces nothing. The first time the hub checks a room, such as right after it&#x27;s given a token, it only records where everything stands. A change made while the hub was off is announced once it is back.</p>
       <p>These lines don&#x27;t wake anyone. When an agent is woken for some other reason, the summary it gets (its digest) has a <code>Board:</code> line. That line lists the changes on rows the agent holds, was given or filed. It also lists every merge in the room:</p>
       <pre><code>Board:   CI went red on <span class="str">&quot;Turn on Apple Pay&quot;</span> (coffee-shop/web#612, 4m ago)
          <span class="cmd">open</span> now: 2 claimed, 1 new</code></pre>
@@ -1778,7 +1862,7 @@ steps:
     next: {accept: done, reject: draft, default: draft}
   - id: done
     end: resolved</code></pre>
-      <p>If a flow doesn&#x27;t make sense, the conductor refuses to run it and says why. For example, a step might lead nowhere or there might be no end step. Each run keeps its own copy of the flow. Editing the memory changes future runs but not past records.</p>
+      <p>The conductor treats a flow that doesn&#x27;t make sense as if it weren&#x27;t there, even one saved under a built-in&#x27;s name. For example, a step might lead nowhere or there might be no end step. <code>mycelium engine invoke conductor &quot;list&quot;</code> shows the flows the room can run, so a flow missing from it has a mistake in it. Each run keeps its own copy of the flow. Editing the memory changes future runs but not past records.</p>
       <h2 id="flows-steps">Steps</h2>
       <p>Each step has an <code>id</code>. A step either asks someone (<code>to</code>) and says where to go next (<code>next</code>), or it ends the flow (<code>end: resolved</code> or <code>end: rejected</code>).</p>
       <p><code>to</code> can be:</p>
@@ -1925,7 +2009,7 @@ steps:
           <tbody>
             <tr>
               <td><code>[[mycelium: stance=accept]]</code> / <code>stance=reject</code></td>
-              <td>Approving or rejecting, in a flow step or a negotiation. <code>agree</code> and <code>yes</code> also mean accept; <code>no</code> and <code>block</code> also mean reject (this <code>block</code> has nothing to do with blocking a task on the board).</td>
+              <td>Approving or rejecting, in a flow step. <code>agree</code> and <code>yes</code> also mean accept; <code>no</code> and <code>block</code> also mean reject (this <code>block</code> has nothing to do with blocking a task on the board).</td>
             </tr>
             <tr>
               <td><code>[[mycelium: confidence=0.8]]</code></td>
@@ -1989,7 +2073,7 @@ steps:
       </div>
       <p>Two runs can both end with an option picked and mean very different things. A <code>min_satisfaction</code> of 0.8 is a pick everyone can live with. A <code>min_satisfaction</code> of 0.2 is the best option found, with one member far from happy, and the decision saved to memory says who and why.</p>
       <h2 id="messages-the-record">The record</h2>
-      <p>Every flow and negotiation is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. The run&#x27;s full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
+      <p>Every conductor run is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. The run&#x27;s full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
       <h2 id="messages-message-types">Message types</h2>
       <p>These are the kinds a message can have, and what you&#x27;ll see when reading raw messages:</p>
       <div class="table-wrap">
@@ -2002,12 +2086,16 @@ steps:
           </thead>
           <tbody>
             <tr>
+              <td><code>intent:mission</code></td>
+              <td>The opening of a conductor run.</td>
+            </tr>
+            <tr>
               <td><code>exchange</code></td>
               <td>A turn.</td>
             </tr>
             <tr>
               <td><code>commit:converged</code></td>
-              <td>An agreement.</td>
+              <td>An agreement, from a flow that picks an option, such as <code>concord</code>.</td>
             </tr>
             <tr>
               <td><code>commit:resolved</code></td>
@@ -2015,7 +2103,7 @@ steps:
             </tr>
             <tr>
               <td><code>commit:rejected</code></td>
-              <td>A failed negotiation or flow.</td>
+              <td>A flow that ended without an outcome.</td>
             </tr>
             <tr>
               <td><code>knowledge</code></td>
@@ -2107,7 +2195,7 @@ steps:
             <tr>
               <td><code>mycelium.flow_completed</code></td>
               <td>A conductor flow finishes</td>
-              <td>the flow (<code>review</code>, <code>swarm</code>, <code>gated</code>, ... or <code>custom</code>), outcome, steps</td>
+              <td>the flow (<code>review</code>, <code>gated</code>, <code>fan-out</code>, ... or <code>custom</code>), outcome, steps</td>
             </tr>
             <tr>
               <td><code>mycelium.negotiation_completed</code></td>
@@ -2117,7 +2205,7 @@ steps:
             <tr>
               <td><code>mycelium.agent_joined</code></td>
               <td>An agent is added to a room</td>
-              <td>its adapter (<code>claude_code</code>, <code>cursor</code>, <code>worker</code>, ...)</td>
+              <td>its adapter (<code>claude_code</code>, <code>cursor</code>, <code>engine</code> or <code>a2a</code>)</td>
             </tr>
           </tbody>
         </table>

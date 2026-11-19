@@ -18,16 +18,23 @@
  * module is only for what the hub owns.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EMPTY_LAYOUT, type RoomFolders } from "@/lib/room-folders";
+import type { KnowledgeGraph } from "@/lib/knowledge";
 import type { RoomStatus } from "@/lib/board/upstream";
-import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
+import useSWR, { unstable_serialize, useSWRConfig, type SWRConfiguration } from "swr";
 import useSWRInfinite from "swr/infinite";
 import {
   fetchA2aBridge,
+  fetchAgentsRunning,
+  type AgentRunning,
   fetchEpisodes,
+  fetchSubagents,
+  type Subagent,
+  fetchKnowledge,
   fetchMyPaused,
-  fetchMemories,
+  fetchMemory,
+  fetchMemorySummaries,
   fetchMessages,
   fetchNetworkStatus,
   fetchRoom,
@@ -57,7 +64,8 @@ import {
   type BoardRead,
   type EpisodeSummary,
   type WaitingItem,
-  type Memory,
+  type MemorySummary,
+  type ThreadReplies,
   type NetworkStatus,
   type PresenceMember,
   type Protocol,
@@ -104,6 +112,8 @@ const POLL = {
   // the poll only catches a missed one.
   verifierFlags: 60_000,
   uploads: 30_000,
+  // A runner reports its agents' states with every heartbeat.
+  running: 30_000,
   // Read only while a conductor summon is being written; a room's own flows
   // change about as often as its skills.
   protocols: 60_000,
@@ -159,7 +169,7 @@ const NO_AGENTS: AgentSummary[] = [];
 const NO_PRESENCE: RoomPresence = { members: [], floors: [], subscriptions: [], paused: [] };
 const NO_MESSAGES: RoomMessage[] = [];
 const NO_PEOPLE: RoomPeople = { people: [], agents: [], engines: [], others: [] };
-const NO_MEMORIES: Memory[] = [];
+const NO_MEMORIES: MemorySummary[] = [];
 const NO_SKILLS: Skill[] = [];
 const NO_SETTINGS: RoomSetting[] = [];
 const NO_SCHEDULES: ScheduleList = { schedules: [], total: 0, checks: {} };
@@ -174,6 +184,7 @@ type RoomResource =
   | "people"
   | "messages"
   | "memories"
+  | "memory"
   | "skills"
   | "settings"
   | "schedules"
@@ -185,7 +196,8 @@ type RoomResource =
   | "board-closed"
   | "waiting"
   | "a2a"
-  | "verifier-flags";
+  | "verifier-flags"
+  | "running";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
 function roomKey(room: string, resource: RoomResource, ...rest: (string | number)[]) {
@@ -339,6 +351,16 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   };
 }
 
+const NO_RUNNING: AgentRunning[] = [];
+
+/** The room's agents on connected machines: where each runs, its state and
+ *  whether it's kept running. What they use is this machine's alone
+ *  (`useLocalUsage`); the hub never has it. */
+export function useRoomAgentsRunning(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(room, "running", fetchAgentsRunning, NO_RUNNING, POLL.running, opts);
+  return { running: data, loading, refresh };
+}
+
 /** Everyone in a room from the hub's records: its people (recorded when they
  *  joined), and the handles that hold a task or are present but are neither a
  *  person nor an agent. */
@@ -351,6 +373,60 @@ export function useRoomPeople(room: string, opts: RoomQueryOptions = {}) {
 
 /** Recent chat, for surfaces that read the room's history rather than tail it.
  *  Shares one cache entry with every other reader of the same page size. */
+/**
+ * The channel's newest page, as `read` gives it, kept across room switches.
+ * The channel is drawn again for every room it opens, so without this a room
+ * you just left was read from the hub again, and drawn only once both its
+ * reads came back. With it, going back to a room draws what it had at once
+ * and refreshes behind; a page that comes back the same changes nothing.
+ */
+export function useChannelPage<T>(
+  room: string,
+  read: () => Promise<T>,
+  onPage: (page: T, first: boolean) => void,
+  /** The page the channel drew its first render from (`useCachedChannelPage`), not handed again. */
+  seed?: T,
+) {
+  const { data, error } = useSWR(channelPageKey(room), read, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    dedupingInterval: 2_000,
+    shouldRetryOnError: false,
+  });
+  // Each page once, in order: the fresh one after the seed, if it differs.
+  const handed = useRef<T | undefined>(seed);
+  const [loaded, setLoaded] = useState(seed !== undefined);
+  const latest = useRef(onPage);
+  useLayoutEffect(() => {
+    latest.current = onPage;
+  });
+  useLayoutEffect(() => {
+    if (data === undefined || data === handed.current) return;
+    const first = handed.current === undefined;
+    handed.current = data;
+    latest.current(data, first);
+    if (first) setLoaded(true);
+  }, [data]);
+  // A failed first read still ends the wait; the channel says it's empty.
+  return { loaded: loaded || Boolean(error), error };
+}
+
+const channelPageKey = (room: string) => (room ? (["room", room, "channel-page"] as const) : null);
+
+/**
+ * The channel's newest page as the cache holds it when the channel first
+ * renders, read once, so a room opened again builds its rows in that first
+ * render rather than a render later.
+ */
+export function useCachedChannelPage<T>(room: string): T | undefined {
+  const { cache } = useSWRConfig();
+  const [seed] = useState(() => {
+    const key = channelPageKey(room);
+    return key ? (cache.get(unstable_serialize(key))?.data as T | undefined) : undefined;
+  });
+  return seed;
+}
+
 export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOptions = {}) {
   const { data, isLoading, mutate } = useSWR(
     room ? (["room", room, "messages", limit] as const) : null,
@@ -403,6 +479,15 @@ export function useMessageSearch(room: string, query: string, limit = 50) {
  * whole conversation is the read. `hasOlder` is exact: the room answers with
  * how many messages matched, not just the page it returned.
  */
+/** One message by its id, the one a thread was started from. Parked while `id` is null. */
+export function useRoomMessage(room: string, id: string | null) {
+  const { data, isLoading } = useSWR(
+    room && id ? (["room", room, "messages", "id", id] as const) : null,
+    () => fetchMessages(room, 1, { id }),
+  );
+  return { message: data?.messages[0] ?? null, loading: isLoading };
+}
+
 export function useThreadMessages(
   room: string,
   episode: string | null,
@@ -447,6 +532,37 @@ export function useThreadMessages(
 }
 
 /**
+ * The room's subagents by handle (lowercased), ended ones too: the Members
+ * rail lists the ones still running under their parent, and a message from
+ * any of them reads as the parent's subagent. Recorded on the hub, never
+ * read from the handle.
+ */
+export function useRoomSubagents(room: string): Map<string, Subagent> {
+  const { data } = useSWR(
+    room ? (["room", room, "subagents"] as const) : null,
+    () => fetchSubagents(room),
+    { refreshInterval: POLL.members },
+  );
+  return useMemo(() => new Map((data ?? []).map((s) => [s.handle.toLowerCase(), s])), [data]);
+}
+
+const NO_KNOWLEDGE: KnowledgeGraph = { tasks: [], memories: [] };
+
+/**
+ * What the room's team learned (`lib/knowledge.ts`): one read the Memory
+ * panel's graph, a task's lens on it and the task's Memories section all
+ * share. Refreshed with the room's memories, since every piece is one.
+ */
+export function useRoomKnowledge(room: string): KnowledgeGraph {
+  const { data } = useSWR(
+    room ? (["room", room, "knowledge"] as const) : null,
+    () => fetchKnowledge(room),
+    { refreshInterval: POLL.memories },
+  );
+  return data ?? NO_KNOWLEDGE;
+}
+
+/**
  * Every thread the room's rows are bound to, keyed by URN.
  *
  * The binding is the task's (`Memory.episode`), so this is that same edge read
@@ -474,6 +590,65 @@ export function useRoomThreads(room: string): Map<string, ThreadOwner> {
     }
     return index;
   }, [memories]);
+}
+
+/** A thread started from a message: its memory, its episode, what it's called,
+ *  what's been said in it, and the task made from it, if one was. */
+export interface MessageThread {
+  key: string;
+  episode: string;
+  title: string;
+  /** The id of the message it was started from. */
+  from: string;
+  replies: ThreadReplies;
+  task: { key: string; title: string; episode: string | null } | null;
+}
+
+const NO_REPLIES: ThreadReplies = { replies: 0, repliers: [] };
+
+/** The relation a task made from a thread points back at it with. */
+const THREAD_RELATION = "relates-to";
+
+function messageThreadsOf(memories: MemorySummary[]): MessageThread[] {
+  const tasks = new Map<string, MemorySummary>();
+  for (const memory of memories) {
+    const related = memory.meta?.[THREAD_RELATION];
+    if (!memory.key.startsWith("work/")) continue;
+    for (const key of Array.isArray(related) ? related : [related]) {
+      if (typeof key === "string" && key.startsWith("threads/")) tasks.set(key, memory);
+    }
+  }
+  const found: MessageThread[] = [];
+  for (const memory of memories) {
+    const from = memory.meta?.from;
+    if (!memory.key.startsWith("threads/") || !memory.episode || typeof from !== "string") continue;
+    const task = tasks.get(memory.key);
+    found.push({
+      key: memory.key,
+      episode: memory.episode,
+      title: memoryTitle(memory),
+      from,
+      replies: memory.thread ?? NO_REPLIES,
+      task: task ? { key: task.key, title: memoryTitle(task), episode: task.episode ?? null } : null,
+    });
+  }
+  return found;
+}
+
+/**
+ * The threads started from messages, by the message each came from: a
+ * `threads/` memory whose `from` names the message. Off the room's memory list,
+ * which carries what's been said in each, so it costs no request of its own.
+ */
+export function useMessageThreads(room: string): Map<string, MessageThread> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => new Map(messageThreadsOf(memories).map((t) => [t.from, t])), [memories]);
+}
+
+/** The same threads, by their own episode: what a ping or an open thread names. */
+export function useMessageThreadsByEpisode(room: string): Map<string, MessageThread> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => new Map(messageThreadsOf(memories).map((t) => [t.episode, t])), [memories]);
 }
 
 /** What a row is called, and the thread that opens it. */
@@ -585,11 +760,30 @@ export function useRoomWaiting(room: string, handle: string, opts: RoomQueryOpti
   return { items: data?.items ?? NO_WAITING, loading: isLoading, refresh };
 }
 
+/** A room's memories as a list shows them: titles and frontmatter, no text
+ *  (`MemorySummary`). A view that needs one memory's text reads it with
+ *  {@link useRoomMemory}. */
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
-    room, "memories", fetchMemories, NO_MEMORIES, POLL.memories, opts,
+    room, "memories", fetchMemorySummaries, NO_MEMORIES, POLL.memories, opts,
   );
   return { memories: data, loading, refresh };
+}
+
+/** One memory with its text, read again when the list says its `version`
+ *  moved. Parked while `key` is null. */
+export function useRoomMemory(room: string, key: string | null, version?: number) {
+  const { data, isLoading, mutate } = useSWR(
+    key ? roomKey(room, "memory", key, version ?? 0) : null,
+    () => fetchMemory(room, key as string),
+    { keepPreviousData: true },
+  );
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  // A previous memory kept while the next loads is only shown for the same key.
+  const memory = data && data.key === key ? data : null;
+  return { memory, loading: isLoading, refresh };
 }
 
 /** A room's settings, with where each value comes from. One cache entry for the

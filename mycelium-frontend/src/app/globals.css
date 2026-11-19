@@ -575,6 +575,25 @@ body {
   font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* A modal <dialog> takes the app's text color and leaves its size to the
+   component, rather than the browser's default color and inset box. Scroll
+   gestures over it or its backdrop stay off the page underneath where the
+   browser honors overscroll-behavior on a box that doesn't scroll (not Safari
+   yet, where the page is still inert behind it). In the base layer, so a
+   component's utilities still size it. */
+@layer base {
+  dialog:modal {
+    color: inherit;
+    max-width: none;
+    max-height: none;
+    overscroll-behavior: contain;
+  }
+  dialog::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -688,6 +707,10 @@ body {
 .markdown-body ol { list-style: decimal; }
 .markdown-body li { margin: 0.15em 0; line-height: 1.55; color: var(--text2); }
 .markdown-body li::marker { color: var(--muted); }
+/* Markdown set inside UI that already picks the text's color, such as an ask
+ * card's question and facts: paragraphs and list items take it. */
+.markdown-body.markdown-ui p, .markdown-body.markdown-ui li { color: inherit; }
+.markdown-body.markdown-ui p { margin: 0.25em 0; }
 /* Headings are document structure, so they descend in size and hold primary
  * contrast the whole way down. Sized in em rather than the UI scale: that scale
  * tops out at 16px for chrome, and a body renders at whatever size its surface
@@ -969,6 +992,21 @@ body {
   --dv-floating-border: 1px solid var(--border2);
   --dv-context-menu-background-color: var(--elevated);
   --dv-context-menu-color: var(--text);
+}
+/* The seam between split tab groups: 12px to grab, like the app's other
+ * dividers (`ui/resizable.tsx`), centered where dockview's 4px one sits, and
+ * lit only in its middle 4px when dragged. */
+.dockview-theme-mycelium .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash {
+  width: 12px;
+  margin-left: -4px;
+  padding: 0 4px;
+  background-clip: content-box;
+}
+.dockview-theme-mycelium .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash {
+  height: 12px;
+  margin-top: -4px;
+  padding: 4px 0;
+  background-clip: content-box;
 }
 .dockview-theme-mycelium .dv-tabs-and-actions-container {
   border-bottom: 1px solid var(--border);

@@ -30,6 +30,11 @@ interface AuthSessionState {
   signInProblem: string | null;
   signedIn: boolean;
   handle: string | null;
+  /** Signed in, but the hub has no handle for this sign-in yet: the person
+   *  picks one (`HandlePicker`) before anything else. */
+  needsHandle: boolean;
+  /** With `needsHandle`, the handle their sign-in would have given. */
+  suggested: string | null;
 }
 
 interface AuthSession extends AuthSessionState {
@@ -47,6 +52,8 @@ const INITIAL: AuthSessionState = {
   signInProblem: null,
   signedIn: false,
   handle: null,
+  needsHandle: false,
+  suggested: null,
 };
 
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
@@ -64,6 +71,8 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
         signInProblem: d.signInProblem ?? null,
         signedIn: Boolean(d.signedIn),
         handle: d.handle ?? null,
+        needsHandle: Boolean(d.needsHandle),
+        suggested: d.suggested ?? null,
       };
       setState(next);
       if (next.signedIn && next.handle) setPrincipal(next.handle);

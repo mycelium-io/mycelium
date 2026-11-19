@@ -84,7 +84,7 @@ def _say(manager: room_channels.RoomChannelManager, text: str, sender: str) -> l
         payload_type="message",
     )
     hook = manager._asked_adapter(ROOM)
-    asked = asks.asked(serialize_content(env, extra={"content": text}))
+    asked = asks.asked(serialize_content(env, extra={"content": text}), ROOM)
     for handle, why in asked.items():
         hook(handle, why, env, text)
     return [h for h in asked if manager.herdr_status(ROOM, h) is not None]

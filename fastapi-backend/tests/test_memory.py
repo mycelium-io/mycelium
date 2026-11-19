@@ -191,7 +191,12 @@ async def test_a_rewrite_that_names_no_tags_keeps_them(client: AsyncClient):
             "/api/rooms/tags-kept/memory",
             json={
                 "items": [
-                    {"key": "agents/scribe", "value": "v", "created_by": "a", "embed": False}
+                    {
+                        "key": "agents/scribe",
+                        "value": "adapter: claude_code",
+                        "created_by": "a",
+                        "embed": False,
+                    }
                     | extra
                 ]
             },
@@ -453,13 +458,13 @@ async def test_unmanaged_frontmatter_is_returned(client: AsyncClient):
                     "value": "Blocked behind the assignment seam",
                     "created_by": "julia",
                     "embed": False,
-                    "meta": {"status": "open", "owner": "@julia", "priority": "high"},
+                    "meta": {"status": "open", "assignee": "@julia", "priority": "high"},
                 }
             ]
         },
     )
 
-    fields = {"status": "open", "owner": "@julia", "priority": "high"}
+    fields = {"status": "open", "assignee": "@julia", "priority": "high"}
     written = (await client.get("/api/rooms/meta-rt/memory/work/x")).json()
     assert written["meta"] == fields
     assert written["value"] == {"text": "Blocked behind the assignment seam"}

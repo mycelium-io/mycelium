@@ -161,6 +161,58 @@ export function useAgentScreen(agent: { room: string; handle: string } | null): 
   };
 }
 
+/** One process in a local agent's pane, a secret-looking value shown as `…`. */
+export interface LocalProcess {
+  name: string;
+  command: string;
+  ram_mb: number;
+}
+
+/** What an agent on this machine uses, as the runner here last read it. */
+export interface LocalAgentUsage {
+  room: string;
+  handle: string;
+  pane: string | null;
+  ram_mb: number | null;
+  /** Percent of one core over the last minute; null until there's a minute to compare. */
+  cpu: number | null;
+  up_s: number | null;
+  /** When it was last seen working; null while it works. */
+  idle_since: string | null;
+  processes: LocalProcess[];
+}
+
+/** This machine's agents and what they use: read here, never sent to the hub. */
+export interface LocalUsage {
+  /** The runner here, so a row can be matched to this machine. */
+  runner: string;
+  ram_total_mb: number | null;
+  agents: LocalAgentUsage[];
+}
+
+/** How often the page asks; the runner reads the numbers every 30 seconds. */
+const USAGE_EVERY_MS = 15_000;
+
+/**
+ * What each agent on this machine uses, from a file the runner here writes
+ * and the app reads for its own pages (`agent_usage`). None of it goes to the
+ * hub, so an agent on another machine has no numbers. Null outside the app,
+ * on another hub's pages, and before the runner has written anything.
+ */
+export function useLocalUsage(): LocalUsage | null {
+  const invoke = appInvoke();
+  const { data } = useSWR(
+    invoke ? ["agent-usage"] : null,
+    async () => {
+      const got = (await appInvoke()!("agent_usage")) as Partial<LocalUsage> | null;
+      if (!got || typeof got.runner !== "string" || !Array.isArray(got.agents)) return null;
+      return { runner: got.runner, ram_total_mb: got.ram_total_mb ?? null, agents: got.agents };
+    },
+    { refreshInterval: USAGE_EVERY_MS, refreshWhenHidden: false, shouldRetryOnError: false },
+  );
+  return data ?? null;
+}
+
 /** Asks the app to update: its Check for Updates…, which asks before it downloads. */
 export function updateLink(): string {
   return "mycelium://update";

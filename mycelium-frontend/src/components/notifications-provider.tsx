@@ -19,7 +19,7 @@ import useSWR from "swr";
 import { setStreamViewer, useNotificationStream, useNotificationsConnected } from "@/lib/stream-hub";
 import { useCurrentUser } from "@/components/current-user";
 import { audioReady, ping, playAudio, primeAudio } from "@/lib/audio-ping";
-import { fetchMemories, fetchSpeech, fetchVoiceStatus } from "@/lib/api";
+import { fetchMemorySummaries, fetchSpeech, fetchVoiceStatus } from "@/lib/api";
 import { micOpen, onMicChange } from "@/lib/mic-activity";
 import { mentionHref, OPEN_MENTION_EVENT } from "@/lib/notifications";
 import { onOnScreenChange, onScreenNow, shows, type OnScreen, type SkipRule } from "@/lib/on-screen";
@@ -234,13 +234,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     if (!cached || (!cached.byEpisode.has(episode) && Date.now() - cached.at > 30_000)) {
       // Every memory has a thread, not only the board's rows: a mention in a
       // `context/` note's discussion is named too.
-      const memories = await fetchMemories(room);
+      const memories = await fetchMemorySummaries(room);
       const byEpisode = new Map<string, string>();
       for (const row of memories) {
-        if (!row.episode) continue;
-        const text = typeof row.value === "string" ? row.value : ((row.value as { text?: string } | null)?.text ?? "");
-        const first = text.split("\n").find((l) => l.trim());
-        byEpisode.set(row.episode, first ? first.replace(/^#+\s*/, "").trim() : row.key);
+        if (row.episode) byEpisode.set(row.episode, row.title || row.key);
       }
       cached = { at: Date.now(), byEpisode };
       titles.current.set(room, cached);

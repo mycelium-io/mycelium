@@ -5,10 +5,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Eye, Maximize2, MessageSquare, Pencil, X } from "lucide-react";
+import { Eye, ListPlus, ListTodo, Loader2, Maximize2, MessageSquare, Network, Pencil, X } from "lucide-react";
+import { KnowledgeGraph } from "@/components/knowledge-graph";
+import { TaskMemories } from "@/components/task/task-memories";
+import { createThreadTask } from "@/lib/api";
 import { memoryHref } from "@/lib/memory-routes";
-import { useRoomEpisodes, useRoomMembers, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import {
+  useRoomEpisodes,
+  useRoomKnowledge,
+  useRoomMembers,
+  useRoomMemories,
+  useRoomMemory,
+  useRoomRevalidate,
+  useMessageThreadsByEpisode,
+} from "@/lib/room-data";
 import { threadShortId } from "@/lib/threads";
+import { ThreadOrigin } from "@/components/task/thread-origin";
 import { Findable } from "@/components/findable";
 import { FlowPanel } from "@/components/flow-panel";
 import { RunResult } from "@/components/task/run-result";
@@ -73,8 +85,20 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   // so the pane opens with the task itself (its body and fields) above the
   // conversation about it, the way an issue shows its description over its
   // comments. Absent for a negotiation thread bound to no row.
+  // The list names the row; its body is read for this one task alone. A
+  // thread started from a message shows that message instead, so it reads no
+  // memory of its own.
   const { memories, loading: memoriesLoading } = useRoomMemories(roomName);
-  const task = memories.find(m => m.episode === target.episode) ?? null;
+  const listed = memories.find(m => m.episode === target.episode) ?? null;
+  const messageThread = useMessageThreadsByEpisode(roomName).get(target.episode) ?? null;
+  const { memory: task } = useRoomMemory(
+    roomName,
+    listed && !messageThread ? listed.key : null,
+    listed?.version,
+  );
+  const [makingTask, setMakingTask] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const title = target.title || messageThread?.title || null;
   // A run the conductor walked in this thread left a record carrying its
   // flow: the latest one is drawn at the top of the pane, the earlier ones are
   // reachable from it. The floor held on the thread is a live fact off the
@@ -87,9 +111,28 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   const { floors } = useRoomMembers(roomName);
   const floor = floors.find(f => f.episode === target.episode) ?? null;
   const { principal } = useCurrentUser();
+  const makeTask = async (key: string) => {
+    setMakingTask(true);
+    setTaskError(null);
+    try {
+      await createThreadTask(roomName, key, principal.trim() || "user");
+      revalidate();
+    } catch (e) {
+      setTaskError(e instanceof Error ? e.message : "Couldn't make the task");
+    } finally {
+      setMakingTask(false);
+    }
+  };
   const revalidate = useRoomRevalidate(roomName);
   const shortId = threadShortId(target.episode) ?? "thread";
   const [isEditing, setIsEditing] = useState(false);
+  // What the team learned while working this task: the room's knowledge
+  // through its lens, drawn in place of the thread when asked for.
+  const knowledge = useRoomKnowledge(roomName);
+  const learnedHere =
+    listed && !messageThread ? knowledge.memories.filter(m => m.task === listed.key) : [];
+  const graph = learnedHere.length > 0 ? knowledge : null;
+  const [showGraph, setShowGraph] = useState(false);
 
   // The conversation owns the read; it hands us its refresh so a send through
   // the composer below can re-read the episode.
@@ -105,7 +148,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
   // room's memories have said which, it is taken to be a task's.
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const latest = useConversationFollow(scroller, {
-    startAt: task || memoriesLoading ? "start" : "end",
+    startAt: listed || memoriesLoading ? "start" : "end",
     resetKey: target.episode,
   });
 
@@ -123,10 +166,55 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, showClose]);
 
+  // A thread started from a message is about that message, not a memory to
+  // edit: its header files a task from it, or opens the one filed.
+  const threadActions = messageThread && (
+    <Tooltip
+      content={
+        messageThread.task
+          ? `Open the task: ${messageThread.task.title}`
+          : taskError
+            ? `Couldn't make the task: ${taskError}`
+            : "Make a task"
+      }
+    >
+      <button
+        type="button"
+        disabled={makingTask}
+        onClick={() =>
+          messageThread.task ? onOpenMemory?.(messageThread.task.key) : void makeTask(messageThread.key)
+        }
+        aria-label={messageThread.task ? "Open the task" : "Make a task"}
+        className={`grid size-6 place-items-center rounded transition-colors hover:bg-hairline hover:text-text ${taskError ? "text-red" : "text-muted-foreground"}`}
+      >
+        {makingTask ? (
+          <Loader2 className="size-3.5 animate-spin" strokeWidth={1.9} />
+        ) : messageThread.task ? (
+          <ListTodo className="size-3.5" strokeWidth={1.9} />
+        ) : (
+          <ListPlus className="size-3.5" strokeWidth={1.9} />
+        )}
+      </button>
+    </Tooltip>
+  );
+
   // Edit the task in place, and open it as a tab of its own, only where the
   // pane is a task (a negotiation thread is no memory to edit or open).
-  const taskActions = task && (
+  const taskActions = messageThread ? threadActions : listed && (
     <>
+      {graph && (
+        <Tooltip content={showGraph ? "Show the thread" : "Show the graph"}>
+          <button
+            type="button"
+            aria-pressed={showGraph}
+            onClick={() => setShowGraph(v => !v)}
+            aria-label={showGraph ? "Show the thread" : "Show the graph"}
+            className={`grid size-6 place-items-center rounded transition-colors hover:bg-hairline hover:text-text ${showGraph ? "bg-hairline text-text" : "text-muted-foreground"}`}
+          >
+            <Network className="size-3.5" strokeWidth={1.9} />
+          </button>
+        </Tooltip>
+      )}
       {/* A plain toggle with a revalidate on save: the pane is narrow and
           transient, so it keeps less chrome than the full page does. */}
       <Tooltip content={isEditing ? "View task" : "Edit task"}>
@@ -146,7 +234,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           <button
             type="button"
             onClick={() => {
-              onOpenMemory(task.key);
+              onOpenMemory(listed.key);
               onClose();
             }}
             aria-label="Open the task"
@@ -156,7 +244,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           </button>
         ) : (
           <Link
-            href={memoryHref(roomName, task.key)}
+            href={memoryHref(roomName, listed.key)}
             aria-label="Open task full screen"
             className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
           >
@@ -185,8 +273,8 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           <MessageSquare className="size-3.5 shrink-0 text-accent" strokeWidth={1.9} />
           {/* The title gets the width; the thread's id is its tooltip, for the
               rare reader who needs it. */}
-          <span className="min-w-0 truncate text-label text-text" title={target.title ? `${target.title} · ${shortId}` : undefined}>
-            {target.title || `Thread ${shortId}`}
+          <span className="min-w-0 truncate text-label text-text" title={title ? `${title} · ${shortId}` : undefined}>
+            {title || `Thread ${shortId}`}
           </span>
           <span className="ml-auto flex items-center gap-2">
             {taskActions}
@@ -221,6 +309,13 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
             onCancel={() => setIsEditing(false)}
           />
         </div>
+      ) : graph && showGraph ? (
+        <>
+          {!showClose && (
+            <div className="flex h-8 shrink-0 items-center justify-end gap-2 border-b border-border px-3">{taskActions}</div>
+          )}
+          <KnowledgeGraph tasks={graph.tasks} memories={graph.memories} lens={listed!.key} onOpen={onOpenMemory} />
+        </>
       ) : (
         // The task's body over its conversation, in one scroll. The body is
         // clamped rather than boxed: a long task fades under an Expand button
@@ -252,6 +347,14 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
                 <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />
               </div>
             )}
+            {messageThread && (
+              <div className="flex items-start border-b border-border">
+                <div className="min-w-0 flex-1">
+                  <ThreadOrigin roomName={roomName} from={messageThread.from} onOpenMemory={onOpenMemory} />
+                </div>
+                {!showClose && <span className="flex items-center gap-2 px-3 py-2">{taskActions}</span>}
+              </div>
+            )}
             {task && (
               <div className="border-b border-border">
                 <MemoryDetail
@@ -263,6 +366,13 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
                   actions={showClose ? undefined : taskActions}
                 />
               </div>
+            )}
+            {graph && listed && (
+              <TaskMemories
+                memories={learnedHere}
+                onOpen={onOpenMemory}
+                onGraph={() => setShowGraph(true)}
+              />
             )}
             <TaskConversation
               roomName={roomName}
@@ -279,7 +389,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
       <RoomChatBox
         roomName={roomName}
         episode={target.episode}
-        threadLabel={target.title || shortId}
+        threadLabel={title || shortId}
         onSent={refresh}
       />
     </section>

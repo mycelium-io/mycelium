@@ -36,7 +36,7 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import custody, groups, message_format, slim_identity
@@ -55,6 +55,7 @@ from app.services.persister import (
     SummonHook,
     TranscriptRecord,
     bus_frame,
+    envelope_message_id,
     envelope_sender,
     parse_mentions,
     record_episode,
@@ -597,6 +598,8 @@ class RoomChannelManager:
         sender: str | None = None,
         episode: str | None = None,
         why: str | None = None,
+        message: str | None = None,
+        interrupted: str | None = None,
     ) -> None:
         """Ring the doorbell for a herdr-present handle in ``room``.
 
@@ -620,6 +623,11 @@ class RoomChannelManager:
         ``sender`` and ``episode`` say who rang last and where. What they said
         isn't kept here: when the wake is delivered, the digest it carries is
         built from the transcript then (``wake_digest``), so it is current.
+        ``message`` is the wire id of the message that rang, kept with every
+        other that rang the same pending wake, so a sender can tell whether
+        their message is still waiting to be read (:meth:`held_for`).
+        ``interrupted`` is the message an interrupt was made with after it was
+        sent (``interrupts.upgrade``), which the digest says.
         """
         queue = self._herdr_wakes.setdefault(room, [])
         entry: dict = {"handle": handle, "ts": time.monotonic(), "reason": reason}
@@ -633,9 +641,16 @@ class RoomChannelManager:
             entry["episode"] = episode
         if why:
             entry["why"] = why
+        if interrupted:
+            entry["interrupted"] = interrupted
         for w in queue:
             if w["handle"] == handle:
                 w["ts"] = entry["ts"]  # fresh activity refreshes the hold timer
+                if message and message not in w.setdefault("messages", []):
+                    w["messages"].append(message)
+                if reason == "interrupt" and not interrupted:
+                    # A fresh `@!` is what this interrupt is now, not a sent one.
+                    w.pop("interrupted", None)
                 # The reason only moves up: a turn or an assignment outranks a
                 # mention, and an interrupt outranks them all. Who rang and
                 # where move with it, so a wake never names the sender of a
@@ -650,7 +665,18 @@ class RoomChannelManager:
         # Its id follows it to the runner and back, so the wake log
         # (:mod:`app.services.wake_log`) records it once, with its outcome.
         entry["id"] = secrets.token_hex(6)
+        if message:
+            entry["messages"] = [message]
         queue.append(entry)
+
+    def held_for(self, room: str, handle: str, message: str) -> bool:
+        """Whether ``handle``'s wake for the message with wire id ``message`` is
+        still held: queued, not yet handed to its runner. Once it's handed over
+        the agent has the message, so there's nothing left to bring forward."""
+        return any(
+            w["handle"] == handle and message in w.get("messages", [])
+            for w in self._herdr_wakes.get(room, [])
+        )
 
     def note_unrecorded_asks(
         self, room: str, *, sender: str, text: str, episode: str | None = None
@@ -678,7 +704,7 @@ class RoomChannelManager:
             payload_type="message",
         )
         noted: list[str] = []
-        for handle, why in asked(serialize_content(envelope, extra=extra)).items():
+        for handle, why in asked(serialize_content(envelope, extra=extra), room).items():
             if classify_sender(room, handle) != "agent":
                 continue
             wake_log.dropped(
@@ -698,6 +724,7 @@ class RoomChannelManager:
         *,
         sender: str | None = None,
         episode: str | None = None,
+        message: str | None = None,
     ) -> bool:
         """Ring the herdr doorbell of a handle a message just asked for something.
 
@@ -713,6 +740,10 @@ class RoomChannelManager:
         (:mod:`app.services.interrupts`); otherwise it rings as a ``mention``.
         """
         name = handle.lstrip("@").lower()
+        if ":" in name:
+            # A subagent has no doorbell; the same message asks its parent,
+            # which is rung for it (``asks``).
+            return False
         status = self.herdr_status(room, name)
         if status is None:
             if self._unreachable_agent(room, name):
@@ -734,7 +765,9 @@ class RoomChannelManager:
             # any other ask.
             if pauses.is_paused(room, name) or not interrupts.request(room, name, sender, status):
                 reason = "mention"
-        self.enqueue_herdr_wake(room, name, reason=reason, sender=sender, episode=episode)
+        self.enqueue_herdr_wake(
+            room, name, reason=reason, sender=sender, episode=episode, message=message
+        )
         return True
 
     def ring_subscribed(self, room: str, record: TranscriptRecord) -> list[str]:
@@ -1173,6 +1206,7 @@ class RoomChannelManager:
                 reason,
                 sender=envelope_sender(envelope),
                 episode=message.episode if message else None,
+                message=envelope_message_id(envelope),
             )
             hook = self.on_turn
             if reason == "turn" and hook is not None:
@@ -1364,6 +1398,7 @@ class RoomChannelManager:
         subkind: str | None = None,
         parents: list[str] | None = None,
         episode: str | None = None,
+        data: dict[str, Any] | None = None,
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
@@ -1375,7 +1410,8 @@ class RoomChannelManager:
 
         ``subkind``/``parents`` carry an ``amend`` revising an earlier message —
         the same publish in every other respect, since a revision is a message
-        the room hears like any other, mentions included.
+        the room hears like any other, mentions included. A reaction rides the
+        same way, with ``data`` carrying its ``reaction`` beside the text.
 
         ``episode`` names the **thread** the message lands in; without one it
         lands in the room itself. A thread is a tag over this same channel, so a
@@ -1397,6 +1433,8 @@ class RoomChannelManager:
         # ``@here`` and ``@all`` reach who they reach now, kept on the message so
         # every later read of who it asked gives the same answer.
         extra, by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
+        if data:
+            extra = {**data, **extra}
         # Every mention is a message recipient (the semantic "to"); everyone else on
         # the channel is an observer. Absent mentions stay recipients so the
         # intent is recorded, but only present ones actually receive the broadcast.
