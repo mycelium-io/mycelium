@@ -507,8 +507,7 @@ def runner_pair(
                         pairing.save_paired_hub(got)
                         joined = True
                         console.print(
-                            f"[green]Joined[/green] {hub} as '{got.name}'. The runner "
-                            "moves there at its next heartbeat."
+                            f"[green]Joined[/green] {hub} as '{got.name}'. {_runner_moves()}"
                         )
                         status.update("Finishing the pairing on your computer…")
                     elif got != said:
@@ -572,6 +571,33 @@ def runner_pairings(as_json: bool = False) -> None:
             f"[red]ended {ends}[/red]" if p.expired() else ends,
         )
     console.print(table)
+
+
+def _env_of(pid: int) -> dict[str, str] | None:
+    """A process's environment, where this system shows it (``/proc``); ``None`` elsewhere."""
+    try:
+        raw = Path(f"/proc/{pid}/environ").read_bytes()
+    except OSError:
+        return None
+    pairs = (item.split(b"=", 1) for item in raw.split(b"\0") if b"=" in item)
+    return {k.decode(errors="replace"): v.decode(errors="replace") for k, v in pairs}
+
+
+def _runner_moves() -> str:
+    """What happens to the runner here once this machine has paired: it moves
+    to the paired hub at its next heartbeat, unless its environment names a
+    hub, which wins (``caller.paired_hub``)."""
+    pid = running_pid()
+    env = _env_of(pid) if pid is not None else None
+    named = (env if env is not None else os.environ).get("MYCELIUM_API_URL")
+    if pid is None:
+        return "Start the runner here (mycelium runner --detach), and it connects there."
+    if named:
+        return (
+            f"The runner here has MYCELIUM_API_URL set ({named}), so it stays on that hub "
+            "until it's started without it."
+        )
+    return "The runner moves there at its next heartbeat."
 
 
 def _leave_hub() -> None:

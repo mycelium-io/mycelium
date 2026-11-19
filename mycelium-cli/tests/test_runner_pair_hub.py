@@ -196,3 +196,17 @@ def test_the_runner_moves_to_the_hub_this_machine_paired_with(tmp_path: Path):
     runner._follow_paired_hub()
     assert config.server.api_url == HUB
     assert runner.connected is False
+
+
+def test_pairing_says_whether_the_running_runner_will_move(monkeypatch):
+    """A runner whose environment names a hub stays there (the environment
+    wins), so pairing says so rather than promising it moves."""
+    from mycelium.commands import runner as cmd
+
+    monkeypatch.setattr(cmd, "running_pid", lambda: 4242)
+    monkeypatch.setattr(cmd, "_env_of", lambda _pid: {"MYCELIUM_API_URL": "http://10.8.0.1:8000"})
+    said = cmd._runner_moves()
+    assert "MYCELIUM_API_URL set (http://10.8.0.1:8000)" in said
+    assert "stays on that hub" in said
+    monkeypatch.setattr(cmd, "_env_of", lambda _pid: {"PATH": "/usr/bin"})
+    assert cmd._runner_moves() == "The runner moves there at its next heartbeat."
