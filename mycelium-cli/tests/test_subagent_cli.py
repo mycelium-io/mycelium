@@ -78,6 +78,15 @@ def test_end_ends_it(hub: StandInHub):
     assert "Ended @builder:review" in result.output
 
 
+def test_end_says_when_something_else_ended_it_first(hub: StandInHub):
+    ended = {**REVIEW, "state": "ended", "ended_at": "2026-11-15T10:05:00+00:00"}
+    hub.answer = lambda _r: {**ended, "ended_by": "finished"}
+    result = runner.invoke(app, ["subagent", "end", "builder:review"])
+    assert result.exit_code == 0, result.output
+    assert "had already ended: its step was counted as finished" in result.output
+    assert "Ended @" not in result.output
+
+
 def test_from_an_agent_s_pane_a_post_goes_out_only_as_it_or_its_subagents(
     hub: StandInHub, monkeypatch: pytest.MonkeyPatch
 ):

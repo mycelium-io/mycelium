@@ -144,4 +144,16 @@ def subagent_end(
     if as_json:
         typer.echo(json.dumps(data, indent=2))
         return
+    why = _ALREADY_ENDED.get(data.get("ended_by") or "")
+    if why:
+        console.print(f"@{data['handle']} had already ended: {why}.")
+        return
     console.print(f"[green]Ended[/green] @{data['handle']}.")
+
+
+#: What ``subagent end`` says for one that something else ended first.
+_ALREADY_ENDED = {
+    "finished": "its step was counted as finished",
+    "parent": "its parent stopped",
+    "timeout": "nothing was heard about it for too long",
+}

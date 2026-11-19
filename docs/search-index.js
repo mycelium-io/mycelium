@@ -70,7 +70,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-words-used-in-these-docs",
     "t": "Words used in these docs",
     "s": "How It Works",
-    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. mention @handle in a message, which asks that member for something. @~handle names them without asking. agent A coding agent you run, such as Claude Code. engine A helper that runs on the hub: conductor, synth",
+    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. mention @handle in a message, which asks that member for something. @~handle names them without asking, and an agent sees it on its next wake. agent A coding agent you run, such as Claude Code. engine A helper",
     "p": "Get Started"
   },
   {

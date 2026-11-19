@@ -1285,7 +1285,10 @@ class MyceliumConfig(BaseModel):
             env_config["engine"]["runtime"] = engine_runtime
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
-            env_config["server"]["api_url"] = api_url
+            from mycelium.caller import follow_app_hub
+
+            # An agent's address for the app's hub, from before the app restarted.
+            env_config["server"]["api_url"] = follow_app_hub(api_url)
         if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
             env_config["slim"]["node_endpoint"] = slim_endpoint
         if slim_master := os.getenv("MYCELIUM_SLIM_MASTER_SECRET"):

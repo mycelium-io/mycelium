@@ -222,6 +222,48 @@ def test_finished_steps_end_subagents_oldest_first(room):
     assert state("builder:tests") == "done"
 
 
+async def test_one_ended_for_another_s_step_is_back_to_working_when_it_posts(room, monkeypatch):
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=0)
+    for name in ("review", "tests"):
+        assert (await start(room, name=name)).status_code == 201
+    # `tests` finishes first and is ended by hand; its step, counted on the
+    # next heartbeat, goes to the oldest still working: `review`.
+    await room.delete(f"/api/rooms/{ROOM}/subagents/builder:tests")
+    subagents.observe(ROOM, "builder", 1, "working", finished_steps=1)
+    monkeypatch.setattr(subagents, "DONE_FOR", timedelta(0))
+    assert state("builder:review") == "ended"
+    # `review` is still running: its next post goes through, and it's working again.
+    sent = await post(room, "builder:review")
+    assert sent.status_code == 201, sent.text
+    assert state("builder:review") == "working"
+    # Its own step ends it as before.
+    subagents.observe(ROOM, "builder", 0, "working", finished_steps=2)
+    assert state("builder:review") == "ended"
+
+
+@pytest.mark.parametrize("ended_by", ["end", "parent", "timeout"])
+async def test_one_ended_any_other_way_stays_ended(room, monkeypatch, ended_by: str):
+    await start(room)
+    if ended_by == "end":
+        await room.delete(f"/api/rooms/{ROOM}/subagents/builder:review")
+    elif ended_by == "parent":
+        subagents.observe(ROOM, "builder", None, "stopped")
+    else:
+        monkeypatch.setattr(subagents, "TIMEOUT", timedelta(0))
+    assert (subagents.record(ROOM, "builder:review") or {}).get("ended_by") == ended_by
+    assert (await post(room, "builder:review")).status_code == 403
+    assert state("builder:review") == "ended"
+
+
+async def test_ending_one_that_already_ended_says_why(room, monkeypatch):
+    await start(room)
+    subagents.observe(ROOM, "builder", 1, "working")
+    subagents.observe(ROOM, "builder", 0, "working")
+    monkeypatch.setattr(subagents, "DONE_FOR", timedelta(0))
+    ended = await room.delete(f"/api/rooms/{ROOM}/subagents/builder:review")
+    assert ended.json()["ended_by"] == "finished"
+
+
 def test_a_runner_that_started_again_counts_from_its_new_number(room):
     subagents.observe(ROOM, "builder", 0, "working", finished_steps=9)
     subagents.start(ROOM, "builder", "review")

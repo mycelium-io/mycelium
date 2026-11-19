@@ -335,7 +335,12 @@ const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((
  * list. The conversational read drops it; the transcript replay is where it
  * survives a reload.
  */
-function checkoutPing(message: string, sender: string, minutesAgo: number): Record<string, unknown> {
+function checkoutPing(
+  message: string,
+  sender: string,
+  minutesAgo: number,
+  episode: string = LAUNCH_THREAD,
+): Record<string, unknown> {
   return {
     id: `ping-${message}`,
     sender_handle: "system",
@@ -350,7 +355,7 @@ function checkoutPing(message: string, sender: string, minutesAgo: number): Reco
           message: { id: `ping-${message}`, parents: [], episode: CHECKOUT_LIVE },
           participants: { actors: [{ id: "system", role: "coordinator" }] },
         },
-        payload: { type: "ping", data: { episode: LAUNCH_THREAD, sender, message } },
+        payload: { type: "ping", data: { episode, sender, message } },
       },
     },
   };
@@ -1769,6 +1774,10 @@ const checkout: RoomFixture = {
     checkoutNotice("claimed", "work/turn-on-apple-pay", "Turn on Apple Pay for everyone", LAUNCH_THREAD, "builder", 23),
     checkoutPing("t2", "reviewer", 21),
     checkoutPing("t3", "builder", 20),
+    // The replies in the thread started from the payment-alert message (h6).
+    checkoutPing("t6a", "reviewer", 90, checkoutEpisode("e7a1c3")),
+    checkoutPing("t6b", "builder", 80, checkoutEpisode("e7a1c3")),
+    checkoutPing("t6c", "operator", 70, checkoutEpisode("e7a1c3")),
   ],
   // Three work rows name pull requests; the hub resolved them. The first row
   // mentions two, one green and one failing, so it shows the failing one and says

@@ -291,7 +291,7 @@ def test_every_command_is_given_the_hub_s_port(tmp_path: Path):
 KEEP = '[[statusline.widget]]\nlabel = "box"\ncommand = "{}"\nevery = "always"\n'
 
 
-def _until(check, timeout: float = 10.0) -> None:
+def _until(check, timeout: float = 5.0) -> None:
     deadline = time.monotonic() + timeout
     while not check():
         assert time.monotonic() < deadline, "never happened"
@@ -320,22 +320,31 @@ def _alive(pid: int) -> bool:
 def test_a_command_kept_running_shows_its_last_line_and_starts_again_after_a_wait(
     tmp_path: Path,
 ):
+    # The command holds after each line until the test has seen it. stdout and
+    # stderr are read on threads of their own, so two lines printed together
+    # can be read in either order, and how fast the machine is doesn't decide
+    # how long a line stays.
+    said, warned = tmp_path / "said", tmp_path / "warned"
     path = _config(
         tmp_path / "config.toml",
-        # Only stderr: its two outputs are read on two threads, so a line on
-        # each would arrive in either order.
-        KEEP.format("echo 'Warning: slow' >&2; sleep 0.5; echo 'connection refused' >&2; exit 3"),
+        KEEP.format(
+            f"echo starting; while [ ! -e '{said}' ]; do sleep 0.02; done; "
+            f"echo 'Warning: slow' >&2; while [ ! -e '{warned}' ]; do sleep 0.02; done; "
+            "echo 'connection refused' >&2; exit 3"
+        ),
     )
     clock = Clock()
     widgets = w.Widgets(path, clock=clock)
     try:
         assert widgets.tick()
-        # What it says on stderr while it runs is its last line too. A slow
-        # machine may already be at the second line when this looks.
-        _until(lambda: _run_of(widgets)["value"] in ("Warning: slow", "connection refused"))
+        _until(lambda: _run_of(widgets)["value"] == "starting")
+        said.touch()
+        # What it says on stderr while it runs is its last line too.
+        _until(lambda: _run_of(widgets)["value"] == "Warning: slow")
         assert _run_of(widgets)["running"] is True
 
         # It exits: the row says how and why, and it waits a second to start again.
+        warned.touch()
         _until(lambda: widgets._kept[0].proc.poll() is not None)
         widgets.tick()
         run = _run_of(widgets)
