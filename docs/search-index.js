@@ -825,14 +825,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-when-the-agent-cli-isnt-found",
     "t": "When the agent CLI isn't found",
     "s": "Agents › Start Agents From the App",
-    "x": "herdr starts the CLI in a new terminal, which finds the same programs a new terminal window finds. If that terminal has no such command, the start stops and says so, with a link to the CLI's install page. Install the CLI, then open a new terminal window and check that its command runs there (for example opencode). If it runs there, add the agent again. If it doesn't, the folder it was installed in isn't on your termi",
+    "x": "If the CLI isn't installed, the start stops and says so, with a link to the CLI's install page. Install it, then open a new terminal window and run its command, such as opencode. Mycelium starts agents the way a new terminal window starts, so if the command runs there, it will run for the agent too. Add the agent again. If the new window says the command isn't found, the installer put it in a folder your terminal doe",
     "p": "Guides"
   },
   {
     "u": "guides.html#machines-adding-your-own-harness",
     "t": "Adding your own harness",
     "s": "Agents › Start Agents From the App",
-    "x": "Mycelium can start any agent CLI that herdr can start. Once herdr supports a CLI, it shows up in Add member after you update herdr and press Rescan, with no change to Mycelium. To use one herdr can't start yet, it first needs herdr support: Agents lists the agent CLIs herdr can start today. Add Herdr support to your agent says how to add support for another one. An agent that runs some other way, such as a script aro",
+    "x": "Mycelium can start any agent CLI that herdr can start. Once herdr supports a CLI, it shows up in Add member after you update Mycelium and press Rescan. The desktop app brings its own herdr, so updating the app updates herdr too. Without the app, update herdr itself. To use one herdr can't start yet, it first needs herdr support: Agents lists the agent CLIs herdr can start today. Add Herdr support to your agent says h",
     "p": "Guides"
   },
   {
