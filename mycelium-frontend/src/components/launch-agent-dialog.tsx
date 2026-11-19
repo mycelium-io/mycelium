@@ -703,10 +703,12 @@ function RunsOn({
         {startsInHerdr(runner) && (
           <>
             <span aria-hidden />
-            <label className="flex w-fit cursor-pointer items-center gap-2 text-label text-text">
+            <label
+              title="A git worktree of the folder"
+              className="flex w-fit cursor-pointer items-center gap-2 text-label text-text"
+            >
               <Checkbox checked={worktree} onCheckedChange={(on) => onWorktree(on === true)} />
-              Give it a branch of its own
-              <span className="text-faint">git worktree</span>
+              Work on its own branch
             </label>
           </>
         )}
@@ -1207,10 +1209,9 @@ function FailedStart({
         {help.short}
       </p>
       {missing ? (
-        <div className="mt-1 space-y-0.5 pl-6 text-label text-muted-foreground">
-          <p>Or a new terminal window there can&apos;t find it.</p>
-          <p>Install it, check that it runs in a new terminal window, then try again.</p>
-        </div>
+        <p className="mt-1 pl-6 text-label text-muted-foreground">
+          Install it. Then check that a new terminal window can run it.
+        </p>
       ) : (
         <ol className="mt-1.5 list-decimal space-y-1 pl-10 text-label text-muted-foreground">
           {help.steps.map((step) => (
