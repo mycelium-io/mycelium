@@ -114,8 +114,9 @@ and the person has to answer it; you can't click it for them. Tell the user to:
 4. then add a model and its API key in the app's **Settings** (⌘,), since some
    of Mycelium's coordination features use an LLM.
 
-The app then runs the SLIM node, the hub (at `http://127.0.0.1:8000`), the UI
-and the runner itself, and points the CLI at its hub. Once they say it has
+The app then runs the SLIM node, the hub (at `http://127.0.0.1:3718`, or a free
+port if another program holds that one), the UI and the runner itself, and
+points the CLI at its hub. Once they say it has
 started, **verify**:
 
 ```bash
@@ -236,8 +237,7 @@ mycelium skill print
 To keep it for later sessions, save it where the runtime reads skills (for
 Claude Code, `mycelium skill print > ~/.claude/skills/mycelium/SKILL.md`; the
 user may need to restart the session, since Claude Code doesn't hot-reload
-skills). Agents the app starts through `mycelium runner`, or a team from
-`mycelium swarm`, don't need it: their notes and the prompts that wake them
+skills). Agents the app starts through `mycelium runner` don't need it: their notes and the prompts that wake them
 carry the commands.
 
 An agent participates as a **resident runtime**: your own live session, kept

@@ -54,7 +54,11 @@ function renderFiles() {
   return handlers;
 }
 
-const cards = () => screen.getAllByRole("button", { name: /^Preview / }).map((b) => b.getAttribute("aria-label"));
+// The cards' labels, in order. A plain selector rather than a role query: a
+// role query works out the accessible name of every button on the page, which
+// over the 130-card gallery below cost about three seconds a test.
+const cards = () =>
+  Array.from(document.querySelectorAll('button[aria-label^="Preview "]'), (b) => b.getAttribute("aria-label"));
 
 beforeEach(() => {
   refresh.mockClear();
@@ -187,7 +191,10 @@ describe("a room with many files", () => {
     FILES = Array.from({ length: 130 }, (_, i) => file(`shot-${i}.png`, i / 10, { created_by: i % 2 ? "julia" : "builder" }));
   });
 
-  it("draws the newest page, then the next as you near the end, and starts again on a new filter", async () => {
+  // It renders 60, 120 and 130 cards in turn, about two seconds of jsdom work
+  // on a quiet machine and several times that on a busy one, so it gets a
+  // budget for that work rather than the 5s default it used to run close to.
+  it("draws the newest page, then the next as you near the end, and starts again on a new filter", { timeout: 30_000 }, async () => {
     const { act } = await import("react");
     renderFiles();
     expect(cards()).toHaveLength(60);

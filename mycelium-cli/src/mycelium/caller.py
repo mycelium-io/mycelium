@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
@@ -72,6 +73,10 @@ FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DESKTOP, DEFAULT = (
 
 #: The hub ``config.server.api_url`` names when nothing sets it.
 DEFAULT_HUB = "http://localhost:8000"
+#: What the desktop app writes down about the programs it started, under ``~/.mycelium/``.
+STARTED_FILE = "desktop-started.json"
+#: The names this computer goes by in a hub's address.
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 # ── membership: what `mycelium join` saved ───────────────────────────────────
@@ -264,21 +269,65 @@ def desktop_hub() -> str | None:
 def _desktop_hub_over(files_hub: str | None) -> str | None:
     """The app's client-mode hub, unless ``config.toml`` names a hub of its own.
 
-    A ``config.toml`` naming the default hub names none: a whole-config save
-    (``mycelium login``, ``iam``) writes every field, defaults included, and in
-    client mode nothing answers on this computer's port anyway.
+    A ``config.toml`` naming a hub on this computer names none: a whole-config
+    save (``mycelium login``, ``iam``) writes every field, defaults included,
+    the app points it at the hub it runs here while it runs one, and in client
+    mode nothing answers on this computer anyway.
     """
     joined = desktop_hub()
     if joined is None:
         return None
     own = (files_hub or "").strip().rstrip("/")
-    return joined if own in ("", DEFAULT_HUB) else None
+    here = urlparse(own).hostname in LOCAL_HOSTS
+    return joined if own in ("", DEFAULT_HUB) or here else None
+
+
+def started_path() -> Path:
+    """Where the desktop app writes down what it started, each with its pid and port."""
+    return Path.home() / ".mycelium" / STARTED_FILE
+
+
+def app_hub_port(path: Path | None = None) -> int | None:
+    """The port the running desktop app started its hub on; ``None`` when it runs none."""
+    try:
+        started = json.loads((path or started_path()).read_text())
+    except (OSError, ValueError):
+        return None
+    entry = started.get("hub") if isinstance(started, dict) else None
+    port = entry.get("port") if isinstance(entry, dict) else None
+    return port if isinstance(port, int) and port > 0 else None
+
+
+def _answers(port: int) -> bool:
+    """Whether anything accepts a connection on ``port`` on this computer."""
+    import socket
+
+    with contextlib.suppress(OSError), socket.create_connection(("127.0.0.1", port), timeout=0.3):
+        return True
+    return False
+
+
+def follow_app_hub(url: str) -> str:
+    """``url``, or the desktop app's hub when ``url`` is where that hub was.
+
+    An agent is given the hub's address in its environment when it starts and
+    keeps it. If the app restarts and its hub comes back on another port, that
+    address leads nowhere, so a hub on this computer where nothing answers is
+    taken to be the app's old one, and the port the app now names is used. A
+    hub elsewhere, or one that answers, is left as it is."""
+    parsed = urlparse(url)
+    if parsed.hostname not in LOCAL_HOSTS or parsed.port is None:
+        return url
+    now = app_hub_port()
+    if now is None or now == parsed.port or _answers(parsed.port):
+        return url
+    return parsed._replace(netloc=f"{parsed.hostname}:{now}").geturl()
 
 
 def hub(config: MyceliumConfig) -> Answer:
     """Which hub. ``config.server.api_url`` already holds the answer; this says why."""
     if os.environ.get(HUB_ENV):
-        return Answer(os.environ[HUB_ENV], ENVIRONMENT)
+        return Answer(follow_app_hub(os.environ[HUB_ENV]), ENVIRONMENT)
     member = find_membership()
     if member is not None:
         return Answer(member.hub, MEMBERSHIP)
@@ -388,16 +437,18 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
     client from the environment, or one stored for that handle), then the
     membership's token when the call is made as that member, then this
     machine's ``mycelium login`` session, which an agent's pane never gets.
-    In an agent's pane, acting as anyone but that agent is refused.
+    In an agent's pane, acting as anyone but that agent or one of its
+    subagents (``<agent>:<name>``, which the hub checks it started) is refused.
     """
     from mycelium import agent_credentials
     from mycelium.client import current_token
 
     pane = in_agent_pane()
-    if pane and acting_as and not _same_handle(acting_as, pane):
+    if pane and acting_as and not _own_handle(acting_as, pane):
         msg = (
             f"this is @{pane}'s pane, so commands here act as @{pane} only, "
-            f"not as @{acting_as.lstrip('@')}"
+            f"not as @{acting_as.lstrip('@')}. A subagent of @{pane}'s gets a handle "
+            "of its own with `mycelium subagent start <name>`"
         )
         raise ActingAsOtherError(msg)
     agent_token = agent_credentials.access_token(config, acting_as)
@@ -413,7 +464,7 @@ def credential(config: MyceliumConfig, acting_as: str | None = None) -> Answer:
         member is not None
         and member.token
         and not member.token_expired()
-        and (who is None or _same_handle(who, member.handle))
+        and (who is None or _own_handle(who, member.handle))
     ):
         return Answer(member.token, MEMBERSHIP)
     session = current_token(config)
@@ -496,6 +547,14 @@ def _same_handle(a: str, b: str) -> bool:
         return h.partition("#")[0].strip().lstrip("@").lower()
 
     return norm(a) == norm(b)
+
+
+def _own_handle(acting: str, handle: str) -> bool:
+    """Whether ``acting`` is ``handle`` or one of its subagents, ``handle:name``.
+    A subagent runs in its parent's process, so it posts from the parent's pane
+    with the parent's credential; the hub checks it was started."""
+    parent, sep, name = acting.partition(":")
+    return _same_handle(acting, handle) or bool(sep and name and _same_handle(parent, handle))
 
 
 def explain(config: MyceliumConfig) -> list[tuple[str, str | None, str]]:

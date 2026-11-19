@@ -67,6 +67,12 @@ describe("<SenderName />", () => {
     expect(screen.getByText("@operator")).toBeInTheDocument();
   });
 
+  it("shows a person's past messages, sent under their old handle, under their name", async () => {
+    vi.mocked(fetchUsers).mockResolvedValue([{ ...morgan, was: ["morgan.reyes@example.com"] }]);
+    renderWithSWR(<SenderName handle="morgan.reyes@example.com" />);
+    expect(await screen.findByText("Morgan Reyes")).toBeInTheDocument();
+  });
+
   it("shows the handle alone for anyone without a name", async () => {
     renderWithSWR(<SenderName handle="backfill" />);
     await waitFor(() => expect(fetchUsers).toHaveBeenCalled());

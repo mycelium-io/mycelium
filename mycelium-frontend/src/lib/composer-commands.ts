@@ -48,11 +48,6 @@ export const COMPOSER_COMMANDS: ComposerCommand[] = [
     ],
   },
   {
-    name: "swarm",
-    about: "have a team of agents work on it now",
-    args: [{ name: "what", rest: true, about: "What the team should work on", missing: "Say what it is" }],
-  },
-  {
     name: "memory",
     about: "write something down for the room to keep",
     args: [

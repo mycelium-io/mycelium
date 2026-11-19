@@ -57,7 +57,7 @@ async def test_every_path_gives_the_contract_s_answer(case: dict, client, monkey
     # The rule itself, on what the transcript recorded.
     recorded = room.log.records[start:]
     assert recorded, "the case wrote nothing"
-    found = {why for r in recorded if (why := asks(r.content, agent))}
+    found = {why for r in recorded if (why := asks(r.content, agent, wake_paths.ROOM))}
     assert found == ({reason} if reason else set())
     woken = {w.reason for r in recorded if (w := wakes_for(wake_paths.ROOM, r, agent))}
     assert woken == ({wakes} if wakes else set())

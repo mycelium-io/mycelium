@@ -4,7 +4,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCheck, MessageSquare, Split, UserPlus, type LucideIcon } from "lucide-react";
+import { CheckCheck, MessageSquare, UserPlus, type LucideIcon } from "lucide-react";
 import { IntentDialog } from "@/components/intent-dialog";
 import { AddMemberDialog } from "@/components/add-member-dialog";
 import { useRoomAgents } from "@/lib/room-data";
@@ -16,12 +16,6 @@ const STARTERS: { intent: IntentId; icon: LucideIcon; label: string; hint: strin
     icon: CheckCheck,
     label: "Have one agent build something and another check it",
     hint: "The reviewer runs it and sends findings back until it passes.",
-  },
-  {
-    intent: "split",
-    icon: Split,
-    label: "Put a few agents on one task",
-    hint: "They say what they'd take, then the first one splits it into parts.",
   },
 ];
 

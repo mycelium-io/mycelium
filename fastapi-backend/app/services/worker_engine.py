@@ -7,8 +7,7 @@ A sixth engine ``kind``, built on the persona's machinery (a Pi session kept
 per handle, its ``agents/<handle>/notes`` as character) but a teammate rather
 than a character: it answers when a turn is put to it, works a row given to
 it, asks another member to review what it did, and resolves what it was asked
-to. It is what ``mycelium swarm --server`` fills a room with, so a team can
-work on a task with nothing installed but the hub.
+to. A team of them can work on a task with nothing installed but the hub.
 
 **Its own checkout.** With ``WORKER_TOOLS`` on (the default) a worker has
 Pi's read, edit, write and bash, working in its own git worktree of the room's
@@ -58,7 +57,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import activity, markers, message_format, room_settings
+from app.services import activity, markers, message_format, room_settings, workspace
 from app.services.agreed import for_prompt as agreed_for_prompt
 from app.services.engine_kinds import norm as _norm
 from app.services.engine_kinds import registered_engine_kind
@@ -306,7 +305,7 @@ def _parts_of(room: str, parent: str) -> str:
         )
         by = f"by {author or 'nobody'}"
         if author and tooled():
-            by += f", on branch swarm/{author}"
+            by += f", on branch {workspace.branch_of(room, author)}"
         blocks.append(f"### {title.lstrip('# ')} ({by})\n\n{final}")
     return "\n\n".join(blocks) or "(no parts found)"
 
@@ -422,7 +421,6 @@ def _pi_complete(
     what it commits is authored by the worker. Isolated so tests can patch it
     without a live Pi.
     """
-    from app.services import workspace
     from app.services.pi_session import PiSession
 
     llm_session = PiSession(
@@ -608,7 +606,7 @@ class WorkerEngine:
             else ""
         )
         branch = (
-            f" Its commits are on branch swarm/{handle}: read them, and run what "
+            f" Its commits are on branch {workspace.branch_of(room, handle)}: read them, and run what "
             "checks them, rather than taking the summary on trust."
             if tooled()
             else ""
@@ -669,8 +667,6 @@ class WorkerEngine:
         row = tasks.row_of_episode(room, episode)
         checkout = None
         if tooled():
-            from app.services import workspace
-
             try:
                 checkout = await asyncio.to_thread(workspace.checkout_for, room, handle)
             except workspace.WorkspaceError as exc:

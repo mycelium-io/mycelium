@@ -70,7 +70,7 @@ adds an `orders` room in the state one Learn take starts from (`learn.ts`
 lists them), Sam's machine with a runner that asks before it starts anything,
 and a director for that take: a pair working a task in its thread, an agent
 launched into a worktree, two teammates' agents and the conductor, pull requests
-moving on the board, a swarm checking in and splitting its task.
+moving on the board.
 `mycelium-promo/learn/` records the Learn videos through it.
 
 Files:

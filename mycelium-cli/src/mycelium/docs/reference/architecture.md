@@ -78,19 +78,25 @@ change the thread id, so a task can't be pointed at someone else's
 conversation. `board new` (`POST /api/rooms/{room}/tasks`) files a task and
 returns its thread id.
 
-A flow or negotiation run on a task is an [episode](#episodes) inside the task's
-thread. Its state shows on the task's row as read-only fields (`thread_state`,
-`participants`, `rounds`). It never changes the task's own status or holder.
+A conductor run on a task is an [episode](#episodes) inside the task's thread.
+Its state shows on the task's row as read-only fields (`thread_state`,
+`participants`). It never changes the task's own status or holder.
 
-**The room's chat shows short updates, not thread conversations.** Two kinds of
-update appear there:
+A thread's conversation stays in the thread. The room's chat shows two kinds
+of short update:
 
 - A **ping** appears when a thread gets a new message. It includes the thread,
   the sender and the message id.
-- A **notice** appears when the board changes. It includes the task, who
-  changed it and the thread to open. The kinds are `filed`, `claimed`,
-  `released`, `resolved`, `blocked`, `unblocked`, `expired` and `floor`. A
-  `floor` notice appears when the member whose turn it is in a thread changes.
+- A **notice** appears when something happens to a task. It includes the task,
+  who changed it and the thread to open. Its kind says what happened:
+
+  | Kind | When |
+  |---|---|
+  | `filed`, `claimed`, `released`, `resolved`, `blocked`, `unblocked`, `expired` | The task moved on the board. |
+  | `quiet` | Nothing has happened on a held task for a few hours. |
+  | `upstream` | A pull request the task links to changed. |
+  | `floor` | The member whose turn it is in a thread changed. |
+  | `check` | The [verifier](#verifier) couldn't confirm a claim in a message. |
 
 Neither one is addressed to an agent, so neither wakes one.
 

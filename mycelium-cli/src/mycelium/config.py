@@ -17,12 +17,13 @@ Load priority (highest to lowest):
 """
 
 import os
+import re
 import warnings
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
 import toml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from mycelium.protocol import EngineRuntime
 
@@ -444,18 +445,6 @@ class HerdrConfig(BaseModel):
     )
 
 
-class SwarmConfig(BaseModel):
-    """What ``mycelium swarm`` starts when it runs your own agents."""
-
-    agent: str | None = Field(
-        default=None,
-        description=(
-            "The agent CLI a local swarm starts in herdr, as the command herdr runs. "
-            "Asked for, and saved here, the first time you swarm without one."
-        ),
-    )
-
-
 class RunnerConfig(BaseModel):
     """Where this machine's runner starts the agents the app asks for."""
 
@@ -858,6 +847,214 @@ class MetricsConfig(BaseModel):
     )
 
 
+#: The shortest a widget's command may wait between runs.
+WIDGET_MIN_EVERY_S = 5
+#: A widget's ``every`` for a command kept running while the app is open.
+WIDGET_ALWAYS = "always"
+#: The theme colors a widget can be drawn in, by name, so every theme still reads.
+WIDGET_COLORS = ("accent", "green", "yellow", "red", "muted")
+#: The states a widget's dot can show (the app's own ``StatusDot``).
+WIDGET_STATES = ("ok", "warn", "bad", "off")
+#: How much of a tooltip a widget keeps: a few lines, not a page.
+WIDGET_TOOLTIP_LINES = 8
+WIDGET_TOOLTIP_CHARS = 1000
+#: The fields that set how a widget looks, from its config or from a run's JSON.
+WIDGET_LOOK = ("icon", "color", "state", "meter", "tooltip")
+
+_ICON_NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+
+
+def _is_emoji(value: str) -> bool:
+    """One emoji, as far as a check here can tell: short, no letters, no spaces.
+    The app draws it as text, so a near miss shows as what was written."""
+    return (
+        0 < len(value) <= 8
+        and value.isprintable()
+        and not any(c.isascii() or c.isspace() for c in value)
+    )
+
+
+def widget_look(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The fields in ``raw`` that set how a widget looks and are good, and a
+    note for each that isn't. A bad field is left out, never the widget.
+
+    ``icon`` is a Lucide icon's kebab-case name (the app falls back to its
+    default for a name it doesn't know) or one emoji; ``color`` and ``state``
+    are names from :data:`WIDGET_COLORS` and :data:`WIDGET_STATES`; ``meter``
+    is a number from 0 to 100; ``tooltip`` is a few lines of markdown.
+    """
+    good: dict[str, Any] = {}
+    notes: list[str] = []
+    for field in WIDGET_LOOK:
+        if raw.get(field) is None:
+            continue
+        value = raw[field]
+        if field == "icon":
+            ok = isinstance(value, str) and (bool(_ICON_NAME.match(value)) or _is_emoji(value))
+            hint = "a Lucide icon name like memory-stick, or one emoji"
+        elif field == "color":
+            ok = value in WIDGET_COLORS
+            hint = f"one of {', '.join(WIDGET_COLORS)}"
+        elif field == "state":
+            ok = value in WIDGET_STATES
+            hint = f"one of {', '.join(WIDGET_STATES)}"
+        elif field == "meter":
+            ok = (
+                isinstance(value, int | float) and not isinstance(value, bool) and 0 <= value <= 100
+            )
+            value = float(value) if ok else value
+            hint = "a number from 0 to 100"
+        else:
+            ok = isinstance(value, str)
+            if ok:
+                lines = value.strip().splitlines()[:WIDGET_TOOLTIP_LINES]
+                value = "\n".join(lines)[:WIDGET_TOOLTIP_CHARS]
+            hint = "text"
+        if ok:
+            good[field] = value
+        else:
+            notes.append(f"{field} {str(value)[:40]!r} was ignored: it should be {hint}.")
+    return good, notes
+
+
+class StatusWidget(BaseModel):
+    """One row of the desktop app's Widgets card, under ``[[statusline.widget]]``::
+
+        [[statusline.widget]]
+        label = "RAM"
+        command = "~/bin/ram.sh"
+        every = "30s"
+        icon = "memory-stick"
+        color = "accent"
+
+    Either ``command`` (run by the desktop app on this computer, every
+    ``every``) or ``text`` (fixed words). A command shows the first line it
+    prints, or, when what it prints is one JSON object, sets its fields for
+    that run: ``text`` and the look fields (:func:`widget_look`), over the
+    config's. ``every = "always"`` keeps the command running while the app is
+    open instead, and shows the last line it printed. Text is inline markdown. A look field that's wrong is left out
+    with a note (``notes``), never stopping the widget or its other fields.
+    """
+
+    label: str = Field(..., min_length=1, max_length=64, description="What the row is called.")
+    command: str | None = Field(
+        default=None, description="A shell command the desktop app runs on this computer."
+    )
+    text: str | None = Field(default=None, description="Fixed words to show instead of a command.")
+    every: str = Field(
+        default="1m",
+        pattern=r"^(\d+\s*[smh]|always)$",
+        description=(
+            "How often the command runs: seconds, minutes or hours, e.g. '30s', '5m'. "
+            "Or 'always': it runs the whole time the app is open, and is started "
+            "again when it stops."
+        ),
+    )
+    timeout: float = Field(
+        default=10.0,
+        gt=0,
+        le=600,
+        description="Seconds before a run counts as hung. Not used with every = 'always'.",
+    )
+    icon: str | None = Field(
+        default=None, description="A Lucide icon's kebab-case name, or one emoji."
+    )
+    color: str | None = Field(
+        default=None, description=f"A theme color by name: {', '.join(WIDGET_COLORS)}."
+    )
+    state: str | None = Field(
+        default=None, description=f"A status dot: {', '.join(WIDGET_STATES)}."
+    )
+    meter: bool | float | None = Field(
+        default=None,
+        description=(
+            "A bar under the row: a number from 0 to 100, or true to read a "
+            "percentage from the text."
+        ),
+    )
+    tooltip: str | None = Field(
+        default=None, description="Markdown shown under the command on hover."
+    )
+    #: Why a look field was left out, for Settings. Not set by the person.
+    notes: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _keep_good_look(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        rest = {k: v for k, v in data.items() if k not in (*WIDGET_LOOK, "notes")}
+        # `meter = true` still means "read a percentage from the text"; false, none.
+        legacy = data.get("meter") if isinstance(data.get("meter"), bool) else None
+        good, notes = widget_look({k: v for k, v in data.items() if k != "meter" or legacy is None})
+        if legacy:
+            good["meter"] = True
+        return rest | good | {"notes": notes}
+
+    @model_validator(mode="after")
+    def _one_source(self) -> "StatusWidget":
+        if (self.command is None) == (self.text is None):
+            raise ValueError(f"widget {self.label!r} needs exactly one of 'command' or 'text'")
+        if not self.always() and self.seconds() < WIDGET_MIN_EVERY_S:
+            raise ValueError(
+                f"widget {self.label!r}: every must be at least {WIDGET_MIN_EVERY_S}s, "
+                f"not {self.every!r}"
+            )
+        return self
+
+    def always(self) -> bool:
+        """Whether the command is kept running rather than run on an interval."""
+        return self.every == WIDGET_ALWAYS
+
+    def seconds(self) -> float:
+        """``every`` in seconds (not for a widget kept running, :meth:`always`)."""
+        n, unit = int(self.every[:-1].strip()), self.every[-1]
+        return float(n * {"s": 1, "m": 60, "h": 3600}[unit])
+
+
+class StatuslineConfig(BaseModel):
+    """The rows of the desktop app's Widgets card, as the desktop app reads them.
+
+    Validated only by the desktop app (``desktop/widgets.py``), which shows a
+    bad widget's error in Settings and runs none of them. ``MyceliumConfig``
+    holds this section unvalidated (:class:`StatuslineSection`), so a typo in a
+    status readout never stops a ``mycelium`` command."""
+
+    widget: list[StatusWidget] = Field(
+        default_factory=list, description="The rows of the Widgets card, in order."
+    )
+
+
+class StatuslineSection(BaseModel):
+    """The desktop app's Widgets card, read and run on this computer only."""
+
+    # ``Any``, not a list of tables: even a section of the wrong shape is the
+    # desktop app's to report, never a reason for the CLI to stop.
+    widget: Any = Field(
+        default=[],
+        description=(
+            "The rows of the Widgets card, in order, as [[statusline.widget]] tables: "
+            "label, then command (with every, timeout) or text, and optionally icon "
+            "(a Lucide icon name like memory-stick, or one emoji), color (accent, green, "
+            "yellow, red, muted), state (ok, warn, bad, off), meter (0 to 100) and "
+            "tooltip. Text and tooltip are inline markdown: **bold**, *italic*, `code`. "
+            "A command can print one JSON object instead of a line to set any of these "
+            'for that run, e.g. {"text": "**38%** free", "icon": "memory-stick", '
+            '"state": "warn", "meter": 38, "tooltip": "Swap is *2.1G*"}. Checked by '
+            "the desktop app, which notes any field it ignored in Settings > Widgets. "
+            'every = "always" keeps a command running while the app is open, and its '
+            "row shows whether it's running. Every command gets the port of the hub "
+            "the app runs as $MYCELIUM_HUB_PORT."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _any_shape(cls, data: Any) -> Any:
+        """``statusline = "x"`` is kept as it was written, for the app to report."""
+        return data if isinstance(data, dict) else {"widget": data}
+
+
 class MyceliumConfig(BaseModel):
     """Complete Mycelium CLI configuration."""
 
@@ -878,7 +1075,6 @@ class MyceliumConfig(BaseModel):
     agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     herdr: HerdrConfig = Field(default_factory=HerdrConfig)
-    swarm: SwarmConfig = Field(default_factory=SwarmConfig)
     runner: RunnerConfig = Field(default_factory=RunnerConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
@@ -886,6 +1082,7 @@ class MyceliumConfig(BaseModel):
     health: HealthConfig = Field(default_factory=HealthConfig)
     a2a: A2aConfig = Field(default_factory=A2aConfig)
     patterns: PatternsConfig = Field(default_factory=PatternsConfig)
+    statusline: StatuslineSection = Field(default_factory=StatuslineSection)
 
     model_config = {"arbitrary_types_allowed": True}
     _global_config_path: Path | None = None
@@ -1039,7 +1236,10 @@ class MyceliumConfig(BaseModel):
             env_config["engine"]["runtime"] = engine_runtime
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
-            env_config["server"]["api_url"] = api_url
+            from mycelium.caller import follow_app_hub
+
+            # An agent's address for the app's hub, from before the app restarted.
+            env_config["server"]["api_url"] = follow_app_hub(api_url)
         if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
             env_config["slim"]["node_endpoint"] = slim_endpoint
         if slim_master := os.getenv("MYCELIUM_SLIM_MASTER_SECRET"):

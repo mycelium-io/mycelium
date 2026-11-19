@@ -109,6 +109,11 @@ async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
     assert (await client.post("/api/rooms", json={"name": ROOM})).status_code in (200, 201)
     for handle in (AGENT, PEER):
         _manifest(handle, {"adapter": "claude_code", "owner": PERSON})
+    # The agent's one subagent the room has: a mention of it asks the agent.
+    # Any other `coder:` handle is nobody's.
+    from app.services import subagents
+
+    subagents.start(ROOM, AGENT, "review")
     for handle, kind in ENGINES.items():
         _manifest(handle, {"adapter": "engine", "kind": kind})
     _manifest(REMOTE, {"adapter": "a2a", "url": "https://remote.example/a2a"})

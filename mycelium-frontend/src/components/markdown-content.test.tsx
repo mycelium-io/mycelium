@@ -7,6 +7,41 @@ import { describe, expect, it, vi } from "vitest";
 
 import { MarkdownContent, isExternalHref } from "@/components/markdown-content";
 
+describe("<MarkdownContent inline />", () => {
+  it("keeps inline marks and unwraps blocks into one line", () => {
+    const { container } = render(<MarkdownContent inline>{"# Ship **it**\n\n- with `flag`"}</MarkdownContent>);
+    expect(container.firstElementChild?.tagName).toBe("SPAN");
+    expect(container.querySelector("strong")?.textContent).toBe("it");
+    expect(container.querySelector("code")?.textContent).toBe("flag");
+    expect(container.querySelector("h1, ul, li, p")).toBeNull();
+  });
+});
+
+describe("<MarkdownContent /> with what a member wrote", () => {
+  it("shows HTML in a message as its text, never as elements", () => {
+    const { container } = render(
+      <MarkdownContent>{'hi <img src=x onerror="alert(1)"> <script>alert(2)</script> <iframe src="/"></iframe>'}</MarkdownContent>,
+    );
+    expect(container.querySelector("img, script, iframe, [onerror]")).toBeNull();
+  });
+
+  it("drops a link's address when it would run script or load a document of its own", () => {
+    const { container } = render(
+      <MarkdownContent>
+        {"[a](javascript:alert(1)) [b](JaVaScRiPt:alert(1)) [c](data:text/html,<b>x</b>) [d](vbscript:x) [e](mycelium://update)"}
+      </MarkdownContent>,
+    );
+    const hrefs = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
+    expect(hrefs).toHaveLength(5);
+    for (const href of hrefs) expect(href).toBe("");
+  });
+
+  it("drops an image's address when it would run script", () => {
+    const { container } = render(<MarkdownContent>{"![x](javascript:alert(1))"}</MarkdownContent>);
+    expect(container.querySelector("img")?.getAttribute("src") ?? "").toBe("");
+  });
+});
+
 describe("<MarkdownContent /> links", () => {
   it("opens a link to another site in a new tab", () => {
     render(<MarkdownContent>{"see [the PR](https://github.com/coffee-shop/web/pull/504)"}</MarkdownContent>);
@@ -292,5 +327,34 @@ describe("<MarkdownContent /> thread ids", () => {
   it("stays text with nothing to open it with", () => {
     render(<MarkdownContent threads={threads}>{"thread 251c83d6"}</MarkdownContent>);
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("<MarkdownContent /> images", () => {
+  const upload = "/api/rooms/checkout/uploads/receipt.png/raw";
+
+  it("loads an image the room uploaded", () => {
+    render(<MarkdownContent>{`![the receipt](${upload})`}</MarkdownContent>);
+    expect(screen.getByRole("img", { name: "the receipt" })).toHaveAttribute("src", upload);
+  });
+
+  it("shows an image from another site as a link to it, and loads nothing from there", () => {
+    const { container } = render(
+      <MarkdownContent>{"![the chart](https://tracker.example/chart.png)"}</MarkdownContent>,
+    );
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "the chart" })).toHaveAttribute("href", "https://tracker.example/chart.png");
+  });
+
+  it("shows a path on the app that isn't an upload as a link, so no reader's app requests it", () => {
+    const { container } = render(<MarkdownContent>{"![x](/api/runners/r1/jobs/next)"}</MarkdownContent>);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "x" })).toBeInTheDocument();
+  });
+
+  it("shows even the room's own upload as a link where every image must be one", () => {
+    const { container } = render(<MarkdownContent imagesAsLinks>{`![the receipt](${upload})`}</MarkdownContent>);
+    expect(container.querySelector("img")).toBeNull();
+    expect(screen.getByRole("link", { name: "the receipt" })).toBeInTheDocument();
   });
 });

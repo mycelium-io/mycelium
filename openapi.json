@@ -82,6 +82,79 @@
         }
       }
     },
+    "/api/rooms/{room_name}/agents/running": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Agents Running",
+        "description": "Every agent in the room a connected machine runs: its machine, its state\nand whether it's kept running. What it uses never comes to the hub.",
+        "operationId": "agents_running_api_rooms__room_name__agents_running_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsRunningRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/agents/draft-notes": {
       "post": {
         "tags": [
@@ -517,7 +590,7 @@
           "agents"
         ],
         "summary": "Stop Agent",
-        "description": "Stop an agent and close its pane, on the machine running it. Its owner only;\none with no owner on record can't be stopped from here.",
+        "description": "Stop an agent on the machine running it: end its process to free its\nmemory, keeping its pane and conversation for a start, or with ``close``,\nclose its pane too. Its owner only; one with no owner on record can't be\nstopped from here.",
         "operationId": "stop_agent_api_rooms__room_name__agents__handle__stop_post",
         "parameters": [
           {
@@ -602,6 +675,220 @@
           },
           "409": {
             "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/agents/{handle}/start": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Start Agent",
+        "description": "Start a stopped agent again in its pane, in its own session when its CLI\ncan resume one. Its machine asks the person there first, as any restart\ndoes. Its owner only.",
+        "operationId": "start_agent_api_rooms__room_name__agents__handle__start_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentControl"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentControlRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/agents/{handle}/keep": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Keep Agent",
+        "description": "Keep an agent running when agents are stopped in bulk (``keep: false`` to\nstop keeping it). Stopping it by name still stops it. Its owner only.",
+        "operationId": "keep_agent_api_rooms__room_name__agents__handle__keep_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentKeep"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentControlRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -819,6 +1106,81 @@
                     "$ref": "#/components/schemas/PauseRead"
                   },
                   "title": "Response List Paused Api Agents Paused Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agents/running": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Running Of Mine",
+        "description": "Every agent ``owner`` owns that a connected machine runs, across rooms,\nwith its state: for picking which to stop (``mycelium agent stop --idle``).\n\nWith sign-in on, only your own.",
+        "operationId": "running_of_mine_api_agents_running_get",
+        "parameters": [
+          {
+            "name": "owner",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Whose agents",
+              "title": "Owner"
+            },
+            "description": "Whose agents"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsRunningRead"
                 }
               }
             }
@@ -2167,6 +2529,118 @@
         }
       }
     },
+    "/api/rooms/{room_name}/messages/{message_id}/interrupt": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Interrupt With Message",
+        "description": "Turn a plain ``@handle`` in a message you sent into an interrupt.\n\nThe member stops its turn, reads the message now and carries on, as with\n``@!``. Only the message's sender, only for a member it mentioned, only\nwhile that member hasn't been handed it yet and is working, once per\nmember per message, with no undo. The message's text doesn't change.",
+        "operationId": "interrupt_with_message_api_rooms__room_name__messages__message_id__interrupt_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageInterrupt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageInterrupted"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/messages/search": {
       "get": {
         "tags": [
@@ -2397,6 +2871,118 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/messages/{message_id}/reactions": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "React To Message",
+        "description": "Put an emoji on a message, or take yours off.\n\nThe reaction is an ``exchange:reaction`` message parented on the one it is\non, and its text silently mentions that message's author (``@~author \ud83d\udc4d``),\nso the author reads it on their next wake and nobody is woken. Taking it off\nis a record too, and names nobody. The read path folds reactions into their\nmessage, so neither is ever a row of its own, and a reaction raises no ping:\nit doesn't move a task.",
+        "operationId": "react_to_message_api_rooms__room_name__messages__message_id__reactions_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageReact"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
                 }
               }
             }
@@ -3875,6 +4461,645 @@
         }
       }
     },
+    "/api/rooms/{room_name}/threads": {
+      "post": {
+        "tags": [
+          "threads"
+        ],
+        "summary": "Start Thread",
+        "description": "Start a thread from a message in the room's channel, named after its first line.\n\nA message that already has a thread answers with it (200), so two people\nstarting one at once land in the same conversation.",
+        "operationId": "start_thread_api_rooms__room_name__threads_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/threads/{key}/task": {
+      "post": {
+        "tags": [
+          "threads"
+        ],
+        "summary": "Thread Task",
+        "description": "File a task from a thread, pointing back at it (``relates-to``).\n\nThe thread keeps its own conversation; the task gets one of its own. A\nthread that has a task already answers with it (200).",
+        "operationId": "thread_task_api_rooms__room_name__threads__key__task_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadTask"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/subagents": {
+      "get": {
+        "tags": [
+          "subagents"
+        ],
+        "summary": "List Subagents",
+        "description": "Every subagent the room has had, oldest first, ended ones included.\nOne that ran out of time since the last read hands back what it held.",
+        "operationId": "list_subagents_api_rooms__room_name__subagents_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubagentRead"
+                  },
+                  "title": "Response List Subagents Api Rooms  Room Name  Subagents Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "subagents"
+        ],
+        "summary": "Start Subagent",
+        "description": "Start a subagent of ``parent``'s: a member with its own handle,\n``<parent>:<name>``, which its parent's token may act as.",
+        "operationId": "start_subagent_api_rooms__room_name__subagents_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubagentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubagentRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/subagents/{handle}": {
+      "delete": {
+        "tags": [
+          "subagents"
+        ],
+        "summary": "End Subagent",
+        "description": "End a subagent: it leaves the members, any row it claimed goes back to\nthe board, and its messages stay its own.",
+        "operationId": "end_subagent_api_rooms__room_name__subagents__handle__delete",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "handle",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Handle"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubagentRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/knowledge": {
+      "get": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Read Knowledge",
+        "description": "What the room's team learned, each piece with what it came from.",
+        "operationId": "read_knowledge_api_rooms__room_name__knowledge_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "task",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "A task's key, to see the room through it",
+              "title": "Task"
+            },
+            "description": "A task's key, to see the room through it"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeGraphRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/knowledge/settle": {
+      "post": {
+        "tags": [
+          "knowledge"
+        ],
+        "summary": "Settle Knowledge",
+        "description": "Mark a memory as holding: it's no longer open.",
+        "operationId": "settle_knowledge_api_rooms__room_name__knowledge_settle_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeSettle"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/board": {
       "get": {
         "tags": [
@@ -4229,109 +5454,6 @@
         }
       }
     },
-    "/api/rooms/{room_name}/swarms": {
-      "post": {
-        "tags": [
-          "swarms"
-        ],
-        "summary": "Start Swarm",
-        "description": "Start a team of workers on a task in this room and return where to watch it.",
-        "operationId": "start_swarm_api_rooms__room_name__swarms_post",
-        "parameters": [
-          {
-            "name": "room_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Name"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SwarmCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SwarmRead"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Service Unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Forbidden",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not Found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Unprocessable Entity",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Refusal"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/runners": {
       "get": {
         "tags": [
@@ -4382,7 +5504,7 @@
           "runners"
         ],
         "summary": "Runner Hello",
-        "description": "A runner dialing in, or its heartbeat: what it found on its machine, and what it runs.",
+        "description": "A runner dialing in, or its heartbeat: what it found on its machine, and what it runs.\n\nWith a verified token the runner is its caller's: ``owner`` is the token's\nhandle, and an id another person's runner holds is refused.",
         "operationId": "runner_hello_api_runners_post",
         "requestBody": {
           "content": {
@@ -4417,6 +5539,16 @@
           },
           "503": {
             "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
@@ -4473,6 +5605,16 @@
           },
           "503": {
             "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
             "content": {
               "application/json": {
                 "schema": {
@@ -5311,6 +6453,109 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RunnerAgentAdopt"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunnerJobRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runners/{runner_id}/resume": {
+      "post": {
+        "tags": [
+          "runners"
+        ],
+        "summary": "Resume Session",
+        "description": "Bring an earlier agent session on this runner's machine into a room.\n\nThe session is one the runner's scan lists for that agent CLI, in that\nfolder. The member and its notes are written here first, as for a launch,\nso a start that fails leaves an agent that can be started again; the\nrunner then asks the person at the machine and resumes the session in its\nown pane, as the member.",
+        "operationId": "resume_session_api_runners__runner_id__resume_post",
+        "parameters": [
+          {
+            "name": "runner_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Runner Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerSessionResume"
               }
             }
           }
@@ -6376,7 +7621,7 @@
           "asks"
         ],
         "summary": "Answer Ask",
-        "description": "Answer an ask: any person in the room may, never an agent, and only once.",
+        "description": "Answer an ask, or skip it: any person in the room may, never an agent, and only once.",
         "operationId": "answer_ask_api_rooms__room_name__asks__ask_id__answer_post",
         "parameters": [
           {
@@ -6877,7 +8122,7 @@
           "sessions"
         ],
         "summary": "Push Herdr Presence",
-        "description": "Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).\n\nThe backend runs containerized and can't see the host's herdr socket, so the\nhost-side bridge polls ``herdr agent list`` and pushes the current per-handle\nstate here. This is a presence/UI surface only \u2014 it never enters an engine's\nroster. Entries lapse on their TTL, so a stopped bridge / closed pane clears\nitself without an explicit delete.",
+        "description": "Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).\n\nThe backend runs containerized and can't see the host's herdr socket, so the\nhost-side bridge polls ``herdr agent list`` and pushes the current per-handle\nstate here. This is a presence/UI surface only \u2014 it never enters an engine's\nroster. Entries lapse on their TTL, so a stopped bridge / closed pane clears\nitself without an explicit delete. With sign-in on, a ``source`` naming\nanother person's runner is not found: that push would replace its agents.\nThe runner's person and their own agents in this room may push for it.",
         "operationId": "push_herdr_presence_api_rooms__room_name__sessions_herdr_presence_post",
         "parameters": [
           {
@@ -6953,7 +8198,7 @@
           "sessions"
         ],
         "summary": "Drain Herdr Wakes",
-        "description": "Drain pending herdr wake requests for a room (the sync bridge polls this).\n\nReturns and clears the queue the backend filled when a tag mentioned a\nherdr-present-but-not-joined handle. The bridge \u2014 the only actor that can\nreach the host's herdr socket \u2014 then runs the actual ``herdr agent prompt``.\nWith ``source``, only the wakes for the agents that machine's push reports\nare handed over; the rest wait for their own machine.",
+        "description": "Drain pending herdr wake requests for a room (the sync bridge polls this).\n\nReturns and clears the queue the backend filled when a tag mentioned a\nherdr-present-but-not-joined handle. The bridge \u2014 the only actor that can\nreach the host's herdr socket \u2014 then runs the actual ``herdr agent prompt``.\nWith ``source``, only the wakes for the agents that machine's push reports\nare handed over; the rest wait for their own machine. With sign-in on, a\n``source`` naming another person's runner is not found; the runner's\nperson and their own agents in this room may drain it.",
         "operationId": "drain_herdr_wakes_api_rooms__room_name__sessions_herdr_wakes_get",
         "parameters": [
           {
@@ -7727,6 +8972,124 @@
                     "$ref": "#/components/schemas/MemoryRead"
                   },
                   "title": "Response List Memories Api Rooms  Room Name  Memory Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/memory/summaries": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "List Memory Summaries",
+        "description": "List memories in a room as a list shows them: titles and frontmatter, no text.\n\nPaged and cached like the full list, newest first. A memory's text is\nread one memory at a time (``GET /memory/{key}``). A thread started from a\nmessage also says what has been said in it (``thread``), so the cache\nstamp follows the room's history as well as its memories.",
+        "operationId": "list_memory_summaries_api_rooms__room_name__memory_summaries_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "prefix",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Key prefix filter",
+              "title": "Prefix"
+            },
+            "description": "Key prefix filter"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemorySummaryRead"
+                  },
+                  "title": "Response List Memory Summaries Api Rooms  Room Name  Memory Summaries Get"
                 }
               }
             }
@@ -12539,6 +13902,78 @@
         }
       }
     },
+    "/api/whoami/handle": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Pick Handle",
+        "description": "Pick your handle, when your sign-in gives none (``needs_handle``): the\none its claim would give is taken or isn't a valid handle. It's kept with\nyour sign-in, so it never changes after; a sign-in that has one keeps it.",
+        "operationId": "pick_handle_api_whoami_handle_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandlePick"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoamiRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -13341,11 +14776,17 @@
             ],
             "title": "By",
             "description": "Who is asking; the verified caller wins"
+          },
+          "close": {
+            "type": "boolean",
+            "title": "Close",
+            "description": "With stop: close its pane too. Without it, a stop ends its process to free its memory and keeps its pane for a start",
+            "default": false
           }
         },
         "type": "object",
         "title": "AgentControl",
-        "description": "Pause, resume or stop one agent. Only its owner may."
+        "description": "Pause, resume, stop or start one agent. Only its owner may."
       },
       "AgentControlRead": {
         "properties": {
@@ -13388,6 +14829,17 @@
               }
             ],
             "title": "Job"
+          },
+          "keep": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keep"
           }
         },
         "type": "object",
@@ -13397,6 +14849,31 @@
         ],
         "title": "AgentControlRead",
         "description": "What happened to one agent."
+      },
+      "AgentKeep": {
+        "properties": {
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is asking; the verified caller wins"
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep",
+            "description": "False to stop keeping it",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "AgentKeep",
+        "description": "Keep an agent running when agents are stopped in bulk, or stop keeping it."
       },
       "AgentRead": {
         "properties": {
@@ -13615,6 +15092,143 @@
         "title": "AgentRenameRead",
         "description": "What a rename moved, or that it waits for a yes on the machine running the agent."
       },
+      "AgentRunningRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "idle",
+              "blocked",
+              "paused",
+              "stopped",
+              "gone",
+              "unknown"
+            ],
+            "title": "State"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "runner": {
+            "type": "string",
+            "title": "Runner"
+          },
+          "machine": {
+            "type": "string",
+            "title": "Machine"
+          },
+          "pane": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pane"
+          },
+          "keep": {
+            "type": "boolean",
+            "title": "Keep",
+            "default": false
+          },
+          "restartable": {
+            "type": "boolean",
+            "title": "Restartable",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle",
+          "state",
+          "runner",
+          "machine"
+        ],
+        "title": "AgentRunningRead",
+        "description": "One agent on a machine: where it runs and in what state, for stopping and\nstarting agents. What it uses never comes here; the desktop app on its own\nmachine reads that there."
+      },
+      "AgentSessionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id",
+            "description": "The agent CLI's own id"
+          },
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "last_used": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Used"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch",
+            "description": "The git branch it was on"
+          },
+          "member": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionMemberRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member it was, when the runner started it for one"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "folder",
+          "last_used"
+        ],
+        "title": "AgentSessionRead",
+        "description": "An earlier agent session on a runner's machine, that could be brought into a room.\n\nWhere and when it was, never what was said in it: a title or anything else\nfrom inside the session stays on the machine, so a field the runner sends\nbeyond these is dropped here."
+      },
       "AgentsControl": {
         "properties": {
           "by": {
@@ -13658,6 +15272,20 @@
         },
         "type": "object",
         "title": "AgentsControlRead"
+      },
+      "AgentsRunningRead": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRunningRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          }
+        },
+        "type": "object",
+        "title": "AgentsRunningRead",
+        "description": "Every agent a connected machine runs, with its state and machine."
       },
       "Ask": {
         "properties": {
@@ -13920,6 +15548,18 @@
             "title": "Text",
             "description": "The answer to a question, or a note on any kind"
           },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped",
+            "description": "True when the person skipped it rather than answering"
+          },
           "ask": {
             "type": "string",
             "title": "Ask"
@@ -14003,6 +15643,12 @@
             ],
             "title": "Reason",
             "description": "Another name for text, from before it"
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "description": "Skip it instead of answering, with at most a note; any kind",
+            "default": false
           }
         },
         "type": "object",
@@ -14290,6 +15936,18 @@
             ],
             "title": "Text",
             "description": "The answer to a question, or a note on any kind"
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped",
+            "description": "True when the person skipped it rather than answering"
           }
         },
         "type": "object",
@@ -16917,6 +18575,21 @@
               }
             ],
             "title": "Note"
+          },
+          "sessions": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AgentSessionRead"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sessions",
+            "description": "Its earlier sessions there, newest first; none when it can't list them"
           }
         },
         "type": "object",
@@ -16926,7 +18599,7 @@
           "command"
         ],
         "title": "FrameworkRead",
-        "description": "One agent CLI a runner knows about, found on its machine or not."
+        "description": "One agent CLI a runner knows about, found on its machine or not.\n\nA runner sends it and the hub hands it back in the same shape, so it is one\nschema, as for ``MachineReport``: split into ``-Input`` and ``-Output``, the\ngenerated client drops ``RunnerRead``."
       },
       "HTTPValidationError": {
         "properties": {
@@ -16940,6 +18613,22 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HandlePick": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "HandlePick",
+        "description": "The handle a signed-in person picks for themselves."
       },
       "HealthAuth": {
         "properties": {
@@ -18085,6 +19774,170 @@
         ],
         "title": "JoinRedeem"
       },
+      "KnowledgeGraphRead": {
+        "properties": {
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeTaskRead"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "memories": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeRead"
+            },
+            "type": "array",
+            "title": "Memories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tasks",
+          "memories"
+        ],
+        "title": "KnowledgeGraphRead",
+        "description": "What a room's team learned, or one task's lens on it."
+      },
+      "KnowledgeRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "fact",
+              "finding",
+              "dead-end",
+              "decision"
+            ],
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "The memory's first line"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "Who wrote it: a person, an agent or a subagent"
+          },
+          "task": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task",
+            "description": "The task it was learned in"
+          },
+          "open": {
+            "type": "boolean",
+            "title": "Open",
+            "description": "Still being worked on, rather than settled",
+            "default": false
+          },
+          "derived_from": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Derived From",
+            "description": "What it came from"
+          },
+          "relates_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Relates To"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At",
+            "default": ""
+          },
+          "in_task": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Task",
+            "description": "Through a task's lens: whether the task produced it, rather than it being where the task's memories came from or went"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "title",
+          "by"
+        ],
+        "title": "KnowledgeRead",
+        "description": "One thing the team learned: a memory with a kind."
+      },
+      "KnowledgeSettle": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Key"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle",
+            "description": "Who settles it (default: the caller)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "KnowledgeSettle"
+      },
+      "KnowledgeTaskRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title"
+        ],
+        "title": "KnowledgeTaskRead",
+        "description": "A task the room's knowledge was learned in."
+      },
       "LatestLine": {
         "properties": {
           "sender": {
@@ -18456,6 +20309,30 @@
             "title": "Resumes",
             "description": "A restart brings it back in its own session, keeping its conversation",
             "default": false
+          },
+          "subagents_open": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagents Open",
+            "description": "How many subagent steps are open in its session file, a count and never their text; null when its CLI's session file isn't read"
+          },
+          "subagents_finished": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subagents Finished",
+            "description": "How many subagent steps its session has finished since the runner first read it, a count that only goes up (it starts again when the runner does); null when its CLI's session file isn't read"
           }
         },
         "type": "object",
@@ -19164,6 +21041,120 @@
         ],
         "title": "MemorySearchResult"
       },
+      "MemorySummaryRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "What it's called: a structured value's ``title``, else the first line of its text (a heading's marker dropped, at most 120 characters), else its key"
+          },
+          "structured": {
+            "type": "boolean",
+            "title": "Structured",
+            "description": "Its value is structured data with no ``text``, not prose",
+            "default": false
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "meta": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta",
+            "description": "As on ``MemoryRead``"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "As on ``MemoryRead``"
+          },
+          "expandable": {
+            "type": "boolean",
+            "title": "Expandable",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadRepliesRead"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "On a thread started from a message (``threads/``): what has been said in it, worked out from the room's history when the list is read"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "created_by",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MemorySummaryRead",
+        "description": "A memory as a list shows it: what it's called and its frontmatter, not its text.\n\nRead one memory for its value; this is for lists of many, where the text\nof every one would be most of what's sent."
+      },
       "MentionGroup": {
         "properties": {
           "count": {
@@ -19385,6 +21376,29 @@
             "title": "Edited At",
             "description": "When this message was last revised by an amendment, folded in on read. None for a message nobody amended."
           },
+          "interrupted": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MessageInterrupted"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupted",
+            "description": "Who its sender interrupted with it after sending it, folded in on read. None for a message nobody was interrupted with."
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReactions"
+            },
+            "type": "array",
+            "title": "Reactions",
+            "description": "The emoji on it, folded in on read: each emoji once, in the order it was first put on, with who put it on."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -19500,6 +21514,62 @@
         ],
         "title": "MessageCreate"
       },
+      "MessageInterrupt": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Handle",
+            "description": "A member the message mentioned"
+          },
+          "by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By",
+            "description": "Who is asking; must be the message's sender. Defaults to the caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "MessageInterrupt",
+        "description": "Turn a plain ``@handle`` in a message you sent into an interrupt."
+      },
+      "MessageInterrupted": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "Who sent the message, and so interrupted"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The member it interrupted"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At",
+            "description": "When"
+          }
+        },
+        "type": "object",
+        "required": [
+          "by",
+          "handle",
+          "at"
+        ],
+        "title": "MessageInterrupted",
+        "description": "A member its sender interrupted with a message after sending it."
+      },
       "MessageListResponse": {
         "properties": {
           "messages": {
@@ -19520,6 +21590,63 @@
           "total"
         ],
         "title": "MessageListResponse"
+      },
+      "MessageReact": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Emoji",
+            "description": "The emoji, as itself"
+          },
+          "on": {
+            "type": "boolean",
+            "title": "On",
+            "description": "False takes your reaction off",
+            "default": true
+          },
+          "sender_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Handle",
+            "description": "Who is reacting. Defaults to the token-verified caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji"
+        ],
+        "title": "MessageReact",
+        "description": "Put an emoji on a message, or take yours off."
+      },
+      "MessageReactions": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          },
+          "by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji",
+          "by"
+        ],
+        "title": "MessageReactions",
+        "description": "One emoji on a message and who put it on, oldest first."
       },
       "MessageRead": {
         "properties": {
@@ -19610,6 +21737,29 @@
             ],
             "title": "Edited At",
             "description": "When this message was last revised by an amendment, folded in on read. None for a message nobody amended."
+          },
+          "interrupted": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MessageInterrupted"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupted",
+            "description": "Who its sender interrupted with it after sending it, folded in on read. None for a message nobody was interrupted with."
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReactions"
+            },
+            "type": "array",
+            "title": "Reactions",
+            "description": "The emoji on it, folded in on read: each emoji once, in the order it was first put on, with who put it on."
           },
           "created_at": {
             "type": "string",
@@ -20805,6 +22955,26 @@
               }
             ],
             "title": "Message Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id",
+            "description": "Its id in the room's history, the one a message is named by"
+          },
+          "working": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Working",
+            "description": "Members it mentions who are mid-turn and so read it when their turn ends; its sender can interrupt them with it (POST /messages/{id}/interrupt)"
           }
         },
         "type": "object",
@@ -21995,7 +24165,7 @@
           "kind": {
             "type": "string",
             "title": "Kind",
-            "description": "One of launch, stop, scan, swarm, restart, pair, interrupt, adopt, rename, pause, or newer"
+            "description": "One of launch, stop, scan, restart, pair, interrupt, adopt, rename, pause, resume, or newer"
           },
           "spec": {
             "additionalProperties": true,
@@ -22215,11 +24385,6 @@
             "type": "array",
             "title": "Clis",
             "description": "Agent CLIs it covers; empty: any"
-          },
-          "swarms": {
-            "type": "boolean",
-            "title": "Swarms",
-            "default": false
           }
         },
         "type": "object",
@@ -22358,6 +24523,84 @@
         ],
         "title": "RunnerRead",
         "description": "A runner as the app sees it."
+      },
+      "RunnerSessionResume": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "framework": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Framework",
+            "description": "A framework id from the runner's scan"
+          },
+          "session": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session",
+            "description": "A session from that framework's list"
+          },
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Folder",
+            "description": "The session's folder, as listed"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions",
+            "description": "How the agent should work; saved as its notes, which it reads first"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "signature": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSignature"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "From a device paired with the machine: starts without asking there"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle",
+          "framework",
+          "session",
+          "folder"
+        ],
+        "title": "RunnerSessionResume",
+        "description": "Bring an earlier agent session on a runner's machine into a room as\n``handle``, resumed with its conversation. The runner asks the person\nthere first, as for a launch."
       },
       "RunnerSyncRead": {
         "properties": {
@@ -23075,6 +25318,25 @@
         "title": "SearchScopeRead",
         "description": "How the server read the query's scoping tokens.\n\nEchoed back so a caller draws its scope chips from the interpretation the\nsearch actually ran under, rather than re-parsing the string itself."
       },
+      "SessionMemberRead": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "handle"
+        ],
+        "title": "SessionMemberRead",
+        "description": "The member an earlier session was, from the runner's own record."
+      },
       "SkillCreate": {
         "properties": {
           "name": {
@@ -23294,6 +25556,104 @@
         "title": "SpeechVoices",
         "description": "The voices the hub's speech server lists, for a person to pick from."
       },
+      "SubagentCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 48,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Its own name: `review`"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent",
+            "description": "Whose subagent it is; the caller when left out on a gated hub"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "SubagentCreate",
+        "description": "Start a subagent of ``parent``'s, with a handle of its own."
+      },
+      "SubagentRead": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The parent's handle, a colon, its name: `builder:review`"
+          },
+          "parent": {
+            "type": "string",
+            "title": "Parent"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "working",
+              "done",
+              "ended"
+            ],
+            "title": "State"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "ended_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "finished",
+                  "end",
+                  "parent",
+                  "timeout"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended By",
+            "description": "Why it ended: its step finished, `subagent end`, its parent stopped, or it timed out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "parent",
+          "name",
+          "state",
+          "started_at"
+        ],
+        "title": "SubagentRead",
+        "description": "An agent's subagent, recorded with its parent."
+      },
       "SubscriptionCreate": {
         "properties": {
           "key_pattern": {
@@ -23349,159 +25709,6 @@
           "created_at"
         ],
         "title": "SubscriptionRead"
-      },
-      "SwarmCreate": {
-        "properties": {
-          "task": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Task",
-            "description": "What the team works on"
-          },
-          "size": {
-            "type": "integer",
-            "maximum": 8.0,
-            "minimum": 2.0,
-            "title": "Size",
-            "description": "How many workers",
-            "default": 3
-          },
-          "repo": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Repo",
-            "description": "Repository the team works on, cloned on the hub: an https, ssh or git@ URL, or an absolute path on the hub (default: a new, empty one)"
-          },
-          "created_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created By",
-            "description": "Who is starting it"
-          },
-          "kickoff": {
-            "type": "boolean",
-            "title": "Kickoff",
-            "description": "Post the kickoff now. A caller that wants to be listening first (the CLI's live view) sets this false and posts it itself",
-            "default": true
-          },
-          "runner": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Runner",
-            "description": "Run the members on this runner's machine, in a herdr workspace, instead of as workers on the hub. The runner posts the kickoff once they are up"
-          },
-          "framework": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Framework",
-            "description": "With runner: the agent CLI each member runs (default: the first found)"
-          },
-          "cwd": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cwd",
-            "description": "With runner: the folder the members start in"
-          },
-          "worktree": {
-            "type": "boolean",
-            "title": "Worktree",
-            "description": "With runner: a git worktree per member",
-            "default": false
-          },
-          "signature": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DeviceSignature"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "With runner: from a device paired with it, starts without asking there"
-          }
-        },
-        "type": "object",
-        "required": [
-          "task"
-        ],
-        "title": "SwarmCreate",
-        "description": "What a team should work on, and how big the team is."
-      },
-      "SwarmRead": {
-        "properties": {
-          "room": {
-            "type": "string",
-            "title": "Room"
-          },
-          "key": {
-            "type": "string",
-            "title": "Key"
-          },
-          "episode": {
-            "type": "string",
-            "title": "Episode"
-          },
-          "members": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Members"
-          },
-          "job": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Job",
-            "description": "With a runner: the job starting the members"
-          }
-        },
-        "type": "object",
-        "required": [
-          "room",
-          "key",
-          "episode",
-          "members"
-        ],
-        "title": "SwarmRead",
-        "description": "Where the swarm is running: its room, its task, and the task's thread."
       },
       "TaskCreate": {
         "properties": {
@@ -23617,6 +25824,86 @@
         ],
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
+      },
+      "ThreadCreate": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "From",
+            "description": "The id of the message in the room's channel to start it from"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "Who is starting it, recorded as its author"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "handle"
+        ],
+        "title": "ThreadCreate"
+      },
+      "ThreadRepliesRead": {
+        "properties": {
+          "replies": {
+            "type": "integer",
+            "title": "Replies",
+            "default": 0
+          },
+          "last_reply_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reply At"
+          },
+          "repliers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Repliers",
+            "description": "The newest few, newest first"
+          },
+          "last_reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reply",
+            "description": "The newest reply's first line"
+          }
+        },
+        "type": "object",
+        "title": "ThreadRepliesRead",
+        "description": "What a thread started from a message has had said in it, for the line under\nthat message. Worked out on read, never stored."
+      },
+      "ThreadTask": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "Who is filing it, recorded as the task's author"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "ThreadTask"
       },
       "TransclusionRead": {
         "properties": {
@@ -24102,6 +26389,14 @@
             },
             "type": "array",
             "title": "Owns"
+          },
+          "was": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Was",
+            "description": "Handles this person had before (the one their sign-in gave before they had a short one), which past messages still carry"
           }
         },
         "type": "object",
@@ -25120,6 +27415,24 @@
             ],
             "title": "Role",
             "description": "The principal's role"
+          },
+          "needs_handle": {
+            "type": "boolean",
+            "title": "Needs Handle",
+            "description": "A person signed in whose sign-in gives no handle yet: they pick one (POST /api/whoami/handle) before anything else",
+            "default": false
+          },
+          "suggested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested",
+            "description": "With needs_handle, the short handle their sign-in would give"
           }
         },
         "type": "object",

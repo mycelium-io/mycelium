@@ -126,7 +126,7 @@ export function latestRoomOf(rooms: Room[], pattern: string): Room | null {
 }
 
 /** The standing a memory carries, or null for one that carries none. */
-export function standingOf(memory: Memory | null | undefined): Standing | null {
+export function standingOf(memory: Pick<Memory, "meta"> | null | undefined): Standing | null {
   const meta = memory?.meta ?? null;
   const headline = typeof meta?.headline === "string" ? meta.headline : "";
   if (!headline) return null;

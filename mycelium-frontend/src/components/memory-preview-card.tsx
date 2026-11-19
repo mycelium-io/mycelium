@@ -6,8 +6,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileText } from "lucide-react";
-import type { Memory } from "@/lib/api";
+import type { MemorySummary } from "@/lib/api";
 import { memoryPreview, previewCardTop } from "@/lib/memory-preview";
+import { useRoomMemory } from "@/lib/room-data";
 
 export const PREVIEW_CARD_WIDTH = 320; // px
 const GAP = 10; // px between the card and the pane's left edge
@@ -23,7 +24,9 @@ export interface PreviewAnchor {
 }
 
 interface Props {
-  memory: Memory;
+  room: string;
+  /** The row from the list; its text is read when the card opens. */
+  memory: MemorySummary;
   anchor: PreviewAnchor;
 }
 
@@ -44,10 +47,14 @@ function relativeTime(iso: string): string {
 
 /** Hovercard for a memory row in the rail: a short excerpt of the body, parked
  *  to the left of the memories pane. */
-export function MemoryPreviewCard({ memory, anchor }: Props) {
+export function MemoryPreviewCard({ room, memory, anchor }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState<number | null>(null);
-  const preview = memoryPreview(memory);
+  const { memory: full } = useRoomMemory(room, memory.key, memory.version);
+  // Until its text is here, the card says what the memory is called.
+  const preview = full
+    ? memoryPreview(full)
+    : { lines: [memory.title], truncated: false, empty: false };
 
   // Center on the row once the card's real height is known — before paint, so
   // the card never appears at the provisional position first.
@@ -57,7 +64,7 @@ export function MemoryPreviewCard({ memory, anchor }: Props) {
     setTop(
       previewCardTop(anchor.top, anchor.height, el.offsetHeight, window.innerHeight, MARGIN),
     );
-  }, [anchor.top, anchor.height, memory.key]);
+  }, [anchor.top, anchor.height, memory.key, full]);
 
   if (typeof document === "undefined") return null;
 

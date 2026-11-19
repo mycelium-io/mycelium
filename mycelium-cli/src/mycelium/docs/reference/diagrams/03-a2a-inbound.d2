@@ -1,4 +1,4 @@
-# Pattern C — A2A inbound: the room is exposed AS an A2A agent
+# Pattern C: A2A inbound, the room is exposed AS an A2A agent
 # An external client discovers the room's Agent Card, calls its JSON-RPC endpoint,
 # and the backend injects the message onto the room's SLIM channel.
 
@@ -31,9 +31,9 @@ ext: External A2A client {class: external}
 
 hub: Mycelium backend {
   class: comp
-  card: GET /.well-known/agent-card.json\nbuild_room_card · a2a_server.py:71-92\nstreaming = false {class: comp}
-  rpc: POST /api/rooms/<room>/a2a\nJsonRpcDispatcher · a2a_server.py:184-193 {class: comp}
-  inject: _inject_into_room\na2a_server.py:112-138 {class: comp}
+  card: GET /.well-known/agent-card.json\nstreaming = false {class: comp}
+  rpc: POST /api/rooms/<room>/a2a\nJSON-RPC {class: comp}
+  inject: inject into the room {class: comp}
   mod: moderator\nchannel.send {class: comp}
 }
 

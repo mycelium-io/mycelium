@@ -174,6 +174,11 @@ const PAGE = {
   timeout: { type: "number", value: "<ms>", help: "per-wait timeout (default 30000)" },
   offline: { type: "boolean", help: "resolve nothing but localhost — skips slow or unreachable CDNs" },
   block: { type: "list", value: "<host>", help: "fail this host's lookups immediately (repeatable)" },
+  grant: {
+    type: "list",
+    value: "<permission>",
+    help: "grant the page a browser permission, e.g. clipboard-write (repeatable)",
+  },
 };
 
 const TERM = {
@@ -315,6 +320,25 @@ const COMMAND_HELP = {
       json: { type: "boolean", help: "print the full result object as JSON" },
     },
   ],
+  profile: [
+    "shot profile [route|url] --measure <step> [--until <step>] [options] — how long an interaction holds the page",
+    {
+      ...APP,
+      ...FLOW,
+      do: PAGE.do,
+      storage: PAGE.storage,
+      "action-timeout": PAGE["action-timeout"],
+      measure: { type: "list", value: "<verb:arg>", help: "a step to time; repeat for an ordered sequence" },
+      until: { type: "string", value: "<verb:arg>", help: "a step that's met when the page is ready, e.g. wait-text:…" },
+      engine: { type: "string", value: "chromium|webkit", help: "browser engine (default chromium; webkit is Safari's and a Tauri app's)" },
+      runs: { type: "number", value: "<n>", help: "separate runs to measure (default 3)" },
+      top: { type: "number", value: "<n>", help: "functions to list by self time, Chromium only (default 15)" },
+      viewport: RESPONSIVE.viewport,
+      "out-dir": OUTPUT["out-dir"],
+      name: OUTPUT.name,
+      json: OUTPUT.json,
+    },
+  ],
   resize: ["shot resize --viewport <v> [options] — reframe the held page in place", { ...SESSION, ...RESPONSIVE, ...DAEMON }],
   close: ["shot close [options]", { ...SESSION, ...DAEMON }],
 };
@@ -418,6 +442,67 @@ async function withFlows(spec, flags, target) {
   };
 }
 
+/**
+ * `shot profile`: the setup (flows and `--do`) unmeasured, then `--measure`
+ * timed until `--until` is met and the page has gone quiet. The summary goes to
+ * stderr and each run's `.cpuprofile` path to stdout, or everything as JSON.
+ * @param {string[]} argv
+ */
+async function profileCommand(argv) {
+  const { flags, rest } = parse(argv, COMMAND_HELP.profile[1]);
+  if (!flags.measure?.length) {
+    throw new UsageError(`shot profile needs a step to time: --measure "click:a[href='/room/b']"${ACTION_HELP}`);
+  }
+  const target = rest[0];
+  const engine = flags.engine ?? "chromium";
+  if (!["chromium", "webkit"].includes(engine)) throw new UsageError(`--engine is chromium or webkit, not ${engine}`);
+  const spec = await withFlows(
+    { ...(target && isUrl(target) ? { url: target } : {}), do: flags.do ?? [], storage: flags.storage ?? {}, viewport: flags.viewport },
+    flags,
+    target,
+  );
+  const base = spec.url ? new URL(spec.url).origin : (await import("../src/app.mjs")).resolveBaseUrl({ baseUrl: flags.baseUrl, mock: flags.mock, log: (m) => err(`[shot] ${m}`) });
+  const origin = await base;
+  const route = spec.url ?? (target && !isUrl(target) ? target : (spec.route ?? "/"));
+  const { resolveViewport } = await import("../src/viewports.mjs");
+  const { width, height } = resolveViewport(spec.viewport ?? "1440x900@1");
+  const { DEFAULT_OUT_DIR } = await import("../src/api.mjs");
+  const { profileRun, formatProfile } = await import("../src/profile.mjs");
+  const pw = await import("playwright");
+  const { launchChromium } = await import("../src/browser.mjs");
+  const browser = engine === "webkit" ? await pw.webkit.launch() : (await launchChromium(pw, { args: [] })).browser;
+  const runs = [];
+  try {
+    for (let i = 0; i < (flags.runs ?? 3); i++) {
+      err(`[shot] profile run ${i + 1}…`);
+      runs.push(
+        await profileRun(browser, {
+          base: origin,
+          route,
+          engine,
+          viewport: { width, height },
+          storage: spec.storage,
+          setup: spec.do,
+          measure: flags.measure,
+          until: flags.until,
+          timeout: flags.actionTimeout ?? 15_000,
+          outDir: flags.outDir ? resolve(flags.outDir) : DEFAULT_OUT_DIR,
+          name: `${flags.name ?? "profile"}-${i + 1}`,
+          top: flags.top ?? 15,
+        }),
+      );
+    }
+  } finally {
+    await browser.close();
+  }
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify({ engine, runs }, null, 2)}\n`);
+    return;
+  }
+  err(formatProfile({ engine, runs }));
+  for (const run of runs) if (run.profile) process.stdout.write(`${run.profile}\n`);
+}
+
 /** `shot flows`: what the project ships, so an agent finds them before writing its own. */
 async function listFlows(argv) {
   const { flags } = parse(argv, { json: OUTPUT.json });
@@ -452,10 +537,17 @@ async function runSpec(spec, flags) {
       const { ensureDaemon, send } = await import("../src/ipc.mjs");
       await ensureDaemon({ idleMs: flags.idle });
       // A take runs for as long as it runs; the default request timeout is
-      // sized for a screenshot and would cut one short.
-      const timeout = spec.op === "video" ? Math.max(180_000, (spec.maxSeconds ?? 90) * 1000 + 120_000) : undefined;
+      // sized for a screenshot and would cut one short. `speed:` plays waits
+      // back faster than they happen, so a take's wall time can be several
+      // times its length.
+      const timeout =
+        spec.op === "video" ? Math.max(180_000, (spec.maxSeconds ?? 90) * 1000 * 8 + 300_000) : undefined;
       return await send(isSession ? "session" : "shot", { spec }, timeout ? { timeout } : {});
     } catch (e) {
+      // A request the daemon took and didn't answer in time may still be
+      // running there; running it again here would repeat everything it does
+      // to the page, such as sending a message twice.
+      if (e.timedOut) throw e;
       // A failure the daemon reported is this shot's failure — retrying it in
       // this process would only lose the daemon's state (a booted mock server,
       // a warm cache) and produce a second, more confusing error.
@@ -591,6 +683,13 @@ async function main() {
   if (command === "bench") {
     const { bench } = await import("../src/doctor.mjs");
     await bench(argv);
+    return;
+  }
+
+  // Its own browser and engine, with nothing shared with the daemon's pages,
+  // so a measurement isn't warmed or slowed by a capture.
+  if (command === "profile") {
+    await profileCommand(argv);
     return;
   }
 
