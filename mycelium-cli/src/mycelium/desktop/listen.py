@@ -11,15 +11,19 @@ there (``--host``, given once per address):
 - **A code typed in the app, waiting for its machine** (ten minutes at most):
   every address, since nothing says yet which network the machine is on. The
   gate refuses everything there but the pairing knock.
-- **Machines paired:** ``127.0.0.1`` and, for each, the address this
-  computer has *now* on the network interface the machine came in on. A
-  laptop's address on its Wi-Fi changes as it moves; the interface (``en0``,
-  ``utun8``) doesn't, so the hub follows it. An interface that's down adds
-  nothing, and the hub is never widened to every address in its place.
+- **Machines paired:** ``127.0.0.1`` and, for each, whichever of this
+  computer's addresses is *now* inside the network the machine came in on
+  (``10.8.0.2/32`` on WireGuard, ``192.168.68.0/22`` on a home Wi-Fi). So a
+  new address from the same network's DHCP is followed, a tunnel is found
+  whatever ``utunN`` macOS gave it this time, and on another network (a
+  café's Wi-Fi, a work VPN that took the old interface name) the hub isn't
+  listening. A network that isn't here adds nothing, and the hub is never
+  widened to every address in its place.
 
-Which interface each machine came in on is worked out the first time it's
-seen, from the address it reached (its entry's ``listen``), and remembered in
-``desktop-pairing.json`` beside ``config.toml``.
+Which network each machine came in on is worked out the first time it's
+seen, from the address it reached (its entry's ``listen``) and that
+address's prefix here, and remembered in ``desktop-pairing.json`` beside
+``config.toml``.
 """
 
 from __future__ import annotations
@@ -36,16 +40,21 @@ import toml
 
 LOOPBACK = "127.0.0.1"
 EVERY = "0.0.0.0"  # noqa: S104 - only while a code waits, behind the hub's gate
-#: Where the interface each paired machine came in on is remembered.
+#: Where the network each paired machine came in on is remembered.
 REMEMBERED = "desktop-pairing.json"
 
 
 @dataclass(frozen=True)
 class Address:
-    """One of this computer's IPv4 addresses and the interface it's on."""
+    """One of this computer's IPv4 addresses, the interface it's on (only
+    for people to read), and its network's prefix length."""
 
     interface: str
     address: str
+    prefix: int = 32
+
+    def network(self) -> ipaddress.IPv4Network:
+        return ipaddress.IPv4Network(f"{self.address}/{self.prefix}", strict=False)
 
 
 def addresses() -> list[Address]:
@@ -61,7 +70,13 @@ def addresses() -> list[Address]:
                 with contextlib.suppress(ValueError):
                     if ipaddress.ip_address(ip.ip).is_loopback:
                         continue
-                    found.append(Address(interface=str(adapter.name), address=ip.ip))
+                    found.append(
+                        Address(
+                            interface=str(adapter.name),
+                            address=ip.ip,
+                            prefix=int(ip.network_prefix),
+                        )
+                    )
     return found
 
 
@@ -126,22 +141,25 @@ def hub_hosts(
         return [LOOPBACK]
     here = addresses() if here is None else here
     remembered = remembered or config_path.parent / REMEMBERED
-    interfaces = _remembered(remembered)
+    networks = _remembered(remembered)
     learned = False
     for mid, listen in machines.items():
-        if mid not in interfaces:
-            on = next((a.interface for a in here if a.address == listen), None)
-            if on is not None:
-                interfaces[mid] = on
+        if mid not in networks:
+            came_in = next((a for a in here if a.address == listen), None)
+            if came_in is not None:
+                networks[mid] = str(came_in.network())
                 learned = True
     if learned:
         with contextlib.suppress(OSError):
-            remembered.write_text(json.dumps(interfaces, indent=2) + "\n")
+            remembered.write_text(json.dumps(networks, indent=2) + "\n")
     hosts = [LOOPBACK]
     for mid in machines:
-        on = interfaces.get(mid)
+        try:
+            network = ipaddress.IPv4Network(networks[mid])
+        except (KeyError, ValueError):
+            continue
         for a in here:
-            if a.interface == on and a.address not in hosts:
+            if ipaddress.IPv4Address(a.address) in network and a.address not in hosts:
                 hosts.append(a.address)
     return hosts
 

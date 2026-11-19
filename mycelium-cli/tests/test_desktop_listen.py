@@ -20,8 +20,8 @@ from mycelium.desktop import supervisor as sv
 from mycelium.desktop.listen import Address
 from mycelium.desktop.supervisor import Component, Locator, Supervisor
 
-WIREGUARD = Address("utun8", "10.8.0.2")
-WIFI = Address("en0", "192.168.68.52")
+WIREGUARD = Address("utun8", "10.8.0.2", 32)
+WIFI = Address("en0", "192.168.68.52", 22)
 
 
 @pytest.fixture
@@ -63,15 +63,39 @@ def test_once_paired_only_the_network_the_machine_came_in_on(where):
     assert listen.hub_hosts(**where, here=[WIREGUARD, WIFI]) == ["127.0.0.1", "10.8.0.2"]
 
 
-def test_the_hub_follows_that_network_s_address_when_it_changes(where):
-    """A laptop that joins another Wi-Fi gets another address on the same
-    interface: its paired machines on that network aren't shut out."""
+def test_the_hub_follows_a_new_address_on_the_same_network(where):
+    """Home Wi-Fi's DHCP hands out another address: still the same network,
+    so a machine paired over it isn't shut out."""
     _paired(where, "192.168.68.52")
     assert listen.hub_hosts(**where, here=[WIFI]) == ["127.0.0.1", "192.168.68.52"]
-    moved = Address("en0", "10.0.0.14")
-    assert listen.hub_hosts(**where, here=[moved, WIREGUARD]) == ["127.0.0.1", "10.0.0.14"]
+    renewed = Address("en0", "192.168.69.7", 22)
+    assert listen.hub_hosts(**where, here=[renewed, WIREGUARD]) == ["127.0.0.1", "192.168.69.7"]
     # That network down: this computer alone, never every address in its place.
     assert listen.hub_hosts(**where, here=[WIREGUARD]) == ["127.0.0.1"]
+
+
+def test_on_another_network_the_hub_isn_t_listening(where):
+    """The same Wi-Fi interface at a café is a different network: nothing
+    paired came in on it, so the hub doesn't listen there."""
+    _paired(where, "192.168.68.52")
+    assert listen.hub_hosts(**where, here=[WIFI]) == ["127.0.0.1", "192.168.68.52"]
+    cafe = Address("en0", "172.20.10.4", 28)
+    assert listen.hub_hosts(**where, here=[cafe, WIREGUARD]) == ["127.0.0.1"]
+
+
+def test_an_interface_name_taken_by_another_network_is_never_followed(where):
+    """macOS numbers tunnels in the order they come up. After a reboot,
+    WireGuard can be utun3 and a work VPN utun8: the hub finds WireGuard by
+    its network, and doesn't listen on the work VPN."""
+    _paired(where, "10.8.0.2")
+    assert listen.hub_hosts(**where, here=[WIREGUARD, WIFI]) == ["127.0.0.1", "10.8.0.2"]
+    work_vpn = Address("utun8", "10.200.4.17", 16)
+    wireguard_now = Address("utun3", "10.8.0.2", 32)
+    assert listen.hub_hosts(**where, here=[work_vpn, wireguard_now, WIFI]) == [
+        "127.0.0.1",
+        "10.8.0.2",
+    ]
+    assert listen.hub_hosts(**where, here=[work_vpn, WIFI]) == ["127.0.0.1"]
 
 
 def test_an_address_never_seen_on_any_network_here_listens_nowhere(where):
