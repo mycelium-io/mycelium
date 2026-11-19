@@ -148,7 +148,7 @@ def _env(hub_port: int | None = None) -> dict[str, str]:
     """This process's environment, with the folders a terminal usually adds
     after its PATH, since the app starts without a terminal's PATH, and the
     hub's port when the app runs one."""
-    from mycelium.runner.frameworks import install_dirs
+    from mycelium.terminal_path import install_dirs
 
     env = dict(os.environ)
     extra = [str(d) for d in install_dirs() if d.is_dir()]

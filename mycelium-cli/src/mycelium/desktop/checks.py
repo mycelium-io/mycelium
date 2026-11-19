@@ -330,19 +330,12 @@ def agent_clis() -> CheckResult:
     bridge = HerdrBridge()
     found = frameworks.scan(bridge.supported_kinds() if bridge.available() else None)
     startable = [f.name for f in found if f.launchable]
-    installed = [f.name for f in found if f.installed and not f.launchable]
     if startable:
-        details = [f"installed, but herdr can't start: {', '.join(installed)}"] if installed else []
-        return CheckResult(
-            name="Agent CLIs",
-            status="ok",
-            message=", ".join(startable),
-            details=details,
-        )
+        return CheckResult(name="Agent CLIs", status="ok", message=", ".join(startable))
     return CheckResult(
         name="Agent CLIs",
         status="warning",
-        message="none that herdr can start",
+        message="None",
         details=[
             "Install one, like Claude Code (https://claude.com/claude-code), then check again."
         ],

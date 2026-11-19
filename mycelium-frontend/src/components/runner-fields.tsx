@@ -4,7 +4,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Check, Download, Laptop, Loader2, RefreshCw } from "lucide-react";
 import { desktopMachine, useAppDownload, useIsDesktop } from "@/lib/desktop";
 import { useRunnerSignedOutOf } from "@/lib/desktop-app";
@@ -189,10 +188,9 @@ export function MachinePicker({
 
 /**
  * The agent CLIs this machine can start, as one row of choices: every kind its
- * host can start, with the ones the scan didn't find marked "not found". The
- * host starts a CLI from the person's own shell, which may have one the scan
- * missed, and a start of one that isn't there says so. What the host can't
- * start is one line pointing at the Machines page, which lists it all.
+ * host can start. Whether one is installed isn't looked for: the host starts it
+ * from the person's own shell, and a start of one that isn't there says so,
+ * with where to install it.
  */
 export function FrameworkPicker({
   runner,
@@ -207,7 +205,6 @@ export function FrameworkPicker({
 }) {
   const frameworks = sortFrameworks(runner.frameworks);
   const choices = frameworks.filter(usable);
-  const blocked = frameworks.filter((f) => f.installed && !usable(f));
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
@@ -234,7 +231,7 @@ export function FrameworkPicker({
                 role="radio"
                 aria-checked={picked}
                 aria-label={f.name}
-                title={f.path ?? `${f.name} wasn't found on this machine. Starting it tries its shell anyway.`}
+                title={f.path ?? undefined}
                 onClick={() => onChange(f.id)}
                 className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-label transition-colors ${
                   picked
@@ -244,23 +241,11 @@ export function FrameworkPicker({
               >
                 {picked && <Check className="size-3 text-accent" />}
                 <span className="font-medium">{f.name}</span>
-                {f.installed ? (
-                  version && <span className="font-mono text-micro text-faint">{version}</span>
-                ) : (
-                  <span className="text-micro text-faint">not found</span>
-                )}
+                {version && <span className="font-mono text-micro text-faint">{version}</span>}
               </button>
             );
           })}
         </div>
-      )}
-      {blocked.length > 0 && (
-        <p className="text-micro text-muted-foreground">
-          Also installed, can&apos;t start here: {blocked.map((f) => f.name).join(", ")}.{" "}
-          <Link href="/machines" className="text-accent hover:underline">
-            See why
-          </Link>
-        </p>
       )}
     </div>
   );

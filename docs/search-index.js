@@ -822,6 +822,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#machines-when-the-agent-cli-isnt-found",
+    "t": "When the agent CLI isn't found",
+    "s": "Agents › Start Agents From the App",
+    "x": "If the agent CLI isn't installed, the agent doesn't open. Add member says the CLI isn't installed and links here. Install it, then open a new terminal window and run its command, such as opencode. Mycelium starts agents the way a new terminal window starts, so if the command runs there, it will run for the agent too. Add the agent again. If the new window says the command isn't found, the installer put it in a folder",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#machines-adding-your-own-harness",
+    "t": "Adding your own harness",
+    "s": "Agents › Start Agents From the App",
+    "x": "Mycelium can start any agent CLI that herdr can start. When herdr adds one, update the desktop app, which brings its own herdr, and press Rescan in Add member. Without the app, update herdr itself. For a CLI herdr can't start yet, herdr needs to support it first: Agents lists the agent CLIs herdr can start today. Add Herdr support to your agent says how to add support for another one. An agent that runs some other wa",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#machines-bringing-in-an-agent-thats-already-running",
     "t": "Bringing in an agent that's already running",
     "s": "Agents › Start Agents From the App",

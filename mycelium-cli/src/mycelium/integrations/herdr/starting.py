@@ -12,6 +12,7 @@ same way everywhere.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -83,6 +84,27 @@ def wait_drawn(bridge: Any, pane: str, kind: str) -> None:
         time.sleep(DRAW_POLL_S)
 
 
+def shell_said_not_found(screen: str | None, kind: str) -> bool:
+    """Whether a pane's shell said it has no command for ``kind``'s CLI, as it
+    does when that CLI isn't installed or the shell's PATH doesn't reach it:
+    zsh's ``command not found: opencode``, bash's ``opencode: command not
+    found``, fish's ``Unknown command: opencode``.
+
+    Read on this machine, after a start whose CLI exited before it came up, to
+    pick what the start says; only the yes or no leaves it."""
+    if not screen:
+        return False
+    for command in of_kind(kind).binaries or (kind,):
+        name = re.escape(command)
+        if re.search(
+            rf"command not found: {name}\b|\b{name}: command not found|"
+            rf"Unknown command:? '?{name}\b|\b{name}: not found",
+            screen,
+        ):
+            return True
+    return False
+
+
 def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str] | None) -> None:
     """``bridge.start_agent``, failing as soon as the agent CLI exits.
 
@@ -95,6 +117,11 @@ def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str]
     second, before the first look. Either way :class:`AgentExitedError` says so
     at once. herdr's own start goes on in the background until its timeout,
     finding nothing.
+
+    A CLI that isn't installed never runs at all, and herdr keeps the name on
+    the pane, as ``unknown``, until its timeout. So while herdr reads it as
+    unknown, the pane is also read for the shell saying it has no such command
+    (:func:`shell_said_not_found`), which ends the start at once too.
     """
     done = threading.Event()
     failed: list[BaseException] = []
@@ -117,6 +144,10 @@ def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str]
             continue
         if agent is not None:
             seen = True
+            if agent.get("agent_status") == "unknown" and shell_said_not_found(
+                bridge.read_pane(pane, lines=40), kind
+            ):
+                raise AgentExitedError(f"{kind}'s command wasn't found in pane {pane}")
         elif seen or time.monotonic() - began >= EXIT_GRACE_S:
             raise AgentExitedError(f"{kind} exited before it came up in pane {pane}")
     if failed:

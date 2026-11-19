@@ -5,6 +5,7 @@ import {
   hostOf,
   isMine,
   launchable,
+  MISSING_CLI_DOC,
   sortFrameworks,
   startHelp,
   startReport,
@@ -52,10 +53,19 @@ describe("a start that stopped", () => {
     expect(exited.happened).toBe("Codex exited before it started on studio-mini.");
     expect(exited.steps.join(" ")).toContain("showing what Codex printed");
     expect(startReport({ result: { why: "exited" } }).why).toBe("exited");
-    // One its shell couldn't find says it isn't installed, and to install it there.
-    const missing = startHelp("missing", names);
+    // One its shell couldn't find: install it, check it runs in a new terminal
+    // window, add it again, with our docs section on it linked.
+    const missing = startHelp("missing", { ...names, command: "codex" });
     expect(missing.happened).toBe("Codex isn't installed on studio-mini.");
-    expect(missing.steps.join(" ")).toContain("Install Codex on studio-mini");
+    expect(missing.steps).toEqual([
+      "Install Codex on studio-mini.",
+      "Open a new terminal window on studio-mini and run codex. If it runs there, it will run for the agent too.",
+      "Add @reviewer again.",
+    ]);
+    expect(missing.link).toEqual({ label: "When the agent CLI isn't found", href: MISSING_CLI_DOC });
+    expect(MISSING_CLI_DOC).toBe(
+      "https://mycelium-io.github.io/mycelium/guides.html#machines-when-the-agent-cli-isnt-found",
+    );
     expect(startReport({ result: { why: "missing" } }).why).toBe("missing");
     // One that needs setting up first (a sign-in) says what the runner found, as its step.
     const signIn = "Codex isn't signed in here yet. Run `codex` once in a terminal. Then try again.";
@@ -99,7 +109,7 @@ describe("which machines are yours", () => {
 });
 
 describe("runner helpers", () => {
-  it("orders frameworks startable and found, startable, found, then neither", () => {
+  it("orders frameworks startable first, each by name, whatever a runner says is installed", () => {
     const sorted = sortFrameworks([
       framework({ id: "zed", name: "Zed", installed: false, launchable: false }),
       framework({ id: "amp", name: "Amp", launchable: false, note: "herdr can't start it" }),
@@ -107,7 +117,7 @@ describe("runner helpers", () => {
       framework({ id: "opencode", name: "opencode" }),
       framework({ id: "claude", name: "Claude Code" }),
     ]);
-    expect(sorted.map((f) => f.id)).toEqual(["claude", "opencode", "codex", "amp", "zed"]);
+    expect(sorted.map((f) => f.id)).toEqual(["claude", "codex", "opencode", "amp", "zed"]);
   });
 
   it("offers a CLI the scan didn't find when the host can start it, after the found ones", () => {

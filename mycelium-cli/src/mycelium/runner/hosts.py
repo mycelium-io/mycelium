@@ -59,12 +59,22 @@ class HostError(Exception):
     A start that got partway also says which step it stopped at (``step``) and
     the terminal it left open for the person to look at (``ref``). Never what
     that terminal shows: it goes to the hub, and a screen stays on this machine.
+    ``missing`` is that terminal's shell having said it has no such command,
+    which the host reads there and passes on only as yes or no.
     """
 
-    def __init__(self, message: str, *, step: str | None = None, ref: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        step: str | None = None,
+        ref: str | None = None,
+        missing: bool = False,
+    ) -> None:
         super().__init__(message)
         self.step = step
         self.ref = ref
+        self.missing = missing
 
 
 class StartHooks:
@@ -312,8 +322,12 @@ class HerdrHost:
         session: str | None = None,
     ) -> Started:
         from mycelium.integrations.agents import of_kind
-        from mycelium.integrations.herdr import ShellNotReadyError
-        from mycelium.integrations.herdr.starting import start_when_ready, wait_drawn
+        from mycelium.integrations.herdr import AgentExitedError, ShellNotReadyError
+        from mycelium.integrations.herdr.starting import (
+            shell_said_not_found,
+            start_when_ready,
+            wait_drawn,
+        )
 
         hooks = hooks or StartHooks()
         hooks.step(STEP_TERMINAL)
@@ -357,6 +371,11 @@ class HerdrHost:
                 str(e),
                 step=STEP_SHELL if isinstance(e, ShellNotReadyError) else STEP_AGENT,
                 ref=pane,
+                # An agent CLI that exited before it came up: its shell may
+                # have said there's no such command, which is how a CLI that
+                # isn't installed shows, since nothing looks for it beforehand.
+                missing=isinstance(e, AgentExitedError)
+                and shell_said_not_found(self.bridge.read_pane(pane, lines=40), kind),
             ) from e
         if came_up is not None:
             # It started but never read as ready, most often stopped at a prompt.

@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import shlex
-import shutil
 import time
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass, field
@@ -803,22 +802,19 @@ def _remember(answer: Literal["yes", "no"]) -> None:
     path.write_text(json.dumps({"answer": answer, "at": time.time()}) + "\n")
 
 
-def _installed_kinds() -> set[str]:
-    """The herdr kinds of the agent CLIs found on PATH here."""
-    from mycelium.integrations.agents import KNOWN
-
-    return {
-        k.herdr_kind for k in KNOWN if k.herdr_kind and any(shutil.which(b) for b in k.binaries)
-    }
+def _available_integrations(bridge: HerdrBridge) -> set[str]:
+    """The herdr integrations for the agent CLIs herdr finds installed here:
+    herdr's answer, not ours. None when herdr can't say."""
+    return bridge.available_integrations() or set()
 
 
 def integrations(*, bridge: HerdrBridge | None = None) -> Integrations:
-    """herdr's version, and its integrations for the agent CLIs on PATH here."""
+    """herdr's version, and its integrations for the agent CLIs herdr finds here."""
     bridge = bridge or HerdrBridge()
     client = bridge.version()
     server = bridge.server_version() if bridge.available() else None
     status = bridge.integrations() or {}
-    wanted = {integration_for(k) for k in _installed_kinds()}
+    wanted = _available_integrations(bridge)
     return Integrations(
         herdr_server=server,
         herdr_client=client,

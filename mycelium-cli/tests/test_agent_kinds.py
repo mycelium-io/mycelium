@@ -159,7 +159,7 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     a Node CLI's ``#!/usr/bin/env node`` needs the node installed beside it.
     Asked any other way, it says nothing, and Codex would start without the
     flags it has."""
-    from mycelium.runner import frameworks
+    from mycelium import terminal_path
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # the runner's own: no codex
@@ -171,7 +171,7 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     codex = nvm / "codex"
     codex.write_text("#!/usr/bin/env fakenode\n")
     codex.chmod(0o755)
-    monkeypatch.setattr(frameworks, "install_dirs", lambda: [nvm])
+    monkeypatch.setattr(terminal_path, "install_dirs", lambda: [nvm])
 
     args = agents.of_kind("codex").launch_args()
     assert args[0] == "--approve-for-me"

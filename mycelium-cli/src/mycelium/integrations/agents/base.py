@@ -135,7 +135,7 @@ class AgentKind:
     def run(self, *args: str, timeout: float = 15) -> subprocess.CompletedProcess | None:
         """The installed CLI run with ``args``, found and run the way :meth:`offers`
         does; ``None`` when it isn't found or couldn't be run."""
-        from mycelium.runner.frameworks import locate
+        from mycelium.terminal_path import locate
 
         found, search = locate(self.binaries)
         if not found:
@@ -163,13 +163,13 @@ class AgentKind:
         has it: an older one would refuse to start over an option it doesn't
         know, which is worse than starting without it.
 
-        The CLI is found the way the scan finds it (``runner.frameworks.locate``:
-        this process's PATH, then the usual install folders), and its ``--help``
-        runs with that folder first on its PATH: one installed under nvm is often
-        a Node script that needs the ``node`` beside it. One the scan doesn't
-        find is started without the flags.
+        The CLI is found on this process's PATH, then in the folders a
+        terminal's PATH usually adds (``terminal_path.locate``), and its
+        ``--help`` runs with that folder first on its PATH: one installed under
+        nvm is often a Node script that needs the ``node`` beside it. One not
+        found there is started without the flags.
         """
-        from mycelium.runner.frameworks import locate
+        from mycelium.terminal_path import locate
 
         found, search = locate(self.binaries)
         if not found:

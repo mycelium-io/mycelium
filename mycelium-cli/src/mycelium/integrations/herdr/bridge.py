@@ -35,7 +35,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mycelium.filesystem import get_mycelium_dir
 from mycelium.runner.log import ms, slow
@@ -946,6 +946,47 @@ class HerdrBridge:
             if sep and name.strip():
                 out[name.strip()] = state.strip().startswith("current")
         return out or None
+
+    def available_integrations(self) -> set[str] | None:
+        """The integrations whose agent CLI herdr finds installed here, named as
+        :meth:`integrations` names them; ``None`` if herdr can't say.
+
+        herdr's own answer (``integration.list``'s ``available``), so whether an
+        agent CLI is installed is never worked out here."""
+        listed = self.api("integration.list")
+        found = listed.get("integrations") if isinstance(listed, dict) else None
+        if not isinstance(found, list):
+            return None
+        return {
+            str(i["target"]).replace("_", "-")
+            for i in found
+            if isinstance(i, dict) and i.get("available") and i.get("target")
+        }
+
+    def api(self, method: str, params: dict | None = None) -> dict[str, Any] | None:
+        """One call on herdr's socket API, its ``result``; ``None`` when herdr
+        isn't answering or refused it. For what herdr's CLI has no command for."""
+        import socket
+
+        path = os.environ.get("HERDR_SOCKET_PATH") or str(
+            Path.home() / ".config" / "herdr" / "herdr.sock"
+        )
+        request = {"id": "mycelium", "method": method, "params": params or {}}
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                s.settimeout(5)
+                s.connect(path)
+                s.sendall(json.dumps(request).encode() + b"\n")
+                answer = b""
+                while not answer.endswith(b"\n"):
+                    chunk = s.recv(65536)
+                    if not chunk:
+                        break
+                    answer += chunk
+            result = json.loads(answer).get("result")
+        except (OSError, ValueError, AttributeError):
+            return None
+        return result if isinstance(result, dict) else None
 
     def install_integration(self, name: str) -> None:
         """Install (or bring up to date) herdr's integration ``name``.
