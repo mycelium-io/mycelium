@@ -73,8 +73,9 @@ VALID_SUBKINDS: dict[str, frozenset[str]] = {
     # ``counter``/``accept``/``reject`` are the negotiation-move subkinds a
     # coordination reply carries (see the backend's ``EXCHANGE_MOVE_SUBKINDS``);
     # ``team-formation`` predates them. ``amend`` revises an earlier message (its
-    # parents carry that message's id). An empty/None subkind stays valid.
-    "exchange": frozenset({"team-formation", "counter", "accept", "reject", "amend"}),
+    # parents carry that message's id), and ``reaction`` puts an emoji on one.
+    # An empty/None subkind stays valid.
+    "exchange": frozenset({"team-formation", "counter", "accept", "reject", "amend", "reaction"}),
     "contingency": frozenset({"negotiation"}),
 }
 

@@ -2878,6 +2878,118 @@
         }
       }
     },
+    "/api/rooms/{room_name}/messages/{message_id}/reactions": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "React To Message",
+        "description": "Put an emoji on a message, or take yours off.\n\nThe reaction is an ``exchange:reaction`` message parented on the one it is\non, and its text silently mentions that message's author (``@~author \ud83d\udc4d``),\nso the author reads it on their next wake and nobody is woken. Taking it off\nis a record too, and names nobody. The read path folds reactions into their\nmessage, so neither is ever a row of its own, and a reaction raises no ping:\nit doesn't move a task.",
+        "operationId": "react_to_message_api_rooms__room_name__messages__message_id__reactions_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageReact"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageRead"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/messages/{message_id}/amend": {
       "post": {
         "tags": [
@@ -21279,6 +21391,14 @@
             "title": "Interrupted",
             "description": "Who its sender interrupted with it after sending it, folded in on read. None for a message nobody was interrupted with."
           },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReactions"
+            },
+            "type": "array",
+            "title": "Reactions",
+            "description": "The emoji on it, folded in on read: each emoji once, in the order it was first put on, with who put it on."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -21471,6 +21591,63 @@
         ],
         "title": "MessageListResponse"
       },
+      "MessageReact": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Emoji",
+            "description": "The emoji, as itself"
+          },
+          "on": {
+            "type": "boolean",
+            "title": "On",
+            "description": "False takes your reaction off",
+            "default": true
+          },
+          "sender_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Handle",
+            "description": "Who is reacting. Defaults to the token-verified caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji"
+        ],
+        "title": "MessageReact",
+        "description": "Put an emoji on a message, or take yours off."
+      },
+      "MessageReactions": {
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          },
+          "by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "emoji",
+          "by"
+        ],
+        "title": "MessageReactions",
+        "description": "One emoji on a message and who put it on, oldest first."
+      },
       "MessageRead": {
         "properties": {
           "id": {
@@ -21575,6 +21752,14 @@
             ],
             "title": "Interrupted",
             "description": "Who its sender interrupted with it after sending it, folded in on read. None for a message nobody was interrupted with."
+          },
+          "reactions": {
+            "items": {
+              "$ref": "#/components/schemas/MessageReactions"
+            },
+            "type": "array",
+            "title": "Reactions",
+            "description": "The emoji on it, folded in on read: each emoji once, in the order it was first put on, with who put it on."
           },
           "created_at": {
             "type": "string",

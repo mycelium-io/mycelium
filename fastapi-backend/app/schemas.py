@@ -280,6 +280,13 @@ class MessageInterrupted(BaseModel):
     at: datetime = Field(..., description="When")
 
 
+class MessageReactions(BaseModel):
+    """One emoji on a message and who put it on, oldest first."""
+
+    emoji: str
+    by: list[str]
+
+
 class MessageRead(BaseModel):
     id: UUID
     # Polymorphic: exactly one of room_name / coordination_session_id is set.
@@ -307,9 +314,26 @@ class MessageRead(BaseModel):
             "None for a message nobody was interrupted with."
         ),
     )
+    reactions: list[MessageReactions] = Field(
+        default_factory=list,
+        description=(
+            "The emoji on it, folded in on read: each emoji once, in the order it "
+            "was first put on, with who put it on."
+        ),
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class MessageReact(BaseModel):
+    """Put an emoji on a message, or take yours off."""
+
+    emoji: str = Field(..., min_length=1, max_length=32, description="The emoji, as itself")
+    on: bool = Field(True, description="False takes your reaction off")
+    sender_handle: str | None = Field(
+        None, description="Who is reacting. Defaults to the token-verified caller."
+    )
 
 
 class MessageInterrupt(BaseModel):

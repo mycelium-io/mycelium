@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it, vi } from "vitest";
-import { parseEvent, unwrapContent } from "@/lib/room-events";
+import { parseEvent, unwrapContent, withReaction } from "@/lib/room-events";
 import { NOTICE_TYPE, PING_TYPE } from "@/lib/threads";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
@@ -265,6 +265,38 @@ describe("parseEvent", () => {
     });
     expect(folded.amends).toBeNull();
     expect(folded.edited).toBe(true);
+  });
+
+  it("reads a live reaction off the header, and a read's folded reactions off the message", () => {
+    const reaction = parseEvent({
+      message_type: "l9_exchange",
+      sender_handle: "julia",
+      content: JSON.stringify({
+        content: "@~builder 🎉",
+        reaction: { emoji: "🎉", on: true, message: "r42" },
+        l9: { header: { subkind: "reaction", message: { parents: ["m42"] } } },
+      }),
+      created_at: CREATED,
+    });
+    expect(reaction.reacts).toEqual({ wireId: "m42", messageId: "r42", emoji: "🎉", on: true });
+
+    const read = parseEvent({
+      message_type: "broadcast",
+      sender_handle: "builder",
+      content: "shipped",
+      reactions: [{ emoji: "🎉", by: ["julia"] }, { emoji: 3 }],
+    });
+    expect(read.reacts).toBeNull();
+    expect(read.reactions).toEqual([{ emoji: "🎉", by: ["julia"] }]);
+  });
+
+  it("puts a reaction on and takes it off, dropping an emoji nobody has on", () => {
+    const one = [{ emoji: "🎉", by: ["julia"] }];
+    expect(withReaction(one, "🎉", "lead", true)).toEqual([{ emoji: "🎉", by: ["julia", "lead"] }]);
+    expect(withReaction(one, "🎉", "julia", true)).toBe(one);
+    expect(withReaction(one, "👀", "lead", true)).toEqual([...one, { emoji: "👀", by: ["lead"] }]);
+    expect(withReaction(one, "🎉", "julia", false)).toEqual([]);
+    expect(withReaction(one, "🎉", "lead", false)).toBe(one);
   });
 
   it("warns loudly on an unhandled type rather than dropping it silently", () => {

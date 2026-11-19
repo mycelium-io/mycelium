@@ -27,7 +27,7 @@ import {
   threadShortId,
   upstreamInChat,
 } from "@/lib/threads";
-import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { CHAT_TYPES, parseEvent, withReaction, type Event } from "@/lib/room-events";
 import { foldAnswers } from "@/lib/approvals";
 import { conductorLineOf, runProgress, type RunProgress } from "@/lib/conductor-line";
 import {
@@ -486,6 +486,20 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
+/** Fold a live reaction into the message it's on. The hub folds a read; live,
+ *  the reaction arrives as a message of its own and is never a row. Its message
+ *  is matched by its envelope id when it arrived live, or by its read id when
+ *  it was read from history. One whose message isn't here is dropped. */
+export function foldReaction(events: Event[], reaction: Event): Event[] {
+  const r = reaction.reacts;
+  if (!r) return events;
+  return events.map((e) =>
+    (r.messageId !== null && e.messageId === r.messageId) || (e.wireId !== null && e.wireId === r.wireId)
+      ? { ...e, reactions: withReaction(e.reactions, r.emoji, reaction.sender, r.on) }
+      : e,
+  );
+}
+
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
@@ -734,6 +748,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       refreshMemories();
     }
     setEvents((prev) => {
+      if (event.reacts) return foldReaction(prev, event);
       if (event.amends) return foldAmendment(prev, event);
       // A catch-up may have read it from the hub before its live frame landed.
       if (event.messageId !== null && prev.some((x) => x.messageId === event.messageId)) return prev;

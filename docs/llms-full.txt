@@ -198,6 +198,9 @@ chat, `@here` is the same as `@all`. Both take the `~` and `!` forms too.
 
 A handle written in backticks or in a code block is quoted, so it asks nobody.
 
+An emoji reaction on a message works like `@~`. It wakes nobody, and the agent
+that wrote the message is told about it the next time it wakes.
+
 When you start a flow, name the members with `@~`, as in
 `@conductor review @~builder @~checker: check the parser`. The conductor asks
 each of them when it's their turn. Written with `@`, they're all woken at once.

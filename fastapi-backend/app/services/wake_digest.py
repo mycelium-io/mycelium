@@ -41,6 +41,8 @@ from app.services.persister import (
     parse_mentions,
     parse_recorded_at,
     parse_silent_mentions,
+    reaction_of,
+    reaction_text,
     read_id,
     record_episode,
 )
@@ -775,14 +777,61 @@ def _silent_line(text: str, me: str) -> str:
     return _short(text.strip(), SILENT_CHARS)
 
 
+def _reactions_to(me: str, reacted: list[Any]) -> list[Any]:
+    """The emoji put on the agent's messages that are still on, newest first.
+
+    A reaction names its message's author with ``@~``; one taken off again
+    names nobody, and takes its earlier one with it."""
+    latest: dict[tuple[str, str, str], Any] = {}
+    for record in reacted:
+        header = record.content.get("l9", {}).get("header", {})
+        found = reaction_of(
+            record.subkind, header.get("message", {}).get("parents"), record.content
+        )
+        if found is not None:
+            latest[(found[0], found[1], _norm(record.sender))] = (record, found[2])
+    kept = [
+        record
+        for record, on in latest.values()
+        if on
+        and me in (_norm(h) for h in parse_silent_mentions(reaction_text(record.content) or ""))
+    ]
+    return list(reversed(kept))
+
+
+def _reaction_line(room: str, record: Any, window: list[Any], now: datetime) -> str:
+    """``@julia reacted 👍 · 2m · in the room, to: <the message's first line>``."""
+    header = record.content.get("l9", {}).get("header", {})
+    target, emoji, _ = reaction_of(
+        record.subkind, header.get("message", {}).get("parents"), record.content
+    ) or ("", "", True)
+    on = next((r for r in window if r.message_id == target), None)
+    when = age(parse_recorded_at(record.recorded_at), now)
+    line = f"         @{plain(record.sender)} reacted {emoji} · {when} · {_in(room, record)}"
+    if on is None:
+        return line
+    first = (_conversational_text(on.content) or "").strip().splitlines()
+    quote = _short(first[0], SILENT_CHARS) if first else ""
+    return f"{line}, to: {quote}   (mycelium room messages {room} --id {short_id(on)})"
+
+
 def _silent_lines(
-    room: str, me: str, said: list[Any], asked: list[Any], now: datetime
+    room: str,
+    me: str,
+    said: list[Any],
+    asked: list[Any],
+    now: datetime,
+    *,
+    reacted: list[Any] | None = None,
+    window: list[Any] | None = None,
 ) -> list[str]:
     """Where the agent was named with ``@~`` since its last turn, newest first.
 
     A silent mention never wakes anyone; it rides along in the next wake that
     something else caused, so a member named for reference learns it was. A
-    message that also asks for it is already shown as an ask."""
+    message that also asks for it is already shown as an ask. An emoji put on
+    one of its messages names it the same way, and is shown as the reaction it
+    is."""
     asking = {id(r) for r in asked}
     named = []
     for record in reversed(said):
@@ -791,11 +840,19 @@ def _silent_lines(
             continue
         if me in (_norm(h) for h in parse_silent_mentions(text)):
             named.append(record)
+    reactions = _reactions_to(me, reacted or [])
+    named = sorted(
+        named + reactions, key=lambda r: parse_recorded_at(r.recorded_at) or now, reverse=True
+    )
     if not named:
         return []
     times = "once" if len(named) == 1 else f"{len(named)} times"
     lines = ["", f"Mentioned: you were mentioned silently (@~) {times} since your last turn:"]
+    is_reaction = {id(r) for r in reactions}
     for record in named[:SILENT_SHOWN]:
+        if id(record) in is_reaction:
+            lines.append(_reaction_line(room, record, window or [], now))
+            continue
         when = age(parse_recorded_at(record.recorded_at), now)
         quote = _silent_line(str(record.content.get("content") or ""), me)
         lines.append(
@@ -1099,7 +1156,8 @@ def build(
     lines += _watching_lines(room, me, watched, now)
     # What ``await`` prints hands these messages over itself.
     if not awaited:
-        lines += _silent_lines(room, me, said, asked, now)
+        reacted = [r for r in since if id(r) in after_turn and reaction_text(r.content)]
+        lines += _silent_lines(room, me, said, asked, now, reacted=reacted, window=window)
 
     mine, tally = board(room, handle, now)
     lines.append("")

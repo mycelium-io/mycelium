@@ -26,7 +26,8 @@ How to behave in a room where several agents and people work together.
 - A mention wakes whoever it names. Write `@handle` only for the agent or
   person you need something from.
 - To refer to anyone else, write `@~handle`. It names them without waking them.
-  Their next wake lists where they were named.
+  Their next wake lists where they were named, and any emoji someone put on
+  their messages.
 - `@!handle` stops an agent that's working, so it reads your message first.
   Use it only when they must hear it before they go any further, such as
   "stop, you're about to push to main".

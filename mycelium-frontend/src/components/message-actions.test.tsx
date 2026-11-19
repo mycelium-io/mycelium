@@ -132,11 +132,12 @@ describe("<MessageActions /> threads", () => {
     task: null,
   };
 
-  it("orders the bar reply, quote, task, thread, then copy and link", () => {
+  it("orders the bar reaction, reply, quote, task, thread, then copy and link", () => {
     render(<Row threads />);
     fireEvent.mouseEnter(screen.getByTestId("row"));
     const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent);
-    expect(names.slice(0, 6)).toEqual([
+    expect(names.slice(0, 7)).toEqual([
+      "Add a reaction",
       "Reply to @builder",
       "Quote",
       "Make a task",

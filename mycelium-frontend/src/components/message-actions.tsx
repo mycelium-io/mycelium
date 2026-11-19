@@ -4,7 +4,8 @@
 "use client";
 
 /**
- * The row of buttons on a channel message the pointer is on: Reply and Quote
+ * The row of buttons on a channel message the pointer is on: an emoji
+ * reaction, Reply and Quote
  * (into the room's composer), Copy text and Copy link, Make a task, and More,
  * which holds the right-click menu's remaining items. It sits on the message's
  * top edge so it never moves the text, and draws nothing until its row is
@@ -25,8 +26,9 @@ import {
   MessageSquarePlus,
   MoreHorizontal,
   Quote,
+  SmilePlus,
 } from "lucide-react";
-import { createTask, createThread } from "@/lib/api";
+import { createTask, createThread, type MessageReactions } from "@/lib/api";
 import { useRoomRevalidate, useRoomUploads, type MessageThread } from "@/lib/room-data";
 import { saveBlob, zipName, zipUploads } from "@/lib/upload-zip";
 import { uploadKeysIn } from "@/lib/uploads";
@@ -45,6 +47,7 @@ import { IconButton, iconButtonClass } from "@/components/ui/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { RawMessageDialog } from "@/components/raw-message-dialog";
+import { ReactionPicker, useReact } from "@/components/messages/reactions";
 
 interface Props {
   roomName: string;
@@ -54,6 +57,8 @@ interface Props {
   content: string;
   sender: string;
   wire?: Record<string, unknown>;
+  /** The emoji already on it, so picking one you put on takes it off. */
+  reactions?: MessageReactions[];
   /** Opens the task a message was just made into, on its thread. */
   onOpenThread?: (episode: string) => void;
   /** The message's clock time, shown at the bar's start. */
@@ -78,6 +83,7 @@ export function MessageActions(props: Props) {
   const anchor = useRef<HTMLSpanElement>(null);
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
   useEffect(() => {
     const row = anchor.current?.parentElement;
     if (!row) return;
@@ -108,8 +114,15 @@ export function MessageActions(props: Props) {
   return (
     <>
       <span ref={anchor} hidden />
-      {(hovered || menuOpen) && (
-        <Bar {...props} menuOpen={menuOpen} onMenuOpen={setMenuOpen} onViewRaw={() => setRawOpen(true)} />
+      {(hovered || menuOpen || picking) && (
+        <Bar
+          {...props}
+          menuOpen={menuOpen}
+          onMenuOpen={setMenuOpen}
+          picking={picking}
+          onPicking={setPicking}
+          onViewRaw={() => setRawOpen(true)}
+        />
       )}
       {rawOpen && props.wire && <RawMessageDialog open onClose={() => setRawOpen(false)} message={props.wire} />}
     </>
@@ -127,11 +140,21 @@ function Bar({
   time,
   thread = null,
   threads = false,
+  reactions = [],
   menuOpen,
   onMenuOpen,
+  picking,
+  onPicking,
   onViewRaw,
-}: Props & { menuOpen: boolean; onMenuOpen: (open: boolean) => void; onViewRaw: () => void }) {
+}: Props & {
+  menuOpen: boolean;
+  onMenuOpen: (open: boolean) => void;
+  picking: boolean;
+  onPicking: (open: boolean) => void;
+  onViewRaw: () => void;
+}) {
   const { principal } = useCurrentUser();
+  const { me, react, failed: reactFailed } = useReact(roomName, messageId);
   const [copied, setCopied] = useState<"text" | "link" | null>(null);
   const [making, setMaking] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
@@ -219,6 +242,26 @@ function Bar({
       className="absolute -top-3.5 right-4 z-10 flex items-center gap-px rounded-lg border border-border2 bg-elevated p-0.5 shadow-md"
     >
       {time && <span className="px-1.5 text-micro tabular text-faint">{time}</span>}
+      {messageId && (
+        <ReactionPicker
+          open={picking}
+          onOpenChange={onPicking}
+          onPick={(emoji) => {
+            const found = reactions.find((r) => r.emoji === emoji);
+            void react(emoji, !found?.by.includes(me));
+          }}
+          trigger={
+            <Tooltip content={reactFailed ? `Couldn't react: ${reactFailed}` : "Add a reaction"}>
+              <PopoverTrigger
+                aria-label="Add a reaction"
+                className={iconButtonClass("sm", reactFailed ? "size-7 text-red" : "size-7")}
+              >
+                <SmilePlus />
+              </PopoverTrigger>
+            </Tooltip>
+          }
+        />
+      )}
       {/* Reply names the sender in the composer, so it's drawn as the @ it
           types; an arrow read as "reply in a thread", which this isn't. */}
       <IconButton label={`Reply to @${sender}`} action="message.reply" className="size-7" onClick={reply}>
