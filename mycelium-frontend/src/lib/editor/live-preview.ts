@@ -19,6 +19,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import type { SyntaxNodeRef } from "@lezer/common";
+import { loadsHere } from "@/lib/room-image";
 
 /**
  * Live Preview: markdown drawn as it reads while it stays plain text, the way
@@ -135,6 +136,15 @@ class ImageWidget extends WidgetType {
     return other.alt === this.alt && other.src === this.src;
   }
   toDOM() {
+    // Only the room's own upload loads (`loadsHere`). An image from another
+    // site shows as its name in link style, so editing tells that site nothing.
+    if (!loadsHere(this.src)) {
+      const span = document.createElement("span");
+      span.className = "cm-md-link";
+      span.title = this.src;
+      span.textContent = this.alt || this.src;
+      return span;
+    }
     const img = document.createElement("img");
     img.src = this.src;
     img.alt = this.alt;
