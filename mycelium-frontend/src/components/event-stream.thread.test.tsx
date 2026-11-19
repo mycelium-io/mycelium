@@ -173,6 +173,43 @@ describe("<EventStream /> and the threads inside the room", () => {
     expect(onOpenThread).toHaveBeenCalledWith(THREAD);
   });
 
+  it("moves a message's thread up the rail on a reply, and opens the thread from there", async () => {
+    const parent = { ...said("adding an alert for failing payments", LIVE, "operator"), id: "h6" };
+    vi.mocked(fetchMessages).mockResolvedValue({ messages: [parent] });
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
+      {
+        key: "threads/adding-an-alert-for-failing-payments",
+        title: "adding an alert for failing payments",
+        version: 1,
+        created_by: "reviewer",
+        updated_at: CREATED,
+        episode: THREAD,
+        meta: { from: "h6" },
+        thread: { replies: 1, repliers: ["risk"], last_reply: "what counts as failing?", last_reply_at: CREATED },
+      },
+    ]);
+    const onOpenThread = vi.fn();
+    const { container } = renderWithSWR(<EventStream roomName={ROOM} onOpenThread={onOpenThread} />);
+    await screen.findByRole("button", { name: /1 reply/ });
+    const rows = container.querySelectorAll("[data-event-id]").length;
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(ping("risk", "m-2"));
+    });
+
+    // On the rail as a thread, under its name, with who replied.
+    const open = await screen.findByRole("button", { name: "Open thread adding an alert for failing payments" });
+    expect(screen.getByText("Thread")).toBeInTheDocument();
+    expect(screen.getByText("@risk replied")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Open task/ })).toBeNull();
+    // Not a row in the chat.
+    expect(container.querySelectorAll("[data-event-id]").length).toBe(rows);
+    await userEvent.click(open);
+    expect(onOpenThread).toHaveBeenCalledWith(THREAD);
+  });
+
   it("draws a reply in a message's thread on that message's line, never as a row of its own", async () => {
     const parent = { ...said("adding an alert for failing payments", LIVE, "operator"), id: "h6" };
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [parent] });

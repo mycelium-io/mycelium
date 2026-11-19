@@ -33,6 +33,9 @@ export interface ActivityItem {
   title: string;
   /** The thread to open, when there is one. */
   episode: string | null;
+  /** A thread started from a message rather than a task: it has no board
+   *  state, and opening it opens the thread. */
+  thread?: boolean;
   /** The row's own key, for opening its details. Null for a thread the room
    *  knows no row for — there the conversation is all there is to open. */
   memoryKey: string | null;
@@ -117,6 +120,14 @@ function tally(items: ActivityItem[]): { key: string; n: number; word: string; t
   }));
 }
 
+/** "5 tasks · 2 threads", for the rows given; a kind with none goes unsaid. */
+function counted(items: ActivityItem[]): string {
+  const threads = items.filter((item) => item.thread).length;
+  const tasks = items.length - threads;
+  const say = (n: number, word: string) => (n ? [`${n} ${word}${n === 1 ? "" : "s"}`] : []);
+  return [...say(tasks, "task"), ...say(threads, "thread")].join(" · ");
+}
+
 /** How long ago, as short as it can be said: "now", "4m", "2h", "3d". */
 export function shortAge(at: number, now: number): string {
   if (!at) return "";
@@ -142,6 +153,7 @@ function useNow(everyMs = 30_000): number {
 export function lastChange(update: ActivityUpdate): string {
   const who = update.detail.match(/@[\w.@-]+/g)?.join(", ") ?? "";
   if (update.label === "Activity") return who ? `${who} posted in the thread` : "a message in the thread";
+  if (update.label === "Reply") return who ? `${who} replied` : "a reply";
   if (update.label === "Knowledge") return who ? `${who} edited its notes` : "its notes changed";
   // Its pull request: nobody here did it, and the handles are who a review
   // was asked of. "CI" keeps its capitals.
@@ -286,7 +298,7 @@ export function ActivityRail({
           </span>
         )}
         <span className="ml-auto hidden flex-shrink-0 text-faint @[30rem]:inline">
-          {items.length} tasks
+          {counted(items)}
         </span>
       </button>
       {!folded && (
@@ -356,10 +368,19 @@ function ActivityRow({
         {/* The state as a word in a column of its own, so titles line up and a
             blocked row says it's blocked without anyone learning the colors.
             A narrow strip keeps the color alone. */}
-        <span className="flex flex-shrink-0 items-center gap-1.5 @[30rem]:w-[4.75rem]" style={{ color: standing.tone }}>
-          <Dot tone={standing.tone} />
-          <span className="hidden @[30rem]:inline">{standing.word}</span>
-        </span>
+        {item.thread ? (
+          // A thread has no board state: it says what it is, with the bubble
+          // the app draws for a thread.
+          <span className="flex flex-shrink-0 items-center gap-1.5 text-muted-foreground @[30rem]:w-[4.75rem]">
+            <MessageSquare aria-hidden className="size-2.5" strokeWidth={2.2} />
+            <span className="hidden @[30rem]:inline">Thread</span>
+          </span>
+        ) : (
+          <span className="flex flex-shrink-0 items-center gap-1.5 @[30rem]:w-[4.75rem]" style={{ color: standing.tone }}>
+            <Dot tone={standing.tone} />
+            <span className="hidden @[30rem]:inline">{standing.word}</span>
+          </span>
+        )}
         {/* The task itself, as text rather than a link-colored wall: it still
             opens the task, and says so on hover. What changed sits in a column
             of its own beside it, so every row's starts at the same place. */}
@@ -371,7 +392,7 @@ function ActivityRow({
             }
             disabled={!canOpen}
             title={item.subject}
-            aria-label={`Open task ${item.title}`}
+            aria-label={`Open ${item.thread ? "thread" : "task"} ${item.title}`}
             className={cn(
               "min-w-0 max-w-full justify-self-start truncate rounded text-left text-label transition-colors enabled:hover:text-accent enabled:hover:underline disabled:cursor-default",
               done ? "text-muted-foreground" : "text-text",
