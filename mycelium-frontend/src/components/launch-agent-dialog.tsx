@@ -5,13 +5,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BookOpen,
   Check,
   ChevronDown,
   Circle,
+  CircleAlert,
+  ExternalLink,
   FolderOpen,
-  GitBranch,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   SquareTerminal,
   Undo2,
@@ -37,7 +40,9 @@ import {
   useRunnerJob,
   useRunners,
   useRunnersRevalidate,
+  type StartHelp,
 } from "@/lib/runners";
+import { DOCS_URL } from "@/lib/install";
 import { signFor } from "@/lib/device-key";
 import { terminalLink, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import {
@@ -51,6 +56,7 @@ import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
+import { Checkbox } from "@/components/ui/checkbox";
 import { AgentScreen } from "@/components/agent-screen";
 import { FolderPicker } from "@/components/folder-picker";
 import { HarnessIcon } from "@/components/harness-icon";
@@ -586,7 +592,11 @@ export function InstructionsEditor({
 const fieldClass =
   "rounded-md border border-border bg-bg px-2 py-1 text-label text-text outline-none hover:border-border2 focus:border-accent";
 
-/** Where the agent runs: agent CLI and folder on this machine, in one strip beside the button. */
+/**
+ * Where the agent runs, as a few labeled rows above the button: the machine
+ * (when there's more than one), the agent CLI, and the folder, with whether it
+ * gets a branch of its own under it. One row each, so nothing is squeezed.
+ */
 function RunsOn({
   runner,
   frameworkId,
@@ -608,76 +618,78 @@ function RunsOn({
 }) {
   const startable = launchable(runner);
   const roots = runner.roots.map(tildePath);
+  const label = "text-label text-muted-foreground";
   return (
-    <MemberFooter
-      action={children}
-      above={
-        <>
-          {!runner.herdr ? (
-            <HostMissing runner={runner} />
-          ) : startable.length === 0 ? (
-            <div className="flex items-center gap-1 text-micro text-muted-foreground">
-              No agent CLI on this machine that {hostOf(runner).name} can start. Install one, then rescan.
-              <RescanButton runner={runner} iconOnly />
-            </div>
-          ) : null}
-        </>
-      }
-    >
-      {/* One row: which agent CLI, the folder it works in on this machine (named
-          before the path, never a choice), and whether it gets a branch of its own. */}
-      {startable.length > 0 && (
-        <HarnessPicker runner={runner} frameworks={startable} value={frameworkId} onChange={onFramework} />
-      )}
-      <div className={cn(fieldClass, "flex h-10 min-w-0 flex-1 items-center gap-1.5 py-0 focus-within:border-accent")}>
-        <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
-        <span className="max-w-28 flex-shrink-0 truncate text-faint" title={`On ${runnerName(runner)}, this machine`}>
+    <div className="border-t border-border bg-surface/60 px-5 pt-4 pb-4">
+      {!runner.herdr ? (
+        <div className="mb-3">
+          <HostMissing runner={runner} />
+        </div>
+      ) : startable.length === 0 ? (
+        <div className="mb-3 flex items-center gap-1 text-micro text-muted-foreground">
+          No agent CLI on this machine that {hostOf(runner).name} can start. Install one, then rescan.
+          <RescanButton runner={runner} iconOnly />
+        </div>
+      ) : null}
+      <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3">
+        {/* The machine the app runs on, or the one connected. Never a choice here. */}
+        <span className={label}>Machine</span>
+        <span className="truncate text-label text-text" title={`On ${runnerName(runner)}, this machine`}>
           {runnerName(runner)}
         </span>
-        <label htmlFor="launch-folder" className="sr-only">
+        {startable.length > 0 && (
+          <>
+            <span className={label}>Agent CLI</span>
+            <div>
+              <HarnessPicker runner={runner} frameworks={startable} value={frameworkId} onChange={onFramework} />
+            </div>
+          </>
+        )}
+        <label htmlFor="launch-folder" className={label}>
           Folder
         </label>
-        <input
-          id="launch-folder"
-          list="launch-folder-roots"
-          value={folder}
-          onChange={(e) => onFolder(e.target.value)}
-          spellCheck={false}
-          placeholder={roots[0] ?? "~/code/project"}
-          title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
-          className="min-w-0 flex-1 bg-transparent py-1.5 font-mono text-text outline-none placeholder:text-faint"
-        />
+        <div className="flex min-w-0 items-center gap-2">
+          <div
+            className={cn(fieldClass, "flex h-9 min-w-0 flex-1 items-center gap-2 py-0 focus-within:border-accent")}
+          >
+            <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
+            <input
+              id="launch-folder"
+              list="launch-folder-roots"
+              value={folder}
+              onChange={(e) => onFolder(e.target.value)}
+              spellCheck={false}
+              placeholder={roots[0] ?? "~/code/project"}
+              title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
+              className="min-w-0 flex-1 bg-transparent font-mono text-text outline-none placeholder:text-faint"
+            />
+          </div>
+          <datalist id="launch-folder-roots">
+            {roots.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+          <FolderPicker
+            runner={runner}
+            value={expandPath(folder, runner.roots)}
+            onPick={(path) => onFolder(tildePath(path))}
+          />
+        </div>
+        {startsInHerdr(runner) && (
+          <>
+            <span aria-hidden />
+            <label
+              title="A git worktree of the folder"
+              className="flex w-fit cursor-pointer items-center gap-2 text-label text-text"
+            >
+              <Checkbox checked={worktree} onCheckedChange={(on) => onWorktree(on === true)} />
+              Work on its own branch
+            </label>
+          </>
+        )}
       </div>
-      <datalist id="launch-folder-roots">
-        {roots.map((r) => (
-          <option key={r} value={r} />
-        ))}
-      </datalist>
-      <FolderPicker
-        runner={runner}
-        value={expandPath(folder, runner.roots)}
-        onPick={(path) => onFolder(tildePath(path))}
-      />
-      {startsInHerdr(runner) && (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={worktree}
-          aria-label="Own worktree"
-          title="Start it in a git worktree of this folder, on a branch of its own"
-          onClick={() => onWorktree(!worktree)}
-          className={cn(
-            "flex h-10 flex-shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-label transition-colors",
-            worktree
-              ? "border-accent bg-accent/10 text-text"
-              : "border-border text-muted-foreground hover:border-border2 hover:text-text",
-          )}
-        >
-          <GitBranch className={cn("size-3.5", worktree ? "text-accent" : "text-faint")} aria-hidden />
-          Worktree
-        </button>
-      )}
-    </MemberFooter>
+      <div className="mt-4 flex justify-end">{children}</div>
+    </div>
   );
 }
 
@@ -734,7 +746,7 @@ function HarnessPicker({
           <ChevronDown className="ml-1 size-3.5 flex-shrink-0 text-faint" aria-hidden />
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-52">
+      <DropdownMenuContent align="start" className="min-w-64">
         {frameworks.map((f) => (
           <DropdownMenuItem key={f.id} onClick={() => onChange(f.id)} className="gap-2 py-1.5">
             <HarnessLabel framework={f} active={f.id === current.id} />
@@ -748,6 +760,13 @@ function HarnessPicker({
         >
           <RefreshCw className="size-3.5" aria-hidden />
           Rescan for agent CLIs
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => window.open(MISSING_DOCS[1].href, "_blank", "noreferrer")}
+          className="gap-2 text-muted-foreground"
+        >
+          <BookOpen className="size-3.5" aria-hidden />
+          Adding your own harness
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -923,6 +942,17 @@ function LaunchProgress({
           {job && pairingNote(job) && <p className="text-micro text-muted-foreground">{pairingNote(job)}</p>}
         </div>
       </div>
+      {/* A start that stopped leads with what to do about it, before what happened. */}
+      {failed && help && (
+        <FailedStart
+          help={help}
+          missing={report.why === "missing"}
+          retrying={retrying}
+          onTryAgain={onTryAgain}
+          detail={report.detail}
+          pane={report.pane}
+        />
+      )}
       {/* The agent's terminal, live from the moment the machine opens it, not
           only once something goes wrong. It's read on this machine and never
           sent through the hub; its footer says so. */}
@@ -959,7 +989,8 @@ function LaunchProgress({
             )}
           </div>
           {report.pane ? (
-            <div className="flex h-48 flex-col">
+            // Once it has stopped, the terminal is evidence, not the show.
+            <div className={cn("flex flex-col", failed ? "h-28" : "h-48")}>
               <AgentScreen room={room} handle={handle} openLink={false} fit />
             </div>
           ) : (
@@ -971,14 +1002,17 @@ function LaunchProgress({
           )}
         </section>
       )}
-      <ol className="mt-4 space-y-2">
-        {steps.map((s) => (
-          <li key={s.label} className="flex items-center gap-2.5 text-label">
-            <StepIcon state={s.state} />
-            <span className={s.state === "waiting" ? "text-faint" : "text-text"}>{s.label}</span>
-          </li>
-        ))}
-      </ol>
+      {failed && help ? (
+        <details className="group mt-4">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-label text-muted-foreground select-none hover:text-text">
+            <ChevronDown className="size-3.5 -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+            What happened
+          </summary>
+          <Steps steps={steps} />
+        </details>
+      ) : (
+        <Steps steps={steps} />
+      )}
       {/* Still waiting on the shell, and it's slow: say so and point at the
           terminal, where whatever holds it up is showing. */}
       {status === "running" && report.slow && (
@@ -995,36 +1029,6 @@ function LaunchProgress({
           <p className="whitespace-pre-line break-words">{waiting}</p>
         </div>
       )}
-      {failed && help && (
-        <div role="alert" className="mt-4 space-y-3 rounded-lg border border-red/30 bg-red/5 px-3 py-3 text-label text-text">
-          <p>{help.happened}</p>
-          <div>
-            <p className="font-medium">What to do</p>
-            <ol className="mt-1 list-decimal space-y-1 pl-5">
-              {help.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            {help.link && (
-              <a
-                href={help.link.href}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-block text-accent hover:underline"
-              >
-                {help.link.label}
-              </a>
-            )}
-          </div>
-          {report.detail && (
-            <details className="text-micro text-muted-foreground">
-              <summary className="cursor-pointer select-none">Details for troubleshooting</summary>
-              <p className="mt-1 break-words font-mono">{report.detail}</p>
-              {report.pane && <p className="mt-1 font-mono">herdr pane {report.pane}</p>}
-            </details>
-          )}
-        </div>
-      )}
       {failed && !help && (
         <p role="alert" className="mt-4 break-words rounded-lg border border-red/30 bg-red/5 px-3 py-2 text-label text-red">
           {job?.error ?? "The machine couldn't start it."}
@@ -1036,9 +1040,12 @@ function LaunchProgress({
             <Button variant="secondary" onClick={onRetry}>
               Back
             </Button>
-            <Button variant="secondary" onClick={onTryAgain} disabled={retrying}>
-              {retrying ? "Trying again…" : "Try again"}
-            </Button>
+            {/* With help shown, Try again is in it, beside what to do first. */}
+            {!help && (
+              <Button variant="secondary" onClick={onTryAgain} disabled={retrying}>
+                {retrying ? "Trying again…" : "Try again"}
+              </Button>
+            )}
           </>
         ) : (
           jobSettled(job) && (
@@ -1049,6 +1056,108 @@ function LaunchProgress({
         )}
         <Button onClick={onClose}>{jobSettled(job) ? "Done" : "Close"}</Button>
       </div>
+    </div>
+  );
+}
+
+function Steps({ steps }: { steps: { label: string; state: StepState }[] }) {
+  return (
+    <ol className="mt-3 space-y-2">
+      {steps.map((s) => (
+        <li key={s.label} className="flex items-center gap-2.5 text-label">
+          <StepIcon state={s.state} />
+          <span className={s.state === "waiting" ? "text-faint" : "text-text"}>{s.label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** The docs for an agent CLI the machine can't find, and for one that isn't listed. */
+const MISSING_DOCS = [
+  { label: "When an agent CLI isn't found", href: `${DOCS_URL}/guides.html#machines-when-the-agent-cli-isnt-found` },
+  { label: "Adding your own harness", href: `${DOCS_URL}/guides.html#machines-adding-your-own-harness` },
+];
+
+/**
+ * What to do about a start that stopped, first thing under the agent's name:
+ * what went wrong in a line, the way through, and the buttons that take it.
+ * An agent CLI that isn't found gets Try again and the docs on getting it
+ * found, or adding one that isn't listed.
+ */
+function FailedStart({
+  help,
+  missing,
+  retrying,
+  onTryAgain,
+  detail,
+  pane,
+}: {
+  help: StartHelp;
+  missing: boolean;
+  retrying: boolean;
+  onTryAgain: () => void;
+  detail: string | null;
+  pane: string | null;
+}) {
+  return (
+    <div role="alert" className="mt-4 rounded-lg border border-red/40 bg-red/5 px-4 py-3">
+      <p className="flex items-center gap-2 text-label font-medium text-text">
+        <CircleAlert className="size-4 flex-shrink-0 text-red" aria-hidden />
+        {help.short}
+      </p>
+      {missing ? (
+        <p className="mt-1 pl-6 text-label text-muted-foreground">
+          Install it. Then check that a new terminal window can run it.
+        </p>
+      ) : (
+        <ol className="mt-1.5 list-decimal space-y-1 pl-10 text-label text-muted-foreground">
+          {help.steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
+        {/* A missing CLI's way through is our docs, linked below, not a page per CLI. */}
+        {help.link && !missing && (
+          <a href={help.link.href} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>
+            {help.link.label}
+            <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+        )}
+        <Button
+          size="sm"
+          variant={help.link && !missing ? "secondary" : "default"}
+          onClick={onTryAgain}
+          disabled={retrying}
+        >
+          <RotateCcw className="size-3.5" aria-hidden />
+          {retrying ? "Trying again…" : "Try again"}
+        </Button>
+      </div>
+      {missing && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-red/20 pt-2.5 pl-6">
+          {MISSING_DOCS.map((d) => (
+            <a
+              key={d.href}
+              href={d.href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-micro text-muted-foreground hover:text-text hover:underline"
+            >
+              <BookOpen className="size-3.5" aria-hidden />
+              {d.label}
+            </a>
+          ))}
+        </div>
+      )}
+      {detail && (
+        <details className="mt-2 pl-6 text-micro text-muted-foreground">
+          <summary className="cursor-pointer select-none">Details for troubleshooting</summary>
+          <p className="mt-1 break-words font-mono">{detail}</p>
+          {pane && <p className="mt-1 font-mono">herdr pane {pane}</p>}
+        </details>
+      )}
     </div>
   );
 }
