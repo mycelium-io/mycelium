@@ -12,8 +12,8 @@ are frozen in ``contracts/hub-settings.json``.
 
 Who may change them:
 
-- **A desktop hub**, which listens on 127.0.0.1 only, so whoever reaches it is
-  on this machine. The supervisor that started it says where the CLI is
+- **A desktop hub**, which answers only this machine and its paired machines
+  (``machine_gate``), and takes a change only from this machine. The supervisor that started it says where the CLI is
   (``MYCELIUM_CONFIG_CLI``). An agent on the same computer with no token
   counts as the person here; it could already run ``mycelium config set`` in
   its own shell, so this gives it nothing new. A web page the person visits
@@ -157,6 +157,11 @@ def foreign_page(request: Request) -> str | None:
     """
     if not desktop():
         return None
+    from app.services.paired_machines import calling_machine
+
+    # A paired machine reaches the hub too, and can say anything in Host.
+    if calling_machine() is not None:
+        return "This change has to come from Mycelium on this computer."
     host = urlsplit(f"//{request.headers.get('host', '')}")
     server = request.scope.get("server")
     port = server[1] if server else None

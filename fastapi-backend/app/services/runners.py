@@ -45,6 +45,20 @@ class RunnerError(Exception):
     """A job or report the registry refused, with a sentence saying why."""
 
 
+class RunnerRefused(RunnerError):
+    """Something a paired machine asked for that is another machine's to do (403)."""
+
+
+#: ``machine_of`` for a runner nobody has said hello as.
+UNKNOWN = object()
+
+
+def _calling_machine() -> str | None:
+    from app.services.paired_machines import calling_machine
+
+    return calling_machine()
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -59,6 +73,8 @@ class _Entry:
     heartbeats: int = 0
     jobs: OrderedDict[str, RunnerJobRead] = field(default_factory=OrderedDict)
     wake: asyncio.Event = field(default_factory=asyncio.Event)
+    #: The paired machine it said hello from; ``None`` for this computer.
+    machine: str | None = None
 
     def read(self, now: datetime) -> RunnerRead:
         return RunnerRead(
@@ -85,17 +101,34 @@ class RunnerRegistry:
     # ── the runner's side ────────────────────────────────────────────────────
 
     def hello(self, hello: RunnerHello) -> RunnerRead:
-        """Record a runner's hello or heartbeat; the jobs it has keep their places."""
+        """Record a runner's hello or heartbeat; the jobs it has keep their places.
+
+        A runner belongs to the machine it says hello from. A paired machine
+        can't say hello as a runner of this computer's or another machine's
+        (:class:`RunnerRefused`); this computer's own runner takes its id back
+        from a machine that said hello as it first, with none of its jobs."""
         now = _now()
+        machine = _calling_machine()
         entry = self._runners.get(hello.id)
+        if entry is not None and entry.machine != machine:
+            if machine is not None:
+                msg = "That runner id is another machine's."
+                raise RunnerRefused(msg)
+            entry = None
         if entry is None:
-            entry = _Entry(hello=hello, last_seen=now, started_at=now)
+            entry = _Entry(hello=hello, last_seen=now, started_at=now, machine=machine)
             self._runners[hello.id] = entry
         else:
             entry.hello = hello
             entry.last_seen = now
             entry.heartbeats += 1
         return entry.read(now)
+
+    def machine_of(self, runner_id: str) -> str | object | None:
+        """The paired machine ``runner_id`` said hello from (``None`` for this
+        computer), or :data:`UNKNOWN` when no runner by that id has."""
+        entry = self._runners.get(runner_id)
+        return UNKNOWN if entry is None else entry.machine
 
     def heartbeats(self, runner_id: str) -> int:
         """How many heartbeats ``runner_id`` has sent since its hello to this hub."""
@@ -208,6 +241,13 @@ class RunnerRegistry:
         entry = self._runners.get(runner_id)
         if entry is None:
             raise RunnerError("unknown runner")
+        # A paired machine queues work only for its own runner: this
+        # computer's runner trusts its hub because everything else reaching it
+        # is this computer (the desktop supervisor's ``trust_hub``).
+        machine = _calling_machine()
+        if machine is not None and entry.machine != machine:
+            msg = "A paired machine can ask only its own runner to do something."
+            raise RunnerRefused(msg)
         now = _now()
         job = RunnerJobRead(
             id=secrets.token_hex(6),

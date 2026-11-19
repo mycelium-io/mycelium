@@ -44,6 +44,7 @@ import secrets
 import threading
 import time
 import tomllib
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,21 @@ class Machine:
     address: str | None = None
     #: This computer's address the machine came in on, which the hub listens on.
     listen: str | None = None
+
+
+#: The paired machine the request being handled came from, set by the gate;
+#: ``None`` for a request from this computer.
+_calling: ContextVar[str | None] = ContextVar("paired_machine", default=None)
+
+
+def calling_machine() -> str | None:
+    """The paired machine this request came from, or ``None`` for this computer.
+
+    What a paired machine may do is narrower than what this computer may: it
+    queues work only for its own runner (``runners.registry``), and never
+    changes this computer's settings (``hub_config``). The app's own runner
+    trusts its hub because everything else that reaches it is this computer."""
+    return _calling.get()
 
 
 def enabled() -> bool:

@@ -8,7 +8,10 @@ A request from this computer passes as before. One from anywhere else passes
 only when it carries a paired machine's token from that machine's address, or
 when it is the pairing knock itself, which the route checks against a code
 typed in the app. Everything else is refused here, before any route or
-parser sees it. A hub that doesn't take paired machines lets everything
+parser sees it. A paired machine's request is also refused for another
+runner's routes, and the rest of the hub knows which machine it came from
+(``paired_machines.calling_machine``), so it queues work only for its own
+runner and changes none of this computer's settings. A hub that doesn't take paired machines lets everything
 through, as its own auth settings say.
 """
 
@@ -29,6 +32,9 @@ REFUSAL = {
 }
 
 
+NOT_YOURS = {"detail": "A paired machine reaches only its own runner, not another machine's."}
+
+
 def is_loopback(host: str | None) -> bool:
     if not host:
         return False
@@ -44,6 +50,25 @@ def _header(scope: dict[str, Any], name: str) -> str | None:
         if key.lower() == want:
             return value.decode("latin-1")
     return None
+
+
+_RUNNERS = "/api/runners/"
+
+
+def _its_own(path: str, machine: str) -> bool:
+    """Whether a paired machine may reach ``path``: anything but another
+    runner's routes. A runner's id is its own once it has said hello from the
+    machine (``runners.registry``); one nobody has said hello as yet is a 404
+    for anyone."""
+    if not path.startswith(_RUNNERS):
+        return True
+    from app.services.runners import UNKNOWN, registry
+
+    runner_id = path[len(_RUNNERS) :].split("/", 1)[0]
+    if runner_id in ("", "pair"):
+        return True
+    owner = registry.machine_of(runner_id)
+    return owner is UNKNOWN or owner == machine
 
 
 class MachineGate:
@@ -64,13 +89,19 @@ class MachineGate:
             await self.app(scope, receive, send)
             return
         token = _header(scope, paired_machines.MACHINE_HEADER)
-        if paired_machines.verify(token, peer) is not None:
-            await self.app(scope, receive, send)
+        machine = paired_machines.verify(token, peer)
+        if machine is not None and _its_own(scope.get("path") or "", machine.name):
+            # Everything after this knows which machine is asking (calling_machine).
+            mark = paired_machines._calling.set(machine.name)
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                paired_machines._calling.reset(mark)
             return
         if scope["type"] == "websocket":
             await send({"type": "websocket.close", "code": 1008})
             return
-        body = json.dumps(REFUSAL).encode()
+        body = json.dumps(NOT_YOURS if machine is not None else REFUSAL).encode()
         await send(
             {
                 "type": "http.response.start",

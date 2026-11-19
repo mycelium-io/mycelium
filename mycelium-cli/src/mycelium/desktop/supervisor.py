@@ -1256,10 +1256,11 @@ class Supervisor:
         config.server.api_url = self.api_url
         # stdout is the status stream; what the runner says goes to stderr.
         # Launches go ahead without asking only from the hub this supervisor
-        # started, which listens on 127.0.0.1 alone; a hub elsewhere, or one
-        # that was already running here (Docker publishes to the network),
-        # could be reached by anyone, so each launch from it waits for a yes
-        # in the app.
+        # started, which answers this computer and its paired machines alone,
+        # and queues work for this runner only from this computer (a paired
+        # machine reaches its own runner only); a hub elsewhere, or one that
+        # was already running here (Docker publishes to the network), could be
+        # reached by anyone, so each launch from it waits for a yes in the app.
         self.runner = Runner(
             config,
             roots=self.roots,

@@ -403,6 +403,17 @@ async def _unsafe_path_handler(_request: Request, _exc: UnsafePathError):
     return JSONResponse(status_code=400, content={"detail": "Invalid room name or key"})
 
 
+from app.services.runners import RunnerRefused  # noqa: E402
+
+
+@app.exception_handler(RunnerRefused)
+async def _runner_refused_handler(_request: Request, exc: RunnerRefused):
+    """A paired machine asking for another machine's runner, wherever it asked."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
 # FastAPI HTTP instrumentation — must be applied at app-creation time, before
 # Starlette freezes the middleware stack, so spans are created for every request.
 # instrument_app() is a no-op when the OTel SDK is disabled.

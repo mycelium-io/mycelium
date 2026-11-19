@@ -20,7 +20,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.services import machine_listen, member_tokens, paired_machines
+from app.services import machine_listen, member_tokens, paired_machines, runners
 
 CODE = "ABCDEFGHJKMN"
 BOX = ("10.8.0.1", 40000)
@@ -35,8 +35,111 @@ def _takes_paired_machines(tmp_path: Path, monkeypatch):
     monkeypatch.setenv(paired_machines.CONFIG_ENV, str(config))
     monkeypatch.setattr(paired_machines, "_cache", (None, []))
     member_tokens.reset_for_tests()
+    runners.registry.clear()
     yield config
+    runners.registry.clear()
     member_tokens.reset_for_tests()
+
+
+def _hello(runner_id: str, label: str) -> dict:
+    return {
+        "id": runner_id,
+        "label": label,
+        "owner": "julia",
+        "platform": "linux-x86_64",
+        "version": "1.0.0",
+        "herdr": True,
+        "roots": ["/home/agents/work"],
+        "frameworks": [],
+    }
+
+
+async def test_a_paired_machine_reaches_only_its_own_runner():
+    """This computer's runner starts what its hub queues without asking, so a
+    paired machine must never be able to queue anything for it."""
+    paired = await _pair()
+    box = {paired_machines.MACHINE_HEADER: paired["token"]}
+    async with _client(HERE) as here:
+        assert (await here.post("/api/runners", json=_hello("mac-1", "Mac"))).status_code < 300
+    async with _client(BOX) as remote:
+        assert (
+            await remote.post("/api/runners", json=_hello("box-1", "box"), headers=box)
+        ).status_code < 300
+        # Its own runner: through the gate.
+        own = await remote.post("/api/runners/box-1/scan", headers=box)
+        assert own.status_code != 403, own.text
+        # This computer's runner: refused, whatever it asks.
+        for method, path in (
+            ("post", "/api/runners/mac-1/scan"),
+            ("post", "/api/runners/mac-1/launch"),
+            ("post", "/api/runners/mac-1/restart"),
+            ("get", "/api/runners/mac-1/jobs/next"),
+            ("get", "/api/runners/mac-1"),
+        ):
+            resp = await getattr(remote, method)(path, headers=box)
+            assert resp.status_code == 403, (path, resp.status_code)
+            assert "its own runner" in resp.json()["detail"]
+        # Nor can it say hello as this computer's runner, to take its jobs.
+        taken = await remote.post("/api/runners", json=_hello("mac-1", "Mac"), headers=box)
+        assert taken.status_code == 403
+    assert runners.registry.machine_of("mac-1") is None
+    assert runners.registry.machine_of("box-1") == "box"
+
+
+def test_every_way_of_queueing_work_checks_whose_runner_it_is():
+    """Routes outside /runners queue jobs too (rename, pause, interrupt): the
+    registry is where every one of them goes, so the check is there."""
+    from app.schemas import RunnerHello
+
+    runners.registry.hello(RunnerHello(**_hello("mac-1", "Mac")))
+    mark = paired_machines._calling.set("box")
+    try:
+        with pytest.raises(runners.RunnerRefused):
+            runners.registry.enqueue("mac-1", "launch", {}, created_by=None)
+    finally:
+        paired_machines._calling.reset(mark)
+    # From this computer it queues as before.
+    assert runners.registry.enqueue("mac-1", "scan", {}, created_by=None).runner == "mac-1"
+
+
+def test_this_computer_s_runner_takes_its_id_back_from_a_machine_that_said_hello_first():
+    from app.schemas import RunnerHello
+
+    mark = paired_machines._calling.set("box")
+    try:
+        runners.registry.hello(RunnerHello(**_hello("mac-1", "claimed")))
+    finally:
+        paired_machines._calling.reset(mark)
+    assert runners.registry.machine_of("mac-1") == "box"
+    runners.registry.hello(RunnerHello(**_hello("mac-1", "Mac")))
+    assert runners.registry.machine_of("mac-1") is None
+
+
+async def test_a_paired_machine_can_t_change_this_computer_s_settings(monkeypatch):
+    import json
+
+    from app.services import hub_config
+
+    hub_config.reset()
+    monkeypatch.setenv("MYCELIUM_HUB_MODE", "desktop")
+    monkeypatch.setenv("MYCELIUM_CONFIG_CLI", json.dumps(["/app/mycelium"]))
+    ran: list = []
+    monkeypatch.setattr(hub_config, "_run", lambda argv, stdin: ran.append(argv))
+    paired = await _pair()
+    # Saying it's this computer doesn't make it so.
+    looks_local = {
+        paired_machines.MACHINE_HEADER: paired["token"],
+        "host": "127.0.0.1",
+        "origin": "http://127.0.0.1:3717",
+    }
+    async with _client(BOX) as remote:
+        saved = await remote.patch(
+            "/api/hub/settings", json={"changes": {"verifier.enabled": True}}, headers=looks_local
+        )
+        restarted = await remote.post("/api/hub/restart", headers=looks_local)
+    assert (saved.status_code, restarted.status_code) == (403, 403)
+    assert ran == []
+    hub_config.reset()
 
 
 def _client(peer: tuple[str, int], server: tuple[str, int] = ("10.8.0.2", 3718)) -> AsyncClient:
