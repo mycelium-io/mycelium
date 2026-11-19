@@ -84,9 +84,9 @@ class FakeHerdr:
 @pytest.fixture
 def herdr(monkeypatch: pytest.MonkeyPatch, isolated_home: Path) -> FakeHerdr:
     monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr("mycelium.commands.swarm.START_RETRY_S", 0)
-    # The agent CLIs on PATH here: Claude Code and Codex, not Pi.
-    monkeypatch.setattr(machine, "_installed_kinds", lambda: {"claude", "codex"})
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.START_RETRY_S", 0)
+    # The agent CLIs herdr finds installed here: Claude Code and Codex, not Pi.
+    monkeypatch.setattr(machine, "_available_integrations", lambda _bridge: {"claude", "codex"})
     return FakeHerdr()
 
 
@@ -436,8 +436,29 @@ def test_renaming_changes_herdrs_name_and_unbinding_forgets_the_pane(herdr: Fake
 
 def test_integrations_are_named_only_for_agent_clis_installed_here(herdr: FakeHerdr):
     state = machine.integrations(bridge=HerdrBridge(runner=herdr))
-    assert state.current == {"claude": False, "codex": False}  # Pi isn't on PATH
+    assert state.current == {"claude": False, "codex": False}  # herdr doesn't find Pi
     assert (state.missing, state.answer) == (["claude", "codex"], None)
+
+
+def test_which_agent_clis_are_installed_is_herdrs_answer(monkeypatch: pytest.MonkeyPatch):
+    """``integration.list`` on herdr's socket: the ones it says are available,
+    named as ``integration status`` names them. Nothing is looked for here."""
+    bridge = HerdrBridge(runner=FakeHerdr())
+    listed = {
+        "integrations": [
+            {"target": "claude", "available": True, "state": "outdated", "command": "claude"},
+            {"target": "pi", "available": False, "state": "not_installed", "command": "pi"},
+            {"target": "antigravity_cli", "available": True, "state": "current", "command": "agy"},
+        ]
+    }
+    asked: list[str] = []
+    monkeypatch.setattr(bridge, "api", lambda method, params=None: asked.append(method) or listed)
+    assert bridge.available_integrations() == {"claude", "antigravity-cli"}
+    assert asked == ["integration.list"]
+    # A herdr that can't say offers none, rather than guessing.
+    monkeypatch.setattr(bridge, "api", lambda method, params=None: None)
+    assert bridge.available_integrations() is None
+    assert machine._available_integrations(bridge) == set()
 
 
 def test_installing_them_installs_each_missing_one_and_remembers_the_yes(herdr: FakeHerdr):

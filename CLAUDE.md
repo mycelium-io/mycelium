@@ -114,8 +114,7 @@ worktree; the **verifier** flags claims it can't find in the room's records;
 the **synthesizer** distills messages into `context/synthesis`. An engine is
 summoned by `@`-mention, and every model call shells out to `pi`
 (provider/model, e.g. `anthropic/claude-sonnet-4-6`); there is no litellm.
-`mycelium swarm` files a task with a team on it, in a room that already exists,
-never a room of its own. A **schedule** is an agent's own check-in, fired by the
+A **schedule** is an agent's own check-in, fired by the
 hub (`app/services/schedules.py`); its pre-check is one of a closed set the
 hub answers in code, never a script.
 

@@ -14,6 +14,7 @@
  */
 
 import { NOTICE_TYPE, PING_TYPE, noticeOf, pingOf } from "@/lib/threads";
+import type { MessageReactions } from "@/lib/api";
 import { conductorLineOf, type ConductorLine } from "@/lib/conductor-line";
 import { answerOf, askOf, type ApprovalAsk, type AskReply } from "@/lib/approvals";
 
@@ -45,6 +46,13 @@ export interface Event {
   amends: string | null;
   /** True once an amendment has revised this message's text. */
   edited: boolean;
+  /** The emoji on this message and who put each on, as the hub folded them. */
+  reactions: MessageReactions[];
+  /** When this is a reaction (live only; a read has folded it already): the
+   *  message it's on, by its envelope id and its read id, the emoji, and
+   *  whether it puts the emoji on or takes it off. The feed folds it into that
+   *  message and never shows it as a row. */
+  reacts: Reacts | null;
   /** The thread a **ping** is about — never the episode the ping itself rode,
    *  which is the room. Null on everything that is not a ping. */
   thread: string | null;
@@ -64,6 +72,53 @@ export interface Event {
   /** The message as the hub sent it, before any of the above was read off it,
    *  for "View raw message". */
   wire?: Record<string, unknown>;
+}
+
+export interface Reacts {
+  wireId: string;
+  messageId: string | null;
+  emoji: string;
+  on: boolean;
+}
+
+/** A live frame's reaction, or null when it isn't one. */
+function reactsOf(header: Record<string, unknown>, parents: unknown, raw: Record<string, unknown>): Reacts | null {
+  const reaction = raw.reaction as Record<string, unknown> | undefined;
+  const parent = Array.isArray(parents) && typeof parents[0] === "string" ? parents[0] : raw.reacts;
+  if (header.subkind !== "reaction" && typeof raw.reacts !== "string") return null;
+  if (typeof parent !== "string" || !reaction || typeof reaction.emoji !== "string") return null;
+  return {
+    wireId: parent,
+    messageId: typeof reaction.message === "string" ? reaction.message : null,
+    emoji: reaction.emoji,
+    on: reaction.on !== false,
+  };
+}
+
+/** The reactions a read carries, keeping only well-formed ones. */
+function reactionsOf(value: unknown): MessageReactions[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (r): r is MessageReactions =>
+      !!r && typeof r.emoji === "string" && Array.isArray(r.by) && r.by.every((h: unknown) => typeof h === "string"),
+  );
+}
+
+/**
+ * `reactions` with `who`'s `emoji` put on or taken off: a new emoji goes last,
+ * and one nobody has on any more goes.
+ */
+export function withReaction(reactions: MessageReactions[], emoji: string, who: string, on: boolean): MessageReactions[] {
+  const found = reactions.find((r) => r.emoji === emoji);
+  if (on) {
+    if (!found) return [...reactions, { emoji, by: [who] }];
+    if (found.by.includes(who)) return reactions;
+    return reactions.map((r) => (r === found ? { ...r, by: [...r.by, who] } : r));
+  }
+  if (!found?.by.includes(who)) return reactions;
+  return reactions
+    .map((r) => (r === found ? { ...r, by: r.by.filter((h) => h !== who) } : r))
+    .filter((r) => r.by.length > 0);
 }
 
 export const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
@@ -290,6 +345,8 @@ export function parseEvent(msg: Record<string, unknown>): Event {
     episode,
     amends,
     edited: typeof msg.edited_at === "string",
+    reactions: reactionsOf(msg.reactions),
+    reacts: reactsOf(envelopeHeader, parents, { ...msg, ...raw }),
     thread,
     pingSenders: pingSender ? [pingSender] : [],
     conductor: CHAT_TYPES.has(mtype)

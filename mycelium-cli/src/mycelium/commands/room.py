@@ -42,7 +42,7 @@ from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
-    from mycelium.commands.swarm import LiveView
+    from mycelium.live_view import LiveView
     from mycelium_backend_client.models import RoomMembers, RoomPresenceRead
 
 # The "raise-up" whitelist: message types promoted onto the primary channel
@@ -572,11 +572,11 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
 
 
 def _thread_view(config: MyceliumConfig, room_name: str) -> "LiveView":
-    """``swarm``'s live view over the whole room: every thread's messages, each
+    """The live view over the whole room: every thread's messages, each
     labeled with its task, and the board's notices. Each thread's task is
     known up front from the board, and kept current by the notices."""
     from mycelium.chat import thread_tasks
-    from mycelium.commands.swarm import LiveView
+    from mycelium.live_view import LiveView
 
     view = LiveView()
     for episode, (key, title) in thread_tasks(config, room_name).items():
@@ -993,6 +993,84 @@ def amend(
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
+
+
+@doc_ref(
+    usage="mycelium room interrupt <message-id> @<handle> [--room <room>] [--as <handle>]",
+    desc="Turn a plain @mention in a message you sent into an interrupt: the member stops its turn, reads it now and carries on. Only while it hasn't read it yet, once per member per message.",
+    group="room",
+)
+@app.command("interrupt")
+@in_room()
+@acts_as()
+@emits_json()
+def interrupt(
+    ctx: typer.Context,
+    message_id: str = typer.Argument(
+        ..., help="Id of the message you sent (the short id `respond` and wakes print is enough)"
+    ),
+    member: str = typer.Argument(..., help="A member that message mentions, e.g. @builder"),
+    room: str | None = None,
+    handle: str | None = None,
+) -> None:
+    """
+    Interrupt a member with a message you already sent.
+
+    A plain @mention reaches a member that is working when its turn ends. If the
+    message changes what it's doing, this stops its turn so it reads the message
+    now, then carries on, the way @! would have. The message's text doesn't
+    change, and there's no undo. Only the message's sender can do it, only for a
+    member the message mentions, only while that member hasn't read it yet, and
+    once per member per message.
+
+    Examples:
+        mycelium room interrupt 7c1e9a04 @builder
+        mycelium room interrupt 7c1e9a04 @builder --room checkout --as lead
+    """
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        by = handle or config.get_current_identity()
+        who = member.lstrip("@")
+
+        from mycelium_backend_client.api.messages import (
+            interrupt_with_message_api_rooms_room_name_messages_message_id_interrupt_post as interrupt_api,
+        )
+        from mycelium_backend_client.models import MessageInterrupt, MessageInterrupted
+
+        with _typed_client(config) as client:
+            resp = interrupt_api.sync_detailed(
+                room_name=room_name,
+                message_id=message_id,
+                client=client,
+                body=MessageInterrupt(handle=who, by=by),
+            )
+        if resp.status_code in (403, 404, 409, 422):
+            # Why it can't be done is the hub's to say, in its own words.
+            typer.secho(_refusal(resp.content, "Couldn't interrupt with it."), fg=typer.colors.RED)
+            raise typer.Exit(1)
+        result = answered(resp, MessageInterrupted)
+
+        if json_output:
+            typer.echo(json_module.dumps(result.to_dict(), indent=2, default=str))
+            return
+        typer.secho(f"  ⚡  @{by} interrupted @{who} with {message_id}", fg=typer.colors.GREEN)
+        typer.echo("     It stops, reads it, then carries on. The message shows a ⚡ in the room.")
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+def _refusal(content: bytes, fallback: str) -> str:
+    """The ``detail`` of a refusal the hub answered with, else ``fallback``."""
+    try:
+        detail = json_module.loads(content).get("detail")
+    except (ValueError, AttributeError):
+        return fallback
+    return detail if isinstance(detail, str) and detail else fallback
 
 
 @dataclass(frozen=True)

@@ -13,7 +13,7 @@ vi.mock("@/lib/api", () => ({
   fetchUsage: vi.fn(),
   // A room's activity on the Usage tab: its messages, memories and roster.
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemorySummaries: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchRoomPeople: vi.fn().mockResolvedValue({ people: [], agents: [], engines: [], others: [] }),

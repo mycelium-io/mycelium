@@ -236,13 +236,18 @@ jobs:
       # scripts/ sits outside both lint roots, so it rides along in this job.
       # `--no-project` checks it against the standard library alone: a script
       # here declares no dependencies, so an ambient venv would make the result
-      # depend on which optional extras that project pulls in.
+      # depend on which optional extras that project pulls in. The tools are
+      # pinned to the CLI's locked versions, read from the venv synced above: an
+      # unpinned `--with ty` took each new release as it came out, and ty 0.0.99
+      # renaming its rule codes failed this step on every PR.
       - name: Lint maintainer scripts
         if: needs.changes.outputs.code == 'true'
         run: |
-          uv run --no-project --with ruff ruff check --config ruff.toml scripts
-          uv run --no-project --with ruff ruff format --check --config ruff.toml scripts
-          uv run --no-project --with ty ty check --python-version 3.12 scripts
+          ruff_version=$(cd mycelium-cli && uv run ruff --version | awk '{print $2}')
+          ty_version=$(cd mycelium-cli && uv run ty --version | awk '{print $2}')
+          uv run --no-project --with "ruff==$ruff_version" ruff check --config ruff.toml scripts
+          uv run --no-project --with "ruff==$ruff_version" ruff format --check --config ruff.toml scripts
+          uv run --no-project --with "ty==$ty_version" ty check --python-version 3.12 scripts
 
       # docs/*.html and docs/llms-full.txt are generated from the markdown under
       # mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the pydantic

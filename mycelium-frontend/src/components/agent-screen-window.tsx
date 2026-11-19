@@ -5,7 +5,7 @@
 
 /**
  * Where an agent's terminal opens: a window over the app that you drag by its
- * header and resize from its corner. Nothing behind it dims and a click
+ * header and resize from any edge or corner. Nothing behind it dims and a click
  * elsewhere doesn't close it, since you watch an agent while you read and
  * write in the room.
  *
@@ -13,21 +13,48 @@
  * that, each agent's opens where you last left it, put back on screen if the
  * window has shrunk since (`lib/terminal-window.ts`). Esc or × closes it.
  *
- *   {watching && <AgentScreenWindow room handle runner onClose />}
+ * Down its left side is the room's agents, each with its state, and a click
+ * switches the window to that one where it is. A subagent sits under its
+ * parent. The list folds to a strip of avatars, and stays as it was left.
+ *
+ *   {watching && <AgentScreenWindow room handle runner onClose onSwitch />}
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { LayoutList, SquareTerminal, X } from "lucide-react";
+import { LayoutList, PanelLeftClose, PanelLeftOpen, SquareTerminal, X } from "lucide-react";
+import { memberState } from "@/lib/agent-card";
+import { useRoomRoster, useRoomSubagents } from "@/lib/room-data";
 import { AgentScreen, type AgentScreenProps, type ScreenView } from "@/components/agent-screen";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useAgentSession } from "@/lib/agent-session";
 import { useIsDesktop } from "@/lib/desktop";
-import { MIN_WINDOW, clampRect, defaultRect, saveRect, savedRect, type WindowRect } from "@/lib/terminal-window";
+import {
+  clampRect,
+  defaultRect,
+  resizeRect,
+  saveRect,
+  savedRect,
+  type Edge,
+  type WindowRect,
+} from "@/lib/terminal-window";
 import { cn } from "@/lib/utils";
 
 const viewport = () => ({ width: window.innerWidth, height: window.innerHeight });
+
+/** Where each edge and corner can be grabbed, and the cursor it shows. The
+ *  corners sit over the edges' ends, so a corner wins there. */
+const EDGES: { edge: Edge; className: string }[] = [
+  { edge: "n", className: "inset-x-0 top-0 h-1.5 cursor-ns-resize" },
+  { edge: "s", className: "inset-x-0 bottom-0 h-1.5 cursor-ns-resize" },
+  { edge: "w", className: "inset-y-0 left-0 w-1.5 cursor-ew-resize" },
+  { edge: "e", className: "inset-y-0 right-0 w-1.5 cursor-ew-resize" },
+  { edge: "nw", className: "left-0 top-0 size-3 cursor-nwse-resize" },
+  { edge: "se", className: "bottom-0 right-0 size-3 cursor-nwse-resize" },
+  { edge: "ne", className: "right-0 top-0 size-3 cursor-nesw-resize" },
+  { edge: "sw", className: "bottom-0 left-0 size-3 cursor-nesw-resize" },
+];
 
 const VIEWS = [
   { view: "rendered", label: "What it's doing", Icon: LayoutList },
@@ -51,26 +78,153 @@ function saveView(view: ScreenView): void {
   } catch {}
 }
 
-export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { onClose: () => void }) {
+/** Whether the list of agents is folded to avatars, for every agent's window. */
+const FOLD_KEY = "mycelium.terminal-agents-folded";
+
+function savedFold(): boolean {
+  try {
+    return localStorage.getItem(FOLD_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The room's agents down the window's left side: each one's avatar, handle and
+ * state, the one shown marked. Under each agent, its running subagents, from
+ * the room's record of them under the parent it names. A subagent has no
+ * terminal of its own, since it runs in its parent's session, so clicking one
+ * shows its parent's. Folded, only the avatars and their dots, with the handle
+ * on hover.
+ */
+function AgentList({
+  room,
+  current,
+  folded,
+  onSwitch,
+}: {
+  room: string;
+  current: string;
+  folded: boolean;
+  onSwitch: (handle: string) => void;
+}) {
+  const { agents, presence } = useRoomRoster(room);
+  const subagents = useRoomSubagents(room);
+  const rows = useMemo(() => {
+    const running = [...subagents.values()].filter((s) => s.state !== "ended");
+    return agents
+      .filter((a) => a.adapter !== "engine" && a.adapter !== "a2a")
+      .flatMap((a) => [
+        {
+          key: a.handle,
+          handle: a.handle,
+          name: a.handle,
+          opens: a.handle,
+          sub: false,
+          state: memberState("agent", presence.get(a.handle.toLowerCase())),
+        },
+        ...running
+          .filter((s) => s.parent.toLowerCase() === a.handle.toLowerCase())
+          .map((s) => ({
+            key: s.handle,
+            handle: s.handle,
+            name: s.name,
+            opens: a.handle,
+            sub: true,
+            state: { word: s.state === "working" ? "Working" : "Done", tone: s.state === "working" ? "var(--accent)" : "var(--faint)" },
+          })),
+      ]);
+  }, [agents, presence, subagents]);
+
+  return (
+    <nav
+      aria-label="Agents in this room"
+      className={cn(
+        "flex flex-none flex-col gap-0.5 overflow-y-auto border-r border-border bg-surface py-2 transition-[width]",
+        folded ? "w-12 items-center" : "w-52 px-2",
+      )}
+    >
+      {rows.map(({ key, handle, name, opens, sub, state: s }) => {
+        const on = !sub && handle.toLowerCase() === current.toLowerCase();
+        const row = (
+          <button
+            key={key}
+            type="button"
+            aria-current={on ? "true" : undefined}
+            aria-label={`@${handle}, ${s.word}`}
+            onClick={() => onSwitch(opens)}
+            className={cn(
+              "flex flex-none items-center rounded-md text-left transition-colors hover:bg-hairline",
+              on && "bg-hairline",
+              folded ? "relative size-8 justify-center" : cn("h-8 gap-2 px-2", sub && "ml-4"),
+            )}
+          >
+            <Monogram handle={handle} kind="agent" className={cn(sub ? "size-4 text-[8px]" : "size-5 text-[9px]")} />
+            {folded ? (
+              <span
+                aria-hidden
+                className="absolute right-0.5 bottom-0.5 size-1.5 rounded-full ring-2 ring-surface"
+                style={{ background: s.tone }}
+              />
+            ) : (
+              <>
+                <span className={cn("min-w-0 flex-1 truncate text-label", on ? "text-text" : "text-muted-foreground")}>
+                  {name}
+                </span>
+                <span aria-hidden className="size-1.5 flex-none rounded-full" style={{ background: s.tone }} />
+              </>
+            )}
+          </button>
+        );
+        return folded ? (
+          <Tooltip key={key} side="right" content={`@${handle}`}>
+            {row}
+          </Tooltip>
+        ) : (
+          row
+        );
+      })}
+    </nav>
+  );
+}
+
+export function AgentScreenWindow({
+  onClose,
+  onSwitch,
+  ...props
+}: AgentScreenProps & { onClose: () => void; onSwitch?: (handle: string) => void }) {
   const { handle } = props;
+  const [folded, setFolded] = useState(savedFold);
+  const fold = () =>
+    setFolded((f) => {
+      try {
+        localStorage.setItem(FOLD_KEY, f ? "0" : "1");
+      } catch {}
+      return !f;
+    });
   // It only ever opens from a click, so the window is there to measure.
   const [rect, setRect] = useState<WindowRect>(() => clampRect(savedRect(handle) ?? defaultRect(viewport()), viewport()));
-  const section = useRef<HTMLElement | null>(null);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const resizing = useRef<{ edge: Edge; x: number; y: number; from: WindowRect } | null>(null);
   // The toggle shows once the app has answered for the agent, with its session
   // or why it has none. With none, the window opens on the terminal, whatever
   // was picked last; picking Rendered here then says why.
   const desktop = useIsDesktop();
   const read = useAgentSession(desktop ? { room: props.room, handle } : null);
   const rendered = read.session !== null || read.unavailable !== null;
+  // The view remembered for every agent, and a pick made for the agent shown,
+  // which holds only while it stays the one shown.
   const [view, setView] = useState<ScreenView>(savedView);
-  const [pickedHere, setPickedHere] = useState(false);
-  const shown: ScreenView = read.unavailable && !pickedHere ? "terminal" : view;
+  const [picked, setPicked] = useState<{ handle: string; view: ScreenView } | null>(null);
+  const pickedHere = picked?.handle === handle ? picked.view : null;
+  const shown: ScreenView = pickedHere ?? (read.unavailable ? "terminal" : view);
   const choose = (v: ScreenView) => {
-    setView(v);
-    setPickedHere(true);
+    setPicked({ handle, view: v });
     // A pick made for an agent with nothing to draw doesn't change the others.
-    if (!read.unavailable) saveView(v);
+    if (!read.unavailable) {
+      setView(v);
+      saveView(v);
+    }
   };
 
   useEffect(() => {
@@ -89,40 +243,35 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Resizing from the corner is the browser's; what it settles on is kept.
-  useEffect(() => {
-    const el = section.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => {
-      const width = Math.round(el.offsetWidth);
-      const height = Math.round(el.offsetHeight);
-      setRect((r) => {
-        if (r.width === width && r.height === height) return r;
-        const next = { ...r, width, height };
-        saveRect(handle, next);
-        return next;
-      });
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [handle]);
-
   return createPortal(
     <section
-      ref={section}
       aria-label={`@${handle}'s terminal`}
-      className="fixed z-50 flex resize flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.98]"
-      style={{
-        left: rect.x,
-        top: rect.y,
-        width: rect.width,
-        height: rect.height,
-        minWidth: MIN_WINDOW.width,
-        minHeight: MIN_WINDOW.height,
-      }}
+      className="fixed z-50 flex flex-col overflow-hidden rounded-xl border border-border2 bg-bg shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-[0.98]"
+      style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
     >
+      {EDGES.map(({ edge, className }) => (
+        <div
+          key={edge}
+          aria-hidden
+          data-edge={edge}
+          className={cn("absolute z-10 touch-none", className)}
+          onPointerDown={(e) => {
+            resizing.current = { edge, x: e.clientX, y: e.clientY, from: rect };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const r = resizing.current;
+            if (!r) return;
+            setRect(resizeRect(r.from, r.edge, e.clientX - r.x, e.clientY - r.y, viewport()));
+          }}
+          onPointerUp={() => {
+            if (resizing.current) saveRect(handle, rect);
+            resizing.current = null;
+          }}
+        />
+      ))}
       <header
-        className="flex h-10 flex-none cursor-grab touch-none items-center gap-2 border-b border-border px-3 select-none active:cursor-grabbing"
+        className="flex h-10 flex-none cursor-grab touch-none items-center gap-2 border-b border-border px-3 transition-colors select-none hover:bg-surface active:cursor-grabbing"
         onPointerDown={(e) => {
           if ((e.target as HTMLElement).closest("button")) return;
           drag.current = { dx: e.clientX - rect.x, dy: e.clientY - rect.y };
@@ -137,6 +286,19 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
           drag.current = null;
         }}
       >
+        {onSwitch && (
+          <Tooltip content={folded ? "Show the room's agents" : "Fold the agents list"}>
+            <button
+              type="button"
+              aria-label={folded ? "Show the room's agents" : "Fold the agents list"}
+              aria-pressed={!folded}
+              onClick={fold}
+              className="-ml-1 grid size-6 flex-none place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text"
+            >
+              {folded ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
+            </button>
+          </Tooltip>
+        )}
         <Monogram handle={handle} kind="agent" className="size-5 text-[9px]" />
         <span className="truncate text-label font-medium text-text">@{handle}</span>
         <span className="truncate text-micro text-faint">{props.room}</span>
@@ -173,7 +335,12 @@ export function AgentScreenWindow({ onClose, ...props }: AgentScreenProps & { on
           <X className="size-3.5" />
         </button>
       </header>
-      <AgentScreen {...props} view={rendered ? shown : "terminal"} onView={choose} />
+      <div className="flex min-h-0 flex-1">
+        {onSwitch && <AgentList room={props.room} current={handle} folded={folded} onSwitch={onSwitch} />}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <AgentScreen {...props} view={rendered ? shown : "terminal"} onView={choose} />
+        </div>
+      </div>
     </section>,
     document.body,
   );

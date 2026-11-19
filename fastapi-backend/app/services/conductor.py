@@ -690,11 +690,12 @@ class ConductorEngine:
         protocol = protocols.load_protocol(room, name) if name else None
         if protocol is None:
             known = ", ".join(protocols.builtin_names())
+            unknown = f"I know no flow called `{name}`. " if name else ""
             await self._say(
                 managed,
                 thread,
                 me,
-                "I need a flow to run: name it first, then who takes part, for "
+                f"{unknown}I need a flow to run: name it first, then who takes part, for "
                 "example `gated proposer-handle guardian-handle: the question`. "
                 f"Built in: {known}; a room adds its own under protocols/.",
             )

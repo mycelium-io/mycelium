@@ -5,8 +5,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronLeft, Eye, FileQuestion, Pencil } from "lucide-react";
+import { ChevronLeft, Eye, FileQuestion, Lock, Pencil } from "lucide-react";
 import { fetchMemory, fetchMemoryExpanded, type Memory } from "@/lib/api";
+import { kindOf, notEditable } from "@/lib/memory-kinds";
 import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
 import { isLiveEpisode } from "@/lib/threads";
 import { EmptyState } from "@/components/empty-state";
@@ -138,9 +139,21 @@ export function MemoryView({
   // room asks before leaving; otherwise (the full page) it asks here.
   const open = onGuard ? onOpenMemory : (key: string) => guard(() => onOpenMemory(key));
 
+  // A kind nobody edits here (an upload, a run's record, a summary drawn
+  // from its field) has no editor: the header says why instead, the hub's
+  // own words, so nobody saves into a refusal.
+  const readOnly = notEditable(kindOf(memory.key));
+
   // At the end of the memory's header, the same quiet button as its view
   // toggle.
-  const actions = (
+  const actions = readOnly ? (
+    <Tooltip content={readOnly}>
+      <span className="inline-flex items-center gap-1 text-micro text-muted-foreground" aria-label={readOnly}>
+        <Lock className="size-3.5" />
+        <span className="hidden @2xl:inline">Can&apos;t be edited</span>
+      </span>
+    </Tooltip>
+  ) : (
     <Tooltip content={editing ? "Back to the rendered memory" : "Edit this memory"}>
       <Button
         variant="ghost"
@@ -161,7 +174,7 @@ export function MemoryView({
         {/* The toolbar spans the view, as every tab's does; a page centers
             what is under it. The app's breadcrumb already leads back to the room. */}
         <div className={page ? "pb-12" : undefined}>
-          {editing ? (
+          {editing && !readOnly ? (
             <MemoryEditor
               key={memory.key}
               memory={memory}

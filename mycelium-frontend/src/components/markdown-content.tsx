@@ -11,8 +11,9 @@ import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MarkdownTable } from "@/components/markdown-table";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
-import { INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
+import { HANDLE_PATTERN, INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { typeset } from "@/lib/typeset";
+import { loadsHere } from "@/lib/room-image";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
 // body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
@@ -24,8 +25,11 @@ import { typeset } from "@/lib/typeset";
 // `and/or` never lights up. A thread's short id is eight hex characters
 // standing alone: not inside a longer word or hash, a path, a URL or a
 // `urn:…:id`, which are written to be read whole.
-const TOKEN_RE =
-  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@~[A-Za-z0-9][\w-]*|@![A-Za-z0-9][\w-]*|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?|(?<![\w\-/#.:@])[0-9a-f]{8}(?![\w\-/]))/g;
+// A mention's handle is the hub's (`HANDLE_PATTERN`): dots inside, never at its end.
+const TOKEN_RE = new RegExp(
+  String.raw`(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'\`]*[^\s)\]>"'\`.,;:!?]|@[~!]?${HANDLE_PATTERN}|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?|(?<![\w\-/#.:@])[0-9a-f]{8}(?![\w\-/]))`,
+  "g",
+);
 
 const THREAD_ID = /^[0-9a-f]{8}$/;
 
@@ -216,11 +220,19 @@ interface Props {
   threads?: ReadonlyMap<string, ThreadTarget>;
   /** Opens a thread; without it, thread ids stay text. */
   onOpenThread?: (episode: string) => void;
-  /** Draws an image as a link to it rather than loading it: for text an
-   *  agent wrote on this machine, which shouldn't make the page fetch
-   *  whatever it names. */
+  /** Draws every image as a link to it rather than loading it, even the
+   *  room's own uploads: for text an agent wrote on this machine, which
+   *  shouldn't make the page fetch whatever it names. Without it, only an
+   *  image from another site is drawn as a link. */
   imagesAsLinks?: boolean;
+  /** One line: bold, code, links and mentions render, and blocks (paragraphs,
+   *  lists, headings) unwrap into the line. For text that must stay a line,
+   *  such as an ask's option. */
+  inline?: boolean;
 }
+
+/** What a line of `inline` markdown keeps; anything else unwraps to its text. */
+const INLINE_ELEMENTS = ["p", "a", "strong", "em", "del", "code", "br"];
 
 /** A thread id that names a task: the id exactly as written, then a small
  *  thread icon that is the link, showing the task on hover and opening its
@@ -271,6 +283,7 @@ export function MarkdownContent({
   threads,
   onOpenThread,
   imagesAsLinks,
+  inline = false,
 }: Props) {
   const marked = useHighlighter(highlight);
 
@@ -411,9 +424,12 @@ export function MarkdownContent({
     [processNode, onLinkClick, brokenLinks],
   );
 
+  const Wrapper = inline ? "span" : "div";
   return (
-    <div className={`markdown-body ${className ?? ""}`}>
+    <Wrapper className={`markdown-body ${inline ? "markdown-inline" : ""} ${className ?? ""}`}>
       <ReactMarkdown
+        allowedElements={inline ? INLINE_ELEMENTS : undefined}
+        unwrapDisallowed={inline}
         // `remark-breaks` turns a single newline into a line break, the way chat
         // apps do. Agents post terminal-style prose with single newlines; without
         // this CommonMark collapses them into one paragraph and every message walls
@@ -425,7 +441,7 @@ export function MarkdownContent({
         urlTransform={url => (url.startsWith("myc://") ? url : defaultUrlTransform(url))}
         components={{
           a: renderAnchor,
-          p: ({ children }) => <p>{processNode(children)}</p>,
+          p: ({ children }) => (inline ? <>{processNode(children)}</> : <p>{processNode(children)}</p>),
           li: ({ children }) => <li>{processNode(children)}</li>,
           strong: ({ children }) => <strong>{processNode(children)}</strong>,
           em: ({ children }) => <em>{processNode(children)}</em>,
@@ -446,22 +462,23 @@ export function MarkdownContent({
           h4: ({ children }) => <h4>{processNode(children)}</h4>,
           h5: ({ children }) => <h5>{processNode(children)}</h5>,
           h6: ({ children }) => <h6>{processNode(children)}</h6>,
-          ...(imagesAsLinks
-            ? {
-                img: ({ src, alt }) =>
-                  typeof src === "string" && src ? (
-                    <a href={src} target="_blank" rel="noreferrer">
-                      {alt || src}
-                    </a>
-                  ) : (
-                    <>{alt}</>
-                  ),
-              }
-            : {}),
+          // An image loads only when it's the room's own upload (`loadsHere`).
+          // One from another site is a link, so reading it tells that site nothing.
+          img: ({ src, alt }) =>
+            typeof src !== "string" || !src ? (
+              <>{alt}</>
+            ) : imagesAsLinks || !loadsHere(src) ? (
+              <a href={src} target="_blank" rel="noreferrer">
+                {alt || src}
+              </a>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- the hub's bytes, not a static asset
+              <img src={src} alt={alt ?? ""} />
+            ),
         }}
       >
         {children}
       </ReactMarkdown>
-    </div>
+    </Wrapper>
   );
 }

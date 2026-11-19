@@ -9,8 +9,9 @@ Three kinds, one card: ``--approve`` (a yes or no on something you'll do),
 ``--multiple``) and ``--question`` (an open question). The ask is a kind the
 hub knows, with known fields, and the app draws it (``POST /rooms/{room}/asks``).
 The answer comes back as a message that wakes you, and ``await`` gives it as
-values (``answer.decision``, ``answer.choices``/``chosen``, ``answer.text``),
-with the question it answers and who answered, rather than prose to read.
+values (``answer.decision``, ``answer.choices``/``chosen``, ``answer.text``,
+or ``answer.skipped`` when the person skipped it), with the question it
+answers and who answered, rather than prose to read.
 Kinds and fields are frozen in ``contracts/approvals.json``.
 """
 
@@ -26,6 +27,7 @@ from mycelium.client import answered, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+from mycelium.text_input import takes_text
 
 #: The kinds of ask, as ``contracts/approvals.json`` freezes them.
 KINDS = ("approve", "choose", "question")
@@ -55,17 +57,21 @@ def _recommend(recommend: bool, options: list[str] | None) -> list[str] | str | 
 
 @doc_ref(
     usage=(
-        'mycelium ask [--approve | --choose | --question] "<question>" [--option <text>]... '
+        'mycelium ask [--approve | --choose | --question] ["<question>" | --body <text> | --file <path>] '
+        "[--option <text>]... "
         "[--multiple] [--recommend] [--recommend-option <n>] [--suggest <text>] "
         "[--happens <text>] [--why <text>] [--undo <text>] [--link <url>] [--to <person>] "
         "[--task <id>]"
     ),
     desc=(
         "Ask a person to approve something, pick from options, or answer a question. "
+        "The question is markdown: give it as the argument, <code>--body</code>, or "
+        "<code>--file</code> (<code>-</code> reads stdin). "
         "They answer in the app, and the answer wakes you with what they decided as values."
     ),
     group="board",
 )
+@takes_text("question", "What you're asking, in markdown.", noun="question")
 @in_room()
 @acts_as(fallback=None)
 @emits_json()
@@ -122,12 +128,20 @@ def ask(
     when the person picked none of the options), and
     ``answer.text`` (the answer to a question, or the note), with
     ``answer.question`` and who answered (``by``) and who you asked (``for``).
-    If someone other than whom you asked answers, take it as input, and ask
+    Any kind can be skipped instead: then ``answer.skipped`` is true and there
+    is no answer, only maybe a note. Carry on with your own judgment, or ask
+    differently. If someone other than whom you asked answers, take it as input, and ask
     again if you need their own word. An answer is final. To try again, ask
     again.
 
+    The question, the facts (``--happens``, ``--why``, ``--undo``) and the
+    options are markdown, as a message is: the card renders bold, code, links
+    and ``[[memory]]`` links. A long question can span lines; give it with
+    ``--body`` or ``--file``.
+
     Examples:
         mycelium ask --approve "Turn Apple Pay on for everyone on Friday at 9:00" --recommend
+        mycelium ask --approve --file question.md --recommend
         mycelium ask --approve "Merge the checkout PR" --link https://github.com/o/r/pull/7 --undo "Revert the merge"
         mycelium ask --choose "Which payment provider first?" --option "Stripe" --option "Adyen" --recommend-option 1
         mycelium ask --question "What's slowest at checkout?" --suggest "The address form"

@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import type { NextConfig } from "next";
+import { PAGE_ROUTES, PAGE_SECURITY_HEADERS } from "./src/lib/page-headers";
 
 // `/api/*` is proxied to the backend by a runtime route handler
 // (src/app/api/[...path]/route.ts), which resolves MYCELIUM_INTERNAL_API_URL
@@ -46,6 +47,9 @@ const nextConfig: NextConfig & { agentRules?: boolean } = {
   // Kept in memory instead, where it serves just as well for one person's UI.
   experimental: { isrFlushToDisk: false },
   allowedDevOrigins,
+  async headers() {
+    return [{ source: PAGE_ROUTES, headers: PAGE_SECURITY_HEADERS }];
+  },
   // The desktop app's supervisor, run from a checkout, starts its own `next
   // dev` here, so it runs beside a `pnpm dev` in the same folder (Next allows
   // one dev server per build folder).

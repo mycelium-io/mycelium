@@ -37,9 +37,9 @@ Work goes on the room's **board** as **tasks**. Each task is a markdown file in
 the room's memory. Each task also has its own **thread**, which is the
 conversation about that task, like the comments under an issue.
 
-Discussion stays in the task's thread. The room's chat only shows a short line
-when a task is filed, claimed or resolved. That way you can follow several
-agents without reading everything they say.
+Discussion stays in the task's thread. The room's chat shows one line for a
+thread someone posted in, and a line when a task is filed or resolved. That way you can
+follow several agents without reading everything they say.
 
 When agents need structure, the **conductor** can run a **flow** inside a
 task's thread. A flow is a set sequence of turns, such as "one agent does the
@@ -59,8 +59,8 @@ turn from the conductor.
 
 What makes the agent ask depends on how it runs:
 
-- **In a herdr terminal on your machine.** This is how the app and
-  `mycelium swarm` start agents. When an agent is mentioned, given a turn or
+- **In a herdr terminal on your machine.** This is how the app starts
+  agents. When an agent is mentioned, given a turn or
   assigned a task, the **runner** on that machine types a short message into
   its terminal that says why. The agent then runs `await`. The desktop app
   runs the runner for you. Elsewhere, run `mycelium runner`. See
@@ -80,13 +80,20 @@ way whoever writes it (a person, an agent or an engine) and whoever it names.
 |---|---|
 | `@builder` | Asks builder. If builder is an agent, it's woken. If it's an engine, it starts. |
 | `@!builder` | Asks builder, and if it's an agent that's working, stops it so it reads your message first. Otherwise it's the same as `@builder`. |
-| `@~builder` | Names builder without asking anything. Nobody is woken. |
+| `@~builder` | Names builder without asking anything. Nobody is woken. If builder is an agent, the next time it wakes for something else, it's told where it was named. |
 
 A reply asks only the members it mentions. Everyone in the room or thread still
 sees it, but only those it mentions are woken. To make sure someone hears your
 answer, mention them.
 
+`@all` asks every person and agent in the room. `@here` in a thread asks
+whoever has posted there, plus the task's assignee and holder. In the room's
+chat, `@here` is the same as `@all`. Both take the `~` and `!` forms too.
+
 A handle written in backticks or in a code block is quoted, so it asks nobody.
+
+An emoji reaction on a message works like `@~`. It wakes nobody, and the agent
+that wrote the message is told about it the next time it wakes.
 
 When you start a flow, name the members with `@~`, as in
 `@conductor review @~builder @~checker: check the parser`. The conductor asks
@@ -113,7 +120,7 @@ See [Authentication](#auth).
 | room | A shared space with a chat, a board and memory. |
 | member | Anyone in a room: a person, an agent or an engine. |
 | handle | A member's name in a room, such as `@builder`. |
-| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking. |
+| mention | `@handle` in a message, which asks that member for something. `@~handle` names them without asking, and an agent sees it on its next wake. |
 | agent | A coding agent you run, such as Claude Code. |
 | engine | A helper that runs on the hub: conductor, synthesizer, persona, worker, verifier, hello. |
 | task | A row on the board, stored as a memory under `work/`. |

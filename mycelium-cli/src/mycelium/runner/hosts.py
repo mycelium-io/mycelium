@@ -59,12 +59,22 @@ class HostError(Exception):
     A start that got partway also says which step it stopped at (``step``) and
     the terminal it left open for the person to look at (``ref``). Never what
     that terminal shows: it goes to the hub, and a screen stays on this machine.
+    ``missing`` is that terminal's shell having said it has no such command,
+    which the host reads there and passes on only as yes or no.
     """
 
-    def __init__(self, message: str, *, step: str | None = None, ref: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        step: str | None = None,
+        ref: str | None = None,
+        missing: bool = False,
+    ) -> None:
         super().__init__(message)
         self.step = step
         self.ref = ref
+        self.missing = missing
 
 
 class StartHooks:
@@ -115,6 +125,9 @@ class AgentHost(Protocol):
     #: The host gives each agent its own git worktree itself, so the runner
     #: makes none when a launch asks for one.
     worktrees: bool
+    #: The host can start an agent in an earlier session of its CLI's, so a
+    #: launch may bring one into a room.
+    resumes: bool
     #: Why an agent the host no longer has reads as stopped, for a person.
     gone_detail: str
     #: Why an agent that exited where it ran, which is still open, reads as stopped.
@@ -139,11 +152,13 @@ class AgentHost(Protocol):
         env: dict[str, str],
         intro: str,
         hooks: StartHooks | None = None,
+        session: str | None = None,
     ) -> Started:
         """Start ``kind`` as ``@handle`` and give it ``intro``. Raises :class:`HostError`.
 
         ``hooks`` hears each step as it's reached, and is asked to unlock the
-        runner while the host waits on the agent.
+        runner while the host waits on the agent. ``session`` is an earlier
+        session of the CLI's to start it in, on a host that :attr:`resumes`.
         """
         ...
 
@@ -230,6 +245,7 @@ class HerdrHost:
     name = "herdr"
     joins = False
     worktrees = False
+    resumes = True
     gone_detail = "its herdr pane closed"
     exited_detail = "it exited, and its herdr pane is still open"
 
@@ -303,36 +319,50 @@ class HerdrHost:
         env: dict[str, str],
         intro: str,
         hooks: StartHooks | None = None,
+        session: str | None = None,
     ) -> Started:
-        from mycelium.commands.swarm import _start_when_ready
-        from mycelium.integrations.herdr import ShellNotReadyError
+        from mycelium.integrations.agents import of_kind
+        from mycelium.integrations.herdr import AgentExitedError, ShellNotReadyError
+        from mycelium.integrations.herdr.starting import (
+            shell_said_not_found,
+            start_when_ready,
+            wait_drawn,
+        )
 
         hooks = hooks or StartHooks()
         hooks.step(STEP_TERMINAL)
         workspace, pane = self._left_open(state, room, handle, kind, cwd) or self._open_pane(
-            state, room, handle, cwd, env
+            state, room, handle, cwd, {**env, **of_kind(kind).launch_env()}
         )
         # Mapped before anything starts in it, so a sync pass that finds the
         # agent knows whose it is, and the wait below needs no lock against one.
         # Not ``managed``: a closed pane stops the agent, it does not delete it
         # from the room, so the app can start it again with its notes intact.
-        # Its folder is kept so it can be restarted there.
+        # Its folder is kept so it can be restarted there, and a session it was
+        # brought in from, so a restart resumes that one.
         self.bridge.registry.set(
-            HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=kind, cwd=str(cwd))
+            HerdrPaneMapping(
+                room=room, handle=handle, pane=pane, kind=kind, cwd=str(cwd), session=session
+            )
         )
         self.bridge.registry.bind(workspace, room)
         state.owned[workspace] = room
         hooks.step(STEP_SHELL, pane)
         try:
             with hooks.unlocked():
-                came_up = _start_when_ready(
+                came_up = start_when_ready(
                     self.bridge,
                     handle,
                     kind,
                     pane,
                     room=room,
+                    resume=session,
                     on_slow_shell=lambda: hooks.slow_shell(pane),
                 )
+                # Ready by herdr's reading can be before its screen takes
+                # input: an introduction typed then is lost.
+                if came_up is None:
+                    wait_drawn(self.bridge, pane, kind)
         except HerdrError as e:
             # The pane stays open: whatever it shows (a shell still starting, an
             # update or sign-in the agent CLI asks for first) is the person's to
@@ -341,6 +371,11 @@ class HerdrHost:
                 str(e),
                 step=STEP_SHELL if isinstance(e, ShellNotReadyError) else STEP_AGENT,
                 ref=pane,
+                # An agent CLI that exited before it came up: its shell may
+                # have said there's no such command, which is how a CLI that
+                # isn't installed shows, since nothing looks for it beforehand.
+                missing=isinstance(e, AgentExitedError)
+                and shell_said_not_found(self.bridge.read_pane(pane, lines=40), kind),
             ) from e
         if came_up is not None:
             # It started but never read as ready, most often stopped at a prompt.
@@ -494,6 +529,8 @@ class OmnigentHost:
     name = "omnigent"
     joins = True
     worktrees = True
+    #: Omnigent starts each agent in a session of its own.
+    resumes = False
     gone_detail = "its Omnigent session ended"
     exited_detail = gone_detail
 
@@ -589,9 +626,12 @@ class OmnigentHost:
         env: dict[str, str],  # noqa: ARG002 - a session takes no environment; the join code carries it
         intro: str,
         hooks: StartHooks | None = None,  # noqa: ARG002 - a session starts in one call, with no steps to say
+        session: str | None = None,
     ) -> Started:
         from mycelium.integrations.agents import of_kind
 
+        if session:
+            raise HostError("Omnigent can't start an agent in an earlier session")
         if kind not in self._agents:
             self.kinds()
         agent_id = self._agents.get(kind)
