@@ -10,7 +10,9 @@ import {
   Circle,
   FolderOpen,
   GitBranch,
+  Laptop,
   Loader2,
+  Server,
   RefreshCw,
   Sparkles,
   SquareTerminal,
@@ -107,6 +109,7 @@ export function LaunchAgentForm({
   // The app starts agents on the machine it runs on; outside the app, the one
   // machine connected (or the first, when there are several).
   const here = useThisMachine();
+  const [machinePick, setMachinePick] = useState<string | null>(null);
   const [frameworkPick, setFrameworkPick] = useState<string | null>(null);
   const [folderTyped, setFolderTyped] = useState<string | null>(null);
   const [worktreePick, setWorktreePick] = useState(false);
@@ -119,7 +122,15 @@ export function LaunchAgentForm({
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
 
-  const runner = connected.find((r) => r.id === here) ?? connected[0];
+  const runner =
+    connected.find((r) => r.id === machinePick) ?? connected.find((r) => r.id === here) ?? connected[0];
+  // The agent CLI and folder belong to a machine, so a new machine starts from its own.
+  const pickMachine = (id: string) => {
+    if (id === runner?.id) return;
+    setMachinePick(id);
+    setFolderTyped(null);
+    setWorktreePick(false);
+  };
   const startable = useMemo(() => (runner ? launchable(runner) : []), [runner]);
   const framework = startable.find((f) => f.id === frameworkPick) ?? startable[0];
   const folderShown = folderTyped ?? tildePath(runner?.roots[0] ?? "");
@@ -260,6 +271,9 @@ export function LaunchAgentForm({
       </div>
 
       <RunsOn
+        machines={connected}
+        here={here}
+        onMachine={pickMachine}
         runner={runner}
         frameworkId={framework?.id ?? null}
         folder={folderShown}
@@ -588,6 +602,9 @@ const fieldClass =
 
 /** Where the agent runs: agent CLI and folder on this machine, in one strip beside the button. */
 function RunsOn({
+  machines,
+  here,
+  onMachine,
   runner,
   frameworkId,
   folder,
@@ -597,6 +614,9 @@ function RunsOn({
   onWorktree,
   children,
 }: {
+  machines: Runner[];
+  here: string | null;
+  onMachine: (id: string) => void;
   runner: Runner;
   frameworkId: string | null;
   folder: string;
@@ -608,6 +628,12 @@ function RunsOn({
 }) {
   const startable = launchable(runner);
   const roots = runner.roots.map(tildePath);
+  // Mock only: localStorage `mock.machine` = `inline` puts the choice in the folder field instead.
+  let inline = false;
+  try {
+    inline = globalThis.localStorage?.getItem("mock.machine") === "inline";
+  } catch {}
+  const several = machines.length > 1;
   return (
     <MemberFooter
       action={children}
@@ -626,14 +652,29 @@ function RunsOn({
     >
       {/* One row: which agent CLI, the folder it works in on this machine (named
           before the path, never a choice), and whether it gets a branch of its own. */}
+      {several && !inline && <MachinePicker machines={machines} here={here} value={runner} onChange={onMachine} />}
       {startable.length > 0 && (
         <HarnessPicker runner={runner} frameworks={startable} value={frameworkId} onChange={onFramework} />
       )}
       <div className={cn(fieldClass, "flex h-10 min-w-0 flex-1 items-center gap-1.5 py-0 focus-within:border-accent")}>
-        <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
-        <span className="max-w-28 flex-shrink-0 truncate text-faint" title={`On ${runnerName(runner)}, this machine`}>
-          {runnerName(runner)}
-        </span>
+        {/* On this machine the folder mark opens the system's folder dialog. */}
+        {runner.id === here ? (
+          <FolderPicker
+            runner={runner}
+            value={expandPath(folder, runner.roots)}
+            onPick={(path) => onFolder(tildePath(path))}
+            iconOnly
+          />
+        ) : (
+          <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
+        )}
+        {several && inline ? (
+          <MachinePicker machines={machines} here={here} value={runner} onChange={onMachine} inline />
+        ) : several ? null : (
+          <span className="max-w-28 flex-shrink-0 truncate text-faint" title={`On ${runnerName(runner)}, this machine`}>
+            {runnerName(runner)}
+          </span>
+        )}
         <label htmlFor="launch-folder" className="sr-only">
           Folder
         </label>
@@ -653,11 +694,6 @@ function RunsOn({
           <option key={r} value={r} />
         ))}
       </datalist>
-      <FolderPicker
-        runner={runner}
-        value={expandPath(folder, runner.roots)}
-        onPick={(path) => onFolder(tildePath(path))}
-      />
       {startsInHerdr(runner) && (
         <button
           type="button"
@@ -678,6 +714,82 @@ function RunsOn({
         </button>
       )}
     </MemberFooter>
+  );
+}
+
+/** What kind of computer a machine is, said as people say it. */
+function osName(platform: string): string {
+  if (platform.startsWith("darwin")) return "macOS";
+  if (platform.startsWith("linux")) return "Linux";
+  if (platform.startsWith("win")) return "Windows";
+  return platform;
+}
+
+function MachineLabel({ machine, here, active = true }: { machine: Runner; here: string | null; active?: boolean }) {
+  const Icon = machine.platform.startsWith("darwin") ? Laptop : Server;
+  return (
+    <>
+      <Icon className="size-4 flex-shrink-0 text-faint" aria-hidden />
+      <span className="min-w-0 text-left leading-tight">
+        <span className={cn("block max-w-32 truncate text-label", active ? "text-text" : "text-muted-foreground")}>
+          {runnerName(machine)}
+        </span>
+        <span className="block text-micro text-faint">
+          {machine.id === here ? "This computer" : osName(machine.platform)}
+        </span>
+      </span>
+    </>
+  );
+}
+
+/**
+ * Which of your connected machines the agent starts on. Shown only when there
+ * is more than one; the agent CLI and folder beside it are that machine's.
+ */
+function MachinePicker({
+  machines,
+  here,
+  value,
+  onChange,
+  inline = false,
+}: {
+  machines: Runner[];
+  here: string | null;
+  value: Runner;
+  onChange: (id: string) => void;
+  /** Drawn as the folder field's prefix rather than a control of its own. */
+  inline?: boolean;
+}) {
+  // This computer first, then the rest by name.
+  const sorted = [...machines].sort(
+    (a, b) => Number(b.id === here) - Number(a.id === here) || runnerName(a).localeCompare(runnerName(b)),
+  );
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Machine: ${runnerName(value)}`}
+        className={
+          inline
+            ? "flex max-w-32 flex-shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-muted-foreground hover:bg-hairline hover:text-text data-[popup-open]:text-text"
+            : "flex h-10 min-w-0 flex-shrink-0 items-center gap-2 rounded-md border border-border pr-2 pl-2 transition-colors hover:border-border2 hover:bg-hairline data-[popup-open]:border-accent"
+        }
+      >
+        {inline ? (
+          <span className="truncate">{runnerName(value)}</span>
+        ) : (
+          <MachineLabel machine={value} here={here} />
+        )}
+        <ChevronDown className={cn("flex-shrink-0 text-faint", inline ? "size-3" : "ml-1 size-3.5")} aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-52">
+        {sorted.map((m) => (
+          <DropdownMenuItem key={m.id} onClick={() => onChange(m.id)} className="gap-2 py-1.5">
+            <MachineLabel machine={m} here={here} active={m.id === value.id} />
+            {m.id === value.id && <Check className="ml-auto size-3.5 text-accent" aria-label="chosen" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

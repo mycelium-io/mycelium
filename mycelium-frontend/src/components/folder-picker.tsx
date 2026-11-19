@@ -30,10 +30,13 @@ export function FolderPicker({
   runner,
   value,
   onPick,
+  iconOnly = false,
 }: {
   runner: Runner;
   value: string;
   onPick: (path: string) => void;
+  /** Just the folder mark, to sit at the start of the folder field itself. */
+  iconOnly?: boolean;
 }) {
   const here = useThisMachine();
   const [error, setError] = useState<string | null>(null);
@@ -63,10 +66,15 @@ export function FolderPicker({
         type="button"
         onClick={() => void choose()}
         title={`Choose a folder on this ${desktopMachine()}`}
-        className="flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-label text-muted-foreground transition-colors hover:border-border2 hover:text-text"
+        aria-label={iconOnly ? "Choose a folder" : undefined}
+        className={
+          iconOnly
+            ? "-ml-1 flex size-6 items-center justify-center rounded text-faint transition-colors hover:bg-hairline hover:text-text"
+            : "flex h-8 items-center gap-1.5 rounded-md border border-border px-2 text-label text-muted-foreground transition-colors hover:border-border2 hover:text-text"
+        }
       >
-        <FolderOpen className="size-4" aria-hidden />
-        Choose…
+        <FolderOpen className={iconOnly ? "size-3.5" : "size-4"} aria-hidden />
+        {!iconOnly && "Choose…"}
       </button>
       {error && (
         <p
