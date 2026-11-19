@@ -33,6 +33,7 @@ from tests.herdr_layout import HerdrLayout
 
 #: The real install folders, which every test but the one about them has stubbed out.
 REAL_INSTALL_DIRS = frameworks.install_dirs
+REAL_OWN_INSTALL_DIRS = frameworks.own_install_dirs
 
 HELP = """Start a supported interactive agent in an existing pane
 
@@ -383,6 +384,27 @@ def test_a_cli_under_nvm_is_found_in_the_newest_node_and_run_with_it_first(
     assert [r for r in ran if r[0].endswith("/codex")] == [
         (str(real), f"{real.parent}:/usr/bin:/bin")
     ]
+
+
+def test_opencode_is_found_where_its_own_installer_puts_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """OpenCode's install script puts it in ~/.opencode/bin and adds that to
+    the shell's rc file, which the desktop app's runner doesn't read: the scan
+    looks there itself, so it isn't listed as not found."""
+    monkeypatch.setattr(frameworks, "own_install_dirs", REAL_OWN_INSTALL_DIRS)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(frameworks, "_version", lambda _path, _search=None: "2.3.2")
+    assert not next(f for f in frameworks.scan({"opencode"}) if f.id == "opencode").installed
+
+    real = _program(tmp_path / ".opencode" / "bin" / "opencode")
+    found = next(f for f in frameworks.scan({"opencode"}) if f.id == "opencode")
+    assert found.installed and found.launchable
+    assert found.path == str(real)
+    # Only OpenCode's own installer uses that folder.
+    _program(tmp_path / ".opencode" / "bin" / "codex")
+    assert not next(f for f in frameworks.scan({"codex"}) if f.id == "codex").installed
 
 
 def test_the_scan_runs_nothing_of_the_persons_shell(

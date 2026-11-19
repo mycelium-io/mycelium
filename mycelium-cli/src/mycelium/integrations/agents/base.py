@@ -61,6 +61,9 @@ class AgentKind:
     #: waits for the screen to draw before typing its introduction
     #: (``starting.wait_drawn``). Only these CLIs have their screen looked at for it.
     draws_late: ClassVar[bool] = False
+    #: Folders under the home folder that this CLI's own installer puts it in,
+    #: which the scan looks in after the PATH (``runner.frameworks.locate``).
+    installs_to: ClassVar[tuple[str, ...]] = ()
 
     def session_path(self, folder: str | None, session: str) -> Path | None:  # noqa: ARG002 - a CLI with a converter finds it
         """The file this CLI keeps ``session`` in, begun in ``folder``; ``None``
@@ -137,7 +140,7 @@ class AgentKind:
         does; ``None`` when it isn't found or couldn't be run."""
         from mycelium.runner.frameworks import locate
 
-        found, search = locate(self.binaries)
+        found, search = locate(self.binaries, self.installs_to)
         if not found:
             return None
         env = {**os.environ, "PATH": search} if search else None
@@ -171,7 +174,7 @@ class AgentKind:
         """
         from mycelium.runner.frameworks import locate
 
-        found, search = locate(self.binaries)
+        found, search = locate(self.binaries, self.installs_to)
         if not found:
             return False
         try:

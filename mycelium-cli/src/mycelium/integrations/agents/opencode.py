@@ -16,6 +16,9 @@ class OpenCode(AgentKind):
     # herdr reads it as idle as soon as it runs, before its screen is drawn:
     # an introduction typed then is lost, or lands without its Enter.
     draws_late: ClassVar[bool] = True
+    # Its install script (opencode.ai/install) puts it here, and adds the
+    # folder to the shell's rc file, which the desktop app's runner doesn't read.
+    installs_to: ClassVar[tuple[str, ...]] = (".opencode/bin",)
 
     def launch_env(self) -> dict[str, str]:
         # OpenCode checks for a new release a few seconds after it starts and

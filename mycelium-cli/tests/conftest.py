@@ -139,11 +139,13 @@ def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
 
     The scan and ``AgentKind.offers`` look in ``~/.nvm``, Homebrew's folders and
     the like when a CLI isn't on the process's PATH, which in a test is most of
-    them. A test that wants one there stubs ``install_dirs``.
+    them, and in a CLI's own install folder (``~/.opencode/bin``). A test that
+    wants one there stubs ``install_dirs`` or ``own_install_dirs``.
     """
     from mycelium.runner import frameworks
 
     monkeypatch.setattr(frameworks, "install_dirs", list)
+    monkeypatch.setattr(frameworks, "own_install_dirs", lambda _installs_to: [])
 
 
 # ── SLIM transport ────────────────────────────────────────────────────────────

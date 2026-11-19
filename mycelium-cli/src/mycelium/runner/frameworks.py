@@ -12,7 +12,8 @@ and the start is the real test of whether it's installed.
 
 Whether a CLI is found is a hint for the list, and for asking an installed CLI
 about its flags: its program on this process's ``PATH``, then in the folders
-version managers and installers put programs in (:func:`install_dirs`).
+folders the CLI's own installer uses (:func:`own_install_dirs`), then in the
+folders version managers and installers put programs in (:func:`install_dirs`).
 Nothing of the person's runs to answer it: not their shell, not its rc files.
 What to look for and what to call it is the table in
 :mod:`mycelium.integrations.agents`.
@@ -144,15 +145,25 @@ def install_dirs() -> list[Path]:
     ]
 
 
-def locate(binaries: tuple[str, ...]) -> tuple[str | None, str | None]:
-    """The first of ``binaries`` on this process's PATH, else in
+def own_install_dirs(installs_to: tuple[str, ...]) -> list[Path]:
+    """The folders a CLI's own installer puts it in (``AgentKind.installs_to``),
+    under the home folder."""
+    home = Path.home()
+    return [home / d for d in installs_to]
+
+
+def locate(
+    binaries: tuple[str, ...], installs_to: tuple[str, ...] = ()
+) -> tuple[str | None, str | None]:
+    """The first of ``binaries`` on this process's PATH, else in the CLI's own
+    install folders (``installs_to``, under the home folder), else in
     :func:`install_dirs`, and the PATH to run it with: ``None`` for this
     process's own, or that folder ahead of it, so a CLI that's a Node script
     (``#!/usr/bin/env node``) finds the ``node`` installed beside it.
     ``(None, None)`` when it isn't found."""
     if found := next((p for b in binaries if (p := shutil.which(b))), None):
         return found, None
-    for folder in install_dirs():
+    for folder in [*own_install_dirs(installs_to), *install_dirs()]:
         if found := next((p for b in binaries if (p := shutil.which(b, path=str(folder)))), None):
             return found, f"{folder}{os.pathsep}{os.environ.get('PATH', os.defpath)}"
     return None, None
@@ -191,7 +202,7 @@ def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
     has its kind, whether or not the scan found its program: the host's shell
     may find what the scan didn't.
     """
-    located = {k.id: locate(k.binaries) for k in KNOWN}
+    located = {k.id: locate(k.binaries, k.installs_to) for k in KNOWN}
     found = [k.id for k in KNOWN if located[k.id][0]]
     with ThreadPoolExecutor(max_workers=8) as pool:
         versions = dict(
