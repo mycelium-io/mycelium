@@ -153,7 +153,7 @@ def changed_pngs(since: str) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     pngs = parser.add_mutually_exclusive_group()
     pngs.add_argument(
         "--pngs-since", metavar="REF", help="also check PNGs added or changed since REF"

@@ -154,6 +154,22 @@ def test_room_messages_marks_an_amended_message_as_edited(
     assert " · edited" in result.output
 
 
+def test_room_messages_shows_the_emoji_on_a_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mycelium_backend_client.models import MessageListResponse, MessageReactions
+
+    reacted = _make_messages()[:1]
+    reacted[0].reactions = [
+        MessageReactions(emoji="👍", by=["julia", "lead"]),
+        MessageReactions(emoji="🎉", by=["lead"]),
+    ]
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=reacted, total=1))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    assert "    👍 @julia @lead   🎉 @lead" in result.output
+
+
 def test_room_messages_passes_sender_and_type_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium_backend_client.models import MessageListResponse
 

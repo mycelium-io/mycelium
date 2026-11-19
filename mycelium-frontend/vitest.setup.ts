@@ -90,6 +90,47 @@ if (typeof globalThis.localStorage?.getItem !== "function") {
   Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true, writable: true });
 }
 
+// jsdom has <dialog> but none of its modal behavior. This stands in for the
+// parts the app's dialogs rely on. `showModal()` and `close()` set and clear
+// `open`. `close()` returns focus to what had it and fires `close`. An Escape
+// nothing prevented fires `cancel` on the top dialog, then closes it unless
+// that was prevented too, after the key's own listeners have run, as a
+// browser does.
+if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.showModal) {
+  const opener = new WeakMap<HTMLDialogElement, Element | null>();
+  const modals: HTMLDialogElement[] = [];
+  HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+    if (this.open) return;
+    opener.set(this, document.activeElement);
+    this.open = true;
+    modals.push(this);
+  };
+  HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+    if (!this.open) return;
+    this.open = false;
+    const at = modals.indexOf(this);
+    if (at >= 0) modals.splice(at, 1);
+    const before = opener.get(this);
+    opener.delete(this);
+    if (before instanceof HTMLElement && before.isConnected) before.focus();
+    this.dispatchEvent(new Event("close"));
+  };
+  // Captured, because stopping the key's propagation doesn't stop a browser's
+  // close request. Only preventing its default does.
+  window.addEventListener(
+    "keydown",
+    e => {
+      if (e.key !== "Escape") return;
+      queueMicrotask(() => {
+        if (e.defaultPrevented) return;
+        const top = modals.filter(d => d.isConnected && d.open).at(-1);
+        if (top && top.dispatchEvent(new Event("cancel", { cancelable: true }))) top.close();
+      });
+    },
+    true,
+  );
+}
+
 if (!globalThis.matchMedia) {
   globalThis.matchMedia = (query: string) => ({
     matches: false,

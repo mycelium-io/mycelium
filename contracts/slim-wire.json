@@ -38,11 +38,11 @@
   },
 
   "valid_subkinds": {
-    "_comment": "Kind -> allowed subkinds. Backend: app.services.message_format.VALID_SUBKINDS (keyed by the Kind enum). CLI: mycelium.slim.message_format.VALID_SUBKINDS (keyed by the plain string, since the hidden `message send`/`slim send` plumbing takes a raw --kind string). An empty/None subkind is always valid for any kind. The exchange move subkinds counter/accept/reject are the closed negotiation-move vocabulary a coordination reply carries on the wire (counter = any offer incl. the opening one; accept/reject respond to the standing offer); team-formation predates them. ``amend`` revises an earlier message: parents carries the amended message's id, the payload carries the new text, and the read path folds the chain to the newest text.",
+    "_comment": "Kind -> allowed subkinds. Backend: app.services.message_format.VALID_SUBKINDS (keyed by the Kind enum). CLI: mycelium.slim.message_format.VALID_SUBKINDS (keyed by the plain string, since the hidden `message send`/`slim send` plumbing takes a raw --kind string). An empty/None subkind is always valid for any kind. The exchange move subkinds counter/accept/reject are the closed negotiation-move vocabulary a coordination reply carries on the wire (counter = any offer incl. the opening one; accept/reject respond to the standing offer); team-formation predates them. ``amend`` revises an earlier message: parents carries the amended message's id, the payload carries the new text, and the read path folds the chain to the newest text. ``reaction`` puts an emoji on an earlier message or takes it off: parents carries that message's id, the content carries reaction {emoji, on}, and the read path folds it into that message.",
     "knowledge": ["distillation", "extraction", "feedback", "query"],
     "commit": ["converged", "rejected", "resolved"],
     "intent": ["coordinator-assignment", "mission"],
-    "exchange": ["accept", "amend", "counter", "reject", "team-formation"],
+    "exchange": ["accept", "amend", "counter", "reaction", "reject", "team-formation"],
     "contingency": ["negotiation"]
   },
 

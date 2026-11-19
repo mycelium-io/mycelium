@@ -97,6 +97,12 @@ describe("an approve", () => {
     expect(screen.queryByText("Why now")).toBeNull();
   });
 
+  it("never approves on ⌘↵: the note may be a Decline's", async () => {
+    renderWithSWR(<AskCard roomName="checkout" ask={approve()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "no, wait for the iPhone test{Meta>}{Enter}{/Meta}");
+    expect(answerAsk).not.toHaveBeenCalled();
+  });
+
   it("approves with the note typed beside it", async () => {
     renderWithSWR(<AskCard roomName="checkout" ask={approve()} />);
     await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "Ship it after the iPhone test");
@@ -157,6 +163,12 @@ describe("a choose", () => {
     expect(await screen.findByText(/^Chose none of the options/)).toHaveTextContent("neither fits our contract");
   });
 
+  it("sends what's ticked on ⌘↵", async () => {
+    renderWithSWR(<AskCard roomName="checkout" ask={choose()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "{Meta>}{Enter}{/Meta}");
+    expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", expect.objectContaining({ choices: expect.any(Array) }));
+  });
+
   it("won't send with nothing ticked: none is its own button", async () => {
     renderWithSWR(<AskCard roomName="checkout" ask={choose({ multiple: true, recommend: [] })} />);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
@@ -180,6 +192,80 @@ describe("a question", () => {
   it("won't send an empty answer", () => {
     renderWithSWR(<AskCard roomName="checkout" ask={question()} />);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+});
+
+describe("markdown", () => {
+  it("renders the question, the facts and the options as markdown", () => {
+    const { container } = renderWithSWR(
+      <AskCard
+        roomName="checkout"
+        ask={choose({
+          question: "Which **provider** first?\n\n- cheaper fees\n- faster payouts",
+          why: "The `stripe` contract ends Friday",
+          options: [
+            { id: "1", label: "**Stripe**, as today", detail: null },
+            { id: "2", label: "Adyen with `3ds`", detail: null },
+          ],
+        })}
+      />,
+    );
+    expect(container.querySelector("strong")?.textContent).toBe("provider");
+    expect(screen.getByText("cheaper fees").tagName).toBe("LI");
+    expect(screen.getByText("stripe").tagName).toBe("CODE");
+    // An option stays one line: inline marks render, and nothing becomes a block.
+    const option = screen.getByText("Stripe").closest("label");
+    expect(option?.querySelector("strong")).not.toBeNull();
+    expect(option?.querySelector("p, ul, li")).toBeNull();
+    expect(screen.getByText("3ds").tagName).toBe("CODE");
+  });
+
+  it("folds to the question as one plain line", () => {
+    renderWithSWR(
+      <AskCard
+        roomName="checkout"
+        ask={approve({
+          question: "Turn **Apple Pay** on for the `web` app?\n\n- 212 orders, none charged twice",
+          answer: {
+            kind: "approve",
+            question: "",
+            for: "operator",
+            by: "operator",
+            at: "",
+            decision: "approved",
+            choices: [],
+            chosen: [],
+            text: null,
+          },
+        })}
+      />,
+    );
+    // Its first paragraph, the question itself; the detail under it opens with the card.
+    expect(screen.getByText("Turn Apple Pay on for the web app?")).toBeInTheDocument();
+  });
+});
+
+describe("skipping", () => {
+  it.each([
+    ["an approve", approve],
+    ["a choose", choose],
+  ])("skips %s with its note, and sends no answer of its own", async (_kind, make) => {
+    renderWithSWR(<AskCard roomName="checkout" ask={make()} />);
+    await userEvent.type(screen.getByRole("textbox", { name: "Note" }), "not mine to call");
+    await userEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", {
+      by: "operator",
+      skipped: true,
+      text: "not mine to call",
+    });
+    expect(await screen.findByText(/^Skipped/)).toHaveTextContent("not mine to call");
+  });
+
+  it("skips a question without sending its text box as a note", async () => {
+    renderWithSWR(<AskCard roomName="checkout" ask={question({ suggest: "The address form." })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(answerAsk).toHaveBeenCalledWith("checkout", "7e21c0a4", { by: "operator", skipped: true });
+    expect(await screen.findByText(/^Skipped/)).toBeInTheDocument();
   });
 });
 

@@ -35,17 +35,19 @@ FILENAME = "pauses.json"
 _lock = threading.Lock()
 
 
-def _path() -> Path:
-    return get_data_dir() / FILENAME
+def _path(filename: str = FILENAME) -> Path:
+    return get_data_dir() / filename
 
 
-def _load() -> dict[str, dict[str, dict[str, str]]]:
+def _load(filename: str = FILENAME) -> dict[str, dict[str, dict[str, str]]]:
+    """``{room: {handle: {by, at}}}`` from ``filename`` in the data dir; the
+    shape ``keeps.py`` keeps too."""
     try:
-        data: Any = json.loads(_path().read_text())
+        data: Any = json.loads(_path(filename).read_text())
     except FileNotFoundError:
         return {}
     except (OSError, ValueError):
-        logger.warning("unreadable %s; treating every agent as not paused", FILENAME)
+        logger.warning("unreadable %s; treating it as empty", filename)
         return {}
     if not isinstance(data, dict):
         return {}
@@ -56,10 +58,10 @@ def _load() -> dict[str, dict[str, dict[str, str]]]:
     }
 
 
-def _save(data: dict[str, dict[str, dict[str, str]]]) -> None:
-    path = _path()
+def _save(data: dict[str, dict[str, dict[str, str]]], filename: str = FILENAME) -> None:
+    path = _path(filename)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".pauses.", suffix=".json")
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".json")
     try:
         with os.fdopen(fd, "w") as fh:
             json.dump({room: handles for room, handles in data.items() if handles}, fh, indent=2)

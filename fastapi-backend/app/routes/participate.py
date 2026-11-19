@@ -60,7 +60,7 @@ from app.services.asks import Wake, asks, wakes_for
 from app.services.filesystem import room_exists
 from app.services.message_models import Kind
 from app.services.message_slim import serialize_content, serialize_envelope
-from app.services.persister import _conversational_text, read_id, record_episode
+from app.services.persister import _conversational_text, read_id, read_id_of, record_episode
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ def _said_earlier(room: str, handle: str, records: list[Any], at: int) -> list[d
             continue
         if record.sender and _norm(record.sender) == _norm(handle):
             break
-        if asks(record.content, handle):
+        if asks(record.content, handle, room):
             break
         text = _conversational_text(record.content)
         if text is None:
@@ -427,7 +427,7 @@ async def await_message(
             if subscribed is not None:
                 turn["reason"], turn["why"] = "subscribed", subscribed.why
             else:
-                turn["reason"], turn["why"] = asks(record.content, handle), None
+                turn["reason"], turn["why"] = asks(record.content, handle, room_name), None
             wake = {
                 "handle": handle,
                 "reason": turn["reason"] or "mention",
@@ -613,8 +613,29 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     activity.signal(room_name, handle, "done", episode=episode)
     # A person replying from the CLI has joined the room, as one posting does.
     room_people.joined_by_message(room_name, handle)
+    wire_id = envelope.header.message.id if envelope.header.message else None
     return {
         "room": room_name,
         "handle": handle,
-        "message_id": envelope.header.message.id if envelope.header.message else None,
+        "message_id": wire_id,
+        "id": str(read_id_of(wire_id)) if wire_id else None,
+        "working": _working_mentioned(room_name, content, wire_id),
     }
+
+
+def _working_mentioned(room: str, content: dict, wire_id: str | None) -> list[str]:
+    """Who ``content`` mentions plainly that is mid-turn, with its wake for this
+    message held: they read it when their turn ends, unless its sender
+    interrupts them with it (``mycelium room interrupt``)."""
+    from app.services.asks import asked
+
+    if not wire_id:
+        return []
+    manager = room_channels.manager
+    return [
+        h
+        for h, why in asked(content, room).items()
+        if why == "mention"
+        and manager.herdr_status(room, h) == "working"
+        and manager.held_for(room, h, wire_id)
+    ]

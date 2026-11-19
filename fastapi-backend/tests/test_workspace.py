@@ -46,10 +46,10 @@ def test_each_member_gets_its_own_worktree_and_branch(upstream: Path):
 
     assert one.path != two.path
     assert (one.path / "README.md").read_text() == "hello\n"
-    assert _git(one.path, "rev-parse", "--abbrev-ref", "HEAD") == "swarm/agent-1"
+    assert _git(one.path, "rev-parse", "--abbrev-ref", "HEAD") == "worker/agent-1"
     assert one.base == "trunk"
     assert one.origin == str(upstream)
-    assert "swarm/agent-1" in one.describe()
+    assert "worker/agent-1" in one.describe()
     # Asking again is the same checkout, not a second one.
     assert workspace.checkout_for("clone-room", "agent-1") == one
 
@@ -67,7 +67,22 @@ def test_a_member_can_read_a_teammates_branch(upstream: Path):
         env={**workspace.identity("agent-1"), "PATH": "/usr/bin:/bin:/usr/local/bin"},
     )
 
-    assert _git(two.path, "log", "-1", "--format=%an", "swarm/agent-1") == "agent-1"
+    assert _git(two.path, "log", "-1", "--format=%an", "worker/agent-1") == "agent-1"
+
+
+def test_a_checkout_keeps_the_branch_it_was_made_on():
+    """A worker's checkout from before branches were named ``worker/`` is still
+    its checkout, and it is told the branch it is really on."""
+    shared = workspace.prepare("older-room")
+    path = shared.parent / "agent-1"
+    _git(shared, "worktree", "add", "-q", "-b", "swarm/agent-1", str(path), "main")
+
+    checkout = workspace.checkout_for("older-room", "agent-1")
+
+    assert checkout.path == path
+    assert checkout.branch == "swarm/agent-1"
+    assert workspace.branch_of("older-room", "agent-1") == "swarm/agent-1"
+    assert workspace.branch_of("older-room", "agent-2") == "worker/agent-2"
 
 
 def test_a_room_keeps_the_repository_it_started_on(upstream: Path, tmp_path: Path):

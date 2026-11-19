@@ -73,6 +73,10 @@ class RoomSettingError(ValueError):
     """A write to ``settings/`` the table refuses; the message says why."""
 
 
+class UnknownSetting(RoomSettingError):
+    """A write to a ``settings/`` id the table doesn't have."""
+
+
 def is_setting_key(key: str) -> bool:
     return key.startswith(NAMESPACE)
 
@@ -126,7 +130,7 @@ def check_write(key: str, meta: dict[str, Any] | None, existing_meta: dict[str, 
     if spec is None:
         known = ", ".join(s.id for s in TABLE)
         msg = f"there is no room setting '{setting_id}'; a room has {known}"
-        raise RoomSettingError(msg)
+        raise UnknownSetting(msg)
     if meta and VALUE_FIELD in meta:
         return validate(spec, meta[VALUE_FIELD])
     if VALUE_FIELD in existing_meta:

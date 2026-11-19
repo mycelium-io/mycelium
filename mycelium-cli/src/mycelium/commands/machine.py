@@ -337,6 +337,36 @@ def session_cmd(
 
 
 @doc_ref(
+    usage="mycelium machine sessions [--json]",
+    desc="List the earlier agent sessions on this machine, newest first, with their titles, for each agent CLI whose sessions Mycelium can list. Titles are read here and never sent to the hub.",
+    group="agent",
+)
+@app.command("sessions")
+@emits_json("as_json")
+def sessions_cmd(as_json: bool = False) -> None:
+    """Earlier agent sessions on this machine, with their titles.
+
+    Prints ``[{framework, id, folder, last_used, branch, title}]``, newest
+    first within each agent CLI. ``title`` is the CLI's own title for it, else
+    what it was first asked. The desktop app shows the titles beside the
+    sessions the runner's scan lists, matched by ``framework`` and ``id``. It
+    reads files on this machine only and sends nothing to the hub.
+    """
+    from mycelium.integrations.agents import KNOWN
+
+    listed = [{"framework": k.id, **s} for k in KNOWN for s in (k.list_sessions(titles=True) or [])]
+    if as_json:
+        typer.echo(json.dumps(listed))
+        return
+    if not listed:
+        console.print("[dim]No earlier agent sessions on this machine.[/dim]")
+    for s in listed:
+        title = escape(s.get("title") or "untitled")
+        where = escape(_tilde(s["folder"]))
+        console.print(f"{title} [dim]{escape(s['framework'])} · {where} · {s['last_used']}[/dim]")
+
+
+@doc_ref(
     usage="mycelium machine integrations [--install | --decline] [--yes] [--json]",
     desc="Show whether herdr can bring this machine's agents back after it restarts, and install its integrations.",
     group="agent",

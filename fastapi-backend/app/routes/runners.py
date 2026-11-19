@@ -13,11 +13,14 @@ notes land in the room first, through the same upsert every writer uses, and
 only then is the launch queued. A launch the runner then fails leaves an agent
 defined in the room that can be started again, which is what the app shows.
 
-The hub is not what keeps a machine safe. Anyone who can reach it can queue a
-job, and nothing here can prove who asked, so the runner asks the person at
-its machine before it starts anything (``mycelium/runner/approvals.py``). What
-the hub does is keep machines to their owners when it can tell who is calling:
-with a verified token, a caller sees and asks only runners it owns.
+The hub is not what keeps a machine safe. With sign-in off, anyone who can
+reach it can queue a job and nothing here can prove who asked, so the runner
+asks the person at its machine before it starts anything
+(``mycelium/runner/approvals.py``). What the hub does is keep machines to their
+owners when it can tell who is calling. With a verified token, a runner is
+owned by whoever its token names, whatever its hello declares, and a caller
+sees, asks, drains, reports on and removes only runners it owns. Another
+person's runner is not found, so its id isn't confirmed.
 """
 
 from __future__ import annotations
@@ -40,9 +43,10 @@ from app.schemas import (
     RunnerJobReport,
     RunnerPair,
     RunnerRead,
+    RunnerSessionResume,
     refusals,
 )
-from app.services import actor
+from app.services import actor, principals
 from app.services.agent_registry import norm_handle, write_agent_manifest
 from app.services.filesystem import (
     canonical_room_name,
@@ -56,6 +60,7 @@ from app.services.runners import (
     check_cwd,
     check_framework,
     check_ready,
+    framework_of,
     registry,
 )
 
@@ -71,9 +76,10 @@ MAX_POLL_S = 30.0
 def _yours(runner: RunnerRead, request: Request | None) -> bool:
     """Whether a verified caller owns ``runner``; any caller, when none is verified.
 
-    Without a token the hub can't tell who is calling (the gate is off by
-    default), so it shows every runner and the runner's own question is the
-    only check. A runner that names no owner belongs to no one it could hide from.
+    With sign-in off (the default) the hub can't tell who is calling, so it
+    shows every runner and the runner's own question is the only check. A
+    runner that names no owner belongs to no one it could hide from; with
+    sign-in on, every runner's hello names its caller as owner.
     """
     principal = actor.current_principal(request)
     if principal is None or not runner.owner:
@@ -86,6 +92,32 @@ def _runner_or_404(runner_id: str, request: Request | None = None) -> RunnerRead
     if runner is None or not _yours(runner, request):
         raise HTTPException(status_code=404, detail="Runner not found")
     return runner
+
+
+def refuse_anothers_runner(
+    runner_id: str | None, request: Request | None, *, room: str | None = None
+) -> None:
+    """404 when a verified caller names a runner that is someone else's.
+
+    For the calls a runner makes as itself (its long-poll, its reports, its
+    goodbye, its herdr push and wake drain), where an id the hub hasn't heard
+    of keeps the answer it had. Without a token nothing is checked.
+
+    With ``room``, an agent of the runner's owner counts as the owner: one
+    whose manifest in that room names the owner as its ``owner``. Not its
+    ``allow_from``, which lets others act as the agent and doesn't make it
+    theirs. ``mycelium herdr sync`` run in an agent's pane carries that agent's
+    token, not its person's, and is still that person's machine pushing.
+    """
+    principal = actor.current_principal(request)
+    if not runner_id or principal is None:
+        return
+    runner = registry.get(runner_id)
+    if runner is None or _yours(runner, request):
+        return
+    if room and runner.owner and principals.owned_by(room, principal.handle, runner.owner):
+        return
+    raise HTTPException(status_code=404, detail="Runner not found")
 
 
 def adapter_for(framework: str) -> str:
@@ -141,24 +173,62 @@ def existing_runner_of(room: str, handle: str) -> tuple[bool, str | None]:
 # ── the runner's side ────────────────────────────────────────────────────────
 
 
-@router.post("", response_model=RunnerRead)
-async def runner_hello(payload: RunnerHello) -> RunnerRead:
-    """A runner dialing in, or its heartbeat: what it found on its machine, and what it runs."""
+@router.post("", response_model=RunnerRead, responses=refusals(409))
+async def runner_hello(payload: RunnerHello, request: Request) -> RunnerRead:
+    """A runner dialing in, or its heartbeat: what it found on its machine, and what it runs.
+
+    With a verified token the runner is its caller's: ``owner`` is the token's
+    handle, and an id another person's runner holds is refused.
+    """
+    principal = actor.current_principal(request)
+    if principal is not None:
+        held = registry.get(payload.id)
+        if held is not None and not _yours(held, request):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Another person's machine already uses the runner id {payload.id}. "
+                "Give this runner its own id and start it again.",
+            )
+        payload.owner = principal.handle
+    await _subagents_follow(payload)
     return registry.hello(payload)
 
 
-@router.delete("/{runner_id}", status_code=204)
-async def runner_goodbye(runner_id: str) -> Response:
+async def _subagents_follow(hello: RunnerHello) -> None:
+    """Each agent's subagents follow what its machine says: its open and
+    finished subagent steps (counts, never their text) and whether it's still
+    running. The rows any subagent that ended was holding go back."""
+    from app.services import subagents
+
+    rooms: set[str] = set()
+    for workspace in hello.machine.workspaces if hello.machine else []:
+        for agent in workspace.agents:
+            subagents.observe(
+                agent.room,
+                agent.handle,
+                agent.subagents_open,
+                agent.state,
+                finished_steps=agent.subagents_finished,
+            )
+            rooms.add(agent.room)
+    for room in rooms:
+        await subagents.release_ended(room)
+
+
+@router.delete("/{runner_id}", status_code=204, responses=refusals(404))
+async def runner_goodbye(runner_id: str, request: Request) -> Response:
     """A runner going away; its agents stay defined in their rooms."""
+    refuse_anothers_runner(runner_id, request)
     registry.remove(runner_id)
     return Response(status_code=204)
 
 
 @router.get("/{runner_id}/jobs/next", response_model=RunnerJobRead | None, responses=refusals(404))
 async def next_job(
-    runner_id: str, timeout: float = Query(25.0, ge=0.0, le=MAX_POLL_S)
+    runner_id: str, request: Request, timeout: float = Query(25.0, ge=0.0, le=MAX_POLL_S)
 ) -> RunnerJobRead | Response:
     """The runner's long-poll: the next job to do, or 204 when none arrived in time."""
+    refuse_anothers_runner(runner_id, request)
     try:
         job = await registry.next_job(runner_id, timeout)
     except RunnerError as exc:
@@ -173,7 +243,9 @@ async def next_job(
     response_model=RunnerJobRead,
     responses=refusals(403, 404, 409, 422),
 )
-async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> RunnerJobRead:
+async def report_job(
+    runner_id: str, job_id: str, payload: RunnerJobReport, request: Request
+) -> RunnerJobRead:
     """The runner saying how a job went.
 
     A ``rename`` reported running is the machine's yes: the hub renames the
@@ -181,6 +253,7 @@ async def report_job(runner_id: str, job_id: str, payload: RunnerJobReport) -> R
     handle finds everything there. A rename the room no longer allows (the name
     was taken while it waited) answers ``failed``, and the runner restarts nothing.
     """
+    refuse_anothers_runner(runner_id, request)
     queued = registry.job(runner_id, job_id)
     if (
         queued is not None
@@ -488,6 +561,90 @@ async def adopt_agent(runner_id: str, payload: RunnerAgentAdopt, request: Reques
     }
     logger.info("runner %s: adopt %s as @%s in %s", runner_id, payload.pane, handle, payload.room)
     return registry.enqueue(runner_id, "adopt", spec, created_by=me)
+
+
+@router.post(
+    "/{runner_id}/resume",
+    response_model=RunnerJobRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
+async def resume_session(
+    runner_id: str, payload: RunnerSessionResume, request: Request
+) -> RunnerJobRead:
+    """Bring an earlier agent session on this runner's machine into a room.
+
+    The session is one the runner's scan lists for that agent CLI, in that
+    folder. The member and its notes are written here first, as for a launch,
+    so a start that fails leaves an agent that can be started again; the
+    runner then asks the person at the machine and resumes the session in its
+    own pane, as the member.
+    """
+    runner = _runner_or_404(runner_id, request)
+    # The body names the room, so the request's path isn't where it's spelled.
+    payload.room = canonical_room_name(payload.room)
+    if not room_exists(payload.room):
+        raise HTTPException(status_code=404, detail="Room not found")
+    handle = norm_handle(payload.handle)
+    if not handle or not _HANDLE_RE.match(handle):
+        raise HTTPException(
+            status_code=422,
+            detail="Handle must be a lowercase slug (a-z, 0-9, '-', '_') starting alphanumeric.",
+        )
+    try:
+        check_ready(runner)
+        check_framework(runner, payload.framework)
+        cwd = check_cwd(runner, payload.folder)
+    except RunnerError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    framework = framework_of(runner, payload.framework)
+    listed = (framework.sessions if framework else None) or []
+    if not any(s.id == payload.session and s.folder == payload.folder for s in listed):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{runner.label} doesn't list that session in {payload.folder}. It may be "
+            "in use, or gone; scan the machine again to see its sessions now.",
+        )
+    exists, _ = existing_runner_of(payload.room, handle)
+    if exists:
+        raise HTTPException(
+            status_code=409,
+            detail=f"@{handle} is already a member of {payload.room}. Pick another handle.",
+        )
+
+    me = actor.bind_optional_actor(request, payload.created_by, field="created_by")
+    await write_agent_manifest(
+        payload.room,
+        handle,
+        runner_manifest(
+            framework=payload.framework,
+            runner=runner_id,
+            cwd=cwd,
+            description=f"An earlier session on {runner.label}, brought into the room",
+            owner=me or runner.owner,
+        ),
+        created_by=me or "web-ui",
+        principal=actor.principal_handle(request),
+    )
+    instructions = (payload.instructions or "").strip()
+    if instructions:
+        await write_notes(payload.room, handle, instructions, created_by=me or "web-ui")
+
+    spec = {
+        "room": payload.room,
+        "handle": handle,
+        "framework": payload.framework,
+        "session": payload.session,
+        "cwd": cwd,
+    }
+    logger.info(
+        "runner %s: resume a %s session as @%s in %s",
+        runner_id,
+        payload.framework,
+        handle,
+        payload.room,
+    )
+    return registry.enqueue(runner_id, "resume", spec, created_by=me, signature=payload.signature)
 
 
 @router.post(

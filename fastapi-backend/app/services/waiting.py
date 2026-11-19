@@ -133,7 +133,7 @@ def waiting(room: str, handle: str, now: datetime) -> list[dict[str, Any]]:
             continue
         if thread in answered or thread in seen or approvals.ask_on(record) is not None:
             continue
-        if not asks(record.content, me):
+        if not asks(record.content, me, room):
             continue
         key = by_episode.get(thread) if thread else None
         if key is not None and rows.settled(key):

@@ -7,20 +7,20 @@
 // room's prose and the task's argument remain separate.
 
 import { act } from "react";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
-import { fetchWireHistory, fetchMessages, fetchMemories } from "@/lib/api";
+import { fetchWireHistory, fetchMessages, fetchMemorySummaries } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),
   fetchVerifierFlags: vi.fn().mockResolvedValue([]),
-  fetchMemories: vi.fn().mockResolvedValue([]),
+  fetchMemorySummaries: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchRoomSettings: vi.fn().mockResolvedValue([]),
   logFetchError: () => () => undefined,
@@ -75,7 +75,7 @@ describe("<EventStream /> and the threads inside the room", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [] });
     vi.mocked(fetchWireHistory).mockResolvedValue([]);
-    vi.mocked(fetchMemories).mockResolvedValue([]);
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([]);
   });
 
   it("keeps a thread's prose out of the channel and shows the ping instead", async () => {
@@ -115,6 +115,30 @@ describe("<EventStream /> and the threads inside the room", () => {
     expect(screen.getByText("and the backfill finished")).toBeInTheDocument();
   });
 
+  it("marks a message its sender interrupted someone with, from history and live, with no row", async () => {
+    const kept = {
+      ...said("@builder keep #504 and close #506", LIVE, "operator"),
+      id: "m-kept",
+      interrupted: [{ by: "operator", handle: "builder", at: CREATED }],
+    };
+    const later = { ...said("@design review #504 only", LIVE, "operator"), id: "m-later" };
+    vi.mocked(fetchMessages).mockResolvedValue({ messages: [later, kept] });
+    renderWithSWR(<EventStream roomName={ROOM} />);
+    expect(
+      await screen.findByRole("img", { name: "Interrupted @builder" }),
+    ).toBeInTheDocument();
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit({ type: "message_interrupted", room_name: ROOM, message_id: "m-later", by: "operator", handle: "design", at: CREATED });
+    });
+
+    expect(await screen.findByRole("img", { name: "Interrupted @design" })).toBeInTheDocument();
+    // Nothing in the room says it but the mark.
+    expect(screen.queryByText(/Interrupted/)).toBeNull();
+  });
+
   it("collapses a burst from one thread into a single rail entry with its count", async () => {
     renderWithSWR(<EventStream roomName={ROOM} />);
     await act(async () => {});
@@ -149,11 +173,78 @@ describe("<EventStream /> and the threads inside the room", () => {
     expect(onOpenThread).toHaveBeenCalledWith(THREAD);
   });
 
+  it("moves a message's thread up the rail on a reply, and opens the thread from there", async () => {
+    const parent = { ...said("adding an alert for failing payments", LIVE, "operator"), id: "h6" };
+    vi.mocked(fetchMessages).mockResolvedValue({ messages: [parent] });
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
+      {
+        key: "threads/adding-an-alert-for-failing-payments",
+        title: "adding an alert for failing payments",
+        version: 1,
+        created_by: "reviewer",
+        updated_at: CREATED,
+        episode: THREAD,
+        meta: { from: "h6" },
+        thread: { replies: 1, repliers: ["risk"], last_reply: "what counts as failing?", last_reply_at: CREATED },
+      },
+    ]);
+    const onOpenThread = vi.fn();
+    const { container } = renderWithSWR(<EventStream roomName={ROOM} onOpenThread={onOpenThread} />);
+    await screen.findByRole("button", { name: /1 reply/ });
+    const rows = container.querySelectorAll("[data-event-id]").length;
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(ping("risk", "m-2"));
+    });
+
+    // On the rail as a thread, under its name, with who replied.
+    const open = await screen.findByRole("button", { name: "Open thread adding an alert for failing payments" });
+    expect(screen.getByText("Thread")).toBeInTheDocument();
+    expect(screen.getByText("@risk replied")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Open task/ })).toBeNull();
+    // Not a row in the chat.
+    expect(container.querySelectorAll("[data-event-id]").length).toBe(rows);
+    await userEvent.click(open);
+    expect(onOpenThread).toHaveBeenCalledWith(THREAD);
+  });
+
+  it("draws a reply in a message's thread on that message's line, never as a row of its own", async () => {
+    const parent = { ...said("adding an alert for failing payments", LIVE, "operator"), id: "h6" };
+    vi.mocked(fetchMessages).mockResolvedValue({ messages: [parent] });
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
+      {
+        key: "threads/adding-an-alert-for-failing-payments",
+        title: "adding an alert for failing payments",
+        version: 1,
+        created_by: "reviewer",
+        updated_at: CREATED,
+        episode: THREAD,
+        meta: { from: "h6" },
+        thread: { replies: 1, repliers: ["risk"], last_reply: "what counts as failing?", last_reply_at: CREATED },
+      },
+    ]);
+    renderWithSWR(<EventStream roomName={ROOM} onOpenThread={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: /1 reply/ })).toHaveTextContent("what counts as failing?");
+    const reads = vi.mocked(fetchMemorySummaries).mock.calls.length;
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(ping("risk", "m-2"));
+    });
+
+    // Nothing drawn for it in the channel; the list is read again for the line.
+    expect(screen.queryByText("t3aa11bb")).toBeNull();
+    await waitFor(() => expect(vi.mocked(fetchMemorySummaries).mock.calls.length).toBeGreaterThan(reads));
+  });
+
   it("names the task a thread belongs to when the room knows of one", async () => {
-    vi.mocked(fetchMemories).mockResolvedValue([
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
       {
         key: "work/flip-reads-behind-a-flag",
-        value: { title: "flip reads behind a flag" },
+        title: "flip reads behind a flag",
         version: 1,
         created_by: "conductor",
         updated_at: CREATED,
@@ -178,13 +269,13 @@ describe("<EventStream /> and the threads inside the room", () => {
     // board asserting something nobody wrote.
     const bound = (key: string, title: string) => ({
       key,
-      value: { title },
+      title,
       version: 1,
       created_by: "conductor",
       updated_at: CREATED,
       episode: THREAD,
     });
-    vi.mocked(fetchMemories).mockResolvedValue([
+    vi.mocked(fetchMemorySummaries).mockResolvedValue([
       bound("work/flip-reads-behind-a-flag", "flip reads behind a flag"),
       bound("work/retire-the-legacy-store", "retire the legacy store"),
     ]);

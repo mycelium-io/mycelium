@@ -82,24 +82,26 @@ def _first_line(text: str, about: str | None = None) -> str:
     return (head[:space] if space > LATEST_CHARS * 0.6 else head).rstrip() + "…"
 
 
-def latest_lines(room: str) -> dict[str, dict[str, Any]]:
-    """The newest thing a person or an agent said in each thread, keyed by its
-    episode URN. An engine's post (a conductor's step) and
-    the hub's own are reports on the thread, not what the work is doing."""
+def is_report(room: str, sender: str) -> bool:
+    """Whether what ``sender`` says in a thread is a report on it rather than
+    the conversation: an engine's post (a conductor's step) or the hub's own."""
     from app.services import message_format
-    from app.services.persister import prose_messages
     from app.services.principals import classify_sender
 
-    kinds: dict[str, str] = {}
+    return sender == message_format.SYSTEM_ACTOR_ID or classify_sender(room, sender) == "engine"
+
+
+def latest_lines(room: str) -> dict[str, dict[str, Any]]:
+    """The newest thing a person or an agent said in each thread, keyed by its
+    episode URN, leaving out reports (:func:`is_report`)."""
+    from app.services.persister import prose_messages
+
+    kinds: dict[str, bool] = {}
 
     def reports(sender: str) -> bool:
         if sender not in kinds:
-            kinds[sender] = (
-                "engine"
-                if sender == message_format.SYSTEM_ACTOR_ID
-                else classify_sender(room, sender)
-            )
-        return kinds[sender] == "engine"
+            kinds[sender] = is_report(room, sender)
+        return kinds[sender]
 
     latest: dict[str, dict[str, Any]] = {}
     for message in prose_messages(room):
