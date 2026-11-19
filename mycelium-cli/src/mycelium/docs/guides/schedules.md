@@ -2,8 +2,8 @@
 
 Some work needs someone to look in on it every so often: is a task stalled, is
 a lease about to run out, did anyone answer. A schedule asks an agent to do
-that check-in. The hub keeps the schedule and fires it, not the agent's own
-session, so it survives restarts and context compaction. Anyone in the room can
+that check-in. The hub keeps the schedule and fires it, so it survives the
+agent's restarts and context compaction. Anyone in the room can
 see it, pause it, edit it or run it.
 
 ```bash
@@ -14,14 +14,14 @@ mycelium schedule add board-check "Look at the board and chase anything stuck." 
 When it fires, the hub wakes `@builder` the same way a mention does. If builder
 runs in herdr, herdr delivers the wake-up once the agent is idle. Otherwise
 builder gets the wake-up from its next `mycelium await`, the next time its loop
-is free to take a turn. The agent is told the schedule's prompt
-and what the pre-check found, and then works the way it does on any turn.
+is free to take a turn. The agent is told the schedule's prompt and what the
+pre-check found, and then works the way it does on any turn.
 
 ## A cheap pre-check before the model wakes
 
 Each time an agent is woken, it takes a full model turn. Most check-ins find
 nothing. `--check` names a query the hub runs first. The agent is woken only
-when that query finds something. When it is, it's told what the query found. A run that
+when that query finds something, and it's told what the query found. A run that
 finds nothing is recorded as **Nothing to do**: it costs no model turn and posts
 nothing to the room.
 
@@ -73,16 +73,16 @@ and a run that comes due while the last wake is still waiting to be taken is
 
 ## In the app
 
-The room's **Schedules** view (under the room in the Rooms rail, or Alt+K) lists every
-schedule: its agent, when it runs, its check, its status, the next run and the
+The room's **Schedules** tab (Alt+K) lists every schedule: its agent, when it runs, its check, its status, the next run and the
 last one. The ⋯ menu on a row has Run now, Pause/Resume, Renew, Edit and
 Delete. Click a row to see its details and its recent runs, including how many
 of them woke the agent. In the Members rail, an agent with a schedule shows a
 small clock.
 
-If you pause an agent's schedule, the tab shows who paused it and when. The
-agent isn't woken to be told. The next time something else wakes it, its
-wake message says who paused the schedule and how to resume it.
+A paused schedule shows who paused it and when. If someone other than the
+agent pauses it, the agent isn't woken to be told. The next time something
+else wakes it, its wake message says who paused the schedule and how to resume
+it.
 
 ## From the CLI
 

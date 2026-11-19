@@ -15,6 +15,10 @@ What it keeps: prompts, replies, thinking, tool calls with their results, the
 plan, and where the context was compacted. Everything else in the file (titles
 aside) is bookkeeping and is left out. Text is cut short: the view shows the
 first lines of a result, and the JSON a call was written as, never a whole file.
+
+It also lists the sessions on this machine, for bringing one into a room
+(:func:`list_sessions`). A title, the one thing listed in a session's own
+words, is given only when asked for, to the app on this machine.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import html
 import json
 import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +46,12 @@ PAGE_ENTRIES = 200
 #: The span each file's live read last needed, by path.
 _SPANS: dict[str, int] = {}
 MAX_SUBAGENT_ENTRIES = 120
+#: What listing the sessions reads of each file (its start and its end), how
+#: many it lists, the newest, and how long a title it gives.
+LIST_HEAD_BYTES = 64 * 1024
+LIST_TAIL_BYTES = 256 * 1024
+LIST_MAX = 500
+TITLE_CHARS = 120
 #: How much of a result or a raw value is kept.
 RESULT_LINES = 40
 RESULT_CHARS = 8000
@@ -85,7 +96,7 @@ def session_file(folder: str | None, session: str) -> Path | None:
     isn't a letter or a digit made ``-``. A session can outlive a move, so when
     it isn't there, every project is looked in for it.
     """
-    if not re.fullmatch(r"[A-Za-z0-9-]{1,128}", session or ""):
+    if not _SESSION_ID.fullmatch(session or ""):
         return None
     projects = projects_dir()
     if folder:
@@ -94,6 +105,90 @@ def session_file(folder: str | None, session: str) -> Path | None:
             return named
     found = sorted(projects.glob(f"*/{session}.jsonl")) if projects.is_dir() else []
     return found[0] if found else None
+
+
+_SESSION_ID = re.compile(r"[A-Za-z0-9-]{1,128}")
+
+
+def list_sessions(*, titles: bool = False) -> list[dict[str, Any]]:
+    """Every session on this machine, newest first, at most :data:`LIST_MAX`:
+    ``id``, ``folder``, ``last_used`` and ``branch``, and with ``titles`` its
+    ``title``, in its own words.
+
+    Only each file's start (where it began) and end (its branch, and Claude
+    Code's title for it) are read, so listing doesn't depend on how long the
+    sessions are. A file with no prompt or reply in its start is left out.
+    """
+    projects = projects_dir()
+    files: list[tuple[float, Path]] = []
+    for path in projects.glob("*/*.jsonl") if projects.is_dir() else []:
+        if not _SESSION_ID.fullmatch(path.stem):
+            continue
+        try:
+            files.append((path.stat().st_mtime, path))
+        except OSError:
+            continue
+    files.sort(reverse=True)
+    out: list[dict[str, Any]] = []
+    for mtime, path in files:
+        if len(out) >= LIST_MAX:
+            break
+        try:
+            found = _summary(path, mtime, titles=titles)
+        except OSError:
+            continue
+        if found is not None:
+            out.append(found)
+    return out
+
+
+def _summary(path: Path, mtime: float, *, titles: bool) -> dict[str, Any] | None:
+    head = _head(path, LIST_HEAD_BYTES)
+    folder = next((str(ln["cwd"]) for ln in head if isinstance(ln.get("cwd"), str)), None)
+    if not folder or not any(ln.get("type") in ("user", "assistant") for ln in head):
+        return None
+    tail, _cut_off = _tail(path, LIST_TAIL_BYTES)
+    branch = next(
+        (str(ln["gitBranch"]) for ln in reversed([*head, *tail]) if ln.get("gitBranch")), None
+    )
+    found: dict[str, Any] = {
+        "id": path.stem,
+        "folder": folder,
+        "last_used": datetime.fromtimestamp(mtime, UTC).isoformat(),
+        "branch": branch,
+    }
+    if titles:
+        found["title"] = _list_title(head, tail)
+    return found
+
+
+def _list_title(head: list[dict[str, Any]], tail: list[dict[str, Any]]) -> str | None:
+    """Claude Code's latest title for the session, else what it was first asked."""
+    named = [ln["aiTitle"] for ln in [*head, *tail] if isinstance(ln.get("aiTitle"), str)]
+    text = named[-1] if named else None
+    if not text:
+        entries, _ = convert(head)
+        text = next(
+            (
+                e["content"][0]["text"]
+                for e in entries
+                if e["sessionUpdate"] == "user_message" and e["_meta"].get("from") == "person"
+            ),
+            None,
+        )
+    line = next((ln.strip() for ln in (text or "").splitlines() if ln.strip()), "")
+    if not line:
+        return None
+    return line if len(line) <= TITLE_CHARS else line[: TITLE_CHARS - 1].rstrip() + "…"
+
+
+def _head(path: Path, span: int) -> list[dict[str, Any]]:
+    """The file's first ``span`` bytes as parsed lines, less one cut at the end."""
+    with path.open("rb") as f:
+        raw = f.read(span)
+    if len(raw) == span:
+        raw = raw[: raw.rfind(b"\n") + 1]
+    return _parse(raw)
 
 
 def read(path: Path) -> dict[str, Any]:
@@ -163,6 +258,10 @@ def _tail(path: Path, span: int = TAIL_BYTES) -> tuple[list[dict[str, Any]], boo
             f.seek(size - span)
             f.readline()  # the rest of a line cut in half
         raw = f.read()
+    return _parse(raw), size > span
+
+
+def _parse(raw: bytes) -> list[dict[str, Any]]:
     lines = []
     for line in raw.splitlines():
         try:
@@ -171,7 +270,7 @@ def _tail(path: Path, span: int = TAIL_BYTES) -> tuple[list[dict[str, Any]], boo
             continue  # a line still being written
         if isinstance(parsed, dict):
             lines.append(parsed)
-    return lines, size > span
+    return lines
 
 
 def convert(
@@ -196,6 +295,12 @@ def convert(
             _assistant(line, entries, calls, said, agents)
         elif kind == "user" and not line.get("isSidechain"):
             _user(line, entries, calls)
+        elif kind == "attachment" and not line.get("isSidechain"):
+            # A notification that came while the agent was mid-turn is written
+            # as a queued command, not a message of its own.
+            queued = line.get("attachment")
+            if isinstance(queued, dict) and isinstance(queued.get("prompt"), str):
+                _note_ended(queued["prompt"], calls)
 
     # A call with no result is running if nothing was asked after it, else it was stopped.
     asked_after = False
@@ -342,12 +447,47 @@ def _user(
                 call = calls.get(str(block.get("tool_use_id") or ""))
                 if call is not None:
                     _result(call, block, line)
+                    _note_launch(call, block)
             elif block.get("type") == "text" and isinstance(block.get("text"), str):
                 texts.append(block["text"])
         if texts:
+            _note_ended("\n\n".join(texts), calls)
             _prompt(line, "\n\n".join(texts), entries)
     elif isinstance(content, str):
+        _note_ended(content, calls)
         _prompt(line, content, entries)
+
+
+#: What a step started in the background gets back at once: that it was
+#: launched, not what it did.
+_LAUNCHED = "Async agent launched"
+#: How Claude Code tells the session that a step it started in the background
+#: ended: a message naming the step's tool call, and how it ended.
+_NOTIFIED = re.compile(
+    r"<task-notification>.*?<tool-use-id>\s*(\S+?)\s*</tool-use-id>.*?<status>\s*(\w+)\s*</status>",
+    re.S,
+)
+
+
+def _note_launch(call: dict[str, Any], block: dict[str, Any]) -> None:
+    """Mark a subagent step that runs on in the background: its result coming
+    back is its launch, not its end (``_meta.background``)."""
+    if call.get("name") not in ("Agent", "Task"):
+        return
+    given = call.get("rawInput")
+    flagged = isinstance(given, dict) and given.get("run_in_background") is True
+    if flagged or _LAUNCHED in json.dumps(block.get("content"))[:400]:
+        call["_meta"]["background"] = True
+
+
+def _note_ended(text: str, calls: dict[str, dict[str, Any]]) -> None:
+    """A step started in the background ended: say how on its call
+    (``_meta.ended``). The message itself is the CLI's, not a prompt, so it
+    isn't kept as one."""
+    for call_id, status in _NOTIFIED.findall(text):
+        call = calls.get(call_id)
+        if call is not None:
+            call["_meta"]["ended"] = status
 
 
 #: A paste, as the terminal wraps one; herdr pastes each wake.

@@ -11,16 +11,18 @@ from pydantic import BaseModel, Field
 
 from app.bus import app_channel, bus
 from app.schemas import RoomCreate, RoomRead, RoomReindexRead, refusals
-from app.services import actor, pauses, room_access, room_channels, room_people
+from app.services import actor, keeps, pauses, room_access, room_channels, room_people
 from app.services.agent_registry import norm_handle
 from app.services.filesystem import (
     canonical_room_name,
     ensure_room_structure,
     get_room_dir,
     list_room_names,
+    note_change,
     read_room_meta,
     remove_room_dir,
     room_exists,
+    room_path,
     write_room_meta,
 )
 from app.services.persister import TRANSCRIPT_FILENAME
@@ -259,6 +261,8 @@ async def reindex_room(room_name: str):
     from app.services.indexer import index_room
 
     stats = await index_room(room_name)
+    # Files changed by hand: whatever was built from the room is built again.
+    note_change(room_path(room_name))
     return {"status": "complete", **stats}
 
 
@@ -273,6 +277,7 @@ async def delete_room(room_name: str):
     await room_channels.manager.close(room_name)
     remove_room_dir(room_name)
     pauses.forget_room(room_name)
+    keeps.forget_room(room_name)
     logger.info("Removed room %s", room_name)
 
     bus.publish(app_channel(), {"type": "room_deleted", "room_name": room_name})

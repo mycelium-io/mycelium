@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { memoryCommand, taskCommand } from "@/lib/agent-command";
 import { requestMemoryEdit } from "@/lib/memory-edit-request";
+import { kindOf, notEditable } from "@/lib/memory-kinds";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -47,10 +48,12 @@ import {
   MEMORIES_MAX,
   deleteMemory,
   searchMemories,
-  type Memory,
+  type MemorySummary,
   type MemorySearchResult,
 } from "@/lib/api";
-import { useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import { useRoomKnowledge, useRoomMemories, useRoomRevalidate } from "@/lib/room-data";
+import { openCount } from "@/lib/knowledge";
+import { KnowledgeRows } from "@/components/task/task-memories";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey } from "@/lib/memory-panel-nav";
 import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
@@ -71,7 +74,7 @@ function folderOf(key: string | null): string {
 interface TreeNode {
   name: string;
   path: string;
-  memory?: Memory;
+  memory?: MemorySummary;
   children: TreeNode[];
 }
 
@@ -92,7 +95,7 @@ interface Props {
   activeKey?: string | null;
 }
 
-function buildTree(memories: Memory[]): TreeNode[] {
+function buildTree(memories: MemorySummary[]): TreeNode[] {
   const root: TreeNode = { name: "", path: "", children: [] };
 
   for (const mem of memories) {
@@ -153,9 +156,7 @@ function folderPaths(nodes: TreeNode[], into: Set<string> = new Set()): Set<stri
 // A key that already carries an extension is shown as-is.
 function fileName(node: TreeNode): string {
   if (node.name.includes(".")) return node.name;
-  const v = node.memory?.value;
-  const ext = v && typeof v === "object" && !("text" in (v as Record<string, unknown>)) ? "json" : "md";
-  return `${node.name}.${ext}`;
+  return `${node.name}.${node.memory?.structured ? "json" : "md"}`;
 }
 
 const ROW_H = 22; // px, matches vscode compact density
@@ -175,8 +176,8 @@ function MemoryRowMenu({
   children,
 }: {
   roomName: string;
-  memory: Memory | null;
-  onOpen: (mem: Memory) => void;
+  memory: MemorySummary | null;
+  onOpen: (mem: MemorySummary) => void;
   children: React.ReactElement;
 }) {
   const router = useRouter();
@@ -193,15 +194,18 @@ function MemoryRowMenu({
           <ContextMenuItem icon={FileText} onClick={() => onOpen(memory)}>
             Open
           </ContextMenuItem>
-          <ContextMenuItem
-            icon={Pencil}
-            onClick={() => {
-              requestMemoryEdit(memory.key);
-              onOpen(memory);
-            }}
-          >
-            Edit
-          </ContextMenuItem>
+          {/* A kind nobody edits here gets no Edit; its view says why. */}
+          {notEditable(kindOf(memory.key)) === null && (
+            <ContextMenuItem
+              icon={Pencil}
+              onClick={() => {
+                requestMemoryEdit(memory.key);
+                onOpen(memory);
+              }}
+            >
+              Edit
+            </ContextMenuItem>
+          )}
           <ContextMenuItem icon={Maximize2} onClick={() => router.push(href)}>
             Open full page
           </ContextMenuItem>
@@ -287,9 +291,9 @@ interface TreeRowsProps {
   depth: number;
   collapsed: Set<string>;
   onToggle: (path: string) => void;
-  onSelect: (mem: Memory) => void;
+  onSelect: (mem: MemorySummary) => void;
   selectedKey: string | null;
-  onPeek: (mem: Memory, row: HTMLElement) => void;
+  onPeek: (mem: MemorySummary, row: HTMLElement) => void;
   onPeekEnd: () => void;
   /** Paths on the way to a find-file match. When set, anything not in it is
    *  dimmed (the row stays put and clickable, just faded). Null = no filter. */
@@ -326,7 +330,12 @@ function TreeRows({
               onMouseLeave={onPeekEnd}
               onFocus={e => node.memory && onPeek(node.memory, e.currentTarget)}
               onBlur={onPeekEnd}
+              // A row off screen skips layout and paint, so a room with
+              // hundreds of memories open costs only the rows in view. The
+              // placeholder is ROW_H, the row's fixed height, so the scrollbar
+              // doesn't move as rows come into view.
               className={`flex w-full items-center gap-1.5 pr-3 transition-[color,background,opacity]
+                [content-visibility:auto] [contain-intrinsic-block-size:auto_22px]
                 ${dimmed ? "opacity-35" : ""}
                 ${isSelected ? "bg-accent/15 text-text" : "hover:bg-muted text-muted-foreground hover:text-text"}`}
             >
@@ -425,7 +434,7 @@ export function MemoryPanel({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [peek, setPeek] = useState<{ memory: Memory; anchor: PreviewAnchor } | null>(null);
+  const [peek, setPeek] = useState<{ memory: MemorySummary; anchor: PreviewAnchor } | null>(null);
   const [adding, setAdding] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -441,7 +450,7 @@ export function MemoryPanel({
     setPeek(null);
   }, []);
 
-  const startPeek = useCallback((memory: Memory, row: HTMLElement) => {
+  const startPeek = useCallback((memory: MemorySummary, row: HTMLElement) => {
     if (peekTimer.current) clearTimeout(peekTimer.current);
     peekTimer.current = setTimeout(() => {
       const rect = row.getBoundingClientRect();
@@ -461,7 +470,7 @@ export function MemoryPanel({
 
   // Picking a memory opens it in the room's tabs; the panel only lists.
   const selectMemory = useCallback(
-    (m: Memory) => {
+    (m: { key: string }) => {
       endPeek();
       onOpenMemory(m.key);
     },
@@ -472,10 +481,17 @@ export function MemoryPanel({
   // refresh prop.
   const { memories, loading } = useRoomMemories(roomName);
 
-  const contributors = useMemo(
-    () => Array.from(new Set(memories.map(m => m.created_by).filter(Boolean))),
-    [memories],
+  // What the team learned opens first, newest first; the folders are a click
+  // away. A room nobody has written a fact, finding or dead end in opens on
+  // its folders.
+  const knowledge = useRoomKnowledge(roomName);
+  const learned = useMemo(
+    () => [...knowledge.memories].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [knowledge.memories],
   );
+  const stillOpen = openCount(knowledge.memories);
+  const [view, setView] = useState<"learned" | "folders" | null>(null);
+  const shownView = view ?? (learned.length > 0 ? "learned" : "folders");
 
   const revealKeyInTree = useCallback((key: string, clearSearch = false) => {
     if (clearSearch) setSearchResults(null);
@@ -582,16 +598,18 @@ export function MemoryPanel({
   return (
     <div ref={paneRef} className="flex flex-col h-full overflow-hidden">
       <div className="flex h-8 flex-shrink-0 items-center gap-1 px-3 text-micro tabular text-muted-foreground">
-        {/* A count, not a control: it sits back behind the actions beside it. */}
-        <span className="text-faint">
+        {/* A count, not a control: it sits back behind the actions beside it,
+            on one line however narrow the rail. */}
+        <span className="min-w-0 truncate text-faint">
           {/* At the cap the room may hold more: say these are the newest, and that ↵ search reaches the rest. */}
           {memories.length >= MEMORIES_MAX
             ? `Newest ${MEMORIES_MAX.toLocaleString()} memories (↵ searches them all)`
-            : `${memories.length} ${memories.length === 1 ? "memory" : "memories"}`}{" "}
-          · {contributors.length}{" "}
-          {contributors.length === 1 ? "contributor" : "contributors"}
+            : `${memories.length.toLocaleString()} ${memories.length === 1 ? "memory" : "memories"}`}
         </span>
-        <Tooltip content="Open the memory link graph">
+        {stillOpen > 0 && (
+          <span className="ml-1.5 flex-shrink-0 whitespace-nowrap text-accent">{stillOpen} open</span>
+        )}
+        <Tooltip content="What the team learned, by what came from what">
           <Link
             href={memoryGraphHref(roomName)}
             className="ml-auto inline-flex h-6 flex-shrink-0 items-center gap-1 rounded px-1.5 transition-colors hover:bg-hairline hover:text-text"
@@ -708,8 +726,33 @@ export function MemoryPanel({
           </div>
         )}
 
+        {/* What the team learned, newest first, unless the reader is filtering by
+            name, which is the folders' job. */}
+        {!searchResults && learned.length > 0 && (
+          <div className="flex h-7 items-center gap-1 px-2 text-micro">
+            {(["learned", "folders"] as const).map(v => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={shownView === v}
+                onClick={() => setView(v)}
+                className={`flex h-5 items-center rounded px-1.5 transition-colors hover:bg-hairline ${
+                  shownView === v ? "bg-hairline text-text" : "text-muted-foreground"
+                }`}
+              >
+                {v === "learned" ? "Learned" : "Folders"}
+              </button>
+            ))}
+          </div>
+        )}
+        {!searchResults && !trimmedFilter && shownView === "learned" && (
+          <div className="px-1 py-1">
+            <KnowledgeRows memories={learned} onOpen={openMemoryByKey} compact />
+          </div>
+        )}
+
         {/* File tree */}
-        {!searchResults && (
+        {!searchResults && (trimmedFilter || shownView === "folders") && (
           <div className="py-1">
             {loading ? (
               ["w-24", "w-32", "w-20", "w-28"].map((w, i) => (
@@ -743,7 +786,7 @@ export function MemoryPanel({
         )}
       </FadeScroll>
 
-      {peek && <MemoryPreviewCard memory={peek.memory} anchor={peek.anchor} />}
+      {peek && <MemoryPreviewCard room={roomName} memory={peek.memory} anchor={peek.anchor} />}
     </div>
   );
 }

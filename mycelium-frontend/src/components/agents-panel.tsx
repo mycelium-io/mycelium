@@ -3,10 +3,9 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
-  Check,
   Clock,
   Eye,
   FileText,
@@ -17,7 +16,6 @@ import {
   Square,
   SquareTerminal,
   UserMinus,
-  UserPlus,
   Users,
 } from "lucide-react";
 import {
@@ -28,7 +26,6 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { copyText } from "@/lib/clipboard";
-import { inviteLink } from "@/lib/desktop";
 import {
   controlAgent,
   logFetchError,
@@ -39,9 +36,11 @@ import {
   type RoomFloor,
   type RoomSubscription,
   type RoomOther,
+  type Subagent,
 } from "@/lib/api";
 import { floorLabel } from "@/lib/floors";
-import { useRoom, useRoomRoster, useScheduledHandles } from "@/lib/room-data";
+import { useRoom, useRoomRoster, useRoomSubagents, useScheduledHandles } from "@/lib/room-data";
+import { cn } from "@/lib/utils";
 import { runnerName, useRunners } from "@/lib/runners";
 import { AddMemberDialog, type MemberKind } from "@/components/add-member-dialog";
 import { UnregisterAgentDialog, type UnregisterTarget } from "@/components/unregister-agent-dialog";
@@ -57,7 +56,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { nameOf, useNames } from "@/lib/people";
 import { usePrincipal } from "@/components/current-user";
-import { useHubAddress } from "@/lib/hub-address";
 
 interface Props {
   roomName: string;
@@ -229,8 +227,26 @@ export function AgentsPanel({
   // manifests, people from the hub's record of who joined, others who hold a
   // task or are present, and a presence entry for whoever holds a SLIM socket
   // or an `await` lease.
-  const { agents, people, others, presence, floors, subscriptions, paused, loading, refresh } =
+  const { agents, people, others: listed, presence, floors, subscriptions, paused, loading, refresh } =
     useRoomRoster(roomName);
+  // An agent's subagents, from the hub's record: the running ones under their
+  // parent's row, and none of them, running or ended, under Others.
+  const subagents = useRoomSubagents(roomName);
+  const others = useMemo(
+    () => listed.filter((o) => !subagents.has(o.handle.toLowerCase())),
+    [listed, subagents],
+  );
+  const running = useMemo(() => {
+    const byParent = new Map<string, Subagent[]>();
+    for (const s of subagents.values()) {
+      if (s.state === "ended") continue;
+      const parent = s.parent.toLowerCase();
+      byParent.set(parent, [...(byParent.get(parent) ?? []), s]);
+    }
+    return byParent;
+  }, [subagents]);
+  const subagentRows = (parent: string) =>
+    running.get(parent.toLowerCase())?.map((s) => <SubagentRow key={`subagent-${s.handle}`} subagent={s} />);
   const { room } = useRoom(roomName);
   const me = usePrincipal();
   // Pause, resume and stop are the owner's alone (the hub refuses anyone
@@ -248,7 +264,11 @@ export function AgentsPanel({
     return owner ? null : ["pause", "resume"];
   };
   const control = (handle: string, verb: AgentControlVerb) => {
-    if (verb === "stop" && !window.confirm(`Stop @${handle} and close its pane? It stays in the room.`)) return;
+    if (
+      verb === "stop" &&
+      !window.confirm(`Stop @${handle} to free its memory? Its pane stays, so it can be started again.`)
+    )
+      return;
     controlAgent(roomName, handle, verb, me)
       .catch(logFetchError(`controlAgent(${roomName}, ${handle}, ${verb})`))
       .finally(refresh);
@@ -304,8 +324,7 @@ export function AgentsPanel({
     return () => clearInterval(t);
   }, [refresh]);
 
-  // Agents by where they are in their life, not who owns them (a room's swarm is
-  // nearly all one owner): **Engines** are the backend capabilities (conductor,
+  // Agents by where they are in their life, not who owns them: **Engines** are the backend capabilities (conductor,
   // synthesizer), kept apart because they persist; every other agent — coding
   // agents and bridged A2A ones alike — is **Active** when it holds a live socket
   // or an await lease and **Idle** otherwise. Idle folds by default so the handful
@@ -332,10 +351,10 @@ export function AgentsPanel({
         <span className="text-micro tabular text-faint">
           {people.length + agents.length} {people.length + agents.length === 1 ? "member" : "members"}
         </span>
-        <InviteButton roomName={roomName} />
         <Button
           variant="ghost"
           size="xs"
+          className="ml-auto"
           onClick={() => {
             setAddKind("machine");
             setAddOpen(true);
@@ -434,7 +453,7 @@ export function AgentsPanel({
           const owners = new Set(group.agents.map((a) => a.owner).filter(Boolean));
           const groupOwner = owners.size === 1 ? [...owners][0]! : null;
           return (
-            // The idle swarm stays listed, dimmed, rather than folded away.
+            // Idle agents stay listed, dimmed, rather than folded away.
             <div key={group.id} className={group.id === "idle" ? "opacity-60" : undefined}>
               <SectionLabel count={group.agents.length} hint={groupOwner ? `@${groupOwner}` : undefined}>
                 {group.label}
@@ -455,8 +474,8 @@ export function AgentsPanel({
                         ? () => opener.open(a.handle)
                         : () => setWatching({ handle: a.handle, runner: a.runner ?? null });
                   return (
+                    <Fragment key={`agent-${a.handle}`}>
                     <MemberMenu
-                      key={`agent-${a.handle}`}
                       handle={a.handle}
                       agent
                       onOpenMemory={onOpenMemory}
@@ -486,6 +505,8 @@ export function AgentsPanel({
                       onOpen={watch}
                     />
                     </MemberMenu>
+                    {subagentRows(a.handle)}
+                    </Fragment>
                   );
                 })}
             </div>
@@ -512,30 +533,6 @@ export function AgentsPanel({
         )}
       </FadeScroll>
     </div>
-  );
-}
-
-/** Copy a link that invites a person into this room: it opens the desktop app
- *  when they have it, and offers the download or the browser when they don't. */
-function InviteButton({ roomName }: { roomName: string }) {
-  const [copied, setCopied] = useState(false);
-  const hub = useHubAddress();
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink(hub, roomName));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // Clipboard blocked: nothing to undo, the button just doesn't confirm.
-    }
-  };
-  return (
-    <Tooltip content="Copy a link that invites someone to this room">
-      <Button variant="ghost" size="xs" className="ml-auto" onClick={copy}>
-        {copied ? <Check className="size-3 text-green" /> : <UserPlus className="size-3" />}
-        {copied ? "Copied" : "Invite"}
-      </Button>
-    </Tooltip>
   );
 }
 
@@ -570,6 +567,30 @@ function SectionLabel({
 const NAME_COLUMN = "flex w-32 flex-shrink-0 items-center gap-1.5 min-w-0";
 /** What is said about the member, after the name column. */
 const META_COLUMN = "min-w-0 flex-1 truncate text-micro text-faint";
+
+/** One of an agent's subagents, under its parent's row: its own name only,
+ *  since the row above is the parent's. It fades once it's done, and is gone
+ *  from the list when it ends. */
+export function SubagentRow({ subagent }: { subagent: Subagent }) {
+  const done = subagent.state === "done";
+  return (
+    <div
+      title={`@${subagent.handle}`}
+      className={cn("flex h-6 items-center gap-2 pl-6 pr-3 transition-opacity", done && "opacity-50")}
+    >
+      <span aria-hidden className="w-2 flex-shrink-0 font-mono text-micro leading-none text-faint">
+        └
+      </span>
+      {/* Starts where the parent's avatar does, so what it's doing lines up
+          with the parent's own. */}
+      <span className={NAME_COLUMN}>
+        <Monogram handle={subagent.handle} className="size-4 text-[8px]" kind="agent" />
+        <span className="truncate text-micro text-text">{subagent.name}</span>
+      </span>
+      <span className={META_COLUMN}>{done ? "done" : "working"}</span>
+    </div>
+  );
+}
 
 type AgentSummary = ReturnType<typeof useRoomRoster>["agents"][number];
 type RosterPerson = ReturnType<typeof useRoomRoster>["people"][number];
@@ -681,6 +702,9 @@ function rowMeta(
   return null;
 }
 
+/** How soon after a row's menu opens a click is taken as part of the same right-click. */
+const MENU_CLICK_MS = 500;
+
 /**
  * One agent, one line. The dense roster reads as a scannable column of handles,
  * not a stack of cards: a small avatar, the handle, and a terse status in a
@@ -688,7 +712,7 @@ function rowMeta(
  * shares one), so a row only tags an owner when it breaks from the group's; the
  * description and full owner live in its card rather than on every row.
  */
-function AgentRow({
+export function AgentRow({
   agent: a,
   groupOwner,
   memberPresence,
@@ -722,6 +746,8 @@ function AgentRow({
   // A pause says why it isn't answering, which beats what it was doing.
   const meta = paused ? "paused" : rowMeta(a, memberPresence, floor, machine);
   const oddOwner = a.owner && a.owner !== groupOwner ? a.owner : null;
+  // When the row's menu last opened, so a click that comes with the right-click is ignored.
+  const menuAt = useRef(0);
   return (
     <AgentCardHover handle={a.handle} side="left">
       <div
@@ -730,7 +756,21 @@ function AgentRow({
         // Focusable either way: focus opens its card.
         tabIndex={0}
         aria-label={onOpen ? `Watch @${a.handle}'s terminal` : undefined}
-        onClick={onOpen}
+        // A right-click opens the row's menu and never its terminal. Some
+        // browsers, and a Mac's Ctrl-click, send a click with the right-click,
+        // so a secondary click, or one that lands just after the menu opened,
+        // is left alone.
+        onContextMenu={() => {
+          menuAt.current = Date.now();
+        }}
+        onClick={
+          onOpen
+            ? (e) => {
+                if (e.button !== 0 || e.ctrlKey || Date.now() - menuAt.current < MENU_CLICK_MS) return;
+                onOpen();
+              }
+            : undefined
+        }
         onKeyDown={onOpen ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen()) : undefined}
         className={`flex h-7 items-center gap-2 px-3 transition-colors hover:bg-hairline ${
           onOpen ? "cursor-pointer" : ""

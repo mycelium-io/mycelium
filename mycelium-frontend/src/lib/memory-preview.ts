@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import type { Memory } from "@/lib/api";
+import type { Memory, MemorySummary } from "@/lib/api";
 
 /** Plain text for a memory's value: prose as written, anything else as JSON. */
 export function memoryValueText(value: unknown): string {
@@ -18,14 +18,17 @@ export function memoryValueText(value: unknown): string {
  *  drops a leading heading marker, capped in length. */
 export function firstLine(text: string): string {
   const line = text.split("\n").map(l => l.trim()).find(l => l && !l.startsWith("---"));
-  return (line ?? "").replace(/^#+\s*/, "").slice(0, 120);
+  // Cut by character, not UTF-16 unit, as the hub cuts (contracts/memory-title.json).
+  return Array.from((line ?? "").replace(/^#+\s*/, "")).slice(0, 120).join("");
 }
 
 /** What a memory is called: an explicit `title` in its structured value, else the
  *  first line of its prose, read whichever way the store hands the body over
  *  (`{text:…}`, a bare string, or `content_text`), else its key. One derivation,
  *  so a task named on the board and named in the channel never disagree (#889). */
-export function memoryTitle(memory: Memory): string {
+export function memoryTitle(memory: Memory | MemorySummary): string {
+  // A list's entry comes named: the hub works the title out by this same rule.
+  if ("title" in memory) return memory.title || memory.key;
   const value = memory.value;
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const title = (value as Record<string, unknown>).title;
@@ -38,6 +41,25 @@ export function memoryTitle(memory: Memory): string {
         ? (value as { text: string }).text
         : (memory.content_text ?? memory.key);
   return firstLine(body) || memory.key;
+}
+
+/** A memory as the hub's light list gives it, named by {@link memoryTitle}:
+ *  what a list reads from a hub that has no light list. */
+export function memorySummaryOf(memory: Memory): MemorySummary {
+  const value = memory.value;
+  return {
+    key: memory.key,
+    title: memoryTitle(memory),
+    structured: !!value && typeof value === "object" && !("text" in (value as object)),
+    version: memory.version,
+    created_by: memory.created_by,
+    updated_by: memory.updated_by ?? null,
+    updated_at: memory.updated_at,
+    tags: memory.tags ?? null,
+    expandable: memory.expandable ?? false,
+    meta: memory.meta ?? null,
+    episode: memory.episode ?? null,
+  };
 }
 
 // The hovercard shows an excerpt, not a rendered document: markdown syntax is

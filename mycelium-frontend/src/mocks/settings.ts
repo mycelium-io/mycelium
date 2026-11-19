@@ -166,7 +166,7 @@ const SEEDED: Record<string, Record<string, Stored>> = {
   checkout: {
     "worker-turns": {
       value: 40,
-      reason: "Keep a swarm in this room short while the launch is on.",
+      reason: "Keep worker runs in this room short while the launch is on.",
       version: 2,
       by: "morgan",
       at: "2026-08-27T16:20:00Z",

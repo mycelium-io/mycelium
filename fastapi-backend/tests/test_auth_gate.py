@@ -23,49 +23,18 @@ from typing import Any
 import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import AsyncClient
 
 from app.config import TrustedIssuer
 from app.services import auth as auth_service
-
-ISSUER = "https://idp.test/realms/mycelium"
-JWKS_URL = f"{ISSUER}/jwks"
-AUDIENCE = "mycelium"
+from tests.issuer import AUDIENCE, ISSUER, JWKS_URL, stub_jwks
+from tests.issuer import bearer as _bearer
+from tests.issuer import generate_key as _generate_key
+from tests.issuer import sign as _sign
 
 # A protected route (any /api route is gated) and a public one.
 PROTECTED_PATH = "/api/rooms"
 PUBLIC_PATH = "/health"
-
-
-# ── key + token helpers ───────────────────────────────────────────────────────
-
-
-def _generate_key(kid: str) -> dict[str, Any]:
-    """An RSA keypair plus its public JWK, as an issuer would publish it."""
-    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    algo = jwt.get_algorithm_by_name("RS256")
-    public_jwk = algo.to_jwk(private.public_key(), as_dict=True)
-    public_jwk.update({"kid": kid, "use": "sig", "alg": "RS256"})
-    return {"private": private, "jwk": public_jwk, "kid": kid}
-
-
-def _sign(key: dict[str, Any], **overrides: Any) -> str:
-    now = int(time.time())
-    claims: dict[str, Any] = {
-        "sub": "poc-agent",
-        "iss": ISSUER,
-        "aud": AUDIENCE,
-        "iat": now,
-        "exp": now + 3600,
-    }
-    claims.update(overrides)
-    claims = {k: v for k, v in claims.items() if v is not None}
-    return jwt.encode(claims, key["private"], algorithm="RS256", headers={"kid": key["kid"]})
-
-
-def _bearer(token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
 
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -81,50 +50,7 @@ def jwks_server(monkeypatch, signing_key):
     """Serve a JWKS from an in-process stub with a swappable ``keys`` list, for
     simulating key rotation at the issuer.
     """
-
-    class _Server:
-        def __init__(self) -> None:
-            self.keys: list[dict[str, Any]] = [signing_key["jwk"]]
-            self.fetches = 0
-            self.fail = False
-
-        def document(self) -> dict[str, Any]:
-            return {"keys": self.keys}
-
-    server = _Server()
-
-    class _StubResponse:
-        def __init__(self, payload: dict[str, Any]) -> None:
-            self._payload = payload
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, Any]:
-            return self._payload
-
-    class _StubClient:
-        def __init__(self, *args, **kwargs) -> None:
-            pass
-
-        async def __aenter__(self) -> _StubClient:
-            return self
-
-        async def __aexit__(self, *exc: object) -> None:
-            return None
-
-        async def get(self, url: str) -> _StubResponse:
-            if url.endswith("/.well-known/openid-configuration"):
-                return _StubResponse({"jwks_uri": JWKS_URL})
-            server.fetches += 1
-            if server.fail:
-                import httpx
-
-                raise httpx.ConnectError("issuer unreachable")
-            return _StubResponse(server.document())
-
-    monkeypatch.setattr(auth_service.httpx, "AsyncClient", _StubClient)
-    return server
+    return stub_jwks(monkeypatch, [signing_key["jwk"]])
 
 
 @pytest.fixture
@@ -418,39 +344,14 @@ HUMAN_ISSUER = "https://sso.test/realms/people"
 
 
 @pytest.fixture
-def two_issuers(monkeypatch, auth_on, signing_key):
+def two_issuers(monkeypatch, auth_on, signing_key, jwks_server):
     """The shape a real deployment lands on: a human OIDC issuer alongside an
     agent/service-account one, each with its own keys.
 
     Returns the human issuer's key; ``signing_key`` remains the agent one.
     """
     human_key = _generate_key("human-1")
-
-    class _StubResponse:
-        def __init__(self, payload: dict[str, Any]) -> None:
-            self._payload = payload
-
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict[str, Any]:
-            return self._payload
-
-    class _StubClient:
-        def __init__(self, *args, **kwargs) -> None:
-            pass
-
-        async def __aenter__(self) -> _StubClient:
-            return self
-
-        async def __aexit__(self, *exc: object) -> None:
-            return None
-
-        async def get(self, url: str) -> _StubResponse:
-            keys = [human_key["jwk"]] if url.startswith(HUMAN_ISSUER) else [signing_key["jwk"]]
-            return _StubResponse({"keys": keys})
-
-    monkeypatch.setattr(auth_service.httpx, "AsyncClient", _StubClient)
+    jwks_server.by_prefix[HUMAN_ISSUER] = [human_key["jwk"]]
     monkeypatch.setattr(
         "app.config.settings.AUTH_ISSUERS",
         [

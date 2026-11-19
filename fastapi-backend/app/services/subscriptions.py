@@ -287,6 +287,26 @@ async def remove(room: str, handle: str, sub_id: str | None = None) -> list[Subs
     return gone
 
 
+async def rename(room: str, old: str, new: str) -> int:
+    """``old``'s subscriptions now ``new``'s, and a ``member`` one following
+    ``old`` now follows ``new`` (a person's handle moved). How many changed."""
+    async with _lock(room):
+        subs = load(room)
+        changed = 0
+        for i, sub in enumerate(subs):
+            update: dict[str, Any] = {}
+            if norm_handle(sub.handle) == old:
+                update["handle"] = new
+            if sub.kind == "member" and norm_handle(sub.target) == old:
+                update["target"] = new
+            if update:
+                subs[i] = sub.model_copy(update=update)
+                changed += 1
+        if changed:
+            _save(room, subs)
+        return changed
+
+
 def _expired(sub: Subscription, now: datetime) -> bool:
     end = sub.ended_at or sub.until
     return end is not None and now - end > KEEP_ENDED

@@ -23,5 +23,5 @@ request. When that's merged, remove the worktree:
 git worktree remove ../shop-flaky-test
 ```
 
-> Hub workers, the agents a swarm runs on the hub, already get a worktree and a
+> Hub workers, the coding agents the hub runs, already get a worktree and a
 > branch of their own. This step is only for agents on your machine.

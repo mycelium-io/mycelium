@@ -44,9 +44,9 @@ window.MYCELIUM_COURSES = [
      },
      {
       "id": "03-ladder",
-      "title": "From one prompt to a swarm",
+      "title": "From one prompt to a flow",
       "minutes": 3,
-      "html": "      <p>Mycelium is for the person scaling their own work up one step at a time:</p>\n      <ol class=\"steps\">\n        <li><strong>Prompt:</strong> you and one agent in one conversation.</li>\n        <li><strong>Compose:</strong> a few agents working in parallel, each on its own piece.</li>\n        <li><strong>Flows:</strong> a set sequence of turns you can run again, like a build-and-review loop.</li>\n        <li><strong>Swarm:</strong> any number of flows at once on real work.</li>\n      </ol>\n      <p>Most people start on the first step. The other courses here each take you up one step. A PM and a coder is composing. A review flow is a flow. The capstone is a swarm.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Where are you on this line today? Keep it in mind for the rest of the course.</div>\n      </div>"
+      "html": "      <p>Mycelium is for the person scaling their own work up one step at a time:</p>\n      <ol class=\"steps\">\n        <li><strong>Prompt:</strong> you and one agent in one conversation.</li>\n        <li><strong>Compose:</strong> a few agents working in parallel, each on its own piece.</li>\n        <li><strong>Flows:</strong> a set sequence of turns you can run again, like a build-and-review loop.</li>\n      </ol>\n      <p>Most people start on the first step. The other courses here each take you up one step. A PM and a coder is composing. A review flow is a flow.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Where are you on this line today? Keep it in mind for the rest of the course.</div>\n      </div>"
      },
      {
       "id": "04-isnt",
@@ -102,7 +102,7 @@ window.MYCELIUM_COURSES = [
       "id": "09-governance",
       "title": "Trust the workers, watch the outcome",
       "minutes": 3,
-      "html": "      <p>You don&#x27;t have to watch how each agent&#x27;s session runs itself step by step. When you do want to look, you can open its pane. The approach is:</p>\n      <ul>\n        <li><strong>Judge the outcome, not every step.</strong> Look at the result and the checks it was held to.</li>\n        <li><strong>Trust that they&#x27;ll do the right thing,</strong> with a brief that says what right means here.</li>\n        <li><strong>Give them what they need to swarm well:</strong> shared memory, a board, threads and each other.</li>\n      </ul>\n      <p>Your attention goes to the decisions only you can make. The core workflow and the capstone show how to set that up.</p>"
+      "html": "      <p>You don&#x27;t have to watch how each agent&#x27;s session runs itself step by step. When you do want to look, you can open its pane. The approach is:</p>\n      <ul>\n        <li><strong>Judge the outcome, not every step.</strong> Look at the result and the checks it was held to.</li>\n        <li><strong>Trust that they&#x27;ll do the right thing,</strong> with a brief that says what right means here.</li>\n        <li><strong>Give them what they need to work well together:</strong> shared memory, a board, threads and each other.</li>\n      </ul>\n      <p>Your attention goes to the decisions only you can make. The core workflow course shows how to set that up.</p>"
      },
      {
       "id": "10-working-like-this",
@@ -292,7 +292,7 @@ window.MYCELIUM_COURSES = [
        "answer": 1,
        "why": "A worktree is its own folder on its own branch, so the side quest can't touch the pair's work. It lands as its own small pull request."
       },
-      "html": "      <p>A git worktree is a second folder for the same repository, on its own branch. Give each side quest one:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree add ../shop-flaky-test <span class=\"flag\">-b</span> fix/flaky-test</code></pre>\n      <p>Then start the side-quest agent in that folder. In the Members panel choose <strong>Add</strong>, then <strong>Your machine</strong>. Name it <code>fixer</code> and set its folder to the worktree. The folder has to be inside one your runner lets agents start in, which is its <code>--root</code>.</p>\n      <p>The same dialog can make the worktree for you. Leave the folder as your checkout and tick <strong>Own worktree</strong>. The agent then starts in a new worktree of that checkout, on a branch of its own.</p>\n      <p>The agent works on its own branch, and the fix lands as its own small pull request. When that&#x27;s merged, remove the worktree:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree remove ../shop-flaky-test</code></pre>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Hub workers, the agents a swarm runs on the hub, already get a worktree and a branch of their own. This step is only for agents on your machine.</div>\n      </div>"
+      "html": "      <p>A git worktree is a second folder for the same repository, on its own branch. Give each side quest one:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree add ../shop-flaky-test <span class=\"flag\">-b</span> fix/flaky-test</code></pre>\n      <p>Then start the side-quest agent in that folder. In the Members panel choose <strong>Add</strong>, then <strong>Your machine</strong>. Name it <code>fixer</code> and set its folder to the worktree. The folder has to be inside one your runner lets agents start in, which is its <code>--root</code>.</p>\n      <p>The same dialog can make the worktree for you. Leave the folder as your checkout and tick <strong>Own worktree</strong>. The agent then starts in a new worktree of that checkout, on a branch of its own.</p>\n      <p>The agent works on its own branch, and the fix lands as its own small pull request. When that&#x27;s merged, remove the worktree:</p>\n      <pre><code><span class=\"cmd\">git</span> worktree remove ../shop-flaky-test</code></pre>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Hub workers, the coding agents the hub runs, already get a worktree and a branch of their own. This step is only for agents on your machine.</div>\n      </div>"
      }
     ],
     "video": {
@@ -448,170 +448,6 @@ window.MYCELIUM_COURSES = [
   "id": "github"
  },
  {
-  "order": 5,
-  "title": "Swarm a task effectively",
-  "tagline": "Put a team of agents on one task. They split it, build the parts, review each other and hand back one result.",
-  "track": "Capstone",
-  "thumb": "app-swarm.png",
-  "needs": [
-   "The core workflow under your belt. A swarm is several pairs, with each part reviewed by another member.",
-   "A task with parts that can be built at the same time"
-  ],
-  "takeaway": "A sense of which tasks a team should take and a way to write them so the split comes out right.",
-  "outcomes": [
-   "Tell a task worth swarming from one a pair should take",
-   "Write a task that splits cleanly into parts",
-   "Pick the size and where the team runs",
-   "Set up a self-organizing team that hands work to itself, so only decisions reach you",
-   "Watch, steer and recover a swarm that goes sideways"
-  ],
-  "modules": [
-   {
-    "title": "Before you swarm",
-    "lessons": [
-     {
-      "id": "01-when",
-      "title": "When a team beats a pair",
-      "minutes": 5,
-      "quiz": {
-       "question": "Which of these should you swarm?",
-       "options": [
-        "Rename a function used in forty files",
-        "Add an export feature with an API endpoint, a settings screen and its tests",
-        "Track down one bug in a single module"
-       ],
-       "answer": 1,
-       "why": "The export feature has parts that different agents can build at the same time. The other two are each one coherent change, which a pair or one agent does better."
-      },
-      "html": "      <p>A pair is the right shape for one coherent change, such as a feature in one area, a bug or a refactor. A swarm is for work with <strong>parts</strong>. Parts are pieces different agents can build at the same time, and each one can be checked on its own.</p>\n      <p>Good fits:</p>\n      <ul>\n        <li>A feature that spans layers, such as an API, a screen, its tests and its docs.</li>\n        <li>The same change in several separate places, such as three services or four clients.</li>\n        <li>A spread of small, unrelated fixes from one list.</li>\n      </ul>\n      <p>Poor fits:</p>\n      <ul>\n        <li>One change that touches everything at once, like a rename across the codebase.</li>\n        <li>A bug you don&#x27;t understand yet. Finding it is one thread of thought.</li>\n        <li>Anything where the parts can&#x27;t be judged until all of them exist.</li>\n      </ul>\n      <p>Here&#x27;s a rough test. If you can write down the parts and who&#x27;d take each before anyone starts, swarm it. If you can&#x27;t, give it to a pair.</p>"
-     },
-     {
-      "id": "02-how-it-runs",
-      "title": "How a swarm runs",
-      "minutes": 4,
-      "html": "      <p>A swarm is a task with a team on it, in a room you already work in:</p>\n      <ol class=\"steps\">\n        <li><strong>The members check in.</strong> Each one says in the task&#x27;s thread which part it would take.</li>\n        <li><strong>The lead splits the task.</strong> The first member files one task per part. Each one is for the member who offered to take it and is marked as part of the original.</li>\n        <li><strong>Each part is built and reviewed.</strong> Every part has a thread of its own. Its builder asks another member to review it. The reviewer sends it back until it&#x27;s right.</li>\n        <li><strong>The lead puts it together.</strong> When the last part is resolved, the lead writes the combined result in the original task&#x27;s thread and resolves it.</li>\n      </ol>\n      <p>When the team runs on the hub, the hub assigns reviewers in a ring. The first member&#x27;s part goes to the second, the second&#x27;s to the third and the last one&#x27;s back to the first. Agents on your machine are told to do the same, but whether they do is up to them.</p>\n      <p>Every part is a task with its own thread, so the work stays in the room afterward. It&#x27;s the core workflow several times over. Each part is built by one agent and held to account by another.</p>"
-     },
-     {
-      "id": "03-the-task",
-      "title": "Write a task that splits well",
-      "minutes": 7,
-      "html": "      <p>The lead splits the task from what you wrote. A vague task gets a vague split. A task that names its parts gets parts that fit together.</p>\n      <p>Too thin:</p>\n      <pre><code>Add CSV export</code></pre>\n      <p>Splits well:</p>\n      <pre><code>Add CSV export for orders.\nParts: an /api/orders/export endpoint that streams CSV; an Export button on\nthe Orders page; tests for both, including an empty list and 10,000 rows.\nDone when: a person can download this month&#x27;s orders from the Orders page,\nand the tests pass in CI.\nDon&#x27;t change the existing orders API.</code></pre>\n      <p>What makes the second one work:</p>\n      <ul>\n        <li><strong>The parts are named</strong>, and each could be handed to someone on its own.</li>\n        <li><strong>Done is something anyone can check.</strong></li>\n        <li><strong>The limits are said out loud</strong>, so no member wanders into them.</li>\n      </ul>"
-     }
-    ],
-    "video": {
-     "take": "swarm-task",
-     "about": "Writing a task that names its parts and starting a team on it from the board.",
-     "seconds": 46
-    }
-   },
-   {
-    "title": "Running one",
-    "lessons": [
-     {
-      "id": "04-start",
-      "title": "Start it, and where it runs",
-      "minutes": 5,
-      "html": "      <p>From the app, type the task into the board&#x27;s <strong>Add a task…</strong> and press <strong>Swarm</strong> or Ctrl-Enter. The dialog asks how many agents you want, from two to five. When one of your machines is connected, it also asks where they run:</p>\n      <ul>\n        <li><strong>On the hub</strong> (the default). The team is the hub&#x27;s own workers. Give it the repository&#x27;s URL and the hub clones it. Each worker gets its own branch and worktree of the clone.</li>\n        <li><strong>On your machine.</strong> The team is your own agent CLI, each in its own pane, in the folder you pick. Tick &quot;Give each agent its own git worktree&quot; so they never share a checkout. Unless the hub is the desktop app&#x27;s own, your machine asks you before it starts them.</li>\n      </ul>\n      <p>Or run it from a terminal in the repository, in the room you work in:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">swarm</span> <span class=\"str\">&quot;Add CSV export for orders. Parts: ...&quot;</span> <span class=\"flag\">-n</span> 3 <span class=\"flag\">--worktree</span></code></pre>\n      <p>That starts the members on your machine, which needs herdr running. Add <code>--server --repo &lt;url&gt;</code> to run them on the hub instead. From the terminal a team can have two to eight members.</p>\n      <p>Your machine is the better choice for real code you&#x27;ll keep working on, because the agents work in your repository with your tools. The hub is for when you want the team to run without your laptop.</p>"
-     },
-     {
-      "id": "05-size",
-      "title": "How many agents",
-      "minutes": 3,
-      "html": "      <p>Three is the default and usually right. The app offers two to five. From a terminal, a swarm can have up to eight.</p>\n      <ul>\n        <li><strong>Match the parts.</strong> Use one member per part you named. Extra members invent parts to have something to do.</li>\n        <li><strong>Fewer members agree faster.</strong> Every member checks in and reviews. Each one you add is another voice in the split and another review to wait on.</li>\n        <li><strong>Go bigger for breadth, not depth.</strong> Eight members suit eight separate services getting the same change. They don&#x27;t suit one feature cut into eight slivers.</li>\n      </ul>"
-     },
-     {
-      "id": "06-watch",
-      "title": "Watch and steer",
-      "minutes": 4,
-      "html": "      <p>The task&#x27;s thread shows the kickoff. Each member checks in, and then the lead posts its split. Each part lands on the board as a task of its own, marked as part of the original. It has its own thread where it&#x27;s built and reviewed.</p>\n      <p>If you started the swarm from a terminal, that terminal shows the conversation as it happens across the task and every part. Long messages are cut short, and the final result is printed in full. Press Ctrl-C to stop watching. A team on the hub keeps going. Agents on your machine need <code>mycelium runner</code> or <code>mycelium herdr sync</code> running to keep hearing their turns.</p>\n      <p>To steer:</p>\n      <ul>\n        <li><strong>Before the split lands</strong>, answer in the task&#x27;s thread if the members&#x27; offers miss the point. The lead reads it before splitting.</li>\n        <li><strong>On a part</strong>, write in that part&#x27;s thread. Its builder and its reviewer both read it.</li>\n        <li><strong>At the end</strong>, read the lead&#x27;s combined result in the task&#x27;s thread before you merge anything.</li>\n      </ul>"
-     }
-    ],
-    "video": {
-     "take": "swarm-run",
-     "about": "The team checks in and the lead splits the task. Then a part is reviewed in its own thread.",
-     "seconds": 35.9
-    }
-   },
-   {
-    "title": "A self-organizing team",
-    "video": {
-     "take": "relay",
-     "about": "One task is handed to a PM and the team organizes itself. The agents wake each other through tasks and mentions. A tester files a fix for the coder. Only one decision reaches you.",
-     "seconds": 80.6
-    },
-    "lessons": [
-     {
-      "id": "07-attention",
-      "title": "Spend your attention where it counts",
-      "minutes": 4,
-      "html": "      <p>Every way of using agents asks for some of your attention. The point of this section is to need less of it without losing control:</p>\n      <ol class=\"steps\">\n        <li><strong>Watching:</strong> you read every message as it lands. This works for one agent at a time.</li>\n        <li><strong>Checking in:</strong> you read a thread every hour or so. This works for a pair or a team.</li>\n        <li><strong>Answering:</strong> you come back only when something asks you. The agents ask each other for everything else.</li>\n        <li><strong>Reading results:</strong> you hand off a goal and read one summary at the end.</li>\n      </ol>\n      <p>Getting from the second step to the fourth isn&#x27;t about smarter agents. It&#x27;s about a <strong>self-organizing team</strong>, meaning agents that set each other to work. When one finishes, it tells the next one to start. When one finds work for another, it files it for them. When one is stuck, it asks a teammate before it asks you. You stop being the one who passes work along.</p>\n      <p>Self-organizing doesn&#x27;t mean unstructured. The team organizes itself inside a shape you give it once. That shape says who does what, what waits on what and which questions are yours. The rest of this section is that shape.</p>\n      <p>What stays with you are the decisions only you can make. The aim is that those are the only things that reach you, in one place you check.</p>"
-     },
-     {
-      "id": "08-wake",
-      "title": "How an agent wakes another",
-      "minutes": 5,
-      "quiz": {
-       "question": "The coder resolves the API task. The help page task, for @writer, was waiting on it. What gets the writer started?",
-       "options": [
-        "Nothing needs to: resolving the API task wakes the writer",
-        "The coder says so in the thread: \"@writer, it's yours\"",
-        "The PM files the help page task again"
-       ],
-       "answer": 1,
-       "why": "Resolving a task tells the board, not the agent waiting on it. A mention or a task filed for it is what wakes an agent. So whoever finishes says who's next."
-      },
-      "html": "      <p>Three things wake an agent that&#x27;s waiting. An agent can do all three on its own from its CLI:</p>\n      <ul>\n        <li><strong>A task filed for it.</strong> <code>mycelium board new &quot;Fix the split payment&quot; --assign @coder</code> wakes the coder if it runs on your machine in herdr or on the hub. The message that wakes it says what it was given and how to claim it.</li>\n        <li><strong>A mention.</strong> <code>@writer</code> in a message wakes the writer, whether the message is in the room or in a task&#x27;s thread. This is the one that also reaches an agent kept going with <code>mycelium await --loop</code>. A filed task alone doesn&#x27;t wake that kind of agent.</li>\n        <li><strong>A turn.</strong> When the conductor puts a step to one member, that member is woken for it.</li>\n      </ul>\n      <p>One thing does <strong>not</strong> wake anybody, and that&#x27;s finishing a task. Resolving a row tells the board, and a task that was waiting on it stops waiting. But that task&#x27;s agent isn&#x27;t told. So the agent that finishes says who&#x27;s next:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">The API is in, so the help page can start. @writer, it&#x27;s yours.</div>\n      </div>\n      <p>A woken agent isn&#x27;t just told to wake up. It gets a short digest that says why it woke and what changed since its last turn. Then comes the message that woke it, in full, and what to do next. After that are the other messages that asked for it, its tasks and the board. Each message sits in a box, its text set apart on its own lines, so nothing in a message can pass for the digest itself.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">An agent that should start the moment its prerequisite is done, with nobody mentioning it, can watch its own row. <code>mycelium await --lease work/gift-cards-tests --loop</code> wakes when the row stops waiting.</div>\n      </div>"
-     },
-     {
-      "id": "09-chain",
-      "title": "Lay out work that hands itself off",
-      "minutes": 6,
-      "html": "      <p>Give the lead the whole goal. The lead is your PM or a swarm&#x27;s first member. Have it file the work as a chain. Each task is for the agent who&#x27;ll do it, waits on the one before it and is part of the goal.</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> work/gift-cards-checkout <span class=\"str\">&quot;Pay with a gift card at checkout&quot;</span> \\\n  <span class=\"flag\">-m</span> assignee=coder <span class=\"flag\">-m</span> depends-on=work/gift-cards-api <span class=\"flag\">-m</span> part-of=work/ship-gift-cards</code></pre>\n      <p>The board shows a waiting task as <strong>after work/gift-cards-api</strong>, so you can see the order at a glance. Then a few lines in the agents&#x27; briefs make the chain run itself:</p>\n      <pre><code>- When a task is filed for you, claim it right away, even if it&#x27;s waiting.\n- When you resolve a task, @mention whoever is waiting on it.\n- When you find work that belongs to someone else, file it for them with\n  `mycelium board new &quot;&lt;what&gt;&quot; --assign @&lt;who&gt;`, and say so in your thread.\n- Whoever resolves the last part tells the lead, who writes the summary.</code></pre>\n      <p>Claiming at once matters for you as much as for them. A part nobody has claimed shows on the board with nobody on it, so you can&#x27;t tell a chain that&#x27;s waiting its turn from one that&#x27;s stuck.</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">Hub workers in a swarm already do the last step on their own. When the last part resolves, the lead combines them. Agents on your machine do it because their brief says so.</div>\n      </div>"
-     },
-     {
-      "id": "10-reach-you",
-      "title": "Let only decisions reach you",
-      "minutes": 5,
-      "html": "      <p>The board&#x27;s <strong>Waiting on you</strong> is the one place to check. It lists every message that asks you something you haven&#x27;t answered yet, so keep it for what only you can decide. Have the agents ask you by name, in the task&#x27;s thread, instead of waiting for you to notice:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">respond</span> <span class=\"flag\">--task</span> work/gift-cards <span class=\"flag\">--body</span> <span class=\"str\">&quot;@morgan do gift cards expire?&quot;</span></code></pre>\n      <p>The question stays in Waiting on you until you reply in that thread. The agent that asked reads your answer and passes it on. Work that can go on without the answer goes on. <code>mycelium waiting</code> lists the same things in a terminal.</p>\n      <p>These things keep a team that wakes itself from running away:</p>\n      <ul>\n        <li><strong>Your machine asks before it starts a new agent</strong> that the app or another agent asked for through the hub. It doesn&#x27;t ask when the hub is the desktop app&#x27;s own or when you&#x27;ve told your runner to trust its hub. The question protects you from requests that arrive over the network. It doesn&#x27;t protect you from an agent that already runs commands on your machine. A local <code>mycelium swarm</code> starts agents without asking, so only let agents run what you mean them to.</li>\n        <li><strong>Hub workers are capped.</strong> Each room allows a bounded number of turns. Each turn has a timeout, and each worker takes one at a time. A part can&#x27;t be resolved before someone else has reviewed it.</li>\n        <li><strong>The hub&#x27;s own agents can&#x27;t summon engines.</strong> Workers and personas can&#x27;t summon the conductor. While a flow runs in a thread, the thread only takes posts from the members whose turn it is.</li>\n      </ul>\n      <p>You still need to watch for two things. One is a chain where nothing has moved for an hour, which usually means someone finished and didn&#x27;t say who&#x27;s next. The other is a Waiting on you that fills with tasks instead of questions, which means work is being handed to you that an agent could take.</p>"
-     }
-    ]
-   },
-   {
-    "title": "Getting good at it",
-    "lessons": [
-     {
-      "id": "11-going-wrong",
-      "title": "When a swarm goes sideways",
-      "minutes": 6,
-      "quiz": {
-       "question": "Two members keep undoing each other's changes. What helps most?",
-       "options": [
-        "Add a fourth member to referee",
-        "Give each member its own worktree and split the task by files or areas that don't overlap",
-        "Lower the number of review rounds"
-       ],
-       "answer": 1,
-       "why": "Members colliding is a split problem and a checkout problem. --worktree gives each member its own branch. A task that names separate areas keeps their parts apart."
-      },
-      "html": "      <ul>\n        <li><strong>Members collide.</strong> Two of them change the same files or undo each other&#x27;s work. Start with <code>--worktree</code>. Write the task so its parts are separate areas of the code.</li>\n        <li><strong>The split is wrong.</strong> Parts overlap or one part is most of the work. The task didn&#x27;t name its parts. Stop, rewrite the task with the parts spelled out and start again. A better split saves more time than it costs.</li>\n        <li><strong>Reviews wave things through.</strong> Each reviewer says &quot;looks good&quot; and the combined result doesn&#x27;t work. Put the checks in the task as &quot;done when...&quot;, so every reviewer holds its part to the same bar.</li>\n        <li><strong>One part stalls.</strong> Its thread goes quiet while the others finish. Open it. Usually the member is waiting on a question nobody answered.</li>\n      </ul>"
-     },
-     {
-      "id": "12-exercise",
-      "title": "Exercise: a team against a pair",
-      "minutes": 5,
-      "html": "      <p>Take a real task with three clear parts.</p>\n      <ol class=\"steps\">\n        <li>Write it the way lesson 3 shows, with the parts, what done means and the limits.</li>\n        <li>Swarm it with three members and <code>--worktree</code>.</li>\n        <li>Note how long it takes and how much of the combined result you&#x27;d merge as is.</li>\n        <li>Next time a similar task comes up, give it to a pair instead and compare.</li>\n      </ol>\n      <p>Then try the hands-off version. Give your PM the next goal with parts. Add the four lines from &quot;Lay out work that hands itself off&quot; to every agent&#x27;s brief. Check only Waiting on you until the summary lands. Count how many times you were asked something and whether each one was a real decision.</p>\n      <p>As a rule, swarm a task that has parts and give a task without parts to a pair. Work that has to happen in order is best laid out as a chain that hands itself off. After a few runs you&#x27;ll be able to tell which is which from the task&#x27;s first line.</p>"
-     }
-    ],
-    "video": {
-     "take": "swarm-steer",
-     "about": "Answering the question a quiet part was waiting on and reading the lead's combined result.",
-     "seconds": 54.1
-    }
-   }
-  ],
-  "id": "swarming"
- },
- {
   "order": 6,
   "optional": true,
   "title": "When agents need to agree",
@@ -620,7 +456,7 @@ window.MYCELIUM_COURSES = [
   "thumb": "app-thread-flow.png",
   "needs": [
    "Two or more agents on one task, in a room with the conductor engine",
-   "The pairing or swarming course, or the same experience"
+   "The pairing course, or the same experience"
   ],
   "takeaway": "Knowing when a team needs to agree on the task and when it needs to agree on an answer, and the flow for each.",
   "outcomes": [

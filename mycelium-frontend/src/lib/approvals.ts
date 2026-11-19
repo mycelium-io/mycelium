@@ -9,6 +9,16 @@
 // has to read (contracts/approvals.json).
 
 import { keyProblem } from "@/lib/memory-location";
+import { plainInline } from "@/lib/speakable";
+
+/** An ask's markdown as one plain line, for a folded card or a waiting row:
+ *  its first paragraph (the question; what follows is detail), with list,
+ *  heading and quote markers dropped, then the inline syntax. */
+export function askLine(text: string): string {
+  const first = text.trim().split(/\n\s*\n/)[0];
+  const lines = first.split("\n").map((l) => l.replace(/^\s*(?:[-*+]|\d+[.)]|#{1,6}|>)\s+/, ""));
+  return plainInline(lines.join("\n"));
+}
 
 // Frozen in contracts/approvals.json; approvals.test.ts holds this copy to it.
 export const PAYLOAD_KEYS = { ask: "ask", answer: "answer" } as const;
@@ -20,8 +30,10 @@ export const ASK_FIELDS = {
 export const DECISIONS = ["approved", "declined"] as const;
 export const ANSWER_FIELDS = {
   required: ["ask", "kind", "question", "for", "by", "at"],
-  optional: ["decision", "choices", "chosen", "text"],
+  optional: ["decision", "choices", "chosen", "text", "skipped"],
 } as const;
+/** The answer field that says the person skipped the ask instead of answering. */
+export const SKIPPED_FIELD = "skipped";
 export const WAITING_KIND = "approve";
 
 export type AskKind = (typeof ASK_KINDS)[number];
@@ -48,6 +60,8 @@ export interface AskAnswer {
   chosen: string[];
   /** The note sent with any kind, and the whole answer to a question. */
   text: string | null;
+  /** Skipped instead of answered: no decision, choices or answer, at most a note. */
+  skipped?: boolean;
 }
 
 export interface ApprovalAsk {
@@ -97,6 +111,7 @@ function asAnswer(v: unknown, ask?: { kind: AskKind; question: string; to: strin
     chosen: strs(a.chosen),
     // `reason` is what a v1 answer called its note.
     text: str(a.text) ?? str(a.reason),
+    ...(a[SKIPPED_FIELD] === true ? { skipped: true } : {}),
   };
 }
 
@@ -163,6 +178,7 @@ export function linkKind(link: string): "web" | "memory" | "text" {
  *  Stripe", or "Answered". Several picks lead with their numbers, "Chose 1 and
  *  3: Stripe; PayPal", so a line cut short still says how many were picked. */
 export function verdictOf(answer: AskAnswer): string {
+  if (answer.skipped) return "Skipped";
   if (answer.kind === "approve") return answer.decision === "declined" ? "Declined" : "Approved";
   if (answer.kind === "choose") {
     if (answer.choices.length === 0) return "Chose none of the options";

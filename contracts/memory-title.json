@@ -1,0 +1,89 @@
+{
+  "_comment": [
+    "What a memory is called, worked out from its value and text. The hub names",
+    "each memory in its light list (`memory_title` in",
+    "fastapi-backend/app/routes/memory.py, GET /memory/summaries) and the app",
+    "names a memory it read whole (`memoryTitle` in",
+    "mycelium-frontend/src/lib/memory-preview.ts), so a row reads the same in a",
+    "list and when it's opened. The rule: a structured value's `title`, trimmed,",
+    "else the first line of its text that isn't blank or `---`, with a leading",
+    "heading's `#`s dropped and cut at `max_chars` characters (code points, not",
+    "UTF-16 units), else the key. A structured value with no `text` is named by",
+    "its rendered text (`content_text`). Asserted by",
+    "fastapi-backend/tests/test_memory_summaries.py and",
+    "mycelium-frontend/src/lib/memory-preview.test.ts."
+  ],
+  "max_chars": 120,
+  "cases": [
+    {
+      "about": "a structured value's own title, trimmed",
+      "key": "context/tax",
+      "value": { "title": "  Tax on large orders  ", "text": "Tax is charged per line." },
+      "content_text": "Tax is charged per line.",
+      "title": "Tax on large orders"
+    },
+    {
+      "about": "a blank title is no title",
+      "key": "context/refunds",
+      "value": { "title": "   ", "text": "Refund policy\n\nRefund a double charge in full." },
+      "content_text": "Refund policy\n\nRefund a double charge in full.",
+      "title": "Refund policy"
+    },
+    {
+      "about": "prose as a bare string, past blank lines and a rule, heading marker dropped",
+      "key": "context/receipts",
+      "value": "\n\n---\n## Receipt email\nSent after payment.",
+      "content_text": "\n\n---\n## Receipt email\nSent after payment.",
+      "title": "Receipt email"
+    },
+    {
+      "about": "prose under `text`",
+      "key": "context/coupons",
+      "value": { "text": "---\n# Coupons\nOne per order." },
+      "content_text": "---\n# Coupons\nOne per order.",
+      "title": "Coupons"
+    },
+    {
+      "about": "structured data with no text is named by its rendered text",
+      "key": "context/limits",
+      "value": { "max_items": 40 },
+      "content_text": "max_items: 40",
+      "title": "max_items: 40"
+    },
+    {
+      "about": "a list value, also by its rendered text",
+      "key": "context/regions",
+      "value": ["eu", "us"],
+      "content_text": "- eu\n- us",
+      "title": "- eu"
+    },
+    {
+      "about": "nothing to name it by but its key",
+      "key": "context/empty",
+      "value": {},
+      "content_text": null,
+      "title": "context/empty"
+    },
+    {
+      "about": "only rules is nothing",
+      "key": "context/rules",
+      "value": { "text": "---\n---\n" },
+      "content_text": "---\n---\n",
+      "title": "context/rules"
+    },
+    {
+      "about": "a long line cut at the limit",
+      "key": "work/long",
+      "value": "Fix the double charge on a network timeout and the receipt email that follows it, then the refund webhook, then the tax line on large orders",
+      "content_text": "Fix the double charge on a network timeout and the receipt email that follows it, then the refund webhook, then the tax line on large orders",
+      "title": "Fix the double charge on a network timeout and the receipt email that follows it, then the refund webhook, then the tax "
+    },
+    {
+      "about": "a character outside the BMP as the last one kept counts as one, not two",
+      "key": "work/emoji",
+      "value": "Ship the wallet screen for every store with the new layout, the saved cards, the Apple Pay button and the slow start of🚀 fixed",
+      "content_text": "Ship the wallet screen for every store with the new layout, the saved cards, the Apple Pay button and the slow start of🚀 fixed",
+      "title": "Ship the wallet screen for every store with the new layout, the saved cards, the Apple Pay button and the slow start of🚀"
+    }
+  ]
+}

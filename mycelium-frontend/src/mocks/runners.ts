@@ -15,6 +15,7 @@
 import { DEMO_PERSON, isDemoScenario } from "./demo";
 import { LEARN_PERSON, LEARN_ROOTS, isLearnScenario } from "./learn";
 import type {
+  AgentSessionSummary,
   Framework,
   MachineAgent,
   MachineProblem,
@@ -28,6 +29,48 @@ import type {
 
 const iso = (minutesAgo: number) => new Date(Date.now() - minutesAgo * 60_000).toISOString();
 
+/**
+ * A machine's worth of earlier sessions: a couple of hundred across ten
+ * folders, newest first, the way someone who uses an agent CLI every day has
+ * them. Some were started for room members who have since been removed. Like
+ * the real scan, they carry no titles: only the desktop app on the machine
+ * reads those.
+ */
+function mockSessions(): AgentSessionSummary[] {
+  const folders = [
+    ["checkout", ["main", "fix/double-charge", "feat/apple-pay", "fix/tax-rounding"]],
+    ["storefront", ["main", "feat/delivery-date", "fix/safari-17"]],
+    ["payments-api", ["main", "feat/webhooks", "fix/idempotency"]],
+    ["admin", ["main", "feat/refund-queue"]],
+    ["mobile-app", ["main", "feat/wallet"]],
+    ["design-system", ["main"]],
+    ["infra", ["main", "chore/node-24"]],
+    ["receipts", ["main"]],
+    ["coupons", ["main", "feat/stacking"]],
+    ["notes", [null]],
+  ] as const;
+  // Members no room has any more, which the runner once started.
+  const removed = [
+    { room: "checkout", handle: "scout" },
+    { room: "checkout", handle: "apple-pay" },
+    { room: "storefront", handle: "copywriter" },
+  ];
+  const out: AgentSessionSummary[] = [];
+  let minutes = 20;
+  for (let i = 0; i < 214; i++) {
+    const [folder, branches] = folders[(i * 7 + (i % 3)) % folders.length];
+    out.push({
+      id: `s${(i * 2654435761 >>> 0).toString(16).padStart(8, "0")}`,
+      folder: `/Users/morgan/code/${folder}`,
+      last_used: iso(minutes),
+      branch: branches[i % branches.length],
+      member: i % 9 === 4 ? removed[Math.floor(i / 9) % removed.length] : null,
+    });
+    minutes += 25 + ((i * 53) % 400);
+  }
+  return out;
+}
+
 const FRAMEWORKS: Framework[] = [
   {
     id: "claude",
@@ -38,6 +81,7 @@ const FRAMEWORKS: Framework[] = [
     installed: true,
     launchable: true,
     note: null,
+    sessions: mockSessions(),
   },
   {
     id: "opencode",
@@ -237,7 +281,8 @@ if (!isDemoScenario() && !isLearnScenario()) {
     version: "0.14.0",
     herdr: true,
     roots: ["/Users/morgan/models"],
-    frameworks: FRAMEWORKS,
+    // The same agent CLIs, with no earlier sessions on this machine.
+    frameworks: FRAMEWORKS.map((f) => (f.sessions ? { ...f, sessions: [] } : f)),
     agents: [],
     pairings: [
       {
@@ -247,7 +292,6 @@ if (!isDemoScenario() && !isLearnScenario()) {
         expires_at: new Date(Date.now() + 87 * 24 * 3_600_000).toISOString(),
         folders: ["/Users/morgan/models"],
         clis: ["opencode"],
-        swarms: false,
       },
     ],
     connected: true,
@@ -316,7 +360,7 @@ const applied = new Set<string>(["job-0000", "job-0001"]);
  *  take's launch waits on a yes first. */
 function statusOf(job: StoredJob): RunnerJob["status"] {
   const age = Date.now() - Date.parse(job.created_at);
-  if (isLearnScenario() && (job.kind === "launch" || job.kind === "swarm")) {
+  if (isLearnScenario() && job.kind === "launch") {
     if (age < 1_000) return "queued";
     if (age < 3_200) return "waiting";
     if (age < 4_600) return "running";
@@ -380,7 +424,6 @@ function settle(job: StoredJob): void {
       expires_at: r.expires_at,
       folders: r.folders,
       clis: r.clis,
-      swarms: r.swarms,
     };
     runner.pairings = [...(runner.pairings ?? []).filter((p) => p.key !== pairing.key), pairing];
   }
@@ -464,7 +507,6 @@ export async function pairDevice(body: Record<string, unknown>): Promise<RunnerJ
     expires_at: new Date(Date.now() + 90 * 24 * 3_600_000).toISOString(),
     folders: [],
     clis: [],
-    swarms: false,
   };
   const spec = { offer: String(body.code_id ?? ""), name: pairing.name, key };
   return queueJob(MOCK_MINI_ID, "pair", spec, null, null, { label: "studio-mini", ...pairing });

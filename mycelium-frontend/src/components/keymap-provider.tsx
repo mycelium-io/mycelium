@@ -96,10 +96,13 @@ function isControl(el: Element | null): boolean {
  *  user is looking at, and the dialog owns its own Escape. Presence is the
  *  test, not focus — a click on the backdrop moves focus out of the dialog
  *  without closing it, and the keys must stay inert through that. Dialogs are
- *  portaled in only while open, so an unmounted one can't block anything. */
+ *  mounted only while open, so an unmounted one can't block anything. A native
+ *  `<dialog>` has no role attribute to find, so it counts while it is open. */
 function modalIsOpen(): boolean {
   if (typeof document === "undefined") return false;
-  return Boolean(document.querySelector('[role="dialog"], [role="alertdialog"], [aria-modal="true"]'));
+  return Boolean(
+    document.querySelector('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]'),
+  );
 }
 
 /** Hosts the app's keybinds: one document-level listener that resolves key
