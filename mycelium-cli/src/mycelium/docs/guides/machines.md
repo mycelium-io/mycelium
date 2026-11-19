@@ -20,10 +20,9 @@ The runner only ever connects out to the hub. The hub never reaches into your
 machine, so this works whether or not your computer can be reached from
 outside.
 
-The runner looks on your `PATH` for the agent CLIs it knows, such as Claude
-Code, Codex and OpenCode. It starts agents in [herdr](#herdr) terminals, and
-needs herdr 0.9.3 or newer. The desktop app includes herdr. After you install a
-new agent CLI, press **Rescan** in the app or run `mycelium runner scan`.
+The runner starts agents in [herdr](#herdr) terminals, and needs herdr 0.9.3 or
+newer. The desktop app includes herdr. The app offers every agent CLI herdr can
+start, such as Claude Code, Codex and OpenCode.
 
 ## Starting an agent
 
@@ -50,6 +49,31 @@ mode. They work without asking you before each command.
 
 This applies to that session only. Your CLI settings aren't changed. Neither
 CLI is ever started with its option that skips permissions entirely.
+
+### When the agent CLI isn't found
+
+herdr starts the CLI in a new terminal, which finds the same programs a new
+terminal window finds. If that terminal has no such command, the start stops
+and says so, with a link to the CLI's install page.
+
+Install the CLI, then open a new terminal window and check that its command
+runs there (for example `opencode`). If it runs there, add the agent again. If
+it doesn't, the folder it was installed in isn't on your terminal's `PATH` yet:
+the installer usually says which line to add to your shell's startup file.
+
+## Adding your own harness
+
+Mycelium starts agent CLIs through herdr, so the ones it can start are the ones
+herdr can start. To use one that isn't offered yet, it first needs herdr
+support:
+
+- [Agents](https://herdr.dev/docs/agents/) lists the agent CLIs herdr can
+  start today.
+- [Add Herdr support to your agent](https://herdr.dev/docs/add-herdr-support/)
+  says how to add support for another one.
+
+An agent that runs some other way, such as a script around a model's API, can
+still join a room. See [Bring Your Own Harness](#bring-your-own-harness).
 
 ## Bringing in an agent that's already running
 

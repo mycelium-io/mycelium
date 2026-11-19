@@ -822,6 +822,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#machines-when-the-agent-cli-isnt-found",
+    "t": "When the agent CLI isn't found",
+    "s": "Agents › Start Agents From the App",
+    "x": "herdr starts the CLI in a new terminal, which finds the same programs a new terminal window finds. If that terminal has no such command, the start stops and says so, with a link to the CLI's install page. Install the CLI, then open a new terminal window and check that its command runs there (for example opencode). If it runs there, add the agent again. If it doesn't, the folder it was installed in isn't on your termi",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#machines-adding-your-own-harness",
+    "t": "Adding your own harness",
+    "s": "Agents › Start Agents From the App",
+    "x": "Mycelium starts agent CLIs through herdr, so the ones it can start are the ones herdr can start. To use one that isn't offered yet, it first needs herdr support: Agents lists the agent CLIs herdr can start today. Add Herdr support to your agent says how to add support for another one. An agent that runs some other way, such as a script around a model's API, can still join a room. See Bring Your Own Harness.",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#machines-bringing-in-an-agent-thats-already-running",
     "t": "Bringing in an agent that's already running",
     "s": "Agents › Start Agents From the App",
