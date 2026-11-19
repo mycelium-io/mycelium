@@ -222,7 +222,7 @@ def test_each_widget_runs_on_its_own_interval_and_text_never_runs(tmp_path: Path
     ran: list[str] = []
     clock = Clock()
     widgets = w.Widgets(
-        path, run=lambda cmd, _t: ran.append(cmd) or w.Run(ok=True, value=cmd), clock=clock
+        path, run=lambda cmd, _t, _env: ran.append(cmd) or w.Run(ok=True, value=cmd), clock=clock
     )
 
     assert widgets.tick()
@@ -242,7 +242,9 @@ def test_each_widget_runs_on_its_own_interval_and_text_never_runs(tmp_path: Path
 def test_an_edited_file_is_read_again_and_a_bad_one_runs_nothing(tmp_path: Path):
     path = _config(tmp_path / "config.toml", '[[statusline.widget]]\nlabel = "x"\ncommand = "a"\n')
     ran: list[str] = []
-    widgets = w.Widgets(path, run=lambda cmd, _t: ran.append(cmd) or w.Run(ok=True), clock=Clock())
+    widgets = w.Widgets(
+        path, run=lambda cmd, _t, _env: ran.append(cmd) or w.Run(ok=True), clock=Clock()
+    )
     widgets.tick()
     _settle(widgets)
     assert [x["label"] for x in widgets.snapshot()["widgets"]] == ["x"]
@@ -262,6 +264,199 @@ def test_an_edited_file_is_read_again_and_a_bad_one_runs_nothing(tmp_path: Path)
     assert snap["widgets"] == []
     assert "isn't valid" in snap["error"]
     assert ran == []
+
+
+def test_a_widget_can_be_kept_running_instead_of_run_on_an_interval():
+    kept = StatusWidget(label="box", command="ssh -N box", every="always")
+    assert kept.always()
+    assert not StatusWidget(label="ci", command="x", every="5m").always()
+    for bad in ("Always", "always 5s", "forever"):
+        with pytest.raises(ValidationError):
+            StatusWidget(label="x", command="x", every=bad)
+
+
+@posix
+def test_every_command_is_given_the_hub_s_port(tmp_path: Path):
+    path = _config(
+        tmp_path / "config.toml",
+        '[[statusline.widget]]\nlabel = "port"\ncommand = "echo $MYCELIUM_HUB_PORT"\n',
+    )
+    widgets = w.Widgets(path, clock=Clock())
+    widgets.hub_port = 3718
+    widgets.tick()
+    _settle(widgets)
+    assert widgets.snapshot()["widgets"][0]["run"]["value"] == "3718"
+
+
+KEEP = '[[statusline.widget]]\nlabel = "box"\ncommand = "{}"\nevery = "always"\n'
+
+
+def _until(check, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not check():
+        assert time.monotonic() < deadline, "never happened"
+        time.sleep(0.02)
+
+
+def _run_of(widgets: w.Widgets) -> dict:
+    return widgets.snapshot()["widgets"][0]["run"]
+
+
+def _alive(pid: int) -> bool:
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # A child that exited but isn't reaped yet counts as gone.
+    import subprocess
+
+    state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
+    return bool(state.stdout.strip()) and not state.stdout.strip().startswith("Z")
+
+
+@posix
+def test_a_command_kept_running_shows_its_last_line_and_starts_again_after_a_wait(
+    tmp_path: Path,
+):
+    path = _config(
+        tmp_path / "config.toml",
+        KEEP.format(
+            "echo starting; echo 'Warning: slow' >&2; sleep 0.5; "
+            "echo 'connection refused' >&2; exit 3"
+        ),
+    )
+    clock = Clock()
+    widgets = w.Widgets(path, clock=clock)
+    try:
+        assert widgets.tick()
+        # What it says on stderr while it runs is its last line too.
+        _until(lambda: _run_of(widgets)["value"] == "Warning: slow")
+        assert _run_of(widgets)["running"] is True
+
+        # It exits: the row says how and why, and it waits a second to start again.
+        _until(lambda: widgets._kept[0].proc.poll() is not None)
+        widgets.tick()
+        run = _run_of(widgets)
+        assert (run["running"], run["ok"], run["exit"], run["error"]) == (
+            False,
+            False,
+            3,
+            "connection refused",
+        )
+        clock.now += 0.5
+        widgets.tick()
+        assert not widgets._kept
+        clock.now += 0.6
+        widgets.tick()
+        assert _run_of(widgets)["running"] is True
+
+        # Exiting quickly again doubles the wait.
+        _until(lambda: widgets._kept[0].proc.poll() is not None)
+        widgets.tick()
+        assert widgets._restart_at[0] - clock.now == pytest.approx(2.0)
+    finally:
+        widgets.stop()
+
+
+@posix
+def test_one_that_ran_steadily_waits_only_the_first_wait():
+    widgets = w.Widgets(Path("/nonexistent/config.toml"), clock=Clock())
+    widgets._wait[0] = 32.0
+    widgets._stopped(0, 1000.0, ran_for=w.STEADY_S)
+    assert widgets._wait[0] == w.RESTART_FIRST_S
+    for _ in range(10):
+        widgets._stopped(0, 1000.0, ran_for=1)
+    assert widgets._wait[0] == w.RESTART_MOST_S
+
+
+@posix
+def test_a_command_kept_running_is_started_again_when_the_hub_moves(tmp_path: Path):
+    path = _config(tmp_path / "config.toml", KEEP.format("echo $MYCELIUM_HUB_PORT; sleep 30"))
+    widgets = w.Widgets(path, clock=Clock())
+    try:
+        widgets.hub_port = 3718
+        widgets.tick()
+        _until(lambda: _run_of(widgets)["value"] == "3718")
+        first = widgets._kept[0].proc.pid
+
+        widgets.hub_port = 51206
+        widgets.tick()
+        _until(lambda: _run_of(widgets)["value"] == "51206")
+        assert widgets._kept[0].proc.pid != first
+        assert not _alive(first)
+    finally:
+        widgets.stop()
+
+
+@posix
+def test_stopping_the_app_stops_it_with_what_it_started(tmp_path: Path):
+    child = tmp_path / "child.pid"
+    path = _config(tmp_path / "config.toml", KEEP.format(f"sleep 30 & echo $! > {child}; wait"))
+    widgets = w.Widgets(path, clock=Clock())
+    widgets.tick()
+    _until(child.exists)
+    _until(lambda: child.read_text().strip() != "")
+    pid, sleeper = widgets._kept[0].proc.pid, int(child.read_text())
+    widgets.stop()
+    assert not _alive(pid)
+    assert not _alive(sleeper)
+    assert not widgets.kept_path.exists()
+
+
+@posix
+def test_a_changed_widget_stops_its_old_command(tmp_path: Path):
+    import os
+
+    path = _config(tmp_path / "config.toml", KEEP.format("sleep 30"))
+    widgets = w.Widgets(path, clock=Clock())
+    try:
+        widgets.tick()
+        old = widgets._kept[0].proc.pid
+        _config(path, KEEP.format("sleep 31"))
+        os.utime(path, (time.time() + 5, time.time() + 5))
+        widgets.tick()
+        assert not _alive(old)
+        assert widgets._kept[0].proc.pid != old
+    finally:
+        widgets.stop()
+
+
+@posix
+def test_what_an_app_that_was_killed_kept_running_is_stopped_by_the_next(tmp_path: Path):
+    import subprocess
+
+    # `exec`, since only some shells become the command on their own.
+    path = _config(tmp_path / "config.toml", KEEP.format("exec sleep 30"))
+    clock = Clock()
+    first = w.Widgets(path, clock=clock)
+    first.tick()
+    left = first._kept[0].proc.pid
+    # The clock here is fake: wait for the shell to become the command for real.
+    from mycelium.desktop.supervisor import command_of
+
+    _until(lambda: command_of(left) == "sleep 30")
+    clock.now += w.SEEN_AFTER_S
+    first.tick()  # its command line is written down
+    assert first.kept_path.exists()
+
+    # Another program on a pid written down, with a different command line, is left alone.
+    other = subprocess.Popen(["sleep", "29"])
+    entries = __import__("json").loads(first.kept_path.read_text())["kept"]
+    entries.append({"pid": other.pid, "command": "sleep 30"})
+    first.kept_path.write_text(__import__("json").dumps({"kept": entries}))
+    try:
+        # The app ends without stopping it: the next run stops it before starting its own.
+        second = w.Widgets(path, clock=Clock())
+        second.tick()
+        _until(lambda: not _alive(left))
+        assert _alive(other.pid)
+        assert second._kept[0].proc.pid != left
+        second.stop()
+    finally:
+        other.kill()
+        first._kept[0].proc.wait(5)
 
 
 def test_no_config_means_no_widgets_and_nothing_runs(tmp_path: Path):

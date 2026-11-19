@@ -40,16 +40,21 @@ export interface WidgetRun {
   notes?: string[];
   exit: number | null;
   timed_out: boolean;
-  /** The first line it printed to stderr, when it failed. */
+  /** The first line it printed to stderr, when it failed. For a command kept
+   *  running, the last line, once it has stopped. */
   error: string | null;
-  /** When it finished, as an ISO time. */
+  /** When it finished, as an ISO time; for a command kept running and running
+   *  now, when it started. */
   ran_at: string | null;
+  /** Whether it's running now: only a command kept running (`every = "always"`) is. */
+  running?: boolean;
 }
 
 export interface Widget extends WidgetLook {
   label: string;
   command: string | null;
   text: string | null;
+  /** `"30s"`, `"5m"`, or `"always"` for a command kept running while the app is open. */
   every: string;
   timeout: number;
   /** Why a field in its config was left out. */
@@ -80,13 +85,27 @@ export function useWidgets(): Widgets | null {
   return data ?? null;
 }
 
-/** What a widget shows now: its text, its value, or why it has none. */
-export type WidgetState = { kind: "value"; value: string } | { kind: "failed" } | { kind: "hung" } | { kind: "waiting" };
+/** Whether a widget's command is kept running rather than run on an interval. */
+export function keptRunning(widget: Widget): boolean {
+  return widget.every === "always";
+}
+
+/** What a widget shows now: its text, its value, or why it has none. A
+ *  command kept running shows the last line it printed while it runs, and
+ *  why it stopped (its last stderr line, when it printed one) once it has. */
+export type WidgetState =
+  | { kind: "value"; value: string }
+  | { kind: "failed" }
+  | { kind: "hung" }
+  | { kind: "stopped"; reason: string | null }
+  | { kind: "waiting" };
 
 export function widgetState(widget: Widget): WidgetState {
   if (widget.text !== null) return { kind: "value", value: widget.text };
   const run = widget.run;
   if (!run) return { kind: "waiting" };
+  if (run.running) return { kind: "value", value: run.value ?? "Running" };
+  if (keptRunning(widget) && !run.ok) return { kind: "stopped", reason: run.error };
   if (run.timed_out) return { kind: "hung" };
   if (!run.ok) return { kind: "failed" };
   return { kind: "value", value: run.value ?? "" };
@@ -119,10 +138,12 @@ export function lookOf(widget: Widget): Look {
       : meterField === true && state.kind === "value"
         ? percent(state.value)
         : null;
+  // A command kept running and running now is ok unless its config says otherwise.
+  const running = widget.run?.running ? "ok" : null;
   return {
     icon: pick("icon") as string | null,
     color: pick("color") as WidgetColor | null,
-    state: pick("state") as WidgetTone | null,
+    state: (pick("state") as WidgetTone | null) ?? running,
     meter,
     tooltip: pick("tooltip") as string | null,
   };

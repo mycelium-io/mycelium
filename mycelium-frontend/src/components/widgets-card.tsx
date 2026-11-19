@@ -24,7 +24,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { InlineMarkdown } from "@/components/inline-markdown";
 import { WidgetIcon } from "@/components/widget-icon";
 import { relativeTime, useNow } from "@/lib/relative-time";
-import { lookOf, useWidgets, widgetState, type Widget, type WidgetColor } from "@/lib/widgets";
+import { keptRunning, lookOf, useWidgets, widgetState, type Widget, type WidgetColor } from "@/lib/widgets";
 import { cn } from "@/lib/utils";
 
 export const WIDGETS_SETTINGS = settingHref("widgets");
@@ -66,6 +66,27 @@ export function RunDetail({ widget }: { widget: Widget }) {
     );
   }
   const ran = run?.ran_at ? relativeTime(Date.parse(run.ran_at), now) : null;
+  if (keptRunning(widget)) {
+    return (
+      <span className="flex max-w-80 flex-col gap-1">
+        <code className="font-mono text-[11px] break-all">{widget.command}</code>
+        {tooltip && <WidgetTooltip text={tooltip} />}
+        {!run && <span className="text-muted-foreground">Starting. Kept running while the app is open.</span>}
+        {run?.running && (
+          <span className="text-muted-foreground">Started {ran}. Kept running while the app is open.</span>
+        )}
+        {run && !run.running && (
+          <>
+            <span>
+              {run.exit !== null ? `Stopped ${ran}, exiting with ${run.exit}.` : `Couldn't start ${ran}.`} It starts again
+              shortly.
+            </span>
+            {run.error && <span className="text-muted-foreground">{run.error}</span>}
+          </>
+        )}
+      </span>
+    );
+  }
   return (
     <span className="flex max-w-80 flex-col gap-1">
       <code className="font-mono text-[11px] break-all">{widget.command}</code>
@@ -107,6 +128,14 @@ export function WidgetValue({ widget, className }: { widget: Widget; className?:
   const state = widgetState(widget);
   const look = lookOf(widget);
   if (state.kind === "waiting") return <span className="text-faint">…</span>;
+  if (state.kind === "stopped") {
+    return (
+      <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+        <StatusDot tone="bad" />
+        <span className="truncate">{state.reason ?? "Stopped"}</span>
+      </span>
+    );
+  }
   if (state.kind === "failed" || state.kind === "hung") {
     return (
       <span className="flex flex-shrink-0 items-center gap-1.5 text-muted-foreground">
@@ -138,8 +167,9 @@ const WIDE_AT = 10;
 function WidgetTile({ widget }: { widget: Widget }) {
   const look = lookOf(widget);
   const state = widgetState(widget);
-  const failed = state.kind === "failed" || state.kind === "hung";
+  const failed = state.kind === "failed" || state.kind === "hung" || state.kind === "stopped";
   const tone = failed ? (state.kind === "hung" ? "warn" : "bad") : look.state;
+  const failure = state.kind === "hung" ? "Hung" : state.kind === "stopped" ? (state.reason ?? "Stopped") : "Failed";
   const color = look.color ? WIDGET_COLOR[look.color] : null;
   const wide = state.kind === "value" && state.value.replace(/[*`_]/g, "").length >= WIDE_AT;
   return (
@@ -160,7 +190,7 @@ function WidgetTile({ widget }: { widget: Widget }) {
               failed || state.kind === "waiting" ? "text-muted-foreground" : cn("font-medium", color ?? "text-text"),
             )}
           >
-            {state.kind === "waiting" ? "…" : failed ? (state.kind === "hung" ? "Hung" : "Failed") : <InlineMarkdown text={state.value} />}
+            {state.kind === "waiting" ? "…" : failed ? failure : <InlineMarkdown text={state.value} />}
           </div>
           {look.meter !== null && !failed && <Meter value={look.meter} />}
         </Link>
