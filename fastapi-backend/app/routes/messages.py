@@ -28,6 +28,7 @@ from app.schemas import (
     MessageInterrupt,
     MessageInterrupted,
     MessageListResponse,
+    MessageReact,
     MessageRead,
     MessageSearchHit,
     MessageSearchResponse,
@@ -479,6 +480,106 @@ def _find_amend_target(
         if str(m.id).startswith(message_id) or (m.message_id or "").startswith(message_id)
     ]
     return matched[0] if len(matched) == 1 else None
+
+
+def _is_emoji(text: str) -> bool:
+    """Whether ``text`` is an emoji (or a few), not a word: no letters, digits,
+    spaces or punctuation a keyboard types."""
+    return bool(text) and all(ord(c) > 0x7F or c in "‍️" for c in text)
+
+
+@router.post(
+    "/{message_id}/reactions",
+    response_model=MessageRead,
+    status_code=201,
+    responses=refusals(403, 404, 409, 422),
+)
+async def react_to_message(
+    room_name: str,
+    message_id: str,
+    payload: MessageReact,
+    request: Request,
+) -> MessageRead:
+    """Put an emoji on a message, or take yours off.
+
+    The reaction is an ``exchange:reaction`` message parented on the one it is
+    on, and its text silently mentions that message's author (``@~author 👍``),
+    so the author reads it on their next wake and nobody is woken. Taking it off
+    is a record too, and names nobody. The read path folds reactions into their
+    message, so neither is ever a row of its own, and a reaction raises no ping:
+    it doesn't move a task.
+    """
+    channel, coord = _resolve_channel(room_name)
+    if coord is not None:
+        raise HTTPException(status_code=409, detail="Reactions are for a room's messages")
+    sender_handle = actor.bind_delegated_actor(
+        request, channel, payload.sender_handle, field="sender_handle"
+    )
+    emoji = payload.emoji.strip()
+    if not _is_emoji(emoji):
+        raise HTTPException(status_code=422, detail=f"{payload.emoji!r} isn't an emoji")
+
+    target = _find_amend_target(_read_messages(channel, coord), message_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Message not found in this room")
+    if target.message_type not in PROSE_MESSAGE_TYPES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Message type {target.message_type!r} is not chat, so it takes no reactions",
+        )
+    refusal = tasks.thread_write_refusal(channel, sender_handle, target.episode)
+    if refusal is not None:
+        raise HTTPException(status_code=refusal.status, detail=refusal.detail)
+
+    # The envelope id when the message rode the channel, its row id otherwise.
+    target_id = target.message_id or str(target.id)
+    # Only putting one on someone else's message tells anyone.
+    names_author = target.sender_handle != sender_handle and payload.on
+    text = f"@~{target.sender_handle} {emoji}" if names_author else emoji
+    # The id the room's read gives the message too, which is the one an app that
+    # loaded it from history holds; the parent is its envelope id.
+    reaction = {"emoji": emoji, "on": payload.on, "message": str(target.id)}
+    msg = in_memory_store.StoredMessage(
+        room_name=channel,
+        sender_handle=sender_handle,
+        message_type=target.message_type,
+        content=text,
+        episode=target.episode,
+        reacts=target_id,
+        reaction=emoji,
+        reaction_on=payload.on,
+    )
+    if room_channels.manager.is_live(channel):
+        result = await room_channels.manager.publish_human(
+            channel,
+            sender=sender_handle,
+            text=text,
+            subkind=message_format.REACTION_SUBKIND,
+            parents=[target_id],
+            episode=target.episode,
+            data={"reaction": reaction},
+        )
+        if result is not None:
+            msg.message_id = result.message_id
+    in_memory_store.add_message(channel, msg)
+    if msg.message_id is None:
+        bus.publish(
+            room_channel(channel),
+            {
+                "id": str(msg.id),
+                "sender_handle": sender_handle,
+                "message_type": msg.message_type,
+                "content": text,
+                "reacts": target_id,
+                "reaction": reaction,
+                "created_at": msg.created_at.isoformat(),
+                "room_name": channel,
+                "episode": msg.episode,
+            },
+        )
+
+    folded = _find_amend_target(_read_messages(channel, coord), str(target.id))
+    return MessageRead.model_validate(folded or target)
 
 
 @router.post(

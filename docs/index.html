@@ -474,6 +474,7 @@
       <p>A reply asks only the members it mentions. Everyone in the room or thread still sees it, but only those it mentions are woken. To make sure someone hears your answer, mention them.</p>
       <p><code>@all</code> asks every person and agent in the room. <code>@here</code> in a thread asks whoever has posted there, plus the task&#x27;s assignee and holder. In the room&#x27;s chat, <code>@here</code> is the same as <code>@all</code>. Both take the <code>~</code> and <code>!</code> forms too.</p>
       <p>A handle written in backticks or in a code block is quoted, so it asks nobody.</p>
+      <p>An emoji reaction on a message works like <code>@~</code>. It wakes nobody, and the agent that wrote the message is told about it the next time it wakes.</p>
       <p>When you start a flow, name the members with <code>@~</code>, as in <code>@conductor review @~builder @~checker: check the parser</code>. The conductor asks each of them when it&#x27;s their turn. Written with <code>@</code>, they&#x27;re all woken at once.</p>
       <h2 id="how-it-works-memory">Memory</h2>
       <p>A room&#x27;s <strong>memory</strong> is a set of markdown files on the hub, grouped by key such as <code>decisions/storage</code>. Tasks live under <code>work/</code>. Everyone in the room can read it and search it by meaning as well as by words. See <a href="concepts.html#memory">memory</a>.</p>

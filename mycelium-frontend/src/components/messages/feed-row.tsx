@@ -53,6 +53,7 @@ import { EventIconMark } from "@/components/event-icon";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { AskCard } from "@/components/approval-card";
+import { ReactionChips } from "@/components/messages/reactions";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -806,6 +807,7 @@ export function MessageRow({
               (edited)
             </span>
           )}
+          <ReactionChips roomName={roomName} messageId={ev.messageId} reactions={ev.reactions} />
           {flags && <VerifierLines roomName={roomName} flags={flags} onChanged={refreshFlags} />}
           {startedThread && (
             <ThreadReplies thread={startedThread} onOpen={ctx.onOpenThread} />
@@ -818,6 +820,7 @@ export function MessageRow({
           content={ev.content}
           sender={ev.sender}
           wire={ev.wire}
+          reactions={ev.reactions}
           onOpenThread={ctx.onOpenThread}
           // Every message says when on hover, in the bar, the first under a
           // name too, with its day when that isn't today.

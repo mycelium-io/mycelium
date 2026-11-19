@@ -104,6 +104,8 @@ export interface MockMessage {
   metadata?: Record<string, unknown> | null;
   /** Who its sender interrupted with it after sending it (`MessageRead.interrupted`). */
   interrupted?: { by: string; handle: string; at: string }[] | null;
+  /** The emoji on it and who put each on (`MessageRead.reactions`). */
+  reactions?: { emoji: string; by: string[] }[];
 }
 
 /** A subscription as the hub sends it (`WakeSubscriptionRead`): the app reads
@@ -1323,7 +1325,7 @@ const checkout: RoomFixture = {
     // ── setting the room up, and the early work (a day ago) ──
     { id: "h1", sender_handle: "operator", message_type: "broadcast", content: "setting up checkout for the spring sale. two things: add apple pay, and stop the double charges. @builder @reviewer can you take the code and the testing?", created_at: iso(60 * 25) },
     { id: "h2", sender_handle: "builder", message_type: "broadcast", content: "on it. moving card payments to stripe first, apple pay is easier on top of that.", created_at: iso(1440) },
-    { id: "h3", sender_handle: "builder", message_type: "broadcast", content: "stripe payments are merged (#499). starting on apple pay.", created_at: iso(1400) },
+    { id: "h3", sender_handle: "builder", message_type: "broadcast", content: "stripe payments are merged (#499). starting on apple pay.", created_at: iso(1400), reactions: [{ emoji: "🎉", by: ["operator", "reviewer"] }, { emoji: "🚀", by: ["reviewer"] }] },
     // ── Apple Pay gets built, and the work hanging off it ──
     { id: "h4", sender_handle: "builder", message_type: "broadcast", content: "apple pay works in the simulator. #502 is approved and green, so it can go to staging.", created_at: iso(140) },
     { id: "h5", sender_handle: "reviewer", message_type: "broadcast", content: "i'll do the testing. i need it on staging to try real phones and real cards.", created_at: iso(130) },

@@ -71,6 +71,7 @@ import type {
 } from "@/lib/api";
 import { memorySummaryOf } from "@/lib/memory-preview";
 import { kindOf } from "@/lib/memory-kinds";
+import { withReaction } from "@/lib/room-events";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -885,6 +886,32 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // POST /messages/{id}/interrupt — the sender turning a plain mention of a
       // working member into an interrupt, once, as the hub does
       // (`services/interrupts.py:upgrade`), with its refusals.
+      // POST /messages/{id}/reactions — put an emoji on a message or take
+      // yours off. Kept on the message, as the hub folds it on read, and said
+      // live as the reaction it is, which the open channel folds the same way.
+      if (sub[1] && sub[2] === "reactions") {
+        if (method !== "POST") return null;
+        const message = fx.messages.find((m) => m.id.startsWith(sub[1]));
+        if (!message) return notFound(`No message ${sub[1]} in ${roomName}.`);
+        const body = await readJson(req);
+        const emoji = String(body.emoji ?? "").trim();
+        const on = body.on !== false;
+        const who = String(body.sender_handle ?? "operator");
+        if (!emoji || /[\x20-\x7e]/.test(emoji)) return json({ detail: `'${emoji}' isn't an emoji` }, 422);
+        message.reactions = withReaction(message.reactions ?? [], emoji, who, on);
+        publish(roomName, {
+          id: `r-${Date.now()}`,
+          sender_handle: who,
+          message_type: "broadcast",
+          content: on && who !== message.sender_handle ? `@~${message.sender_handle} ${emoji}` : emoji,
+          reacts: message.id,
+          reaction: { emoji, on, message: message.id },
+          created_at: new Date().toISOString(),
+          room_name: roomName,
+          episode: message.episode ?? null,
+        });
+        return json({ ...message, room_name: roomName }, 201);
+      }
       if (sub[1] && sub[2] === "interrupt") {
         if (method !== "POST") return null;
         const message = fx.messages.find((m) => m.id.startsWith(sub[1]));

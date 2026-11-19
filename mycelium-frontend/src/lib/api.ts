@@ -1003,6 +1003,26 @@ export async function interruptMention(
   });
 }
 
+/** One emoji on a message and who put it on, oldest first. */
+export interface MessageReactions {
+  emoji: string;
+  by: string[];
+}
+
+/** Put an emoji on a message (`on`), or take yours off. Answers with the
+ *  message as the room now reads it, its reactions folded in. */
+export async function reactToMessage(
+  room: string,
+  messageId: string,
+  body: { emoji: string; on: boolean; sender_handle: string },
+): Promise<RoomMessage & { reactions: MessageReactions[] }> {
+  return apiFetch(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/reactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 /** One member a group mention reaches, as the hub resolves it for delivery. */
 export interface MentionGroupMember {
   handle: string;

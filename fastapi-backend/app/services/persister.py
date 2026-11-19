@@ -635,13 +635,27 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
     """The human-facing chat text of a record, or None if it isn't chat.
 
     Only a human ``message`` and an agent ``reply`` are chat; presence/ping and
-    other control payloads carry no chat text and stay out of the list.
+    other control payloads carry no chat text and stay out of the list. A
+    reaction isn't chat either: it is read as the emoji on another message
+    (:func:`reaction_text`).
     """
-    payload_type = content.get("l9", {}).get("payload", {}).get("type")
+    l9 = content.get("l9", {})
+    if l9.get("header", {}).get("subkind") == message_format.REACTION_SUBKIND:
+        return None
+    payload_type = l9.get("payload", {}).get("type")
     text = content.get("content")
     if payload_type not in ("message", "reply") or not isinstance(text, str) or not text:
         return None
     return text
+
+
+def reaction_text(content: dict[str, Any]) -> str | None:
+    """A reaction record's text (``@~author 👍``), or None if it isn't one."""
+    l9 = content.get("l9", {})
+    if l9.get("header", {}).get("subkind") != message_format.REACTION_SUBKIND:
+        return None
+    text = content.get("content")
+    return text if isinstance(text, str) and text else None
 
 
 def parse_recorded_at(recorded_at: str) -> datetime | None:
@@ -666,6 +680,63 @@ def amended_target(subkind: str | None, parents: Any) -> str | None:
         return None
     target = parents[0]
     return target if isinstance(target, str) and target else None
+
+
+def reaction_of(
+    subkind: str | None, parents: Any, content: dict[str, Any]
+) -> tuple[str, str, bool] | None:
+    """The message an ``exchange:reaction`` is on, its emoji, and whether it puts
+    the emoji on (``True``) or takes it off. ``None`` for anything else."""
+    if subkind != message_format.REACTION_SUBKIND or not isinstance(parents, list) or not parents:
+        return None
+    target, reaction = parents[0], content.get("reaction")
+    if not isinstance(target, str) or not target or not isinstance(reaction, dict):
+        return None
+    emoji = reaction.get("emoji")
+    if not isinstance(emoji, str) or not emoji:
+        return None
+    return target, emoji, reaction.get("on") is not False
+
+
+def collapse_reactions(messages: list[StoredMessage]) -> list[StoredMessage]:
+    """Fold each reaction into the message it is on, and drop it as a row.
+
+    A reaction is a record like any other, so putting an emoji on and taking it
+    off are both kept. The newest record for each (message, person, emoji) wins.
+    Unlike an amendment, a reaction whose message isn't in this view is dropped:
+    an emoji on its own says nothing.
+    """
+    if not any(m.reacts for m in messages):
+        return messages
+    by_id: dict[str, StoredMessage] = {}
+    for m in messages:
+        by_id[str(m.id)] = m
+        if m.message_id:
+            by_id[m.message_id] = m
+
+    # (target row id, emoji, who) -> on; a dict keeps the order each was first put on.
+    state: dict[tuple[uuid.UUID, str, str], bool] = {}
+    for r in sorted((m for m in messages if m.reacts), key=lambda m: m.created_at):
+        target = by_id.get(r.reacts or "")
+        if target is None or target.reacts or not r.reaction:
+            continue
+        key = (target.id, r.reaction, r.sender_handle)
+        if r.reaction_on and key not in state:
+            state[key] = True
+        elif key in state:
+            state[key] = r.reaction_on
+
+    on: dict[uuid.UUID, dict[str, list[str]]] = {}
+    for (target_id, emoji, who), is_on in state.items():
+        if is_on:
+            on.setdefault(target_id, {}).setdefault(emoji, []).append(who)
+    return [
+        replace(m, reactions=[{"emoji": e, "by": by} for e, by in on[m.id].items()])
+        if m.id in on
+        else m
+        for m in messages
+        if not m.reacts
+    ]
 
 
 def collapse_amendments(messages: list[StoredMessage]) -> list[StoredMessage]:
@@ -735,7 +806,9 @@ def stored_message_from_record(
     """
     from app.services.in_memory_store import StoredMessage
 
-    text = _conversational_text(record.content)
+    # A reaction projects as a row only so the read path can fold it into its
+    # message (:func:`collapse_reactions`); it is never shown as one.
+    text = _conversational_text(record.content) or reaction_text(record.content)
     if text is not None:
         # Chat: a plain broadcast row carrying the prose.
         message_type: str = MessageType.BROADCAST
@@ -772,6 +845,9 @@ def stored_message_from_record(
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),
         id=read_id(record),
     )
+    reaction = reaction_of(record.subkind, header.get("message", {}).get("parents"), record.content)
+    if reaction is not None:
+        msg.reacts, msg.reaction, msg.reaction_on = reaction
     recorded = parse_recorded_at(record.recorded_at) or fallback
     if recorded is not None:
         msg.created_at = recorded
@@ -884,14 +960,15 @@ def room_conversation(room: str) -> list[StoredMessage]:
     Dedup is by envelope ``message_id`` — a distinct id space from
     ``StoredMessage.id``. The merged view is then folded by
     :func:`collapse_amendments`, so a revised message reads as one row carrying
-    its latest text while the transcript keeps every version.
+    its latest text while the transcript keeps every version, and by
+    :func:`collapse_reactions`, so each message carries the emoji on it.
     """
     from app.services import in_memory_store
 
     mem = in_memory_store.list_messages(room)
     live_ids = {m.message_id for m in mem if m.message_id}
     disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
-    return collapse_amendments(disk + mem)
+    return collapse_reactions(collapse_amendments(disk + mem))
 
 
 def prose_messages(room: str) -> list[StoredMessage]:
