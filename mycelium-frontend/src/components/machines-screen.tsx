@@ -210,13 +210,11 @@ function NeedsYou({ machines, onShow }: { machines: Runner[]; onShow: (id: strin
                   ))}
                 </span>
               ) : (
-                <AlertTriangle
-                  className={cn(
-                    "mt-1 mr-10 ml-1 size-4 flex-shrink-0",
-                    SERIOUS.has(problem.kind) ? "text-red" : "text-yellow",
-                  )}
-                  aria-hidden
-                />
+                <span className="flex w-14 flex-shrink-0 pt-1 pl-1" aria-hidden>
+                  <AlertTriangle
+                    className={cn("size-4", SERIOUS.has(problem.kind) ? "text-red" : "text-yellow")}
+                  />
+                </span>
               )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-2">
