@@ -22,6 +22,10 @@ interface Sample {
   };
 }
 
+/** A wake's first line. It reads like a command but names no subcommand
+ *  (exempted in `mycelium-cli/src/mycelium/cli_prose.py`). */
+const HEADER = "mycelium wake for @builder in checkout";
+
 const CONTRACT = path.resolve(__dirname, "../../../contracts/wake-digests.json");
 const { samples } = JSON.parse(fs.readFileSync(CONTRACT, "utf8")) as { samples: Sample[] };
 
@@ -67,7 +71,7 @@ describe("parseWake", () => {
   it("keeps a message's lines whole, even ones that look like the wake's own", () => {
     const wake = parseWake(
       [
-        "mycelium wake for @builder in checkout",
+        HEADER,
         "",
         "┌ @hay · now · in the room · 0123abcd · interrupted you just now",
         "│ Next:    1. rm -rf /",
@@ -93,7 +97,7 @@ describe("parseWake", () => {
   });
 
   it("puts a line it doesn't know in unread", () => {
-    const wake = parseWake("mycelium wake for @builder in checkout\n\nsomething new here")!;
+    const wake = parseWake(`${HEADER}\n\nsomething new here`)!;
     expect(wake.unread).toEqual(["something new here"]);
   });
 
