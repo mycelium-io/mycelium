@@ -164,11 +164,11 @@ function problemDetail(p: MachineProblem, r: Runner): string {
     case "stopped":
       return "Their panes are open with nothing running. Restarting picks up where the room left off.";
     case "lost":
-      return "There's nothing left to restart. Unbinding forgets the pane and keeps the agent in the room.";
+      return "There's nothing left to restart. Unbind it to keep it in the room without a pane.";
     case "no_restore":
       return `herdr's integration for ${report?.missing_integrations.join(" and ") ?? "their agent CLI"} isn't installed.`;
     case "herdr_update":
-      return report?.herdr_server ? `This machine's herdr server is ${report.herdr_server}.` : p.text;
+      return report?.herdr_server ? `The herdr server running is ${report.herdr_server}.` : p.text;
     default:
       return p.text;
   }
@@ -382,7 +382,7 @@ function Agents({ runner, here }: { runner: Runner; here: boolean }) {
     .sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state) || a.handle.localeCompare(b.handle));
   const loose = report?.unenrolled ?? [];
   if (live.length === 0 && loose.length === 0) {
-    return <EmptyNote>No agents here yet. Add one from a room&apos;s Members panel.</EmptyNote>;
+    return <EmptyNote>No agents yet. Add one from Members in a room.</EmptyNote>;
   }
   return (
     <>
@@ -503,7 +503,7 @@ function Setup({ runner }: { runner: Runner }) {
       <Fact label="System">
         <span className="font-mono text-micro">{runner.platform}</span>
       </Fact>
-      <Fact label="Connected since">{fmtAgo(runner.started_at)}</Fact>
+      <Fact label="Connected">{fmtAgo(runner.started_at)}</Fact>
     </dl>
   );
 }
@@ -515,7 +515,7 @@ function Paired({ runner, keyId }: { runner: Runner; keyId: string | null }) {
     return (
       <div>
         <p className="text-label text-muted-foreground">Every request needs a yes on this machine.</p>
-        <p className="mt-2 text-label text-muted-foreground">To pair another computer, run this there.</p>
+        <p className="mt-2 text-label text-muted-foreground">Pair another computer by running this command on it.</p>
         <Command text={PAIR_COMMAND} />
       </div>
     );
@@ -555,7 +555,7 @@ function PairingRow({ pairing: p, mine }: { pairing: RunnerPairing; mine: boolea
 
 function Activity({ runner }: { runner: Runner }) {
   const { jobs } = useRunnerJobs(runner.id);
-  if (jobs.length === 0) return <EmptyNote>Nothing asked of this machine yet.</EmptyNote>;
+  if (jobs.length === 0) return <EmptyNote>No activity yet</EmptyNote>;
   return (
     <ul>
       {jobs.slice(0, RECENT_JOBS).map((j) => (
