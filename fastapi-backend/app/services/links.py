@@ -55,7 +55,15 @@ EXPANDABLE_FLAG = "expandable"
 
 # Frontmatter keys read as typed ontology edges. Each value is a key, a
 # myc:// URI, or a list of either.
-RELATION_KEYS = ("supersedes", "superseded-by", "depends-on", "part-of", "relates-to")
+RELATION_KEYS = (
+    "supersedes",
+    "superseded-by",
+    "depends-on",
+    "part-of",
+    "relates-to",
+    # What a fact, finding or dead end came from (``app.services.knowledge``).
+    "derived-from",
+)
 
 # Link kinds, in the `kind` field of a stored edge.
 KIND_URI = "uri"

@@ -71,7 +71,8 @@ async def test_anyone_else_is_refused_and_nothing_changes(client, as_principal):
     ):
         resp = await _write(client, "agents/lead", change, "mallory")
         assert resp.status_code == 403, resp.text
-        assert "julia" in resp.json()["detail"]
+        assert resp.json()["detail"]["error"] == "memory.not_owner"
+        assert "julia" in resp.json()["detail"]["message"]
     assert _on_disk("lead")["owner"] == "julia"
     assert _on_disk("lead")["allow_from"] == ["julia"]
 
@@ -185,7 +186,7 @@ async def test_a_manifest_that_doesn_t_parse_is_no_one_s_to_rewrite(client, as_p
     as_principal("mallory", role="user")
     claim = await _write(client, "agents/broken", _manifest(owner="mallory"), "mallory")
     assert claim.status_code == 403
-    assert "can't be read" in claim.json()["detail"]
+    assert "can't be read" in claim.json()["detail"]["message"]
     assert (await client.delete(f"/api/rooms/{ROOM}/memory/agents/broken")).status_code == 403
 
 

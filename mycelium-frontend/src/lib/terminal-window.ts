@@ -20,8 +20,8 @@ const STORAGE_KEY = "mycelium.terminal-windows";
 /** The smallest a terminal window gets: a few lines of a narrow one. */
 export const MIN_WINDOW = { width: 320, height: 240 } as const;
 
-/** How much of a window must stay on screen to be dragged back. */
-const KEEP_VISIBLE = 48;
+/** The gap it keeps from the edges of the app's window. */
+const MARGIN = 8;
 
 /** Room left above it for the title bar, and below it for the status bar. */
 const TOP = 56;
@@ -35,13 +35,48 @@ export function defaultRect(viewport: { width: number; height: number }): Window
   return { x: Math.max(16, viewport.width - width - 8), y: TOP, width, height };
 }
 
-/** `rect` made to fit `viewport`: no bigger than it, no smaller than the
- *  minimum, and with its header on screen so it can be dragged. */
+/** `rect` made to fit `viewport`: wholly inside it, no smaller than the
+ *  minimum. In a window too small for even that, its top left stays on it,
+ *  so its header can still be reached. */
 export function clampRect(rect: WindowRect, viewport: { width: number; height: number }): WindowRect {
-  const width = Math.max(MIN_WINDOW.width, Math.min(rect.width, viewport.width - 16));
-  const height = Math.max(MIN_WINDOW.height, Math.min(rect.height, viewport.height - 16));
-  const x = Math.min(Math.max(rect.x, KEEP_VISIBLE - width), viewport.width - KEEP_VISIBLE);
-  const y = Math.min(Math.max(rect.y, 0), viewport.height - KEEP_VISIBLE);
+  const width = Math.max(MIN_WINDOW.width, Math.min(rect.width, viewport.width - 2 * MARGIN));
+  const height = Math.max(MIN_WINDOW.height, Math.min(rect.height, viewport.height - 2 * MARGIN));
+  const x = Math.max(MARGIN, Math.min(rect.x, viewport.width - width - MARGIN));
+  const y = Math.max(MARGIN, Math.min(rect.y, viewport.height - height - MARGIN));
+  return { x, y, width, height };
+}
+
+/** An edge or corner a window is resized from, by the compass. */
+export type Edge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+/** `low` to `high`, with `low` winning when they cross (a window too small). */
+const within = (v: number, low: number, high: number) => Math.max(low, Math.min(v, high));
+
+/** `start` with its `edge` dragged by `dx`, `dy`: the opposite edges stay
+ *  where they are, it's never smaller than the minimum, and it stops at the
+ *  edges of `viewport`. */
+export function resizeRect(
+  start: WindowRect,
+  edge: Edge,
+  dx: number,
+  dy: number,
+  viewport: { width: number; height: number },
+): WindowRect {
+  let { x, y, width, height } = start;
+  if (edge.includes("e")) width = within(width + dx, MIN_WINDOW.width, viewport.width - MARGIN - x);
+  if (edge.includes("s")) height = within(height + dy, MIN_WINDOW.height, viewport.height - MARGIN - y);
+  // The left and top edges move the window's corner; the minimum size wins
+  // over the margin, as it does above.
+  if (edge.includes("w")) {
+    const right = x + width;
+    x = Math.min(Math.max(x + dx, MARGIN), right - MIN_WINDOW.width);
+    width = right - x;
+  }
+  if (edge.includes("n")) {
+    const bottom = y + height;
+    y = Math.min(Math.max(y + dy, MARGIN), bottom - MIN_WINDOW.height);
+    height = bottom - y;
+  }
   return { x, y, width, height };
 }
 

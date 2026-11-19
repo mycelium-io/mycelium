@@ -87,7 +87,7 @@ class TestRecordedOnTheHub:
     def test_finished_work_carries_a_running_count(self, hub):
         usage.record("mycelium.task_filed", kind="action")
         usage.negotiation_completed("converged", 3)
-        usage.flow_completed("swarm", "resolved", 5)
+        usage.flow_completed("review", "resolved", 5)
         counts = [e.get("work_count") for e in logged(hub)]
         assert counts == [None, 1, 2]
 

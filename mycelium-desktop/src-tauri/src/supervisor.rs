@@ -37,6 +37,8 @@ struct Inner {
     pid: Option<(i32, Arc<AtomicBool>)>,
     stdin: Option<ChildStdin>,
     status: Option<Value>,
+    /// The person's widgets as the supervisor last ran them (its `widgets` event).
+    widgets: Option<Value>,
     last_error: Option<String>,
     /// The generation whose UI the main window was sent to, so it is sent once.
     shown: Option<u64>,
@@ -72,6 +74,11 @@ impl Supervisor {
 
     pub fn status(&self) -> Option<Value> {
         self.inner.lock().unwrap().status.clone()
+    }
+
+    /// The widgets the supervisor last sent: each one's settings and last run.
+    pub fn widgets(&self) -> Option<Value> {
+        self.inner.lock().unwrap().widgets.clone()
     }
 
     pub fn last_error(&self) -> Option<String> {
@@ -344,6 +351,9 @@ fn handle_line(app: &AppHandle, generation: u64, line: &str) {
         }
         Some("log") => crate::on_log(app, &value),
         Some("request") => crate::on_request(app, &value),
+        Some("widgets") => {
+            app.state::<Supervisor>().inner.lock().unwrap().widgets = Some(value);
+        }
         _ => {}
     }
 }

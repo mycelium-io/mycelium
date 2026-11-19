@@ -4,14 +4,13 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import TextareaAutosize from "react-textarea-autosize";
+import { GrowTextarea } from "@/components/ui/grow-textarea";
 import {
   ApiError,
   createEngine,
   createMemories,
   launchRunnerAgent,
   type EngineKind,
-  type Memory,
   type Runner,
 } from "@/lib/api";
 import { signFor } from "@/lib/device-key";
@@ -37,7 +36,6 @@ import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 import { useClientSetting } from "@/lib/client-settings";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
-import { StartSwarmDialog } from "@/components/start-swarm-dialog";
 import { IntentDialog } from "@/components/intent-dialog";
 import { NewMemoryDialog } from "@/components/new-memory-dialog";
 import { AddMemberDialog, ENGINE_KINDS } from "@/components/add-member-dialog";
@@ -52,9 +50,11 @@ import {
   isMentionGroup,
   mentionMode,
   type MentionGroupName,
+  parseInterruptMentions,
   parseMentions,
   parseSilentMentions,
 } from "@/lib/mentions";
+import { SENT_TO_WORKING_MS, SentToWorking } from "@/components/messages/mention-wakes";
 import { RECENT_MENTIONS_CHANGED, readRecentMentions, recordMentions } from "@/lib/recent-mentions";
 import { composerMentions, type ComposerMentionKind } from "@/lib/composer-mentions";
 import { MentionLayer } from "@/components/mention-layer";
@@ -222,7 +222,7 @@ function detectTrigger(prefix: string, cursor: number): Trigger | null {
   return null;
 }
 
-function memoryKey(m: Memory): string {
+function memoryKey(m: { key: string }): string {
   return m.key;
 }
 
@@ -350,8 +350,6 @@ export function RoomChatBox({
   const bigSend = asked && asked.text === content ? asked : null;
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
-  // The task a `/swarm` is being started on, while its dialog is open.
-  const [swarmTask, setSwarmTask] = useState<string | null>(null);
   // A schedule being made, as `/schedule` or the + filled it in, while its dialog is open.
   const [scheduling, setScheduling] = useState<ScheduleDraft | null>(null);
   const [starting, setStarting] = useState(false);
@@ -395,6 +393,14 @@ export function RoomChatBox({
   const [noticeKey, setNoticeKey] = useState<string | null>(null);
   const [launch, setLaunch] = useState<Launch | null>(null);
   const dismissLaunch = useCallback(() => setLaunch(null), []);
+  // A plain `@` just went to members mid-turn; said once, briefly.
+  const [toWorking, setToWorking] = useState<{ messageId: string; handles: string[] } | null>(null);
+  const dismissToWorking = useCallback(() => setToWorking(null), []);
+  useEffect(() => {
+    if (!toWorking) return;
+    const t = setTimeout(dismissToWorking, SENT_TO_WORKING_MS);
+    return () => clearTimeout(t);
+  }, [toWorking, dismissToWorking]);
   // Files the next message carries: picked, dropped on the box or pasted.
   const attachments = usePendingUploads(roomName, principal.trim() || "user");
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -418,7 +424,7 @@ export function RoomChatBox({
   // renders; `[[` reads the room's memory keys and `/` its skills. All three
   // are shared reads — opening a room fetches each of them once, however many
   // panels are looking.
-  const { agents, people, others } = useRoomRoster(roomName);
+  const { agents, people, others, presence } = useRoomRoster(roomName);
   const { memories } = useRoomMemories(roomName);
   const memoryKeys = useMemo(() => memories.map(memoryKey), [memories]);
   const { skills } = useRoomSkills(roomName);
@@ -565,6 +571,8 @@ export function RoomChatBox({
         secondary: agentLabel(a),
         tertiary: a.description as string | undefined,
         engine: a.adapter === "engine",
+        // Mid-turn, so a plain `@` reaches it only when its turn ends.
+        working: presence.get(a.handle.toLowerCase())?.status === "working",
       })),
       ...people.map((p) => ({
         handle: p.handle,
@@ -572,6 +580,7 @@ export function RoomChatBox({
         secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
         tertiary: undefined as string | undefined,
         engine: false,
+        working: false,
       })),
       // Present or holding a task, but neither a person nor an agent here:
       // still someone a message can reach.
@@ -581,9 +590,10 @@ export function RoomChatBox({
         secondary: o.present ? "here" : "holds a task",
         tertiary: undefined as string | undefined,
         engine: false,
+        working: false,
       })),
     ],
-    [agents, people, others, names],
+    [agents, people, others, names, presence],
   );
 
   // The mentions being typed, each colored by whether it reaches a member: the
@@ -682,6 +692,11 @@ export function RoomChatBox({
         secondary: r.name ? `@${r.handle} · ${r.secondary}` : r.secondary,
         // An engine works only when mentioned, so there's nothing to stop.
         tertiary: trigger.sigil === INTERRUPT_MENTION_SIGIL && r.engine ? NOT_INTERRUPTIBLE : r.tertiary,
+        working: r.working,
+        // A plain `@` to a member mid-turn offers the interrupt beside it.
+        interrupt:
+          r.working && trigger.sigil !== INTERRUPT_MENTION_SIGIL && trigger.sigil !== SILENT_MENTION_SIGIL
+            ?`${INTERRUPT_MENTION_SIGIL}${r.handle}` : undefined,
       }));
       return [...memberRows, ...groupRows];
     }
@@ -861,12 +876,6 @@ export function RoomChatBox({
         return;
       }
     }
-    if (command?.command.name === "swarm") {
-      // A swarm spends model turns, so it asks first: the dialog takes it from here.
-      setSwarmTask(argValue(command, "what"));
-      cleared();
-      return;
-    }
     if (command?.command.name === "schedule") {
       // A schedule spends model turns again and again, so `/schedule` only
       // fills in the form: it's saved from there, once the person has looked.
@@ -888,12 +897,20 @@ export function RoomChatBox({
       attachments.clear();
       // Whoever this names goes to the top of the next `@` list.
       recordMentions(roomName, [...parseMentions(body), ...parseSilentMentions(body)]);
+      // Who a plain `@` reached mid-turn (an `@!` already interrupts).
+      const interrupting = new Set(parseInterruptMentions(body).map((h) => h.toLowerCase()));
+      const working = parseMentions(body).filter(
+        (h) => !interrupting.has(h.toLowerCase()) && mentionRoster.some((r) => r.working && r.handle.toLowerCase() === h.toLowerCase()),
+      );
+      setToWorking(null);
       void sendPending(roomName, {
         sender: handle,
         content: [text, files.join(" ")].filter(Boolean).join("\n\n"),
         episode,
       }).then((sent) => {
-        if (sent) onSent?.();
+        if (sent === false) return;
+        onSent?.();
+        if (sent && working.length) setToWorking({ messageId: sent, handles: working });
       });
       return;
     }
@@ -993,7 +1010,7 @@ export function RoomChatBox({
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, emojiTable, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments]);
+  }, [content, emojiTable, episode, onSent, onOpenMemory, roomName, principal, sending, startAgent, revalidateRoom, memories, attachments, mentionRoster]);
 
   const attachFrom = (list: FileList | null | undefined) => {
     if (list?.length) attachments.add(Array.from(list));
@@ -1176,6 +1193,16 @@ export function RoomChatBox({
     </StatusLine>
   ) : launch ? (
     <LaunchStatus launch={launch} roomName={roomName} onDismiss={dismissLaunch} />
+  ) : toWorking ? (
+    <StatusLine onDismiss={dismissToWorking}>
+      <SentToWorking
+        roomName={roomName}
+        messageId={toWorking.messageId}
+        handles={toWorking.handles}
+        me={principal.trim() || "user"}
+        onDone={dismissToWorking}
+      />
+    </StatusLine>
   ) : notice ? (
     <StatusLine onDismiss={() => setNotice(null)}>
       {notice}
@@ -1319,7 +1346,7 @@ export function RoomChatBox({
                 className={cn(COMPOSER_TEXT, "text-text")}
               />
             )}
-            <TextareaAutosize
+            <GrowTextarea
               ref={inputRef}
               value={content}
               onChange={handleChange}
@@ -1345,20 +1372,7 @@ export function RoomChatBox({
               placeholder={placeholder}
               minRows={1}
               maxRows={COMPOSER_MAX_ROWS}
-              // Scrolls only once it's grown to its cap, judged by the height the
-              // box was given rather than by how its text measures: WebKit (the
-              // desktop app on a Mac) can measure the box a fraction short of its
-              // text, by more than a pixel when the page is zoomed out, and would
-              // draw a scrollbar for nothing.
-              onHeightChange={(height, { rowHeight }) => {
-                const el = inputRef.current;
-                if (!el) return;
-                const s = getComputedStyle(el);
-                const frame = ["paddingTop", "paddingBottom", "borderTopWidth", "borderBottomWidth"] as const;
-                const cap = rowHeight * COMPOSER_MAX_ROWS + frame.reduce((sum, k) => sum + parseFloat(s[k]), 0);
-                setScrolls(height >= cap - 1 && el.scrollHeight > el.clientHeight + 1);
-              }}
-              style={{ overflowY: scrolls ? "auto" : "hidden" }}
+              onScrollsChange={setScrolls}
               className={cn(
                 "relative block w-full resize-none bg-transparent focus:outline-none placeholder:truncate placeholder:text-faint",
                 COMPOSER_TEXT,
@@ -1507,14 +1521,6 @@ export function RoomChatBox({
         />
       )}
 
-      {swarmTask !== null && (
-        <StartSwarmDialog
-          open
-          onClose={() => setSwarmTask(null)}
-          roomName={roomName}
-          initialTask={swarmTask}
-        />
-      )}
     </div>
   );
 }
@@ -1611,7 +1617,9 @@ function StatusLine({
     <div
       role={tone === "error" ? "alert" : "status"}
       className={cn(
-        "flex items-start gap-2 rounded-lg border bg-elevated px-2.5 py-1.5 text-micro shadow-lg",
+        // Centered, so the dismiss sits level with a line that carries a
+        // control (an Interrupt, an Undo) as well as with plain text.
+        "flex items-center gap-2 rounded-lg border bg-elevated px-2.5 py-1.5 text-micro shadow-lg",
         tone === "error" ? "border-red/40 text-red" : "border-border text-muted-foreground",
       )}
     >

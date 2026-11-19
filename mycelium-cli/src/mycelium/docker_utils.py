@@ -62,6 +62,8 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     # ── Read straight from the bind-mounted config.toml ─────────────────────
     "metrics.scrape": "collector_main.py reads it from the mounted config.toml",
     "metrics.collector_url": "spoke-side: which collector `mycelium metrics show` reads",
+    # ── Desktop app only: run on this computer, never by the hub ────────────
+    "statusline.widget": "the desktop app's own widgets, run on this computer only",
     # ── CLI-side only: never leaves the host ────────────────────────────────
     "identity.name": "the operator's local display name",
     "identity.machine_id": "local machine affinity UUID",
@@ -74,7 +76,6 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     "herdr.autowake": "CLI-side wake layer; the backend is herdr-blind",
     "herdr.wake_timeout_ms": "CLI-side wake layer; the backend is herdr-blind",
     "herdr.panes_per_tab": "where this machine opens herdr panes; the backend is herdr-blind",
-    "swarm.agent": "the agent CLI this machine's `swarm` starts in herdr",
     "runner.host": "where this machine's runner starts agents; the backend never starts them",
     "runner.omnigent_url": "this machine's Omnigent server, which only its runner talks to",
     "login.issuer": "client half of auth: who this machine logs in against",

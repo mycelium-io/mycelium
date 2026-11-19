@@ -12,7 +12,6 @@ const pairing = (over: Partial<RunnerPairing> = {}): RunnerPairing => ({
   expires_at: null,
   folders: [],
   clis: [],
-  swarms: false,
   ...over,
 });
 

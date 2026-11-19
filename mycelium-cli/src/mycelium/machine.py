@@ -3,8 +3,8 @@
 
 """The agents on this machine: what's running, what's wrong, and what to do.
 
-Every herdr agent bound to a room here, however it got there (the runner,
-``mycelium swarm``, or a pane a person bound), read from herdr's registry
+Every herdr agent bound to a room here, however it got there (the runner
+or a pane a person bound), read from herdr's registry
 (which handle in which room is which pane, of which kind, in which folder) and
 from herdr itself (which panes are open, and which have an agent running).
 
@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 import shlex
-import shutil
 import time
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass, field
@@ -646,7 +645,8 @@ def restart(
     stopped. A session already running in another pane is never started a
     second time.
     """
-    from mycelium.commands.swarm import _start_unblocked, not_ready
+    from mycelium.integrations.agents import of_kind
+    from mycelium.integrations.herdr.starting import not_ready, start_unblocked
 
     if not agent.restartable:
         if agent.state not in ("stopped", "gone"):
@@ -680,6 +680,7 @@ def restart(
         "MYCELIUM_AGENT_HANDLE": agent.handle,
         "MYCELIUM_ROOM_ID": agent.room,
         **token,
+        **of_kind(kind).launch_env(),
     }
     try:
         if agent.state == "stopped":
@@ -704,7 +705,7 @@ def restart(
         if workspace and workspace not in bridge.registry.bindings():
             bridge.registry.bind(workspace, agent.room)
         with while_starting or nullcontext():
-            _start_unblocked(bridge, agent.handle, kind, pane, room=agent.room, resume=resume)
+            start_unblocked(bridge, agent.handle, kind, pane, room=agent.room, resume=resume)
         bridge.prompt(pane, prompt, wait=False)
     except HerdrError as e:
         raise MachineError(f"herdr couldn't restart @{agent.handle}: {e}") from e
@@ -801,22 +802,19 @@ def _remember(answer: Literal["yes", "no"]) -> None:
     path.write_text(json.dumps({"answer": answer, "at": time.time()}) + "\n")
 
 
-def _installed_kinds() -> set[str]:
-    """The herdr kinds of the agent CLIs found on PATH here."""
-    from mycelium.integrations.agents import KNOWN
-
-    return {
-        k.herdr_kind for k in KNOWN if k.herdr_kind and any(shutil.which(b) for b in k.binaries)
-    }
+def _available_integrations(bridge: HerdrBridge) -> set[str]:
+    """The herdr integrations for the agent CLIs herdr finds installed here:
+    herdr's answer, not ours. None when herdr can't say."""
+    return bridge.available_integrations() or set()
 
 
 def integrations(*, bridge: HerdrBridge | None = None) -> Integrations:
-    """herdr's version, and its integrations for the agent CLIs on PATH here."""
+    """herdr's version, and its integrations for the agent CLIs herdr finds here."""
     bridge = bridge or HerdrBridge()
     client = bridge.version()
     server = bridge.server_version() if bridge.available() else None
     status = bridge.integrations() or {}
-    wanted = {integration_for(k) for k in _installed_kinds()}
+    wanted = _available_integrations(bridge)
     return Integrations(
         herdr_server=server,
         herdr_client=client,

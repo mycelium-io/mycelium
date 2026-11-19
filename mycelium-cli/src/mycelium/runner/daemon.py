@@ -9,7 +9,7 @@ Three loops, each on its own thread:
   folders agents may be started in), the agents it is running, and every agent
   on the machine (``mycelium.machine``'s report), re-sent as a heartbeat.
 - **jobs**: a long-poll for what the app asked for (``launch``, ``stop``,
-  ``scan``, ``swarm``, ``restart``, ``rename``), done one at a time and
+  ``scan``, ``restart``, ``rename``), done one at a time and
   reported back.
 - **sync**: presence up and doorbells down for every agent in a workspace
   bound to a room on this machine, so they hear their turns.
@@ -29,7 +29,7 @@ own roots; it never carries a command, so what the hub can ask of this machine
 is exactly "start one of the agent CLIs you found, here".
 
 Even that is asked of the person here first. Anyone who can reach a hub can
-queue a job for any runner on it, so a launch, swarm or restart waits for a yes on
+queue a job for any runner on it, so a launch or restart waits for a yes on
 this machine (``approvals``) unless a device paired here signed it, within
 what the pairing allows (``pairing``), or the runner trusts its hub: the
 desktop app's own hub, which only this machine can reach, or one the person said to
@@ -87,6 +87,7 @@ from mycelium.runner.hosts import (
     StartHooks,
 )
 from mycelium.runner.log import failing, log, ms, open_log, recovered
+from mycelium.runner.usage import Usage, end_foreground, total_ram_mb, write_private
 from mycelium.utils.process import pid_alive
 from mycelium_backend_client import Client
 from mycelium_backend_client.api.auth import whoami_api_whoami_get as whoami_api
@@ -118,10 +119,15 @@ from mycelium_backend_client.models import (
 
 #: Jobs that start something on this machine, or type into a terminal on it
 #: (``adopt`` introduces an agent someone already has running; ``rename`` ends
-#: one and starts it again under a new handle), and so wait for a yes here.
-ASK_FIRST = frozenset({"launch", "swarm", "restart", "adopt", "rename"})
+#: one and starts it again under a new handle; ``resume`` starts one in an
+#: earlier session of its CLI's), and so wait for a yes here.
+ASK_FIRST = frozenset({"launch", "restart", "adopt", "rename", "resume"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
+#: The docs section on an agent CLI that isn't installed.
+MISSING_CLI_DOC = (
+    "https://mycelium-io.github.io/mycelium/guides.html#machines-when-the-agent-cli-isnt-found"
+)
 #: How long a paused agent has to stop working before it's told why, and how
 #: often it's checked meanwhile.
 PAUSE_SETTLE_S = 20.0
@@ -129,6 +135,12 @@ PAUSE_POLL_S = 0.5
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
+#: How often what each agent uses is read again, and where it's written on this
+#: machine, beside the runner's state (``runner_dir()``), for the desktop app.
+USAGE_EVERY_S = 30.0
+USAGE_FILE = "usage.json"
+#: The states an agent has a process in, and so something to measure.
+RUNNING = frozenset({"working", "idle", "blocked"})
 #: How long one long-poll for a job is held by the hub.
 POLL_S = 25.0
 #: How often herdr presence and doorbells are synced.
@@ -427,7 +439,7 @@ class State:
     agents: dict[str, Tracked] = field(default_factory=dict)
     #: room -> (workspace, the last pane opened there, which the next one splits)
     workspaces: dict[str, tuple[str, str]] = field(default_factory=dict)
-    #: workspace -> room, for every workspace this runner opened, swarms included.
+    #: workspace -> room, for every workspace this runner opened.
     owned: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -509,7 +521,8 @@ class Runner:
         #: Where the devices paired with this machine are kept (``pairing.folder``).
         self._pairings_base = pairings_base
         self.roots = [r.expanduser().resolve() for r in roots]
-        #: herdr's bridge: a swarm is started in herdr whichever host launches do.
+        #: herdr's bridge: restarts, adoptions and the machine report go through
+        #: herdr whichever host launches do.
         self.bridge = bridge or HerdrBridge()
         #: Where launched agents run (``runner.host``).
         self.host: AgentHost = host or (
@@ -557,6 +570,19 @@ class Runner:
         #: ``{(room, handle): (can_reply, why)}`` for each agent here the
         #: runner has a verdict on, sent with every heartbeat.
         self.can_reply: dict[tuple[str, str], tuple[bool, str | None]] = {}
+        #: What each agent's pane uses (``runner/usage.py``), read every
+        #: ``USAGE_EVERY_S`` and written to ``usage.json`` on this machine for
+        #: the desktop app. Never in a heartbeat: none of it goes to the hub.
+        self._usage = Usage()
+        self._usage_path = self._state_path.with_name(USAGE_FILE)
+        self._usage_read_at = 0.0
+        self._usage_by_pane: dict[str, dict[str, Any]] = {}
+        #: ``{(room, handle): when it was last seen working}``, wall time, for
+        #: how long it has been idle. An agent not seen working since the runner
+        #: started has been idle at least since then.
+        self._last_working: dict[tuple[str, str], float] = {}
+        self._started_at = time.time()
+        self._ram_total_mb = total_ram_mb()
         #: ``{(room, handle): when its token was last checked with the hub}``.
         self._checked: dict[tuple[str, str], float] = {}
 
@@ -564,8 +590,23 @@ class Runner:
 
     def scan(self) -> list[frameworks.Found]:
         self.herdr = self.host.available()
-        self.found = frameworks.scan(self.host.kinds() if self.herdr else None, host=self.host.name)
+        found = frameworks.scan(self.host.kinds() if self.herdr else None, host=self.host.name)
+        from mycelium.runner.sessions import read_members
+
+        self.found = frameworks.with_sessions(
+            found, roots=self.roots, busy=self._busy_sessions(), members=read_members()
+        )
         return self.found
+
+    def _busy_sessions(self) -> set[str]:
+        """The sessions an agent here is in, a member or not: they show as
+        running, never as earlier sessions to bring in again."""
+        busy = {m.session for m in self.bridge.registry.all() if m.session}
+        try:
+            busy |= {s for a in self.bridge.list_agents() if (s := session_of(a))}
+        except HerdrError:
+            pass
+        return busy
 
     def hello_body(self) -> dict[str, Any]:
         with self._lock:
@@ -601,7 +642,83 @@ class Runner:
             self.log.print(f"[dim]couldn't read this machine's agents: {e}[/dim]")
             return None
         recovered(log, "machine report")
+        self._count_subagents(report)
+        self._note_usage(report)
         return report
+
+    def _note_usage(self, report: dict[str, Any]) -> None:
+        """What each agent here uses (RAM, CPU, processes, how long it has
+        been idle) and this machine's memory, written to ``usage.json`` beside
+        the runner's state for the desktop app on this machine to read. The
+        report itself is left as it was: none of this goes to the hub.
+
+        Read again every ``USAGE_EVERY_S``; a read that fails writes no numbers
+        and never stops the heartbeat.
+        """
+        agents = [a for w in report.get("workspaces") or [] for a in w.get("agents") or []]
+        now = time.time()
+        for agent in agents:
+            if agent.get("state") == "working":
+                self._last_working[(agent.get("room"), agent.get("handle"))] = now
+        if time.monotonic() - self._usage_read_at < USAGE_EVERY_S:
+            return
+        self._usage_read_at = time.monotonic()
+        running = {a["pane"] for a in agents if a.get("pane") and a.get("state") in RUNNING}
+        infos: dict[str, dict[str, Any]] = {}
+        for pane in running:
+            try:
+                infos[pane] = self.bridge.process_info(pane)
+            except HerdrError:
+                continue
+        try:
+            self._usage_by_pane = self._usage.read(infos)
+        except Exception as e:  # noqa: BLE001 - numbers are extra; the heartbeat goes anyway
+            self.log.print(f"[dim]couldn't read what agents use: {e}[/dim]")
+            self._usage_by_pane = {}
+        rows = []
+        for agent in agents:
+            key = (agent.get("room"), agent.get("handle"))
+            working = agent.get("state") == "working"
+            since = self._last_working.get(key, self._started_at)
+            pane = agent.get("pane") or ""
+            used = self._usage_by_pane.get(pane) if pane in running else None
+            rows.append(
+                {
+                    "room": agent.get("room"),
+                    "handle": agent.get("handle"),
+                    "pane": pane or None,
+                    "state": agent.get("state"),
+                    "idle_since": None
+                    if working
+                    else datetime.fromtimestamp(since, UTC).isoformat(timespec="seconds"),
+                    **(used or {"ram_mb": None, "cpu": None, "up_s": None, "processes": []}),
+                }
+            )
+        body = {
+            "at": _now(),
+            "runner": self.id,
+            "ram_total_mb": self._ram_total_mb,
+            "agents": rows,
+        }
+        try:
+            write_private(self._usage_path, json.dumps(body))
+        except OSError as e:
+            self.log.print(f"[dim]couldn't write what agents use: {e}[/dim]")
+
+    def _count_subagents(self, report: dict[str, Any]) -> None:
+        """Each agent's open and finished subagent steps, as the session
+        follower counted them: numbers only, so its subagents end when their
+        steps do."""
+        follower = getattr(self, "_follower", None)
+        if follower is None:
+            return
+        opened = dict(follower.subagents_open)
+        finished = dict(follower.subagents_finished)
+        for workspace in report.get("workspaces") or []:
+            for agent in workspace.get("agents") or []:
+                key = (agent.get("room"), agent.get("handle"))
+                agent["subagents_open"] = opened.get(key)
+                agent["subagents_finished"] = finished.get(key)
 
     def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
         """The agents a ``restart`` job names, read now, each one restartable."""
@@ -753,8 +870,7 @@ class Runner:
         """Whose agents these are: this machine's identity when it reads as a handle.
 
         An identity that is an opaque id (an IdP subject, say) names no one a
-        person would recognize on the roster, so the login name stands in, as
-        ``mycelium swarm`` does when there is no identity at all.
+        person would recognize on the roster, so the login name stands in.
         """
         import getpass
 
@@ -890,12 +1006,12 @@ class Runner:
                 self.state.save(self._state_path)
 
     def framework(self, framework_id: str) -> agents.AgentKind:
-        known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
-        # One the scan didn't find is still started: herdr types its command at
-        # the person's own prompt, whose PATH may have it.
-        if known is None or found is None:
+        if found is None:
             raise JobError(f"{framework_id} is not an agent CLI {self.label} knows.")
+        # A kind herdr can start that the table doesn't know is started by
+        # herdr's name for it, with nothing of Mycelium's added.
+        known = agents.by_id(framework_id) or of_kind(framework_id)
         if not found.launchable or known.herdr_kind is None:
             host = self.host.name
             raise JobError(
@@ -915,6 +1031,30 @@ class Runner:
         if not path.is_dir():
             raise JobError(f"{cwd} is not a folder on {self.label}.")
         return path
+
+    def resumable(self, spec: dict[str, Any]) -> tuple[agents.AgentKind, Path, str]:
+        """The agent CLI, folder and session a ``resume`` job names, once this
+        machine can bring that session into a room; else why not, before anyone
+        is asked. The session must be one its CLI lists in that folder here, so
+        a job can't start a CLI in whatever session id it names."""
+        known = self.framework(str(spec.get("framework")))
+        cwd = self.folder(spec.get("cwd"))
+        session = str(spec.get("session") or "")
+        if not self.host.resumes:
+            raise JobError(f"{self.host.name} can't bring an earlier session into a room.")
+        if not session or not known.resume_args(session):
+            raise JobError(f"{known.name}'s earlier sessions can't be brought into a room.")
+        if not any(
+            s.get("id") == session and Path(str(s.get("folder"))).expanduser().resolve() == cwd
+            for s in known.list_sessions() or []
+        ):
+            raise JobError(f"{known.name} has no such session in {_tilde(cwd)} on {self.label}.")
+        return known, cwd, session
+
+    def resume(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+        """Start @``handle`` in an earlier session of its agent CLI's, where it left off."""
+        _known, cwd, session = self.resumable(spec)
+        return self.launch({**spec, "cwd": str(cwd)}, job_id, session=session)
 
     def pane_env(self, room: str, handle: str) -> dict[str, str]:
         # A host that tells an agent who it is by a join code takes no
@@ -973,11 +1113,14 @@ class Runner:
     def has_notes(self, room: str, handle: str) -> bool:
         return self.notes(room, handle) is not None
 
-    def launch(self, spec: dict[str, Any], job_id: str | None = None) -> dict[str, Any]:
+    def launch(
+        self, spec: dict[str, Any], job_id: str | None = None, *, session: str | None = None
+    ) -> dict[str, Any]:
         """Start one agent on this machine's host, as ``@handle`` in ``room``, and tell it who it is.
 
         ``job_id`` is the hub's job when the start runs as one, under the pane
-        lock: its steps are reported on it as they're reached.
+        lock: its steps are reported on it as they're reached. ``session`` is an
+        earlier session of its CLI's to start it in (:meth:`resume`).
         """
         if not self.herdr:
             raise JobError(
@@ -1000,11 +1143,11 @@ class Runner:
                 result={"why": "setup", "detail": reason},
             )
         if spec.get("worktree") and not self.host.worktrees:
-            from mycelium.commands.swarm import SwarmError, member_worktree
+            from mycelium.runner.worktrees import WorktreeError, member_worktree
 
             try:
                 cwd = member_worktree(cwd, room, handle)
-            except SwarmError as e:
+            except WorktreeError as e:
                 raise JobError(str(e)) from e
 
         join = (
@@ -1021,11 +1164,10 @@ class Runner:
                 env=self.pane_env(room, handle),
                 intro=intro,
                 hooks=_JobStart(self, job_id) if job_id else None,
+                session=session,
             )
         except HostError as e:
-            seen = next((f for f in self.found if f.id == known.id), None)
-            missing = seen is not None and not seen.installed
-            raise self._start_failed(e, known.name, handle, missing=missing) from e
+            raise self._start_failed(e, known, handle) from e
         agent = Tracked(
             handle=handle,
             room=room,
@@ -1061,21 +1203,21 @@ class Runner:
             )
         return result
 
-    def _start_failed(
-        self, e: HostError, name: str, handle: str, *, missing: bool = False
-    ) -> JobError:
+    def _start_failed(self, e: HostError, known: agents.AgentKind, handle: str) -> JobError:
         """A start that didn't come up, said as what happened and what to do next.
 
-        ``missing``: the scan didn't find the CLI here. herdr starts it anyway,
-        since the pane's shell may find what the scan didn't; when no agent then
-        appears on the pane, its shell most likely said there's no such command.
+        Nothing looks for a CLI before starting it: herdr types its command in
+        the pane's shell, which finds what a new terminal window would. One the
+        shell had no command for (``e.missing``) is said as not installed, and
+        pointed at the docs section on it.
 
         What the host said stays in the result's ``detail`` and in the log, for
         whoever is debugging; the sentence is for the person who asked.
         """
-        from mycelium.commands.swarm import SHELL_WAIT_S
         from mycelium.integrations.herdr import AgentExitedError, AgentNotReadyError
+        from mycelium.integrations.herdr.starting import SHELL_WAIT_S
 
+        name = known.name
         where = (
             f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
         )
@@ -1089,11 +1231,13 @@ class Runner:
                 f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
                 f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
             )
-        elif e.step == STEP_AGENT and missing and isinstance(e.__cause__, AgentExitedError):
+        elif e.step == STEP_AGENT and e.missing:
             why = "missing"
+            command = known.binaries[0] if known.binaries else known.id
             message = (
-                f"{name} isn't installed on {self.label}. {where}, showing what its shell "
-                f"said. Install {name} there, then start @{handle} again."
+                f"{name} isn't installed on {self.label}. Install it, then open a new "
+                f"terminal window there and run `{command}`. When it runs there, add "
+                f"@{handle} again. See {MISSING_CLI_DOC}"
             )
         elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
             # What it printed on the way out is on its screen, which stays on
@@ -1262,6 +1406,52 @@ class Runner:
         return result
 
     def stop_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent: end its process to free its memory, keeping its pane
+        and conversation for a start, or with ``close``, close its pane too.
+
+        A hub that predates the difference sends no ``close``, and meant the
+        stop that closes the pane.
+        """
+        if spec.get("close", True):
+            return self._close_agent(spec)
+        return self._end_agent(str(spec["room"]), str(spec["handle"]))
+
+    def _end_agent(self, room: str, handle: str) -> dict[str, Any]:
+        """End what runs in the agent's pane, leaving the pane and its shell.
+
+        The agent's conversation is its CLI's own session, kept on disk, so a
+        start (a ``restart``) brings it back in it, in this same pane. Its
+        mapping is left as it was: a pane still open retires nobody.
+        """
+        host, pane, kind = self._running(room, handle)
+        before = self._usage_by_pane.get(pane, {}).get("ram_mb")
+        try:
+            host.interrupt(pane, kind)
+        except HostError as e:
+            log.info("stop @%s: couldn't interrupt %s first: %s", handle, pane, e)
+        try:
+            ended = end_foreground(self.bridge.process_info(pane))
+        except HerdrError as e:
+            raise JobError(f"herdr couldn't say what runs in @{handle}'s pane {pane}: {e}") from e
+        with self._lock:
+            agent = self.state.agents.get(f"{room}/{handle}")
+            if agent is not None:
+                agent.status = "stopped"
+                # Stopped where it ran, which is still open: started there
+                # again, it is this agent running again.
+                agent.exited = True
+                agent.detail = "stopped to free its memory; start it to bring it back"
+                agent.stopped_at = _now()
+                self.state.save(self._state_path)
+        self._usage_by_pane.pop(pane, None)
+        self.log.print(
+            f"[yellow]stopped[/yellow] @{handle} in {room} ({pane} kept open"
+            f"{f', {before} MB freed' if before else ''})"
+        )
+        return {"pane": pane, "ended": len(ended), "freed_mb": before, "kept_pane": True}
+
+    def _close_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent and close its pane."""
         key = f"{spec['room']}/{spec['handle']}"
         with self._lock:
             agent = self.state.agents.get(key)
@@ -1377,68 +1567,6 @@ class Runner:
             time.sleep(PAUSE_POLL_S)
         return False
 
-    def swarm(self, spec: dict[str, Any], created_by: str | None) -> dict[str, Any]:
-        """Open a herdr workspace for a team the hub set up, brief it, and start the kickoff.
-
-        The same steps as ``mycelium swarm`` from a terminal, with the hub's
-        manifests in place of the ones the CLI would write.
-        """
-        from mycelium.commands.swarm import SwarmError, brief_local, kick_off, start_local
-
-        if self.host.name != "herdr":
-            raise JobError(
-                f"{self.label} starts agents in {self.host.name}; a swarm starts in herdr for now."
-            )
-        if not self.herdr:
-            raise JobError(f"herdr isn't running on {self.label}.")
-        room, key, episode = str(spec["room"]), str(spec["key"]), str(spec["episode"])
-        task, team = str(spec["task"]), [str(h) for h in spec["team"]]
-        known = self.framework(str(spec["framework"]))
-        cwd = self.folder(spec.get("cwd"))
-        me = created_by or self.owner() or "web-ui"
-        if reason := known.not_ready():
-            raise JobError(
-                f"{known.name} can't start on {self.label} yet. {reason}",
-                result={"why": "setup", "detail": reason},
-            )
-        try:
-            local = start_local(
-                self.config,
-                self.bridge,
-                room,
-                team,
-                kind=known.herdr_kind or known.id,
-                cwd=cwd,
-                worktree=bool(spec.get("worktree")),
-                me=me,
-                write_manifests=False,
-                carry={"MYCELIUM_API_URL": self.config.server.api_url},
-            )
-            with self._hub(timeout=30) as client:
-                brief_local(client, self.bridge, room, local, key, task, me)
-                if spec.get("kickoff", True):
-                    kick_off(client, room, episode, team, task, me)
-        except (SwarmError, HerdrError) as e:
-            raise JobError(str(e)) from e
-        with self._lock:
-            self.state.owned[local.workspace] = room
-            for handle, pane in local.panes.items():
-                self.state.agents[f"{room}/{handle}"] = Tracked(
-                    handle=handle,
-                    room=room,
-                    framework=known.id,
-                    pane=pane,
-                    cwd=str(cwd),
-                    started_at=_now(),
-                    status="running",
-                    workspace=local.workspace,
-                )
-            self.state.save(self._state_path)
-        self.log.print(
-            f"[green]swarm[/green] of {len(team)} on {key} in {room} → {local.workspace}"
-        )
-        return {"workspace": local.workspace, "panes": local.panes}
-
     def pair(self, spec: dict[str, Any]) -> dict[str, Any]:
         """Pair the device a ``pair`` job carries, if it proves it has a live code from here."""
         try:
@@ -1507,16 +1635,13 @@ class Runner:
                         "@" + agent.handle + " works outside the folders this pairing allows"
                     )
             return
-        if kind == "swarm" and not paired.limits.swarms:
-            raise pairing.Refused("this pairing doesn't allow swarms")
-        same = (
-            ("room", "handle", "framework") if kind == "launch" else ("room", "task", "framework")
-        )
+        same = {
+            "launch": ("room", "handle", "framework"),
+            "resume": ("room", "handle", "framework", "session"),
+        }.get(str(kind), ("room", "task", "framework"))
         if any(str(fields.get(k)) != str(spec.get(k)) for k in same):
             raise different
         if bool(fields.get("worktree")) != bool(spec.get("worktree")):
-            raise different
-        if kind == "swarm" and fields.get("size") != len(spec.get("team") or []):
             raise different
         cwd = self.folder(spec.get("cwd"))
         if self._signed_folder(fields.get("cwd")) != cwd:
@@ -1532,6 +1657,8 @@ class Runner:
         kind, spec = job.get("kind"), job.get("spec") or {}
         if kind == "launch":
             return self.launch(spec, job_id=str(job["id"]) if job.get("id") else None)
+        if kind == "resume":
+            return self.resume(spec, job_id=str(job["id"]) if job.get("id") else None)
         if kind == "adopt":
             return self.adopt(spec)
         if kind == "stop":
@@ -1543,8 +1670,6 @@ class Runner:
         if kind == "scan":
             found = self.scan()
             return {"installed": [f.id for f in found if f.installed]}
-        if kind == "swarm":
-            return self.swarm(spec, job.get("created_by"))
         if kind == "restart":
             return self.restart_agents(spec)
         if kind == "rename":
@@ -1655,19 +1780,24 @@ class Runner:
         cwd = self.folder(spec.get("cwd"))
         room = str(spec.get("room"))
         where = f"Room {room} on {hub}. Asked for by {'@' + asked_by if asked_by else 'someone on that hub'}."
-        if kind == "launch":
+        if kind == "resume":
+            # Asked only once this machine could do it: its CLI, host and listing.
+            known, cwd, session = self.resumable(spec)
+            handle = str(spec.get("handle"))
+            title = f"Bring an earlier {known.name} session into {room} as @{handle}?"
+            message = (
+                f"Its session {session[:8]} in {_tilde(cwd)} would start again where it left "
+                f"off, as @{handle}, keeping its conversation. Mycelium would tell it which "
+                f"room it's in.\n\n{where}"
+            )
+            if notes := self.notes(room, handle):
+                message += f"\n\nIts instructions:\n{_clip(notes, NOTES_PREVIEW)}"
+        else:
             handle = str(spec.get("handle"))
             title = f"Start @{handle} on {self.label}?"
             message = f"{known.name} would start as @{handle}, working in {_tilde(cwd)}.\n\n{where}"
             if notes := self.notes(room, handle):
                 message += f"\n\nIts instructions:\n{_clip(notes, NOTES_PREVIEW)}"
-        else:
-            team = [f"@{h}" for h in spec.get("team") or []]
-            title = f"Start a team of {len(team)} on {self.label}?"
-            message = (
-                f"{', '.join(team)} would start in {known.name}, working in {_tilde(cwd)}, "
-                f"on: {_clip(str(spec.get('task') or ''), 200)}\n\n{where}"
-            )
         return {"kind": kind, "title": title, "message": message, "hub": hub, "asked_by": asked_by}
 
     def take(self, job: dict[str, Any]) -> None:
@@ -2043,6 +2173,7 @@ class Runner:
         from mycelium.runner.sessions import SESSIONS_S, Follower
 
         follower = Follower(self.bridge)
+        self._follower = follower
         while not self._stop.wait(SESSIONS_S):
             try:
                 follower.tick()

@@ -288,22 +288,16 @@ export function handleValid(value: string): boolean {
   return HANDLE_RE.test(normHandle(value));
 }
 
-/** Who the member is: its avatar as the room will draw it, and its `@handle`. */
-export function IdentityRow({
-  value,
-  onChange,
-  hint = "How the room addresses it, and how it signs what it posts.",
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  hint?: string;
-}) {
+/** Who the member is: its avatar as the room will draw it, and its `@handle`.
+ *  The `@` and the avatar say what the field is, so it carries no help text;
+ *  only a handle that won't do says why, under the field. */
+export function IdentityRow({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const trimmed = normHandle(value);
   const bad = trimmed.length > 0 && !HANDLE_RE.test(trimmed);
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-start gap-3">
       <Monogram handle={trimmed || "?"} className="size-10 text-label" kind={trimmed ? "agent" : "person"} />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 self-center">
         <label htmlFor="member-handle" className="sr-only">
           Handle
         </label>
@@ -326,15 +320,8 @@ export function IdentityRow({
             className="w-full bg-transparent py-2 pl-0.5 font-mono text-ui text-text outline-none placeholder:text-faint"
           />
         </div>
+        {bad && <p className="mt-1 text-micro text-red">Lowercase letters, digits, - and _.</p>}
       </div>
-      <p
-        className={cn(
-          "hidden w-44 text-micro leading-snug sm:block",
-          bad ? "text-red" : "text-muted-foreground",
-        )}
-      >
-        {bad ? "Lowercase letters, digits, - and _." : hint}
-      </p>
     </div>
   );
 }
@@ -704,11 +691,7 @@ function HarnessLabel({ framework, active = true }: { framework: Runner["framewo
         <span className={cn("block truncate text-label", active ? "text-text" : "text-muted-foreground")}>
           {framework.name}
         </span>
-        {framework.installed ? (
-          version && <span className="block font-mono text-micro text-faint">{version}</span>
-        ) : (
-          <span className="block text-micro text-faint">not found</span>
-        )}
+        {version && <span className="block font-mono text-micro text-faint">{version}</span>}
       </span>
     </>
   );
@@ -887,9 +870,16 @@ function LaunchProgress({
     // What the machine answered on the person's behalf (trusting the folder they chose).
     ...report.passed.map((label) => ({ label, state: "done" as StepState })),
   ];
+  const command = runner.frameworks.find((f) => f.id === job?.spec?.framework)?.command ?? null;
   const help =
     failed && report.why
-      ? startHelp(report.why, { machine, cli: frameworkName, handle, detail: report.detail })
+      ? startHelp(report.why, {
+          machine,
+          cli: frameworkName,
+          handle,
+          detail: report.detail,
+          command,
+        })
       : null;
   const terminal = desktop && herdr && report.pane ? terminalLink(report.pane) : null;
   // The person is needed at the terminal: the agent asked something, its shell
@@ -970,7 +960,7 @@ function LaunchProgress({
           </div>
           {report.pane ? (
             <div className="flex h-48 flex-col">
-              <AgentScreen room={room} handle={handle} openLink={false} />
+              <AgentScreen room={room} handle={handle} openLink={false} fit />
             </div>
           ) : (
             <p className="px-3 py-3 text-label text-faint">
@@ -1015,6 +1005,16 @@ function LaunchProgress({
                 <li key={step}>{step}</li>
               ))}
             </ol>
+            {help.link && (
+              <a
+                href={help.link.href}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block text-accent hover:underline"
+              >
+                {help.link.label}
+              </a>
+            )}
           </div>
           {report.detail && (
             <details className="text-micro text-muted-foreground">
