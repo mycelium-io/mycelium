@@ -11,10 +11,15 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchRunnerJob: (...args: unknown[]) => fetchRunnerJob(...args),
   expectPairing: (...args: unknown[]) => expectPairing(...args),
 }));
-const desktop = { on: false };
+const desktop = { on: false, mode: "hub" };
 vi.mock("@/lib/desktop", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/desktop")>()),
   useIsDesktop: () => desktop.on,
+}));
+// What the app itself says it runs, over its own bridge.
+vi.mock("@/lib/desktop-app", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/desktop-app")>()),
+  appCall: async (command: string) => (command === "get_state" ? { settings: { mode: desktop.mode } } : null),
 }));
 const pairRequest = vi.fn();
 vi.mock("@/lib/device-key", async (importOriginal) => ({
@@ -53,6 +58,7 @@ describe("AddMachineDialog", () => {
     desktop.on = false;
     pairRunner.mockReset();
     fetchRunnerJob.mockReset();
+    desktop.mode = "hub";
     expectPairing.mockReset().mockResolvedValue({ offer: "K7QM", until: "2026-10-01T12:10:00Z" });
     pairRequest.mockReset().mockResolvedValue({ body, keyId: "59802479f5b1936d" });
   });
@@ -73,6 +79,17 @@ describe("AddMachineDialog", () => {
     expect(await screen.findByText("Waiting for the machine to connect…")).toBeInTheDocument();
     expect(await screen.findByText(/Paired with box/, {}, { timeout: 5000 })).toBeInTheDocument();
     expect(pairRunner).toHaveBeenCalledTimes(2);
+  });
+
+  it("never sends the code to a hub that isn't the app's own (client mode)", async () => {
+    desktop.on = true;
+    desktop.mode = "client";
+    pairRunner.mockRejectedValue(new ApiError("No machine is waiting to pair with that code.", 404));
+    renderWithSWR(<AddMachineDialog open onClose={() => {}} />);
+    fireEvent.change(screen.getByPlaceholderText("K7QM-4XHD-9RWA"), { target: { value: "K7QM-4XHD-9RWA" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pair" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No machine is waiting");
+    expect(expectPairing).not.toHaveBeenCalled();
   });
 
   it("outside the app, a code no machine is waiting on is just refused", async () => {

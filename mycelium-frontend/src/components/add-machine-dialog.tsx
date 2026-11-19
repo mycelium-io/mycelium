@@ -23,6 +23,7 @@ import { ApiError, expectPairing, pairRunner } from "@/lib/api";
 import { fingerprint, normalizeCode, pairRequest, useDeviceKeyId } from "@/lib/device-key";
 import { addMachine } from "@/lib/my-machines";
 import { desktopMachine, useIsDesktop } from "@/lib/desktop";
+import { appCall, type AppState } from "@/lib/desktop-app";
 import { jobSettled, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
@@ -38,6 +39,15 @@ const JOIN_WAIT_MS = 10 * 60 * 1000;
 const JOIN_EVERY_MS = 2000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Whether the app runs its own hub (not client mode), as the app itself says. */
+async function runsOwnHub(): Promise<boolean> {
+  try {
+    return (await appCall<AppState>("get_state")).settings?.mode === "hub";
+  } catch {
+    return false;
+  }
+}
 
 type Way = "pair" | "add";
 
@@ -149,7 +159,10 @@ function PairForm({ onClose }: { onClose: () => void }) {
       } catch (e) {
         // No machine connected here printed it. In the app, it may be one
         // joining this computer's hub: hand the hub the code and wait for it.
-        if (!desktop || !(e instanceof ApiError) || e.status !== 404) throw e;
+        // Only the app's own hub ever sees the code. The app says which hub it
+        // runs, not the hub: in client mode the hub is someone else's, and
+        // with the code it could pair its own key in place of this one.
+        if (!desktop || !(e instanceof ApiError) || e.status !== 404 || !(await runsOwnHub())) throw e;
         await expectPairing(clean);
         setJoining(true);
         const until = Date.now() + JOIN_WAIT_MS;

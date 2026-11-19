@@ -217,11 +217,42 @@ async def test_a_wrong_proof_counts_against_the_code_and_five_end_it():
     async with _client(BOX) as box:
         for _ in range(paired_machines.MAX_ATTEMPTS):
             assert (await box.post("/api/pairing/connect", json=wrong)).status_code == 403
-        # The right one now finds nothing waiting.
+        # The right one is now refused too, and told why.
         resp = await box.post("/api/pairing/connect", json=_knock())
     assert resp.status_code == 403
-    assert "No code" in resp.json()["detail"]
+    assert "dropped after too many wrong tries" in resp.json()["detail"]
+    # Nothing waits any more, so the hub stops listening on every address.
     assert not paired_machines.window_open()
+
+
+async def test_a_knock_from_this_computer_is_refused():
+    """A tunnel on this computer makes another machine look like this one, and
+    a token from a loopback knock would be good from any address."""
+    async with _client(HERE) as here:
+        await here.post("/api/pairing/expect", json={"code": CODE})
+        resp = await here.post("/api/pairing/connect", json=_knock())
+    assert resp.status_code == 403
+    assert "not a tunnel" in resp.json()["detail"]
+    assert paired_machines.machines() == []
+    # The code still waits for the machine's own address.
+    assert paired_machines.window_open()
+
+
+async def test_pairing_into_a_config_the_cli_saved(_takes_paired_machines):
+    """What the CLI wrote before it stopped writing the key: an empty list
+    under [hub], which no [[hub.paired_machines]] table may follow."""
+    _takes_paired_machines.write_text(
+        '[server]\napi_url = "http://127.0.0.1:3718"\n\n[hub]\npaired_machines = []\n\n'
+        "[statusline]\nwidget = []\n"
+    )
+    paired = await _pair()
+    assert [m.name for m in paired_machines.machines()] == ["box"]
+    assert paired_machines.verify(paired["token"], "10.8.0.1") is not None
+    import tomllib
+
+    parsed = tomllib.loads(_takes_paired_machines.read_text())
+    assert parsed["server"]["api_url"] == "http://127.0.0.1:3718"
+    assert parsed["statusline"]["widget"] == []
 
 
 async def test_a_knock_from_the_wrong_time_or_after_the_window_is_refused():

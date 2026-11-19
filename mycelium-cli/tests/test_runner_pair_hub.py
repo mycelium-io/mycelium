@@ -125,6 +125,33 @@ def test_a_local_address_that_answers_or_a_remote_one_is_kept():
     assert caller.follow_paired_hub("http://hub.example.com:8000") == "http://hub.example.com:8000"
 
 
+def test_a_cli_save_leaves_the_hub_s_paired_machines_as_they_are_on_disk(_home: Path):
+    """The hub adds and removes these while CLI commands run: a save must
+    neither write an empty list (no table may follow it) nor put back a
+    machine unpaired since the config was loaded."""
+    import tomllib
+
+    from mycelium.config import MyceliumConfig
+
+    path = _home / ".mycelium" / "config.toml"
+    MyceliumConfig().save(path)
+    assert "paired_machines" not in path.read_text()
+
+    entry = '\n[[hub.paired_machines]]\nname = "box"\nid = "1"\naddress = "10.8.0.1"\n'
+    path.write_text(path.read_text() + entry)
+    loaded = MyceliumConfig.load(path)
+    # The hub takes the box out after this command loaded its config...
+    path.write_text(path.read_text().replace(entry, "\n"))
+    loaded.save(path)
+    # ...and the command's save doesn't put it back.
+    assert "paired_machines" not in path.read_text()
+
+    # One the hub added after the load is kept.
+    path.write_text(path.read_text() + entry)
+    loaded.save(path)
+    assert tomllib.loads(path.read_text())["hub"]["paired_machines"][0]["name"] == "box"
+
+
 def test_the_runner_moves_to_the_hub_this_machine_paired_with(tmp_path: Path):
     from mycelium.config import MyceliumConfig
     from mycelium.runner.daemon import Runner

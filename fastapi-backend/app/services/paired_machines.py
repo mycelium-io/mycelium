@@ -203,6 +203,23 @@ def _without(text: str, name: str) -> str:
     return "\n".join(out).rstrip("\n") + "\n" if out else ""
 
 
+_EMPTY_LIST = re.compile(r"^\s*paired_machines\s*=\s*\[\s*\]\s*(#.*)?$")
+
+
+def _no_empty_list(text: str) -> str:
+    """``text`` without a ``paired_machines = []`` under ``[hub]``, which a
+    ``[[hub.paired_machines]]`` table can't follow in valid TOML."""
+    out, in_hub = [], False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_hub = stripped.replace(" ", "") == "[hub]"
+        elif in_hub and _EMPTY_LIST.match(line):
+            continue
+        out.append(line)
+    return "\n".join(out) + "\n" if out else ""
+
+
 def _write(text: str) -> None:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -218,7 +235,7 @@ def add(machine: Machine) -> None:
     with _lock:
         path = config_path()
         text = path.read_text(encoding="utf-8") if path.exists() else ""
-        text = _without(text, machine.name)
+        text = _without(_no_empty_list(text), machine.name)
         sep = "\n" if text and not text.endswith("\n\n") else ""
         _write(f"{text}{sep}{_block(machine)}")
 
@@ -302,8 +319,9 @@ def expect(code: str, *, now: float | None = None) -> tuple[str, float]:
 
 
 def window_open(now: float | None = None) -> bool:
-    """Whether a code typed in the app is still waiting for its machine."""
-    return enabled() and bool(_expected(now))
+    """Whether a code typed in the app is still waiting for its machine (one
+    ended by wrong tries isn't, though the hub remembers why it ended)."""
+    return enabled() and any(not w.get("dropped") for w in _expected(now).values())
 
 
 def clean_name(name: str) -> str:
@@ -320,13 +338,14 @@ def connect(
     at: int,
     nonce: str,
     proof: str,
-    peer: str | None,
-    local: str | None,
+    peer: str,
+    local: str,
     now: float | None = None,
 ) -> tuple[str, Machine]:
     """Pair the machine whose knock proves it knows a code typed in the app:
-    its token and its entry. Raises :class:`PairingError` otherwise; a wrong
-    proof counts against the code."""
+    its token and its entry, bound to the address it knocked from (``peer``)
+    and the one of this computer it reached (``local``). Raises
+    :class:`PairingError` otherwise; a wrong proof counts against the code."""
     now = time.time() if now is None else now
     offer = offer.upper()
     with _lock:
@@ -334,6 +353,11 @@ def connect(
         waiting = expected.get(offer)
         if waiting is None:
             raise PairingError("No code for this machine is waiting on the hub yet.")
+        if waiting.get("dropped"):
+            raise PairingError(
+                "The code typed on the hub was dropped after too many wrong tries. "
+                "Run this again for a new code, and type that one."
+            )
         if abs(now - at) > FRESH_S:
             raise PairingError("This machine's clock is too far from the hub's.")
         message = connect_message(offer, name, at, nonce)
@@ -345,7 +369,9 @@ def connect(
         if not hmac.compare_digest(want, got):
             waiting["attempts"] = int(waiting.get("attempts", 0)) + 1
             if waiting["attempts"] >= MAX_ATTEMPTS:
-                expected.pop(offer)
+                # Remembered until it would have expired, so the next knock
+                # says why rather than as though nothing was typed. The key goes.
+                expected[offer] = {"dropped": True, "until": waiting["until"]}
             _save_expected(expected)
             raise PairingError("That proof doesn't match the code typed on the hub.")
         expected.pop(offer)

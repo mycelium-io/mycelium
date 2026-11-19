@@ -1025,6 +1025,24 @@ class StatuslineConfig(BaseModel):
     )
 
 
+def _keep_hub_as_on_disk(config_dict: dict[str, Any], path: Path) -> None:
+    """Write ``[hub]`` as the file holds it now, never from what was loaded.
+
+    The desktop app's hub owns its paired machines: it adds and removes them
+    in this file while CLI commands run. Writing back an older read would put
+    back a machine since unpaired, and with it, its token. An empty list isn't
+    written at all, so a table the hub appends later stays valid TOML."""
+    config_dict.pop("hub", None)
+    try:
+        hub = toml.loads(path.read_text(encoding="utf-8")).get("hub")
+    except (OSError, ValueError, TypeError):
+        hub = None
+    if isinstance(hub, dict):
+        hub = {k: v for k, v in hub.items() if v not in ([], {}, None)}
+        if hub:
+            config_dict["hub"] = hub
+
+
 class HubSection(BaseModel):
     """The desktop app's hub, as other machines reach it."""
 
@@ -1359,6 +1377,7 @@ class MyceliumConfig(BaseModel):
 
         if config_path is not None:
             config_path.parent.mkdir(parents=True, exist_ok=True)
+            _keep_hub_as_on_disk(config_dict, config_path)
             with open(config_path, "w") as f:
                 toml.dump(config_dict, f)
             # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.
@@ -1392,6 +1411,7 @@ class MyceliumConfig(BaseModel):
         else:
             global_dict = config_dict
 
+        _keep_hub_as_on_disk(global_dict, global_path)
         with open(global_path, "w") as f:
             toml.dump(global_dict, f)
         # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.

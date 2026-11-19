@@ -85,6 +85,16 @@ async def connect(body: PairingConnect, request: Request) -> PairingConnectRead:
     _taken()
     peer = request.client.host if request.client else None
     server = request.scope.get("server") or (None,)
+    if not peer or is_loopback(peer) or not server[0] or is_loopback(server[0]):
+        # A machine is paired by the address it really comes from, which its
+        # token is then good from alone. One reaching the hub through a tunnel
+        # on this computer arrives as this computer, and its token would be
+        # good from anywhere.
+        raise HTTPException(
+            status_code=403,
+            detail="Pair over the other machine's own network address, not a tunnel "
+            "on this computer, so the hub knows where it connects from.",
+        )
     try:
         token, machine = await asyncio.to_thread(
             paired_machines.connect,
@@ -93,9 +103,8 @@ async def connect(body: PairingConnect, request: Request) -> PairingConnectRead:
             at=body.at,
             nonce=body.nonce,
             proof=body.proof,
-            # A machine knocking from this computer is limited to nothing.
-            peer=None if is_loopback(peer) else peer,
-            local=None if is_loopback(server[0]) else server[0],
+            peer=peer,
+            local=server[0],
         )
     except paired_machines.PairingError as e:
         raise HTTPException(status_code=403, detail=str(e)) from None
