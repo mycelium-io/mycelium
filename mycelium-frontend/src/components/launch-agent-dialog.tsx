@@ -5,13 +5,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  BookOpen,
   Check,
   ChevronDown,
   Circle,
+  CircleAlert,
+  ExternalLink,
   FolderOpen,
   GitBranch,
   Loader2,
   RefreshCw,
+  RotateCcw,
   Sparkles,
   SquareTerminal,
   Undo2,
@@ -37,7 +41,9 @@ import {
   useRunnerJob,
   useRunners,
   useRunnersRevalidate,
+  type StartHelp,
 } from "@/lib/runners";
+import { DOCS_URL } from "@/lib/install";
 import { signFor } from "@/lib/device-key";
 import { terminalLink, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import {
@@ -924,6 +930,17 @@ function LaunchProgress({
           {job && pairingNote(job) && <p className="text-micro text-muted-foreground">{pairingNote(job)}</p>}
         </div>
       </div>
+      {/* A start that stopped leads with what to do about it, before what happened. */}
+      {failed && help && (
+        <FailedStart
+          help={help}
+          missing={report.why === "missing"}
+          retrying={retrying}
+          onTryAgain={onTryAgain}
+          detail={report.detail}
+          pane={report.pane}
+        />
+      )}
       {/* The agent's terminal, live from the moment the machine opens it, not
           only once something goes wrong. It's read on this machine and never
           sent through the hub; its footer says so. */}
@@ -960,7 +977,8 @@ function LaunchProgress({
             )}
           </div>
           {report.pane ? (
-            <div className="flex h-48 flex-col">
+            // Once it has stopped, the terminal is evidence, not the show.
+            <div className={cn("flex flex-col", failed ? "h-28" : "h-48")}>
               <AgentScreen room={room} handle={handle} openLink={false} fit />
             </div>
           ) : (
@@ -972,14 +990,17 @@ function LaunchProgress({
           )}
         </section>
       )}
-      <ol className="mt-4 space-y-2">
-        {steps.map((s) => (
-          <li key={s.label} className="flex items-center gap-2.5 text-label">
-            <StepIcon state={s.state} />
-            <span className={s.state === "waiting" ? "text-faint" : "text-text"}>{s.label}</span>
-          </li>
-        ))}
-      </ol>
+      {failed && help ? (
+        <details className="group mt-4">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-label text-muted-foreground select-none hover:text-text">
+            <ChevronDown className="size-3.5 -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
+            What happened
+          </summary>
+          <Steps steps={steps} />
+        </details>
+      ) : (
+        <Steps steps={steps} />
+      )}
       {/* Still waiting on the shell, and it's slow: say so and point at the
           terminal, where whatever holds it up is showing. */}
       {status === "running" && report.slow && (
@@ -996,36 +1017,6 @@ function LaunchProgress({
           <p className="whitespace-pre-line break-words">{waiting}</p>
         </div>
       )}
-      {failed && help && (
-        <div role="alert" className="mt-4 space-y-3 rounded-lg border border-red/30 bg-red/5 px-3 py-3 text-label text-text">
-          <p>{help.happened}</p>
-          <div>
-            <p className="font-medium">What to do</p>
-            <ol className="mt-1 list-decimal space-y-1 pl-5">
-              {help.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            {help.link && (
-              <a
-                href={help.link.href}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-block text-accent hover:underline"
-              >
-                {help.link.label}
-              </a>
-            )}
-          </div>
-          {report.detail && (
-            <details className="text-micro text-muted-foreground">
-              <summary className="cursor-pointer select-none">Details for troubleshooting</summary>
-              <p className="mt-1 break-words font-mono">{report.detail}</p>
-              {report.pane && <p className="mt-1 font-mono">herdr pane {report.pane}</p>}
-            </details>
-          )}
-        </div>
-      )}
       {failed && !help && (
         <p role="alert" className="mt-4 break-words rounded-lg border border-red/30 bg-red/5 px-3 py-2 text-label text-red">
           {job?.error ?? "The machine couldn't start it."}
@@ -1037,9 +1028,12 @@ function LaunchProgress({
             <Button variant="secondary" onClick={onRetry}>
               Back
             </Button>
-            <Button variant="secondary" onClick={onTryAgain} disabled={retrying}>
-              {retrying ? "Trying again…" : "Try again"}
-            </Button>
+            {/* With help shown, Try again is in it, beside what to do first. */}
+            {!help && (
+              <Button variant="secondary" onClick={onTryAgain} disabled={retrying}>
+                {retrying ? "Trying again…" : "Try again"}
+              </Button>
+            )}
           </>
         ) : (
           jobSettled(job) && (
@@ -1050,6 +1044,103 @@ function LaunchProgress({
         )}
         <Button onClick={onClose}>{jobSettled(job) ? "Done" : "Close"}</Button>
       </div>
+    </div>
+  );
+}
+
+function Steps({ steps }: { steps: { label: string; state: StepState }[] }) {
+  return (
+    <ol className="mt-3 space-y-2">
+      {steps.map((s) => (
+        <li key={s.label} className="flex items-center gap-2.5 text-label">
+          <StepIcon state={s.state} />
+          <span className={s.state === "waiting" ? "text-faint" : "text-text"}>{s.label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** The docs for an agent CLI the machine can't find, and for one that isn't listed. */
+const MISSING_DOCS = [
+  { label: "When an agent CLI isn't found", href: `${DOCS_URL}/guides.html#machines-when-the-agent-cli-isnt-found` },
+  { label: "Adding your own harness", href: `${DOCS_URL}/guides.html#machines-adding-your-own-harness` },
+];
+
+/**
+ * What to do about a start that stopped, first thing under the agent's name:
+ * what went wrong in a line, the way through, and the buttons that take it.
+ * An agent CLI that isn't found gets its install page as the main button,
+ * and the docs on finding it or adding one that isn't listed.
+ */
+function FailedStart({
+  help,
+  missing,
+  retrying,
+  onTryAgain,
+  detail,
+  pane,
+}: {
+  help: StartHelp;
+  missing: boolean;
+  retrying: boolean;
+  onTryAgain: () => void;
+  detail: string | null;
+  pane: string | null;
+}) {
+  return (
+    <div role="alert" className="mt-4 rounded-lg border border-red/40 bg-red/5 px-4 py-3">
+      <p className="flex items-center gap-2 text-label font-medium text-text">
+        <CircleAlert className="size-4 flex-shrink-0 text-red" aria-hidden />
+        {help.short}
+      </p>
+      {missing ? (
+        <div className="mt-1 space-y-0.5 pl-6 text-label text-muted-foreground">
+          <p>Or a new terminal window there can&apos;t find it.</p>
+          <p>Install it, check that it runs in a new terminal window, then try again.</p>
+        </div>
+      ) : (
+        <ol className="mt-1.5 list-decimal space-y-1 pl-10 text-label text-muted-foreground">
+          {help.steps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
+        {help.link && (
+          <a href={help.link.href} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>
+            {help.link.label}
+            <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+        )}
+        <Button size="sm" variant={help.link ? "secondary" : "default"} onClick={onTryAgain} disabled={retrying}>
+          <RotateCcw className="size-3.5" aria-hidden />
+          {retrying ? "Trying again…" : "Try again"}
+        </Button>
+      </div>
+      {missing && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-red/20 pt-2.5 pl-6">
+          {MISSING_DOCS.map((d) => (
+            <a
+              key={d.href}
+              href={d.href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-micro text-muted-foreground hover:text-text hover:underline"
+            >
+              <BookOpen className="size-3.5" aria-hidden />
+              {d.label}
+            </a>
+          ))}
+        </div>
+      )}
+      {detail && (
+        <details className="mt-2 pl-6 text-micro text-muted-foreground">
+          <summary className="cursor-pointer select-none">Details for troubleshooting</summary>
+          <p className="mt-1 break-words font-mono">{detail}</p>
+          {pane && <p className="mt-1 font-mono">herdr pane {pane}</p>}
+        </details>
+      )}
     </div>
   );
 }

@@ -473,6 +473,18 @@ export function mockStartOutcome(
       },
     };
   }
+  if (handle.startsWith("missing-")) {
+    return {
+      failWith: `${cli} isn't installed on ${machine}, or a new terminal window there can't find it. Install it, check that it runs in a new terminal window, then add @${handle} again.`,
+      failResult: {
+        step: "agent",
+        why: "missing",
+        pane: "w8:p1",
+        install: "https://opencode.ai/docs/#install",
+        screen: `morgan@morgans-mbp shop % opencode\nzsh: command not found: opencode\nmorgan@morgans-mbp shop % `,
+      },
+    };
+  }
   if (handle.startsWith("update-")) {
     return {
       failWith: `${cli} didn't finish starting on ${machine}. Often it's waiting for an update, a sign-in or a first-run question. It's still open in herdr (pane w7:p1): answer what it shows there, then start @${handle} again.`,
