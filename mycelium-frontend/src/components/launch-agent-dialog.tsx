@@ -832,26 +832,23 @@ function HarnessPicker({
         {absent.length > 0 && (
           <>
             <p className="mt-1 border-t border-border px-2 pt-2 pb-1 text-micro text-faint">Not installed</p>
-            {/* Not something to pick yet: each opens its makers' install page. */}
+            {/* Not something to pick until it's installed. The docs say how to
+                get one found, rather than a link per CLI kept up by hand. */}
             {absent.map((f) => (
-              <DropdownMenuItem
-                key={f.id}
-                disabled={!f.install}
-                onClick={() => f.install && window.open(f.install, "_blank", "noreferrer")}
-                className="gap-2 py-1.5"
-              >
+              <DropdownMenuItem key={f.id} disabled className="gap-2 py-1.5">
                 <span className="opacity-60 grayscale">
                   <HarnessIcon id={f.id} name={f.name} className="size-5" />
                 </span>
                 <span className="text-label text-muted-foreground">{f.name}</span>
-                {f.install && (
-                  <span className="ml-auto inline-flex items-center gap-1 text-micro text-accent">
-                    Install
-                    <ExternalLink className="size-3" aria-hidden />
-                  </span>
-                )}
               </DropdownMenuItem>
             ))}
+            <DropdownMenuItem
+              onClick={() => window.open(MISSING_DOCS[0].href, "_blank", "noreferrer")}
+              className="gap-2 text-muted-foreground"
+            >
+              <BookOpen className="size-3.5" aria-hidden />
+              {MISSING_DOCS[0].label}
+            </DropdownMenuItem>
           </>
         )}
         <DropdownMenuItem
@@ -1184,8 +1181,8 @@ const MISSING_DOCS = [
 /**
  * What to do about a start that stopped, first thing under the agent's name:
  * what went wrong in a line, the way through, and the buttons that take it.
- * An agent CLI that isn't found gets its install page as the main button,
- * and the docs on finding it or adding one that isn't listed.
+ * An agent CLI that isn't found gets Try again and the docs on getting it
+ * found, or adding one that isn't listed.
  */
 function FailedStart({
   help,
@@ -1220,13 +1217,19 @@ function FailedStart({
         </ol>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-2 pl-6">
-        {help.link && (
+        {/* A missing CLI's way through is our docs, linked below, not a page per CLI. */}
+        {help.link && !missing && (
           <a href={help.link.href} target="_blank" rel="noreferrer" className={buttonVariants({ size: "sm" })}>
             {help.link.label}
             <ExternalLink className="size-3.5" aria-hidden />
           </a>
         )}
-        <Button size="sm" variant={help.link ? "secondary" : "default"} onClick={onTryAgain} disabled={retrying}>
+        <Button
+          size="sm"
+          variant={help.link && !missing ? "secondary" : "default"}
+          onClick={onTryAgain}
+          disabled={retrying}
+        >
           <RotateCcw className="size-3.5" aria-hidden />
           {retrying ? "Trying again…" : "Try again"}
         </Button>

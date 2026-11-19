@@ -103,7 +103,6 @@ const FRAMEWORKS: Framework[] = [
     installed: false,
     launchable: true,
     note: null,
-    install: "https://github.com/openai/codex#quickstart",
   },
   {
     id: "gemini",
@@ -114,7 +113,6 @@ const FRAMEWORKS: Framework[] = [
     installed: false,
     launchable: true,
     note: null,
-    install: "https://github.com/google-gemini/gemini-cli#quickstart",
   },
   {
     id: "cursor",
@@ -125,7 +123,6 @@ const FRAMEWORKS: Framework[] = [
     installed: false,
     launchable: true,
     note: null,
-    install: "https://cursor.com/cli",
   },
 ];
 
@@ -504,7 +501,6 @@ export function mockStartOutcome(
         step: "agent",
         why: "missing",
         pane: "w8:p1",
-        install: "https://opencode.ai/docs/#install",
         screen: `morgan@morgans-mbp shop % opencode\nzsh: command not found: opencode\nmorgan@morgans-mbp shop % `,
       },
     };
