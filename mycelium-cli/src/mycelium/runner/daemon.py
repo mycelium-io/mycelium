@@ -913,20 +913,19 @@ class Runner:
         return True
 
     def _follow_paired_hub(self) -> None:
-        """Move to the hub this machine paired with (``mycelium runner pair
-        --hub``), once it has: pairing is how a machine joins someone's hub, so
-        it wins over the address this runner was started with. Agents it starts
-        from then on are pointed there too."""
+        """Use the hub this machine paired with, once ``mycelium runner pair
+        --hub`` has paired it while this runner runs. Which hub that is is
+        ``caller.paired_hub``'s answer, the one every command here gets; this
+        only notices it changed. Agents it starts from then on go there too."""
+        from mycelium import caller
         from mycelium.client import same_origin
 
-        paired = pairing.paired_hub()
-        if paired is None or same_origin(paired.hub, self.config.server.api_url):
+        paired = caller.paired_hub()
+        if paired is None or same_origin(paired, self.config.server.api_url):
             return
-        log.info("paired with %s as %s: connecting there", paired.hub, paired.name)
-        self.log.print(
-            f"[green]paired[/green] with {paired.hub} as '{paired.name}': connecting there"
-        )
-        self.config.server.api_url = paired.hub
+        log.info("paired with %s: connecting there", paired)
+        self.log.print(f"[green]paired[/green] with {paired}: connecting there")
+        self.config.server.api_url = paired
         self.connected = False
 
     def goodbye(self) -> None:

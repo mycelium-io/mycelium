@@ -23,7 +23,7 @@ import { ApiError, expectPairing, pairRunner } from "@/lib/api";
 import { fingerprint, normalizeCode, pairRequest, useDeviceKeyId } from "@/lib/device-key";
 import { addMachine } from "@/lib/my-machines";
 import { desktopMachine, useIsDesktop } from "@/lib/desktop";
-import { appCall, type AppState } from "@/lib/desktop-app";
+import { appCall, useApp, type AppState } from "@/lib/desktop-app";
 import { jobSettled, useRunnerJob, useRunnersRevalidate } from "@/lib/runners";
 import { Button } from "@/components/ui/button";
 import { CopyField } from "@/components/ui/copy-field";
@@ -32,8 +32,6 @@ import { AddMachineCode, CONNECT_COMMAND } from "@/components/runner-fields";
 import { cn } from "@/lib/utils";
 
 export const PAIR_COMMAND = "mycelium runner pair";
-/** For a machine that isn't connected to this computer's hub yet. */
-export const JOIN_COMMAND = "mycelium runner pair --hub http://<this computer's address>:3718";
 /** How long, and how often, the app waits for a machine to connect with the code. */
 const JOIN_WAIT_MS = 10 * 60 * 1000;
 const JOIN_EVERY_MS = 2000;
@@ -115,6 +113,10 @@ function AddForm() {
 
 function PairForm({ onClose }: { onClose: () => void }) {
   const desktop = useIsDesktop();
+  // The app's own hub: the address of each network this computer is on, from
+  // the app (not the hub), for a machine that isn't connected yet.
+  const { data: appState } = useApp<AppState>("get_state");
+  const joinable = desktop && appState?.settings?.mode === "hub" ? (appState.status?.join_addresses ?? []) : [];
   const keyId = useDeviceKeyId();
   const revalidate = useRunnersRevalidate();
   const [code, setCode] = useState("");
@@ -171,7 +173,9 @@ function PairForm({ onClose }: { onClose: () => void }) {
           try {
             queued = await pairRunner(body);
           } catch (again) {
-            if (!(again instanceof ApiError) || again.status !== 404) throw again;
+            // Not waiting yet (404), or the hub restarting to listen for the
+            // machine (no answer at all): ask again. Any other refusal is final.
+            if (again instanceof ApiError && again.status !== 404) throw again;
           }
         }
         if (!queued) throw new Error("The machine didn't connect. Check its address and run the command again.");
@@ -217,13 +221,22 @@ function PairForm({ onClose }: { onClose: () => void }) {
     >
       <div className="space-y-1.5 text-label text-muted-foreground">
         <p>Run this on the remote machine (its runner must be running). It prints a one-time code that expires in 10 minutes.</p>
+        {joinable.length > 0 && <p className="text-micro text-faint">Already connected to this hub:</p>}
         <CopyField value={PAIR_COMMAND} className="font-mono" />
-        {desktop && (
-          <p className="text-micro text-faint">
-            A machine that isn&apos;t connected to this computer yet joins it the same way, with{" "}
-            <code className="font-mono">--hub</code> and this computer&apos;s address, for example{" "}
-            <code className="font-mono">{JOIN_COMMAND}</code>. Nothing else lets another machine in.
-          </p>
+        {joinable.length > 0 && (
+          <>
+            <p className="text-micro text-faint">
+              Not connected yet: use the address of the network it shares with this computer.
+            </p>
+            {joinable.map((a) => (
+              <div key={a.url} className="flex items-center gap-2">
+                <span className="w-16 flex-shrink-0 truncate font-mono text-micro text-faint" title={a.address}>
+                  {a.interface}
+                </span>
+                <CopyField value={`${PAIR_COMMAND} --hub ${a.url}`} className="min-w-0 flex-1 font-mono" />
+              </div>
+            ))}
+          </>
         )}
         <p className="text-micro text-faint">
           Add <code className="font-mono">--folder</code>, <code className="font-mono">--cli</code> or{" "}

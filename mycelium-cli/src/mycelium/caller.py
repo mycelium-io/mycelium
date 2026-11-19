@@ -279,48 +279,29 @@ def _desktop_hub_over(files_hub: str | None) -> str | None:
     return joined if own in ("", DEFAULT_HUB) or here else None
 
 
-#: Names for this computer in a hub's address.
-_LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+def paired_hub() -> str | None:
+    """The hub this machine paired with (``mycelium runner pair --hub``), when
+    it has, and the folder hasn't joined a hub of its own (``mycelium join``).
 
-
-def _answers(host: str, port: int) -> bool:
-    import socket
-
-    try:
-        with socket.create_connection((host, port), timeout=0.3):
-            return True
-    except OSError:
-        return False
-
-
-def follow_paired_hub(url: str) -> str:
-    """The hub this machine is paired with, in place of ``url`` when ``url``
-    is an address on this computer where nothing answers; ``url`` otherwise.
-
-    An agent keeps the address it was started with. One started while the
-    machine reached its hub through a tunnel on this computer still names that
-    address after the machine pairs with the hub and the tunnel goes, and
-    pairing is how this machine reaches its hub now (``runner pair --hub``).
-    """
+    Pairing is how this machine reaches someone's hub, so once it has paired,
+    that hub is the answer for every command, agent and runner here, over the
+    environment and this machine's config. It's the answer whether or not it
+    answers: nothing here moves to another hub because a connection failed.
+    ``mycelium runner unpair --hub`` takes it back."""
     from mycelium.runner import pairing
 
     paired = pairing.paired_hub()
-    if paired is None:
-        return url
-    now = urlparse(url)
-    if now.hostname not in _LOCAL_HOSTS or now.port is None:
-        return url
-    if _answers(now.hostname, now.port):
-        return url
+    if paired is None or find_membership() is not None:
+        return None
     return paired.hub
 
 
 def hub(config: MyceliumConfig) -> Answer:
     """Which hub. ``config.server.api_url`` already holds the answer; this says why."""
+    if (paired := paired_hub()) is not None:
+        return Answer(paired, PAIRED)
     if os.environ.get(HUB_ENV):
-        url = os.environ[HUB_ENV]
-        followed = follow_paired_hub(url)
-        return Answer(followed, ENVIRONMENT if followed == url else PAIRED)
+        return Answer(os.environ[HUB_ENV], ENVIRONMENT)
     member = find_membership()
     if member is not None:
         return Answer(member.hub, MEMBERSHIP)

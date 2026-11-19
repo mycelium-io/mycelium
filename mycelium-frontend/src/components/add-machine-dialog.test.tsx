@@ -17,9 +17,19 @@ vi.mock("@/lib/desktop", async (importOriginal) => ({
   useIsDesktop: () => desktop.on,
 }));
 // What the app itself says it runs, over its own bridge.
+const appState = () => ({
+  settings: { mode: desktop.mode },
+  status: {
+    join_addresses: [
+      { interface: "utun8", address: "10.8.0.2", url: "http://10.8.0.2:3718" },
+      { interface: "en0", address: "192.168.68.52", url: "http://192.168.68.52:3718" },
+    ],
+  },
+});
 vi.mock("@/lib/desktop-app", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/desktop-app")>()),
-  appCall: async (command: string) => (command === "get_state" ? { settings: { mode: desktop.mode } } : null),
+  appCall: async (command: string) => (command === "get_state" ? appState() : null),
+  useApp: (command: string) => ({ data: command === "get_state" && desktop.on ? appState() : undefined }),
 }));
 const pairRequest = vi.fn();
 vi.mock("@/lib/device-key", async (importOriginal) => ({
@@ -71,7 +81,9 @@ describe("AddMachineDialog", () => {
       job({ status: "done", result: { label: "box", name: "work laptop", key: "59802479f5b1936d" } }),
     );
     renderWithSWR(<AddMachineDialog open onClose={() => {}} />);
-    expect(screen.getByText(/--hub http/)).toBeInTheDocument();
+    // The whole command for each network this computer is on, ready to copy.
+    expect(screen.getByDisplayValue("mycelium runner pair --hub http://10.8.0.2:3718")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("mycelium runner pair --hub http://192.168.68.52:3718")).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("K7QM-4XHD-9RWA"), { target: { value: "K7QM-4XHD-9RWA" } });
     fireEvent.click(screen.getByRole("button", { name: "Pair" }));
 

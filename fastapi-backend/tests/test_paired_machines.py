@@ -7,7 +7,6 @@ only paired machines from elsewhere, and where the hub listens."""
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import hmac
@@ -15,12 +14,11 @@ import socket
 import time
 from pathlib import Path
 
-import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.services import machine_listen, member_tokens, paired_machines, runners
+from app.services import member_tokens, paired_machines, runners
 
 CODE = "ABCDEFGHJKMN"
 BOX = ("10.8.0.1", 40000)
@@ -172,8 +170,9 @@ async def _pair(name: str = "box", peer=BOX) -> dict:
 async def test_a_machine_that_proves_the_code_typed_in_the_app_is_paired(_takes_paired_machines):
     paired = await _pair()
     machine = paired["machine"]
-    assert (machine["name"], machine["address"]) == ("box", "10.8.0.1")
-    # The address of this computer it came in on, which the hub then listens on.
+    # The token is the lock: the machine's own address is a person's to add.
+    assert (machine["name"], machine["address"]) == ("box", None)
+    # The address of this computer it came in on, which the app then listens on.
     assert machine["listen"] == "10.8.0.2"
     text = _takes_paired_machines.read_text()
     # Written by pairing, and everything the person wrote is left as it was.
@@ -276,8 +275,6 @@ async def test_removing_the_entry_or_pairing_again_ends_the_old_token(_takes_pai
     first = await _pair()
     token = first["token"]
     assert paired_machines.verify(token, "10.8.0.1") is not None
-    # From another address than the one it paired from: no.
-    assert paired_machines.verify(token, "10.8.0.9") is None
 
     second = await _pair()
     assert paired_machines.verify(token, "10.8.0.1") is None
@@ -322,49 +319,39 @@ async def test_a_hub_that_takes_no_paired_machines_is_as_before(monkeypatch):
         assert (await stranger.post("/api/pairing/expect", json={"code": CODE})).status_code == 404
 
 
-def test_where_the_hub_listens(_takes_paired_machines):
-    assert machine_listen.wanted() == set()
-    paired_machines.expect(CODE)
-    assert machine_listen.wanted() == {machine_listen.EVERY}
-    paired_machines.add(paired_machines.Machine(name="box", id="1", listen="10.8.0.2"))
-    # Once the code is used or expires, only where the machine came in.
-    assert machine_listen.wanted(time.time() + paired_machines.WINDOW_S + 1) == {"10.8.0.2"}
+def test_an_address_a_person_adds_limits_the_token_to_it():
+    """Pairing doesn't set the machine's own address (a laptop's changes);
+    a person can, and then the token works from there alone."""
+    paired_machines.add(paired_machines.Machine(name="box", id="1", address="10.8.0.1"))
+    token = paired_machines.mint(paired_machines.machines()[0])
+    assert paired_machines.verify(token, "10.8.0.1") is not None
+    assert paired_machines.verify(token, "10.8.0.9") is None
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+def test_the_hub_listens_on_every_address_it_is_given():
+    """``hub_entry --host a --host b``: a socket on each, on one port."""
+    import hub_entry
 
-
-async def test_listeners_open_and_close_as_machines_are_paired_and_unpaired():
-    port = _free_port()
-    listeners = machine_listen.Listeners(app, port)
-    # A machine "came in" on 127.0.0.1 here, the one address a test can listen on.
-    paired_machines.add(paired_machines.Machine(name="box", id="1", listen="127.0.0.1"))
-    await listeners.sync()
-    assert listeners.hosts == {"127.0.0.1"}
-    async with httpx.AsyncClient() as http:
-        for _ in range(50):
-            try:
-                resp = await http.get(f"http://127.0.0.1:{port}/health")
-                break
-            except httpx.ConnectError:
-                await asyncio.sleep(0.05)
-        assert resp.status_code == 200
-    paired_machines.remove("box")
-    await listeners.sync()
-    assert listeners.hosts == set()
-    async with httpx.AsyncClient() as http:
-        with pytest.raises(httpx.ConnectError):
-            await http.get(f"http://127.0.0.1:{port}/health")
-
-
-async def test_an_address_that_isn_t_there_is_tried_again_not_widened():
-    listeners = machine_listen.Listeners(app, _free_port())
-    # TEST-NET-1: never one of this computer's addresses.
-    paired_machines.add(paired_machines.Machine(name="box", id="1", listen="192.0.2.7"))
-    await listeners.sync()
-    await listeners.sync()
-    assert listeners.hosts == set()
-    await listeners.close()
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    hosts = ["127.0.0.1"]
+    if socket.has_ipv6:
+        try:
+            with socket.socket(socket.AF_INET6) as six:
+                six.bind(("::1", 0))
+            hosts.append("::1")
+        except OSError:
+            pass
+    socks = hub_entry._listening(hosts, port)
+    try:
+        assert [s.getsockname()[:2] for s in socks] == [(h, port) for h in hosts]
+    finally:
+        for s in socks:
+            s.close()
+    # An address this computer doesn't have isn't listened on, and nothing is left open.
+    with pytest.raises(OSError):
+        hub_entry._listening(["127.0.0.1", "192.0.2.7"], port)
+    with socket.socket() as again:
+        again.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        again.bind(("127.0.0.1", port))

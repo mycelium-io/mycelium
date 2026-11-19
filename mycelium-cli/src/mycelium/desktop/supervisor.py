@@ -125,6 +125,8 @@ HUB_RESTART_MARKER = ".hub-restart-requested"
 STARTED_FILE = "desktop-started.json"
 #: How often the supervisor looks at its processes.
 TICK_S = 0.5
+#: How often where the hub should listen is checked (``desktop.listen``).
+LISTEN_CHECK_S = 2.0
 #: How many lines of each component's output are kept to explain a crash.
 TAIL_LINES = 40
 #: How many of a program's last lines the log repeats when it stops on its own.
@@ -278,15 +280,21 @@ class Locator:
             )
         return [str(exe), "slim", "start", "--endpoint", f"{HOST}:{SLIM_PORT}"]
 
-    def hub(self, port: int = HUB_PORT) -> tuple[list[str], Path | None]:
+    def hub(
+        self, port: int = HUB_PORT, hosts: list[str] | None = None
+    ) -> tuple[list[str], Path | None]:
+        """How to start the hub on ``port``, listening on ``hosts``
+        (``127.0.0.1`` alone unless machines are paired, ``desktop.listen``)."""
+        listen = [a for h in hosts or [HOST] for a in ("--host", h)]
         if cmd := os.environ.get("MYCELIUM_HUB_CMD"):
             return shlex.split(cmd), None
         if bundled := self._program("hub/mycelium-hub") or self._program("mycelium-hub"):
-            return [str(bundled), "--host", HOST, "--port", str(port)], None
+            return [str(bundled), *listen, "--port", str(port)], None
         if self.repo is not None and shutil.which("uv"):
             backend = self.repo / "fastapi-backend"
-            argv = ["uv", "run", "--project", str(backend), "uvicorn", "app.main:app"]
-            return [*argv, "--host", HOST, "--port", str(port)], backend
+            # The same entry the app bundles, so a checkout listens the same way.
+            argv = ["uv", "run", "--project", str(backend), "python", "hub_entry.py"]
+            return [*argv, *listen, "--port", str(port)], backend
         raise LocateError(
             "This build doesn't include the hub, and there's no Mycelium checkout to run "
             "it from. Use the desktop app, or run the hub with Docker (mycelium up)."
@@ -632,6 +640,10 @@ class Supervisor:
         #: The port the hub it starts listens on: :data:`HUB_PORT` unless
         #: something that isn't a hub holds it (:meth:`_choose_hub_port`).
         self.hub_port = HUB_PORT
+        #: The addresses the hub was last started on (``desktop.listen``):
+        #: ``127.0.0.1``, plus where its paired machines reach it.
+        self.hub_hosts = [HOST]
+        self._listen_checked = 0.0
         #: Whether the hub's settings came from config.toml, so a restart the
         #: Hub page asks for reads it again (an env passed in is kept as is).
         self._env_from_config = env is None
@@ -741,7 +753,7 @@ class Supervisor:
         # The hub listens for its paired machines on this same port, and keeps
         # them in this computer's config file (paired_machines on the hub).
         c.env["MYCELIUM_HUB_PORT"] = str(self.hub_port)
-        c.env["MYCELIUM_PAIRING_CONFIG"] = str(Path.home() / ".mycelium" / "config.toml")
+        c.env["MYCELIUM_PAIRING_CONFIG"] = str(pairing_config())
         self._point_cli_here()
 
     def _hub_port_before(self) -> int | None:
@@ -917,7 +929,7 @@ class Supervisor:
         hub_env_vars = self._hub_env_vars()
         hub = Component(
             name="hub",
-            argv=lambda: loc.hub(self.hub_port),
+            argv=lambda: loc.hub(self.hub_port, self._take_hub_hosts()),
             ready=lambda: http_ok(f"http://{HOST}:{self.hub_port}/health"),
             env=hub_env_vars,
             # A hub, not anything that answers: a program of the person's own
@@ -966,7 +978,17 @@ class Supervisor:
             "existing_hub": self.adopted_hub,
             # A herdr server from before the app was updated.
             "stale_herdr": self.stale_herdr,
+            # What another machine gives `runner pair --hub` to join this hub:
+            # one per address of this computer, for the Add machine dialog.
+            "join_addresses": self._join_addresses(),
         }
+
+    def _join_addresses(self) -> list[dict[str, Any]]:
+        if self.mode != "hub":
+            return []
+        from mycelium.desktop import listen
+
+        return listen.join_addresses(self.hub_port)
 
     def _publish(self) -> None:
         status = self.status()
@@ -1522,10 +1544,59 @@ class Supervisor:
                     self._start_runner()
                 self._tick_runner()
                 self._watch_herdr()
+                self._watch_listening()
                 self._tick_widgets()
                 self._stop.wait(TICK_S)
         finally:
             self._shutdown()
+
+    # ── where the hub listens, for paired machines ───────────────────────────
+
+    def _wanted_hub_hosts(self) -> list[str]:
+        """Where the hub should listen now (``desktop.listen``): ``127.0.0.1``,
+        every address while a code waits, else where its paired machines are."""
+        from mycelium.desktop import listen
+
+        if self.mode != "hub":
+            return [HOST]
+        try:
+            return listen.hub_hosts(data_dir=self.data_dir(), config_path=pairing_config())
+        except Exception as e:  # noqa: BLE001 - never a reason to stop the hub
+            self.emit({"type": "log", "component": "hub", "line": f"pairing: {e}"})
+            return [HOST]
+
+    def _take_hub_hosts(self) -> list[str]:
+        """The addresses the hub is about to be started on, kept to compare."""
+        self.hub_hosts = self._wanted_hub_hosts()
+        return self.hub_hosts
+
+    def _watch_listening(self) -> None:
+        """Start the hub again, on the same port, when where it should listen
+        changes: a code typed in the app, a machine paired or unpaired, or
+        the network a paired machine is on getting a new address."""
+        now = time.monotonic()
+        if now - self._listen_checked < LISTEN_CHECK_S:
+            return
+        self._listen_checked = now
+        # This computer's addresses change as it moves: the app's dialog says them.
+        self._publish()
+        hub = next((c for c in self.components if c.name == "hub"), None)
+        if hub is None or hub.proc is None or hub.proc.poll() is not None:
+            return
+        wanted = self._wanted_hub_hosts()
+        if wanted == self.hub_hosts:
+            return
+        self.emit(
+            {
+                "type": "log",
+                "component": "hub",
+                "line": f"listening on {', '.join(wanted)} for paired machines: restarting the hub",
+            }
+        )
+        self._terminate(hub)
+        hub.restarts = 0
+        hub.retry_at = 0.0
+        self._set(hub, "starting", "restarting to listen for paired machines")
 
     def _tick_widgets(self) -> None:
         """Run the widgets that are due, and send the app what they say when it changes."""
@@ -1558,6 +1629,11 @@ class Supervisor:
         with contextlib.suppress(OSError):
             self.started_path.unlink(missing_ok=True)
         self._publish()
+
+
+def pairing_config() -> Path:
+    """The file the hub keeps the machines paired with it in."""
+    return Path.home() / ".mycelium" / "config.toml"
 
 
 def own_cli() -> list[str]:

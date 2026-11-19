@@ -1240,8 +1240,20 @@ class MyceliumConfig(BaseModel):
             }
             config_dict = cls._deep_merge(config_dict, overlay)
 
+        files_hub = config_dict.get("server", {}).get("api_url")
         env_overrides = cls._load_from_env()
         config_dict = cls._deep_merge(config_dict, env_overrides)
+
+        # A machine that paired with a hub uses it, over the environment too
+        # (``caller.paired_hub``); ``save`` writes back what the files said.
+        if config_path is None:
+            from mycelium import caller
+
+            if (paired := caller.paired_hub()) is not None:
+                server = config_dict.setdefault("server", {})
+                from_files = replaced.get(("server", "api_url"), (files_hub,))[0]
+                replaced[("server", "api_url")] = (from_files, paired)
+                server["api_url"] = paired
 
         instance = cls(**config_dict)
         instance._global_config_path = global_path
@@ -1272,9 +1284,7 @@ class MyceliumConfig(BaseModel):
             env_config["engine"]["runtime"] = engine_runtime
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
-            from mycelium.caller import follow_paired_hub
-
-            env_config["server"]["api_url"] = follow_paired_hub(api_url)
+            env_config["server"]["api_url"] = api_url
         if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
             env_config["slim"]["node_endpoint"] = slim_endpoint
         if slim_master := os.getenv("MYCELIUM_SLIM_MASTER_SECRET"):

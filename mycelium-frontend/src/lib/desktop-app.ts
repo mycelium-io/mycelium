@@ -50,7 +50,17 @@ export interface AppState {
   status?: {
     /** The hub that refused this computer's sign-in, or null while its runner connects or is connected. */
     runner_signed_out_of?: string | null;
+    /** This computer's hub at each network it's on, for `runner pair --hub` on another machine. */
+    join_addresses?: JoinAddress[];
   } | null;
+}
+
+/** One network this computer is on, and its hub's address there. */
+export interface JoinAddress {
+  /** The network interface, like `en0` or `utun8`. */
+  interface: string;
+  address: string;
+  url: string;
 }
 
 /** How often the page asks whether this computer's runner was refused, while it shows no machine. */

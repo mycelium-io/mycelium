@@ -94,35 +94,47 @@ def test_only_requests_to_the_paired_hub_carry_the_token():
     assert client.machine_headers("http://127.0.0.1:3718") == {}
 
 
-def _closed_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def test_an_agent_started_on_a_tunnel_finds_the_paired_hub_once_the_tunnel_is_gone(monkeypatch):
-    dead = f"http://127.0.0.1:{_closed_port()}"
-    # Not paired: the address it was given stands.
-    assert caller.follow_paired_hub(dead) == dead
-    pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
-    assert caller.follow_paired_hub(dead) == HUB
-
+def test_a_machine_that_paired_uses_that_hub_and_says_so(monkeypatch):
+    """One rule: whatever the environment says, and whether or not anything
+    answers there, a machine that paired uses the hub it paired with."""
     from mycelium.config import MyceliumConfig
 
-    monkeypatch.setenv("MYCELIUM_API_URL", dead)
-    config = MyceliumConfig.load()
-    assert config.server.api_url == HUB
-    assert caller.hub(config) == caller.Answer(HUB, caller.PAIRED)
-
-
-def test_a_local_address_that_answers_or_a_remote_one_is_kept():
-    pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
     with socket.socket() as listening:
+        # A hub that answers on the address an agent was started with.
         listening.bind(("127.0.0.1", 0))
         listening.listen(1)
         alive = f"http://127.0.0.1:{listening.getsockname()[1]}"
-        assert caller.follow_paired_hub(alive) == alive
-    assert caller.follow_paired_hub("http://hub.example.com:8000") == "http://hub.example.com:8000"
+        monkeypatch.setenv("MYCELIUM_API_URL", alive)
+        # Not paired: the environment's hub, as before.
+        config = MyceliumConfig.load()
+        assert config.server.api_url == alive
+        assert caller.hub(config) == caller.Answer(alive, caller.ENVIRONMENT)
+
+        pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
+        config = MyceliumConfig.load()
+        assert config.server.api_url == HUB
+        assert caller.hub(config) == caller.Answer(HUB, caller.PAIRED)
+
+
+def test_a_folder_that_joined_a_hub_keeps_its_own(monkeypatch, _home: Path):
+    pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
+    monkeypatch.setattr(caller, "find_membership", lambda: object())
+    assert caller.paired_hub() is None
+
+
+def test_a_save_doesn_t_write_the_paired_hub_into_this_machine_s_config(_home: Path):
+    import tomllib
+
+    from mycelium.config import MyceliumConfig
+
+    path = _home / ".mycelium" / "config.toml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('[server]\napi_url = "http://127.0.0.1:3718"\n')
+    pairing.save_paired_hub(pairing.PairedHub(hub=HUB, name="box", token="t0k"))
+    config = MyceliumConfig.load()
+    assert config.server.api_url == HUB
+    config.save()
+    assert tomllib.loads(path.read_text())["server"]["api_url"] == "http://127.0.0.1:3718"
 
 
 def test_a_cli_save_leaves_the_hub_s_paired_machines_as_they_are_on_disk(_home: Path):

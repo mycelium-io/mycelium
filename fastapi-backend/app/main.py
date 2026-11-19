@@ -13,7 +13,6 @@ No auth, no heartbeat, no Neo4j, no Yjs, no scheduler.
 """
 
 import asyncio
-import contextlib
 import logging
 import os
 import sys
@@ -318,19 +317,7 @@ async def lifespan(app: FastAPI):
     if restored_custody:
         logger.info("restored %d custodial session(s) on startup (no re-invite)", restored_custody)
 
-    # The desktop app's hub also listens where its paired machines reach it,
-    # and nowhere else (services/machine_listen.py).
-    from app.services import machine_listen, paired_machines
-
-    listening = None
-    if paired_machines.enabled() and (hub_port := machine_listen.port()) is not None:
-        listening = asyncio.create_task(machine_listen.Listeners(app, hub_port).run())
-
     yield
-    if listening is not None:
-        listening.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await listening
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()

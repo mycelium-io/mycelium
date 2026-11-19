@@ -19,12 +19,13 @@ the person's agents on it) reaches it only by pairing:
        [[hub.paired_machines]]
        name = "box"
        id = "…"              # the token names it: pairing again makes a new one
-       address = "10.8.0.1"  # the machine's own address: only from here
        listen = "10.8.0.2"   # this computer's address it came in on
+       # address = "10.8.0.1"  # optional, added by a person: only from here
 
-From then on the hub also listens on ``listen`` (``machine_listen``), and
-answers a request from another machine only when it carries a paired
-machine's token (``X-Mycelium-Machine``) from its ``address``
+From then on the desktop app has its hub listen on the network ``listen`` is
+on (``desktop/supervisor.py``), and the hub answers a request from another
+machine only when it carries a paired machine's token
+(``X-Mycelium-Machine``), from its ``address`` when one is set
 (``machine_gate``). Removing the entry, or ``mycelium runner unpair --hub``
 on that machine, shuts it out.
 
@@ -343,9 +344,10 @@ def connect(
     now: float | None = None,
 ) -> tuple[str, Machine]:
     """Pair the machine whose knock proves it knows a code typed in the app:
-    its token and its entry, bound to the address it knocked from (``peer``)
-    and the one of this computer it reached (``local``). Raises
-    :class:`PairingError` otherwise; a wrong proof counts against the code."""
+    its token and its entry, which keeps the address of this computer it
+    reached (``local``). ``peer`` is where it knocked from, which the route
+    has already checked isn't this computer. Raises :class:`PairingError`
+    otherwise; a wrong proof counts against the code."""
     now = time.time() if now is None else now
     offer = offer.upper()
     with _lock:
@@ -376,7 +378,11 @@ def connect(
             raise PairingError("That proof doesn't match the code typed on the hub.")
         expected.pop(offer)
         _save_expected(expected)
-    machine = Machine(name=clean_name(name), id=secrets.token_hex(8), address=peer, listen=local)
+    # The token is the lock. The machine's own address is the person's to add
+    # (a laptop's changes as it moves); where it reached this computer is kept
+    # so the app knows which network to listen on.
+    del peer
+    machine = Machine(name=clean_name(name), id=secrets.token_hex(8), listen=local)
     add(machine)
     return mint(machine, now=now), machine
 
