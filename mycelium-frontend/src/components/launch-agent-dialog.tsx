@@ -127,7 +127,9 @@ export function LaunchAgentForm({
 
   const runner = connected.find((r) => r.id === here) ?? connected[0];
   const startable = useMemo(() => (runner ? launchable(runner) : []), [runner]);
-  const framework = startable.find((f) => f.id === frameworkPick) ?? startable[0];
+  // Only one the machine's shell found can be picked; the first of those is the default.
+  const ready = startable.filter((f) => f.installed);
+  const framework = ready.find((f) => f.id === frameworkPick) ?? ready[0];
   const folderShown = folderTyped ?? tildePath(runner?.roots[0] ?? "");
   // Only herdr needs asking: an Omnigent session gets its own worktree anyway.
   const worktree = worktreePick && !!runner && startsInHerdr(runner);
@@ -718,7 +720,10 @@ function HarnessPicker({
   value: string | null;
   onChange: (id: string) => void;
 }) {
-  const current = frameworks.find((f) => f.id === value) ?? frameworks[0];
+  // What a shell on the machine found, and the rest herdr could start once installed.
+  const ready = frameworks.filter((f) => f.installed);
+  const absent = frameworks.filter((f) => !f.installed);
+  const current = ready.find((f) => f.id === value) ?? ready[0] ?? frameworks[0];
   const [scanId, setScanId] = useState<string | null>(null);
   const { job: scan } = useRunnerJob(runner.id, scanId);
   const scanning = scanId !== null && !jobSettled(scan);
@@ -740,13 +745,38 @@ function HarnessPicker({
           <ChevronDown className="ml-1 size-3.5 flex-shrink-0 text-faint" aria-hidden />
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-52">
-        {frameworks.map((f) => (
+      <DropdownMenuContent align="start" className="min-w-64">
+        {ready.map((f) => (
           <DropdownMenuItem key={f.id} onClick={() => onChange(f.id)} className="gap-2 py-1.5">
             <HarnessLabel framework={f} active={f.id === current.id} />
             {f.id === current.id && <Check className="ml-auto size-3.5 text-accent" aria-label="chosen" />}
           </DropdownMenuItem>
         ))}
+        {absent.length > 0 && (
+          <>
+            <p className="mt-1 border-t border-border px-2 pt-2 pb-1 text-micro text-faint">Not installed</p>
+            {/* Not something to pick yet: each opens its makers' install page. */}
+            {absent.map((f) => (
+              <DropdownMenuItem
+                key={f.id}
+                disabled={!f.install}
+                onClick={() => f.install && window.open(f.install, "_blank", "noreferrer")}
+                className="gap-2 py-1.5"
+              >
+                <span className="opacity-60 grayscale">
+                  <HarnessIcon id={f.id} name={f.name} className="size-5" />
+                </span>
+                <span className="text-label text-muted-foreground">{f.name}</span>
+                {f.install && (
+                  <span className="ml-auto inline-flex items-center gap-1 text-micro text-accent">
+                    Install
+                    <ExternalLink className="size-3" aria-hidden />
+                  </span>
+                )}
+              </DropdownMenuItem>
+            ))}
+          </>
+        )}
         <DropdownMenuItem
           disabled={scanning || !runner.connected}
           onClick={() => void rescanRunner(runner.id).then((queued) => setScanId(queued.id), () => {})}
@@ -754,6 +784,13 @@ function HarnessPicker({
         >
           <RefreshCw className="size-3.5" aria-hidden />
           Rescan for agent CLIs
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => window.open(MISSING_DOCS[1].href, "_blank", "noreferrer")}
+          className="gap-2 text-muted-foreground"
+        >
+          <BookOpen className="size-3.5" aria-hidden />
+          Adding your own harness
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

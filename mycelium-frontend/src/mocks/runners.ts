@@ -93,6 +93,7 @@ const FRAMEWORKS: Framework[] = [
     launchable: true,
     note: null,
   },
+  // Kinds herdr can start that a real shell on the machine didn't find.
   {
     id: "codex",
     name: "Codex CLI",
@@ -100,8 +101,31 @@ const FRAMEWORKS: Framework[] = [
     path: null,
     version: null,
     installed: false,
-    launchable: false,
-    note: "Not found on PATH.",
+    launchable: true,
+    note: null,
+    install: "https://github.com/openai/codex#quickstart",
+  },
+  {
+    id: "gemini",
+    name: "Gemini CLI",
+    command: "gemini",
+    path: null,
+    version: null,
+    installed: false,
+    launchable: true,
+    note: null,
+    install: "https://github.com/google-gemini/gemini-cli#quickstart",
+  },
+  {
+    id: "cursor",
+    name: "Cursor CLI",
+    command: "cursor-agent",
+    path: null,
+    version: null,
+    installed: false,
+    launchable: true,
+    note: null,
+    install: "https://cursor.com/cli",
   },
 ];
 

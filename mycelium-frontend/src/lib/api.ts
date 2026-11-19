@@ -1612,6 +1612,8 @@ export interface Framework {
   launchable: boolean;
   /** Why an installed framework can't be started, or anything else worth saying. */
   note: string | null;
+  /** Mock: where its makers say how to install it, for one the machine's shell didn't find. */
+  install?: string | null;
   /** Its earlier sessions on the machine, newest first, when its integration
    *  can list and resume them; absent when it can't. Never anything said in
    *  one: a session is named by where and when, not by its words. */
