@@ -1239,11 +1239,10 @@ def test_a_cli_its_shell_cant_find_is_said_to_be_missing_with_where_to_install_i
     r = make_runner()
     with pytest.raises(daemon.JobError, match="Codex isn't installed on") as failed:
         r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
-    assert "Install it from https://github.com/openai/codex." in str(failed.value)
     assert "open a new terminal window there and run `codex`" in str(failed.value)
+    assert str(failed.value).endswith(f"See {daemon.MISSING_CLI_DOC}")
     assert failed.value.result is not None
     assert failed.value.result["why"] == "missing"
-    assert failed.value.result["install"] == "https://github.com/openai/codex"
     assert failed.value.result["pane"] == "w9:p1"
     # Only the yes or no leaves the machine, never what the shell printed.
     assert "command not found" not in json.dumps(failed.value.result).replace(
@@ -1268,7 +1267,6 @@ def test_a_cli_that_isnt_installed_is_said_missing_without_waiting_out_herdr(
     assert time.monotonic() - began < 2
     assert failed.value.result is not None
     assert failed.value.result["why"] == "missing"
-    assert failed.value.result["install"] == "https://github.com/badlogic/pi-mono"
 
 
 def test_a_cli_that_exits_on_its_own_is_not_said_to_be_missing(make_runner, herdr: Herdr, hub: Hub):
@@ -1280,7 +1278,6 @@ def test_a_cli_that_exits_on_its_own_is_not_said_to_be_missing(make_runner, herd
         r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
     assert failed.value.result is not None
     assert failed.value.result["why"] == "exited"
-    assert "install" not in failed.value.result
 
 
 def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(

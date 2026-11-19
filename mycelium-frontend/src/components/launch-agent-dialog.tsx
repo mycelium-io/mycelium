@@ -879,7 +879,6 @@ function LaunchProgress({
           handle,
           detail: report.detail,
           command,
-          install: report.install,
         })
       : null;
   const terminal = desktop && herdr && report.pane ? terminalLink(report.pane) : null;

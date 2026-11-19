@@ -51,8 +51,6 @@ class AgentKind:
     binaries: tuple[str, ...]
     #: The kind herdr starts it as, when herdr has one.
     herdr_kind: str | None
-    #: Where its makers say how to install it, for a start that finds it missing.
-    install_url: str | None = None
 
     #: The manifest family its agents are recorded under (``AgentManifest.adapter``).
     adapter: ClassVar[str] = "claude_code"

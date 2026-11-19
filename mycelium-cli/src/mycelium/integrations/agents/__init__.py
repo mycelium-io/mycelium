@@ -29,35 +29,21 @@ __all__ = [
 ]
 
 KNOWN: tuple[AgentKind, ...] = (
-    Claude("claude", "Claude Code", ("claude",), "claude", "https://code.claude.com/docs/en/setup"),
-    Codex("codex", "Codex", ("codex",), "codex", "https://github.com/openai/codex"),
-    AgentKind(
-        "gemini", "Gemini CLI", ("gemini",), "gemini", "https://github.com/google-gemini/gemini-cli"
-    ),
-    Cursor("cursor", "Cursor Agent", ("cursor-agent",), "cursor", "https://cursor.com/cli"),
-    OpenCode("opencode", "OpenCode", ("opencode",), "opencode", "https://opencode.ai/docs"),
-    AgentKind("pi", "Pi", ("pi",), "pi", "https://github.com/badlogic/pi-mono"),
-    AgentKind(
-        "copilot",
-        "GitHub Copilot CLI",
-        ("copilot",),
-        "copilot",
-        "https://github.com/github/copilot-cli",
-    ),
-    AgentKind("amp", "Amp", ("amp",), "amp", "https://ampcode.com/manual"),
-    AgentKind(
-        "droid",
-        "Droid",
-        ("droid",),
-        "droid",
-        "https://docs.factory.ai/cli/getting-started/quickstart",
-    ),
-    AgentKind("cline", "Cline", ("cline",), "cline", "https://docs.cline.bot/cline-cli/overview"),
-    AgentKind("kiro", "Kiro", ("kiro-cli", "kiro"), "kiro", "https://kiro.dev/cli/"),
-    AgentKind("kimi", "Kimi", ("kimi",), "kimi", "https://github.com/MoonshotAI/kimi-cli"),
+    Claude("claude", "Claude Code", ("claude",), "claude"),
+    Codex("codex", "Codex", ("codex",), "codex"),
+    AgentKind("gemini", "Gemini CLI", ("gemini",), "gemini"),
+    Cursor("cursor", "Cursor Agent", ("cursor-agent",), "cursor"),
+    OpenCode("opencode", "OpenCode", ("opencode",), "opencode"),
+    AgentKind("pi", "Pi", ("pi",), "pi"),
+    AgentKind("copilot", "GitHub Copilot CLI", ("copilot",), "copilot"),
+    AgentKind("amp", "Amp", ("amp",), "amp"),
+    AgentKind("droid", "Droid", ("droid",), "droid"),
+    AgentKind("cline", "Cline", ("cline",), "cline"),
+    AgentKind("kiro", "Kiro", ("kiro-cli", "kiro"), "kiro"),
+    AgentKind("kimi", "Kimi", ("kimi",), "kimi"),
     AgentKind("grok", "Grok", ("grok",), "grok"),
-    AgentKind("goose", "Goose", ("goose",), None, "https://github.com/block/goose"),
-    AgentKind("aider", "Aider", ("aider",), None, "https://aider.chat/docs/install.html"),
+    AgentKind("goose", "Goose", ("goose",), None),
+    AgentKind("aider", "Aider", ("aider",), None),
 )
 
 

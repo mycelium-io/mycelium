@@ -124,6 +124,10 @@ from mycelium_backend_client.models import (
 ASK_FIRST = frozenset({"launch", "restart", "adopt", "rename", "resume"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
+#: The docs section on an agent CLI that isn't installed.
+MISSING_CLI_DOC = (
+    "https://mycelium-io.github.io/mycelium/guides.html#machines-when-the-agent-cli-isnt-found"
+)
 #: How long a paused agent has to stop working before it's told why, and how
 #: often it's checked meanwhile.
 PAUSE_SETTLE_S = 20.0
@@ -1204,8 +1208,8 @@ class Runner:
 
         Nothing looks for a CLI before starting it: herdr types its command in
         the pane's shell, which finds what a new terminal window would. One the
-        shell had no command for (``e.missing``) is said as not installed, with
-        where its makers say how to install it (``install`` in the result).
+        shell had no command for (``e.missing``) is said as not installed, and
+        pointed at the docs section on it.
 
         What the host said stays in the result's ``detail`` and in the log, for
         whoever is debugging; the sentence is for the person who asked.
@@ -1214,7 +1218,6 @@ class Runner:
         from mycelium.integrations.herdr.starting import SHELL_WAIT_S
 
         name = known.name
-        install = None
         where = (
             f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
         )
@@ -1231,11 +1234,10 @@ class Runner:
         elif e.step == STEP_AGENT and e.missing:
             why = "missing"
             command = known.binaries[0] if known.binaries else known.id
-            install = known.install_url
-            how = f"Install it from {install}." if install else "Install it."
             message = (
-                f"{name} isn't installed on {self.label}. {how} Then open a new terminal "
-                f"window there and run `{command}`. When it runs there, add @{handle} again."
+                f"{name} isn't installed on {self.label}. Install it, then open a new "
+                f"terminal window there and run `{command}`. When it runs there, add "
+                f"@{handle} again. See {MISSING_CLI_DOC}"
             )
         elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
             # What it printed on the way out is on its screen, which stays on
@@ -1263,7 +1265,6 @@ class Runner:
             "why": why,
             "pane": e.ref,
             "detail": str(e),
-            "install": install,
         }
         return JobError(message, result={k: v for k, v in result.items() if v})
 

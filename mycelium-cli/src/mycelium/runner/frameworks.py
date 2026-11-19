@@ -98,7 +98,7 @@ def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
     has its kind; whether it's installed is found out by starting it. A kind the
     host has that :mod:`mycelium.integrations.agents` doesn't know is offered
     too, by the host's name for it: what the table adds is only what Mycelium
-    knows about a CLI (its name, arguments, install page).
+    knows about a CLI (its name and arguments).
 
     ``path`` and ``version`` are always ``None`` and ``installed`` is the same
     as ``launchable``: the wire still carries them for apps from before the

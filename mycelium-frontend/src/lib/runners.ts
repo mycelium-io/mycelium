@@ -22,6 +22,7 @@ import {
   type Runner,
   type RunnerJob,
 } from "@/lib/api";
+import { DOCS_URL } from "@/lib/install";
 import { useMyMachines } from "@/lib/my-machines";
 import { usePrincipal } from "@/components/current-user";
 
@@ -222,10 +223,11 @@ export interface StartReport {
   /** What the machine answered for the person on the way, from their choice
    *  to start it there ("Trusted the folder for Claude Code"). */
   passed: string[];
-  /** Where the CLI's makers say how to install it, when its shell had no
-   *  command for it. */
-  install: string | null;
 }
+
+/** The docs section on an agent CLI that isn't installed, which links on to
+ *  herdr's list of the CLIs it can start. */
+export const MISSING_CLI_DOC = `${DOCS_URL}/guides.html#machines-when-the-agent-cli-isnt-found`;
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent", "intro"];
 const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "setup", "signin", "host"];
@@ -244,10 +246,6 @@ export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): 
     slow: r.slow === true,
     waiting: text(r.waiting),
     passed: Array.isArray(r.passed) ? r.passed.filter((p): p is string => typeof p === "string" && p !== "") : [],
-    install: (() => {
-      const url = text(r.install);
-      return url && /^https:\/\//.test(url) ? url : null;
-    })(),
   };
 }
 
@@ -272,7 +270,6 @@ export function startHelp(
     handle,
     detail = null,
     command = null,
-    install = null,
   }: {
     machine: string;
     cli: string;
@@ -281,8 +278,6 @@ export function startHelp(
     detail?: string | null;
     /** The command the CLI runs as (`opencode`), for saying what to check. */
     command?: string | null;
-    /** Where its makers say how to install it. */
-    install?: string | null;
   },
 ): StartHelp {
   if (why === "shell") {
@@ -326,12 +321,12 @@ export function startHelp(
     return {
       happened: `${cli} isn't installed on ${machine}.`,
       steps: [
-        `Install ${cli} on ${machine}${install ? " from the page linked below" : ""}.`,
+        `Install ${cli} on ${machine}.`,
         `Open a new terminal window on ${machine} and run ${run}. If it runs there, it will run for the agent too.`,
         `Add @${handle} again.`,
       ],
       short: `${cli} isn't installed on ${machine}`,
-      ...(install ? { link: { label: `How to install ${cli}`, href: install } } : {}),
+      link: { label: "When the agent CLI isn't found", href: MISSING_CLI_DOC },
     };
   }
   if (why === "exited") {
