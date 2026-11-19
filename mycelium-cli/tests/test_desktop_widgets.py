@@ -427,7 +427,8 @@ def test_a_changed_widget_stops_its_old_command(tmp_path: Path):
 def test_what_an_app_that_was_killed_kept_running_is_stopped_by_the_next(tmp_path: Path):
     import subprocess
 
-    path = _config(tmp_path / "config.toml", KEEP.format("sleep 30"))
+    # `exec`, since only some shells become the command on their own.
+    path = _config(tmp_path / "config.toml", KEEP.format("exec sleep 30"))
     clock = Clock()
     first = w.Widgets(path, clock=clock)
     first.tick()
