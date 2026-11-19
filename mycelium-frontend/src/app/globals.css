@@ -575,6 +575,25 @@ body {
   font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* A modal <dialog> takes the app's text color and leaves its size to the
+   component, rather than the browser's default color and inset box. Scroll
+   gestures over it or its backdrop stay off the page underneath where the
+   browser honors overscroll-behavior on a box that doesn't scroll (not Safari
+   yet, where the page is still inert behind it). In the base layer, so a
+   component's utilities still size it. */
+@layer base {
+  dialog:modal {
+    color: inherit;
+    max-width: none;
+    max-height: none;
+    overscroll-behavior: contain;
+  }
+  dialog::backdrop {
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
