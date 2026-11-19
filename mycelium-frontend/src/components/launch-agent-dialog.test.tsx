@@ -107,6 +107,27 @@ describe("LaunchAgentForm", () => {
       "Claude Code2.4.1",
       "opencode0.9.3",
       "Rescan for agent CLIs",
+      "Adding your own harness",
+    ]);
+  });
+
+  it("lists the agent CLI last started from here first, and picks it", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(job());
+    const { unmount } = renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: Claude Code" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /opencode/ }));
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+    await waitFor(() => expect(launchRunnerAgent).toHaveBeenCalled());
+    unmount();
+
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Agent CLI: opencode" }));
+    expect((await screen.findAllByRole("menuitem")).map((o) => o.textContent).slice(0, 2)).toEqual([
+      "opencode0.9.3",
+      "Claude Code2.4.1",
     ]);
   });
 
@@ -178,7 +199,7 @@ describe("LaunchAgentForm", () => {
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Own worktree" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Work on its own branch" }));
     fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     await waitFor(() =>
@@ -192,7 +213,7 @@ describe("LaunchAgentForm", () => {
   it("doesn't offer a worktree on a host that makes its own", () => {
     connected = [runner({ host: "omnigent" })];
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
-    expect(screen.queryByRole("checkbox", { name: "Own worktree" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Work on its own branch" })).not.toBeInTheDocument();
   });
 
   it("says an agent that started at a prompt is waiting for input on the machine", async () => {
@@ -295,8 +316,7 @@ describe("LaunchAgentForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("didn't get to its shell prompt in time");
-    expect(alert).toHaveTextContent("What to do");
+    expect(alert).toHaveTextContent("didn't get to a prompt in time");
     expect(alert).toHaveTextContent("It reuses the same terminal");
     // The machine's own words are kept, behind a toggle, for whoever debugs it.
     expect(alert).toHaveTextContent("not an available shell");
@@ -319,7 +339,8 @@ describe("LaunchAgentForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("an update, a sign-in, or a first-run question");
+    expect(alert).toHaveTextContent("is waiting for something in its terminal");
+    expect(alert).toHaveTextContent("let it update, sign in, or pick an option");
     // A screen only ever shows live from this machine, in the desktop app. Even
     // an older runner's job that carried one through the hub isn't shown.
     expect(alert).not.toHaveTextContent("Update now? [Y/n]");
@@ -365,12 +386,19 @@ describe("LaunchAgentForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/Claude Code isn't installed on \S+\./);
-    expect(alert).toHaveTextContent(/Open a new terminal window on \S+ and run claude\./);
-    expect(screen.getByRole("link", { name: "When the agent CLI isn't found" })).toHaveAttribute(
+    expect(alert).toHaveTextContent(/Claude Code isn't installed on \S+/);
+    expect(alert).toHaveTextContent("Install it. Then check that a new terminal window can run it.");
+    expect(within(alert).getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(within(alert).getByRole("link", { name: "When an agent CLI isn't found" })).toHaveAttribute(
       "href",
       "https://mycelium-io.github.io/mycelium/guides.html#machines-when-the-agent-cli-isnt-found",
     );
+    expect(within(alert).getByRole("link", { name: "Adding your own harness" })).toHaveAttribute(
+      "href",
+      "https://mycelium-io.github.io/mycelium/guides.html#machines-adding-your-own-harness",
+    );
+    // No page per CLI: the way through is the docs.
+    expect(within(alert).getAllByRole("link")).toHaveLength(2);
   });
 
   it("says a CLI that needs setting up does, before any terminal was opened", async () => {

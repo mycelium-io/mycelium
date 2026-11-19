@@ -93,6 +93,7 @@ const FRAMEWORKS: Framework[] = [
     launchable: true,
     note: null,
   },
+  // Kinds herdr can start that a real shell on the machine didn't find.
   {
     id: "codex",
     name: "Codex CLI",
@@ -100,8 +101,28 @@ const FRAMEWORKS: Framework[] = [
     path: null,
     version: null,
     installed: false,
-    launchable: false,
-    note: "Not found on PATH.",
+    launchable: true,
+    note: null,
+  },
+  {
+    id: "gemini",
+    name: "Gemini CLI",
+    command: "gemini",
+    path: null,
+    version: null,
+    installed: false,
+    launchable: true,
+    note: null,
+  },
+  {
+    id: "cursor",
+    name: "Cursor CLI",
+    command: "cursor-agent",
+    path: null,
+    version: null,
+    installed: false,
+    launchable: true,
+    note: null,
   },
 ];
 
@@ -470,6 +491,17 @@ export function mockStartOutcome(
         why: "shell",
         pane: "w5:p1",
         detail: "agent target pane w5:p1 is not an available shell",
+      },
+    };
+  }
+  if (handle.startsWith("missing-")) {
+    return {
+      failWith: `${cli} isn't installed on ${machine}, or a new terminal window there can't find it. Install it, check that it runs in a new terminal window, then add @${handle} again.`,
+      failResult: {
+        step: "agent",
+        why: "missing",
+        pane: "w8:p1",
+        screen: `morgan@morgans-mbp shop % opencode\nzsh: command not found: opencode\nmorgan@morgans-mbp shop % `,
       },
     };
   }

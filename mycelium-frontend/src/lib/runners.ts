@@ -111,6 +111,32 @@ export function launchable(runner: Runner): Framework[] {
   return sortFrameworks(runner.frameworks.filter((f) => f.launchable));
 }
 
+const LAST_FRAMEWORK_KEY = "mycelium.addMember.lastAgentCli";
+
+/** The agent CLI this browser last started an agent with, if any. */
+export function lastFramework(): string | null {
+  try {
+    return localStorage.getItem(LAST_FRAMEWORK_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function rememberFramework(id: string): void {
+  try {
+    localStorage.setItem(LAST_FRAMEWORK_KEY, id);
+  } catch {
+    // Private windows and blocked storage just don't remember it.
+  }
+}
+
+/** The list with the last-used agent CLI moved to the top, the rest in order. */
+export function lastUsedFirst(frameworks: Framework[], last: string | null): Framework[] {
+  const i = frameworks.findIndex((f) => f.id === last);
+  if (i <= 0) return frameworks;
+  return [frameworks[i], ...frameworks.slice(0, i), ...frameworks.slice(i + 1)];
+}
+
 /**
  * What the app says about a runner's host: its name, where the agents it
  * starts show up, and what to do when it isn't running. Every screen asks
