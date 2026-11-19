@@ -233,7 +233,7 @@ def typed_client(
         timeout=httpx.Timeout(timeout) if timeout is not None else None,
     )
     ours = base_url is None or issued_by(cfg, target)
-    headers = auth_headers(cfg, handle=handle) if ours else {}
+    headers = {**(auth_headers(cfg, handle=handle) if ours else {}), **machine_headers(target)}
     return client.with_headers(headers) if headers else client
 
 
@@ -309,9 +309,22 @@ def hub_client(
     return httpx.Client(
         base_url=target,
         timeout=timeout,
-        headers={**credentials, **(headers or {})},
+        headers={**credentials, **machine_headers(target), **(headers or {})},
         **kwargs,
     )
+
+
+def machine_headers(url: str) -> dict[str, str]:
+    """This machine's token for the hub it's paired with, when ``url`` is that
+    hub; ``{}`` for any other. It says which machine a request comes from,
+    beside whatever ``Authorization`` says about who sent it
+    (``runner/pairing.py``, ``mycelium runner pair --hub``)."""
+    from mycelium.runner import pairing
+
+    paired = pairing.paired_hub()
+    if paired is None or not same_origin(url, paired.hub):
+        return {}
+    return {pairing.MACHINE_HEADER: paired.token}
 
 
 def issued_by(config: MyceliumConfig, url: str) -> bool:

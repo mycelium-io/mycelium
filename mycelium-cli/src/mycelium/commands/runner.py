@@ -415,12 +415,24 @@ def runner_decline(job_id: str = typer.Argument(..., help="The request's id")) -
 
 
 @doc_ref(
-    usage="mycelium runner pair [--folder <folder>]... [--cli <id>]... [--days <n>]",
-    desc="Pair another computer with this machine so its requests start without approval.",
+    usage=(
+        "mycelium runner pair [--hub <url>] [--name <name>] [--folder <folder>]... "
+        "[--cli <id>]... [--days <n>]"
+    ),
+    desc="Pair this machine with your hub, so it connects there and its agents start without approval.",
     group="agent",
 )
 @app.command("pair")
 def runner_pair(
+    hub: str | None = typer.Option(
+        None,
+        "--hub",
+        help="The desktop app's hub to join, e.g. http://10.8.0.2:3718. Pairing is how "
+        "another machine connects to it.",
+    ),
+    name: str | None = typer.Option(
+        None, "--name", help="What the hub calls this machine (default: its host name)"
+    ),
     folder: list[Path] = typer.Option(
         None,
         "--folder",
@@ -433,21 +445,34 @@ def runner_pair(
         90, "--days", min=0, help="Days until the pairing expires (0: no expiry)"
     ),
 ) -> None:
-    """Print a code to pair another computer, so its requests start here without approval.
+    """Print a code to pair this machine with your computer.
 
-    Use this on a machine where no one is around to approve requests.
-    Launches and restarts signed by the paired computer start
-    without approval, within the folders, agent CLIs and duration you set
-    here. Everything else still needs approval. Run it on this machine,
-    with the runner running.
+    Type the code in the app on your computer (Machines, Add machine, Pair).
+    Launches and restarts the app asks for then start here without approval,
+    within the folders, agent CLIs and duration you set here. Everything else
+    still needs approval. Run it on this machine, with the runner running.
+
+    With --hub, the same code also joins this machine to that hub: the desktop
+    app's hub answers another machine only once it's paired. The hub signs
+    this machine a token, the runner moves there, and every request from this
+    machine to that hub carries the token. `mycelium runner unpair --hub`
+    leaves it.
 
     Examples:
+        mycelium runner pair --hub http://10.8.0.2:3718
         mycelium runner pair
         mycelium runner pair --folder ~/code --cli opencode --days 30
     """
+    import socket
     import time
 
     from mycelium.runner import pairing
+
+    hub = hub.rstrip("/") if hub else None
+    if hub and not hub.startswith(("http://", "https://")):
+        console.print("[red]--hub is the hub's address, like http://10.8.0.2:3718[/red]")
+        raise typer.Exit(2)
+    machine = name or socket.gethostname().split(".")[0]
 
     if running_pid() is None:
         console.print(
@@ -469,10 +494,32 @@ def runner_pair(
         f"{int(pairing.OFFER_TTL.total_seconds() // 60)} minutes.[/dim]\n"
     )
     deadline = time.monotonic() + pairing.OFFER_TTL.total_seconds()
+    joined = hub is None
+    knock_at = 0.0
+    said = ""
     try:
-        with console.status("Waiting for your computer to pair…"):
+        with console.status("Waiting for your computer to pair…") as status:
             while time.monotonic() < deadline:
-                if (made := pairing.landed(code)) is not None:
+                if not joined and time.monotonic() >= knock_at:
+                    knock_at = time.monotonic() + pairing.KNOCK_EVERY_S
+                    got = pairing.knock(str(hub), code, machine)
+                    if isinstance(got, pairing.PairedHub):
+                        pairing.save_paired_hub(got)
+                        joined = True
+                        console.print(
+                            f"[green]Joined[/green] {hub} as '{got.name}'. The runner "
+                            "moves there at its next heartbeat."
+                        )
+                        status.update("Finishing the pairing on your computer…")
+                    elif got != said:
+                        # Until the code is typed there, the hub says none is waiting.
+                        said = got
+                        status.update(
+                            "Waiting for the code to be typed on your computer…"
+                            if got.startswith("No code")
+                            else f"Waiting for your computer: {got}"
+                        )
+                if joined and (made := pairing.landed(code)) is not None:
                     console.print(
                         f"[green]Paired[/green] with '{made.name}', key "
                         f"[cyan]{pairing.fingerprint(made.key)}[/cyan]. Check that your computer shows the same key."
@@ -527,18 +574,57 @@ def runner_pairings(as_json: bool = False) -> None:
     console.print(table)
 
 
+def _leave_hub() -> None:
+    """Tell the hub this machine joined to drop it, then forget its token."""
+    import httpx
+
+    from mycelium.runner import pairing
+
+    paired = pairing.paired_hub()
+    if paired is None:
+        console.print("[dim]This machine hasn't joined a hub by pairing.[/dim]")
+        return
+    headers = {pairing.MACHINE_HEADER: paired.token}
+    try:
+        resp = httpx.delete(f"{paired.hub}/api/pairing/self", headers=headers, timeout=10.0)
+        told = resp.status_code in (204, 403)  # 403: it had already dropped this machine
+    except httpx.HTTPError:
+        told = False
+    pairing.forget_paired_hub()
+    if told:
+        console.print(f"[green]Left[/green] {paired.hub}. It no longer answers this machine.")
+    else:
+        console.print(
+            f"[yellow]Forgot[/yellow] {paired.hub}, but couldn't reach it to say so. "
+            f"Remove '{paired.name}' under [[hub.paired_machines]] in that computer's config.toml."
+        )
+
+
 @doc_ref(
-    usage="mycelium runner unpair <name>",
-    desc="Remove a pairing. That computer's requests need approval again.",
+    usage="mycelium runner unpair <name> | --hub",
+    desc="Remove a pairing, or leave the hub this machine joined by pairing.",
     group="agent",
 )
 @app.command("unpair")
 def runner_unpair(
-    name: str = typer.Argument(..., help="The paired computer's name, or its key id"),
+    name: str | None = typer.Argument(None, help="The paired computer's name, or its key id"),
+    hub: bool = typer.Option(
+        False, "--hub", help="Leave the hub this machine joined with `runner pair --hub`"
+    ),
 ) -> None:
-    """Remove a pairing. It takes effect immediately."""
+    """Remove a pairing. It takes effect immediately.
+
+    With --hub, this machine leaves the hub it joined: the hub drops it and its
+    token, and nothing from this machine reaches that hub until it pairs again.
+    """
     from mycelium.runner import pairing
 
+    if hub:
+        _leave_hub()
+        return
+    if not name:
+        console.print("[red]Name the paired computer, or use --hub to leave the hub.[/red]")
+        raise typer.Exit(2)
     try:
         gone = pairing.remove(name)
     except pairing.PairingError as e:

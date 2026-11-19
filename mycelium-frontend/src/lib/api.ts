@@ -1933,6 +1933,16 @@ export async function restartMachineAgents(
   });
 }
 
+/** Hand the desktop app's hub a code a machine printed with `runner pair --hub`,
+ *  so for ten minutes it lets that machine connect and pair. This computer only. */
+export async function expectPairing(code: string): Promise<{ offer: string; until: string }> {
+  return apiFetch<{ offer: string; until: string }>(`/api/pairing/expect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+}
+
 /** Ask the machine that printed a pairing code to pair this device; follow the job it returns. */
 export async function pairRunner(body: {
   code_id: string;

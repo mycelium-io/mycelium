@@ -61,13 +61,14 @@ PANE_ENV = "HERDR_PANE_ID"
 #: What the runner sets in each pane it starts an agent in.
 AGENT_PANE_ENV = "MYCELIUM_AGENT_PANE"
 
-FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DESKTOP, DEFAULT = (
+FLAG, ENVIRONMENT, PANE, MEMBERSHIP, MACHINE, DESKTOP, PAIRED, DEFAULT = (
     "flag",
     "environment",
     "pane",
     "membership",
     "machine",
     "desktop app",
+    "paired hub",
     "default",
 )
 
@@ -278,10 +279,48 @@ def _desktop_hub_over(files_hub: str | None) -> str | None:
     return joined if own in ("", DEFAULT_HUB) or here else None
 
 
+#: Names for this computer in a hub's address.
+_LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
+
+
+def _answers(host: str, port: int) -> bool:
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=0.3):
+            return True
+    except OSError:
+        return False
+
+
+def follow_paired_hub(url: str) -> str:
+    """The hub this machine is paired with, in place of ``url`` when ``url``
+    is an address on this computer where nothing answers; ``url`` otherwise.
+
+    An agent keeps the address it was started with. One started while the
+    machine reached its hub through a tunnel on this computer still names that
+    address after the machine pairs with the hub and the tunnel goes, and
+    pairing is how this machine reaches its hub now (``runner pair --hub``).
+    """
+    from mycelium.runner import pairing
+
+    paired = pairing.paired_hub()
+    if paired is None:
+        return url
+    now = urlparse(url)
+    if now.hostname not in _LOCAL_HOSTS or now.port is None:
+        return url
+    if _answers(now.hostname, now.port):
+        return url
+    return paired.hub
+
+
 def hub(config: MyceliumConfig) -> Answer:
     """Which hub. ``config.server.api_url`` already holds the answer; this says why."""
     if os.environ.get(HUB_ENV):
-        return Answer(os.environ[HUB_ENV], ENVIRONMENT)
+        url = os.environ[HUB_ENV]
+        followed = follow_paired_hub(url)
+        return Answer(followed, ENVIRONMENT if followed == url else PAIRED)
     member = find_membership()
     if member is not None:
         return Answer(member.hub, MEMBERSHIP)

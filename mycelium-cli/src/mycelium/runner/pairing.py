@@ -489,3 +489,85 @@ def signed(job: dict[str, Any], *, runner: str, base: Path | None = None) -> tup
     if not isinstance(fields, dict):
         raise Refused("the signature is malformed")
     return pairing, fields
+
+
+# ── the hub this machine is paired with ──────────────────────────────────────
+#
+# A machine connects to someone's desktop-app hub only by pairing with it
+# (``mycelium runner pair --hub <url>``): the same code that pairs the app's
+# device here also proves to the hub that this machine is the one the person
+# meant. The hub then signs this machine a token, kept in
+# ``~/.mycelium/paired-hub.json`` (0600), which every request to that hub
+# carries (``client.machine_headers``): the runner's and its agents'.
+
+#: The header a paired machine's requests carry its token in.
+MACHINE_HEADER = "X-Mycelium-Machine"
+#: Seconds between knocks while the code waits to be typed in the app.
+KNOCK_EVERY_S = 2.0
+
+
+@dataclass(frozen=True)
+class PairedHub:
+    """The hub this machine is paired with, and its token for it."""
+
+    hub: str
+    name: str
+    token: str
+
+
+def paired_hub_path() -> Path:
+    return Path.home() / ".mycelium" / "paired-hub.json"
+
+
+def paired_hub() -> PairedHub | None:
+    raw = _read(paired_hub_path())
+    if not isinstance(raw, dict):
+        return None
+    hub, name, token = raw.get("hub"), raw.get("name"), raw.get("token")
+    if not all(isinstance(v, str) and v for v in (hub, name, token)):
+        return None
+    return PairedHub(hub=str(hub), name=str(name), token=str(token))
+
+
+def save_paired_hub(paired: PairedHub) -> None:
+    _write(paired_hub_path(), asdict(paired))
+
+
+def forget_paired_hub() -> None:
+    with contextlib.suppress(OSError):
+        paired_hub_path().unlink()
+
+
+def connect_message(offer: str, name: str, at: int, nonce: str) -> bytes:
+    """What a knock's proof is an HMAC of (the hub checks the same)."""
+    return f"mycelium-connect-v1\n{offer}\n{name}\n{at}\n{nonce}".encode()
+
+
+def knock_body(code: str, name: str, *, now: datetime | None = None) -> dict[str, Any]:
+    """A knock on the hub: this machine's name, with an HMAC keyed by the code."""
+    clean = normalize_code(code)
+    offer = clean[:OFFER_ID_LEN]
+    at = int((now or _now()).timestamp())
+    nonce = secrets.token_hex(12)
+    mac = hmac.new(derive(clean), connect_message(offer, name, at, nonce), "sha256")
+    return {"offer": offer, "name": name, "at": at, "nonce": nonce, "proof": b64url(mac.digest())}
+
+
+def knock(hub: str, code: str, name: str, *, transport: Any = None) -> PairedHub | str:
+    """Knock on ``hub`` once: the pairing when the code has been typed in the
+    app there, else what the hub said (it waits, or it refused)."""
+    import httpx
+
+    body = knock_body(code, name)
+    try:
+        with httpx.Client(base_url=hub, timeout=10.0, transport=transport) as http:
+            resp = http.post("/api/pairing/connect", json=body)
+    except httpx.HTTPError as e:
+        return f"can't reach {hub}: {e}"
+    if resp.status_code != 200:
+        try:
+            return str(resp.json().get("detail") or resp.status_code)
+        except ValueError:
+            return f"the hub answered {resp.status_code}"
+    got = resp.json()
+    return PairedHub(hub=hub, name=str(got["machine"]["name"]), token=str(got["token"]))

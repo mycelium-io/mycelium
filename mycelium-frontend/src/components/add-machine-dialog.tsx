@@ -9,13 +9,17 @@
  * - **Pair** a remote machine: `mycelium runner pair` there prints a
  *   code, and entering it here pairs this browser's device key with it, so
  *   requests from this browser start there without approval (`device-key.ts`).
+ *   In the desktop app, the same code also lets a machine that isn't connected
+ *   yet join this computer's hub (`runner pair --hub`): the hub is handed the
+ *   code, waits for the machine's proof of it, and the device pairing follows
+ *   once the machine is connected.
  * - **Add** a machine you use, by the id `mycelium runner` prints: it is
  *   listed here, and asks you there before it starts anything.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, KeyRound, Laptop, Loader2 } from "lucide-react";
-import { pairRunner } from "@/lib/api";
+import { ApiError, expectPairing, pairRunner } from "@/lib/api";
 import { fingerprint, normalizeCode, pairRequest, useDeviceKeyId } from "@/lib/device-key";
 import { addMachine } from "@/lib/my-machines";
 import { desktopMachine, useIsDesktop } from "@/lib/desktop";
@@ -27,6 +31,13 @@ import { AddMachineCode, CONNECT_COMMAND } from "@/components/runner-fields";
 import { cn } from "@/lib/utils";
 
 export const PAIR_COMMAND = "mycelium runner pair";
+/** For a machine that isn't connected to this computer's hub yet. */
+export const JOIN_COMMAND = "mycelium runner pair --hub http://<this computer's address>:3718";
+/** How long, and how often, the app waits for a machine to connect with the code. */
+const JOIN_WAIT_MS = 10 * 60 * 1000;
+const JOIN_EVERY_MS = 2000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type Way = "pair" | "add";
 
@@ -115,6 +126,16 @@ function PairForm({ onClose }: { onClose: () => void }) {
     revalidate();
   }, [done, pending, revalidate]);
 
+  // Set while waiting for a machine to join this computer's hub; cleared to stop.
+  const [joining, setJoining] = useState(false);
+  const live = useRef(true);
+  useEffect(
+    () => () => {
+      live.current = false;
+    },
+    [],
+  );
+
   const pair = async () => {
     if (!clean || !deviceName || busy) return;
     setBusy(true);
@@ -122,11 +143,31 @@ function PairForm({ onClose }: { onClose: () => void }) {
     setPending(null);
     try {
       const { body } = await pairRequest(clean, deviceName);
-      const queued = await pairRunner(body);
+      let queued;
+      try {
+        queued = await pairRunner(body);
+      } catch (e) {
+        // No machine connected here printed it. In the app, it may be one
+        // joining this computer's hub: hand the hub the code and wait for it.
+        if (!desktop || !(e instanceof ApiError) || e.status !== 404) throw e;
+        await expectPairing(clean);
+        setJoining(true);
+        const until = Date.now() + JOIN_WAIT_MS;
+        while (live.current && !queued && Date.now() < until) {
+          await sleep(JOIN_EVERY_MS);
+          try {
+            queued = await pairRunner(body);
+          } catch (again) {
+            if (!(again instanceof ApiError) || again.status !== 404) throw again;
+          }
+        }
+        if (!queued) throw new Error("The machine didn't connect. Check its address and run the command again.");
+      }
       setPending({ runner: queued.runner, job: queued.id });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't pair with it");
     } finally {
+      setJoining(false);
       setBusy(false);
     }
   };
@@ -164,6 +205,13 @@ function PairForm({ onClose }: { onClose: () => void }) {
       <div className="space-y-1.5 text-label text-muted-foreground">
         <p>Run this on the remote machine (its runner must be running). It prints a one-time code that expires in 10 minutes.</p>
         <CopyField value={PAIR_COMMAND} className="font-mono" />
+        {desktop && (
+          <p className="text-micro text-faint">
+            A machine that isn&apos;t connected to this computer yet joins it the same way, with{" "}
+            <code className="font-mono">--hub</code> and this computer&apos;s address, for example{" "}
+            <code className="font-mono">{JOIN_COMMAND}</code>. Nothing else lets another machine in.
+          </p>
+        )}
         <p className="text-micro text-faint">
           Add <code className="font-mono">--folder</code>, <code className="font-mono">--cli</code> or{" "}
           <code className="font-mono">--days</code> there to limit what
@@ -214,7 +262,7 @@ function PairForm({ onClose }: { onClose: () => void }) {
         {(busy || waiting) && (
           <span className="flex items-center gap-1.5 text-micro text-muted-foreground">
             <Loader2 className="size-3 animate-spin" />
-            {busy ? "Checking the code…" : "Waiting for the machine…"}
+            {joining ? "Waiting for the machine to connect…" : busy ? "Checking the code…" : "Waiting for the machine…"}
           </span>
         )}
         <Button type="button" variant="ghost" onClick={onClose}>

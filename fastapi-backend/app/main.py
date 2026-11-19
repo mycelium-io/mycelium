@@ -13,6 +13,7 @@ No auth, no heartbeat, no Neo4j, no Yjs, no scheduler.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -49,6 +50,7 @@ from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
 from app.routes.mention_groups import router as mention_groups_router
 from app.routes.messages import router as messages_router
+from app.routes.pairing import router as pairing_router
 from app.routes.participate import router as participate_router
 from app.routes.patterns import router as patterns_router
 from app.routes.protocols import router as protocols_router
@@ -316,7 +318,19 @@ async def lifespan(app: FastAPI):
     if restored_custody:
         logger.info("restored %d custodial session(s) on startup (no re-invite)", restored_custody)
 
+    # The desktop app's hub also listens where its paired machines reach it,
+    # and nowhere else (services/machine_listen.py).
+    from app.services import machine_listen, paired_machines
+
+    listening = None
+    if paired_machines.enabled() and (hub_port := machine_listen.port()) is not None:
+        listening = asyncio.create_task(machine_listen.Listeners(app, hub_port).run())
+
     yield
+    if listening is not None:
+        listening.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await listening
     stop_watcher()
     stop_event_sweep()
     stop_lease_sweep()
@@ -410,6 +424,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Outermost: another machine reaches the desktop app's hub only once paired
+# with it, and a request from one that isn't is refused before anything else,
+# CORS included, sees it (services/machine_gate.py).
+from app.services.machine_gate import MachineGate  # noqa: E402
+
+app.add_middleware(MachineGate)  # ty: ignore[invalid-argument-type]
+
 
 # Core routes. Health endpoints stay top-level for orchestrator probes. Every
 # route a router holds is gated, so the router declares the gate's refusals;
@@ -433,6 +454,7 @@ app.include_router(knowledge_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(board_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")
+app.include_router(pairing_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(participate_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(approvals_router, prefix="/api", responses=GATE_REFUSALS)

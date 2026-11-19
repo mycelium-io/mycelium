@@ -738,6 +738,10 @@ class Supervisor:
             if self.hub_port == HUB_PORT or not port_free(self.hub_port):
                 self.hub_port = self._hub_port_before() or free_port()
             c.running_detail = f"on port {self.hub_port}: another program is using port {HUB_PORT}"
+        # The hub listens for its paired machines on this same port, and keeps
+        # them in this computer's config file (paired_machines on the hub).
+        c.env["MYCELIUM_HUB_PORT"] = str(self.hub_port)
+        c.env["MYCELIUM_PAIRING_CONFIG"] = str(Path.home() / ".mycelium" / "config.toml")
         self._point_cli_here()
 
     def _hub_port_before(self) -> int | None:

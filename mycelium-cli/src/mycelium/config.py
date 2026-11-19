@@ -1025,6 +1025,23 @@ class StatuslineConfig(BaseModel):
     )
 
 
+class HubSection(BaseModel):
+    """The desktop app's hub, as other machines reach it."""
+
+    # ``Any``, as with the widgets: the hub reads and writes it, and a CLI
+    # command never stops over its shape.
+    paired_machines: Any = Field(
+        default=[],
+        description=(
+            "Machines paired with the desktop app's hub, as [[hub.paired_machines]] "
+            "tables: name, id, and optionally address (the machine's own: only from "
+            "here) and listen (this computer's address the hub answers it on). "
+            "Written by pairing (`mycelium runner pair --hub` on that machine, and the "
+            "code typed in the app). Remove an entry to shut that machine out."
+        ),
+    )
+
+
 class StatuslineSection(BaseModel):
     """The desktop app's Widgets card, read and run on this computer only."""
 
@@ -1083,6 +1100,7 @@ class MyceliumConfig(BaseModel):
     a2a: A2aConfig = Field(default_factory=A2aConfig)
     patterns: PatternsConfig = Field(default_factory=PatternsConfig)
     statusline: StatuslineSection = Field(default_factory=StatuslineSection)
+    hub: HubSection = Field(default_factory=HubSection)
 
     model_config = {"arbitrary_types_allowed": True}
     _global_config_path: Path | None = None
@@ -1236,7 +1254,9 @@ class MyceliumConfig(BaseModel):
             env_config["engine"]["runtime"] = engine_runtime
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
-            env_config["server"]["api_url"] = api_url
+            from mycelium.caller import follow_paired_hub
+
+            env_config["server"]["api_url"] = follow_paired_hub(api_url)
         if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
             env_config["slim"]["node_endpoint"] = slim_endpoint
         if slim_master := os.getenv("MYCELIUM_SLIM_MASTER_SECRET"):
