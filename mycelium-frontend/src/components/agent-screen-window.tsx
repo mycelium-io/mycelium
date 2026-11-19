@@ -299,38 +299,15 @@ export function AgentScreenWindow({
             </button>
           </Tooltip>
         )}
-        <Monogram handle={handle} kind="agent" className="size-5 text-[9px]" />
-        <span className="truncate text-label font-medium text-text">@{handle}</span>
+        <span className="truncate text-label font-medium text-text">
+          {onSwitch ? "Agent terminals" : "Agent terminal"}
+        </span>
         <span className="truncate text-micro text-faint">{props.room}</span>
-        {rendered && (
-          <div role="radiogroup" aria-label="Show" className="ml-auto flex flex-none rounded-md border border-border p-0.5">
-            {VIEWS.map(({ view: v, label, Icon }) => (
-              <Tooltip key={v} content={label}>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={shown === v}
-                  aria-label={label}
-                  onClick={() => choose(v)}
-                  className={cn(
-                    "grid size-6 place-items-center rounded text-muted-foreground hover:text-text",
-                    shown === v && "bg-hairline text-text",
-                  )}
-                >
-                  <Icon className="size-3.5" />
-                </button>
-              </Tooltip>
-            ))}
-          </div>
-        )}
         <button
           type="button"
           aria-label={`Close @${handle}'s terminal`}
           onClick={onClose}
-          className={cn(
-            "grid size-6 flex-none place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text",
-            !rendered && "ml-auto",
-          )}
+          className="ml-auto grid size-6 flex-none place-items-center rounded text-muted-foreground hover:bg-hairline hover:text-text"
         >
           <X className="size-3.5" />
         </button>
@@ -338,6 +315,32 @@ export function AgentScreenWindow({
       <div className="flex min-h-0 flex-1">
         {onSwitch && <AgentList room={props.room} current={handle} folded={folded} onSwitch={onSwitch} />}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* The agent shown, named over its own pane, with how to show it. */}
+          <div className="flex h-10 flex-none items-center gap-2 border-b border-border px-3">
+            <Monogram handle={handle} kind="agent" className="size-5 text-[9px]" />
+            <span className="truncate text-label font-medium text-text">@{handle}</span>
+            {rendered && (
+              <div role="radiogroup" aria-label="Show" className="ml-auto flex flex-none rounded-md border border-border p-0.5">
+                {VIEWS.map(({ view: v, label, Icon }) => (
+                  <Tooltip key={v} content={label}>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={shown === v}
+                      aria-label={label}
+                      onClick={() => choose(v)}
+                      className={cn(
+                        "grid size-6 place-items-center rounded text-muted-foreground hover:text-text",
+                        shown === v && "bg-hairline text-text",
+                      )}
+                    >
+                      <Icon className="size-3.5" />
+                    </button>
+                  </Tooltip>
+                ))}
+              </div>
+            )}
+          </div>
           <AgentScreen {...props} view={rendered ? shown : "terminal"} onView={choose} />
         </div>
       </div>
