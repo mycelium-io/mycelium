@@ -14,13 +14,13 @@ function shortVersion(v: string | null): string {
   return v?.match(/\d+(?:\.\d+)+/)?.[0] ?? "";
 }
 
-/** The agent programs found on this machine, and the folder agents started
- *  from Mycelium may work in. */
+/** The agent CLIs herdr can start on this machine, and the folder agents
+ *  started from Mycelium may work in. */
 export function AppAgentsPage() {
   const machine = desktopMachine();
   const { data: state } = useApp<AppState>("get_state");
   const { data: scan, error: scanError } = useApp<{ frameworks?: Framework[] } | Framework[]>("scan_agents");
-  const found = (Array.isArray(scan) ? scan : (scan?.frameworks ?? [])).filter((f) => f.installed);
+  const found = (Array.isArray(scan) ? scan : (scan?.frameworks ?? [])).filter((f) => f.launchable);
   const savedRoot = state?.settings?.roots[0] ?? state?.home ?? "";
   const [picked, setRoot] = useState<string | null>(null);
   const root = picked ?? savedRoot;
@@ -38,16 +38,16 @@ export function AppAgentsPage() {
 
   return (
     <SettingsPage title="Agents" scope={`The agent programs on this ${machine}, and where agents may work.`}>
-      <Section title="Found here">
+      <Section title="Agent CLIs">
         {scanError && <Note tone="error">{String(scanError.message ?? scanError)}</Note>}
         {!scan && !scanError && <Row label="Looking…" />}
         {found.map((f) => (
-          <Row key={f.id} label={f.name} help={f.launchable ? undefined : "herdr can't start this one."}>
+          <Row key={f.id} label={f.name}>
             <Value>{shortVersion(f.version)}</Value>
           </Row>
         ))}
         {scan && found.length === 0 && (
-          <Row label="No agent apps found" help="Install one, like Claude Code, to start agents from Mycelium." />
+          <Row label="No agent CLIs" help={`Needs herdr 0.9.3 or newer running on this ${machine}.`} />
         )}
         {herdr && (
           <Row label="herdr" help="Where agents run.">

@@ -12,6 +12,7 @@ same way everywhere.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -53,6 +54,55 @@ EXIT_POLL_S = 1.0
 #: the start, and keeps it named until the agent is ready or gone; before
 #: taking it, herdr's CLI waits at most 2s for the pane's shell, then answers.
 EXIT_GRACE_S = 3.0
+#: How long a started agent's screen gets to draw before anything is typed into
+#: it, how often it is looked at, and how many looks in a row must find it
+#: unchanged. herdr reads an agent CLI as ready once it is running, which for
+#: some is before their screen takes input, and what is typed then is lost.
+DRAW_WAIT_S = 10.0
+DRAW_POLL_S = 0.25
+DRAW_STEADY = 2
+
+
+def wait_drawn(bridge: Any, pane: str, kind: str) -> None:
+    """For a ``kind`` that draws late (``AgentKind.draws_late``), wait until
+    ``pane``'s screen has drawn and stopped changing, up to :data:`DRAW_WAIT_S`,
+    so what is typed next reaches the agent. Any other kind's screen isn't read.
+
+    Only whether the screen changed is looked at, never what it says, and only
+    here: nothing read leaves this machine."""
+    if not of_kind(kind).draws_late:
+        return
+    deadline = time.monotonic() + DRAW_WAIT_S
+    last: str | None = None
+    steady = 0
+    while time.monotonic() < deadline:
+        screen = bridge.read_pane(pane, lines=40)
+        steady = steady + 1 if screen and screen == last else 0
+        if steady >= DRAW_STEADY:
+            return
+        last = screen
+        time.sleep(DRAW_POLL_S)
+
+
+def shell_said_not_found(screen: str | None, kind: str) -> bool:
+    """Whether a pane's shell said it has no command for ``kind``'s CLI, as it
+    does when that CLI isn't installed or the shell's PATH doesn't reach it:
+    zsh's ``command not found: opencode``, bash's ``opencode: command not
+    found``, fish's ``Unknown command: opencode``.
+
+    Read on this machine, after a start whose CLI exited before it came up, to
+    pick what the start says; only the yes or no leaves it."""
+    if not screen:
+        return False
+    for command in of_kind(kind).binaries or (kind,):
+        name = re.escape(command)
+        if re.search(
+            rf"command not found: {name}\b|\b{name}: command not found|"
+            rf"Unknown command:? '?{name}\b|\b{name}: not found",
+            screen,
+        ):
+            return True
+    return False
 
 
 def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str] | None) -> None:
@@ -67,6 +117,11 @@ def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str]
     second, before the first look. Either way :class:`AgentExitedError` says so
     at once. herdr's own start goes on in the background until its timeout,
     finding nothing.
+
+    A CLI that isn't installed never runs at all, and herdr keeps the name on
+    the pane, as ``unknown``, until its timeout. So while herdr reads it as
+    unknown, the pane is also read for the shell saying it has no such command
+    (:func:`shell_said_not_found`), which ends the start at once too.
     """
     done = threading.Event()
     failed: list[BaseException] = []
@@ -89,6 +144,10 @@ def _start_watched(bridge: Any, name: str, kind: str, pane: str, args: list[str]
             continue
         if agent is not None:
             seen = True
+            if agent.get("agent_status") == "unknown" and shell_said_not_found(
+                bridge.read_pane(pane, lines=40), kind
+            ):
+                raise AgentExitedError(f"{kind}'s command wasn't found in pane {pane}")
         elif seen or time.monotonic() - began >= EXIT_GRACE_S:
             raise AgentExitedError(f"{kind} exited before it came up in pane {pane}")
     if failed:
@@ -186,6 +245,7 @@ def start_unblocked(
     left open: what it waits on is the person's to answer.
     """
     agent = start_when_ready(bridge, handle, kind, pane, room=room, resume=resume)
+    wait_drawn(bridge, pane, kind)
     passed: list[str] = []
     seen = bridge.past_first_run(pane, kind, passed)
     if seen:

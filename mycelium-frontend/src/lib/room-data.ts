@@ -20,12 +20,18 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { EMPTY_LAYOUT, type RoomFolders } from "@/lib/room-folders";
+import type { KnowledgeGraph } from "@/lib/knowledge";
 import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { unstable_serialize, useSWRConfig, type SWRConfiguration } from "swr";
 import useSWRInfinite from "swr/infinite";
 import {
   fetchA2aBridge,
+  fetchAgentsRunning,
+  type AgentRunning,
   fetchEpisodes,
+  fetchSubagents,
+  type Subagent,
+  fetchKnowledge,
   fetchMyPaused,
   fetchMemory,
   fetchMemorySummaries,
@@ -106,6 +112,8 @@ const POLL = {
   // the poll only catches a missed one.
   verifierFlags: 60_000,
   uploads: 30_000,
+  // A runner reports its agents' states with every heartbeat.
+  running: 30_000,
   // Read only while a conductor summon is being written; a room's own flows
   // change about as often as its skills.
   protocols: 60_000,
@@ -188,7 +196,8 @@ type RoomResource =
   | "board-closed"
   | "waiting"
   | "a2a"
-  | "verifier-flags";
+  | "verifier-flags"
+  | "running";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
 function roomKey(room: string, resource: RoomResource, ...rest: (string | number)[]) {
@@ -340,6 +349,16 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
     loading,
     refresh,
   };
+}
+
+const NO_RUNNING: AgentRunning[] = [];
+
+/** The room's agents on connected machines: where each runs, its state and
+ *  whether it's kept running. What they use is this machine's alone
+ *  (`useLocalUsage`); the hub never has it. */
+export function useRoomAgentsRunning(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(room, "running", fetchAgentsRunning, NO_RUNNING, POLL.running, opts);
+  return { running: data, loading, refresh };
 }
 
 /** Everyone in a room from the hub's records: its people (recorded when they
@@ -510,6 +529,37 @@ export function useThreadMessages(
     // window already filled is not this, which is why the length is compared.
     loadingOlder: isValidating && hasOlder && depth > messages.length,
   };
+}
+
+/**
+ * The room's subagents by handle (lowercased), ended ones too: the Members
+ * rail lists the ones still running under their parent, and a message from
+ * any of them reads as the parent's subagent. Recorded on the hub, never
+ * read from the handle.
+ */
+export function useRoomSubagents(room: string): Map<string, Subagent> {
+  const { data } = useSWR(
+    room ? (["room", room, "subagents"] as const) : null,
+    () => fetchSubagents(room),
+    { refreshInterval: POLL.members },
+  );
+  return useMemo(() => new Map((data ?? []).map((s) => [s.handle.toLowerCase(), s])), [data]);
+}
+
+const NO_KNOWLEDGE: KnowledgeGraph = { tasks: [], memories: [] };
+
+/**
+ * What the room's team learned (`lib/knowledge.ts`): one read the Memory
+ * panel's graph, a task's lens on it and the task's Memories section all
+ * share. Refreshed with the room's memories, since every piece is one.
+ */
+export function useRoomKnowledge(room: string): KnowledgeGraph {
+  const { data } = useSWR(
+    room ? (["room", room, "knowledge"] as const) : null,
+    () => fetchKnowledge(room),
+    { refreshInterval: POLL.memories },
+  );
+  return data ?? NO_KNOWLEDGE;
 }
 
 /**

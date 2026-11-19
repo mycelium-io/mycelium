@@ -87,6 +87,7 @@ from mycelium.runner.hosts import (
     StartHooks,
 )
 from mycelium.runner.log import failing, log, ms, open_log, recovered
+from mycelium.runner.usage import Usage, end_foreground, total_ram_mb, write_private
 from mycelium.utils.process import pid_alive
 from mycelium_backend_client import Client
 from mycelium_backend_client.api.auth import whoami_api_whoami_get as whoami_api
@@ -123,6 +124,10 @@ from mycelium_backend_client.models import (
 ASK_FIRST = frozenset({"launch", "restart", "adopt", "rename", "resume"})
 #: How much of an agent's instructions the question shows.
 NOTES_PREVIEW = 400
+#: The docs section on an agent CLI that isn't installed.
+MISSING_CLI_DOC = (
+    "https://mycelium-io.github.io/mycelium/guides.html#machines-when-the-agent-cli-isnt-found"
+)
 #: How long a paused agent has to stop working before it's told why, and how
 #: often it's checked meanwhile.
 PAUSE_SETTLE_S = 20.0
@@ -130,6 +135,12 @@ PAUSE_POLL_S = 0.5
 
 #: How often the runner says hello when nothing else has.
 HEARTBEAT_S = 10.0
+#: How often what each agent uses is read again, and where it's written on this
+#: machine, beside the runner's state (``runner_dir()``), for the desktop app.
+USAGE_EVERY_S = 30.0
+USAGE_FILE = "usage.json"
+#: The states an agent has a process in, and so something to measure.
+RUNNING = frozenset({"working", "idle", "blocked"})
 #: How long one long-poll for a job is held by the hub.
 POLL_S = 25.0
 #: How often herdr presence and doorbells are synced.
@@ -559,6 +570,19 @@ class Runner:
         #: ``{(room, handle): (can_reply, why)}`` for each agent here the
         #: runner has a verdict on, sent with every heartbeat.
         self.can_reply: dict[tuple[str, str], tuple[bool, str | None]] = {}
+        #: What each agent's pane uses (``runner/usage.py``), read every
+        #: ``USAGE_EVERY_S`` and written to ``usage.json`` on this machine for
+        #: the desktop app. Never in a heartbeat: none of it goes to the hub.
+        self._usage = Usage()
+        self._usage_path = self._state_path.with_name(USAGE_FILE)
+        self._usage_read_at = 0.0
+        self._usage_by_pane: dict[str, dict[str, Any]] = {}
+        #: ``{(room, handle): when it was last seen working}``, wall time, for
+        #: how long it has been idle. An agent not seen working since the runner
+        #: started has been idle at least since then.
+        self._last_working: dict[tuple[str, str], float] = {}
+        self._started_at = time.time()
+        self._ram_total_mb = total_ram_mb()
         #: ``{(room, handle): when its token was last checked with the hub}``.
         self._checked: dict[tuple[str, str], float] = {}
 
@@ -618,7 +642,83 @@ class Runner:
             self.log.print(f"[dim]couldn't read this machine's agents: {e}[/dim]")
             return None
         recovered(log, "machine report")
+        self._count_subagents(report)
+        self._note_usage(report)
         return report
+
+    def _note_usage(self, report: dict[str, Any]) -> None:
+        """What each agent here uses (RAM, CPU, processes, how long it has
+        been idle) and this machine's memory, written to ``usage.json`` beside
+        the runner's state for the desktop app on this machine to read. The
+        report itself is left as it was: none of this goes to the hub.
+
+        Read again every ``USAGE_EVERY_S``; a read that fails writes no numbers
+        and never stops the heartbeat.
+        """
+        agents = [a for w in report.get("workspaces") or [] for a in w.get("agents") or []]
+        now = time.time()
+        for agent in agents:
+            if agent.get("state") == "working":
+                self._last_working[(agent.get("room"), agent.get("handle"))] = now
+        if time.monotonic() - self._usage_read_at < USAGE_EVERY_S:
+            return
+        self._usage_read_at = time.monotonic()
+        running = {a["pane"] for a in agents if a.get("pane") and a.get("state") in RUNNING}
+        infos: dict[str, dict[str, Any]] = {}
+        for pane in running:
+            try:
+                infos[pane] = self.bridge.process_info(pane)
+            except HerdrError:
+                continue
+        try:
+            self._usage_by_pane = self._usage.read(infos)
+        except Exception as e:  # noqa: BLE001 - numbers are extra; the heartbeat goes anyway
+            self.log.print(f"[dim]couldn't read what agents use: {e}[/dim]")
+            self._usage_by_pane = {}
+        rows = []
+        for agent in agents:
+            key = (agent.get("room"), agent.get("handle"))
+            working = agent.get("state") == "working"
+            since = self._last_working.get(key, self._started_at)
+            pane = agent.get("pane") or ""
+            used = self._usage_by_pane.get(pane) if pane in running else None
+            rows.append(
+                {
+                    "room": agent.get("room"),
+                    "handle": agent.get("handle"),
+                    "pane": pane or None,
+                    "state": agent.get("state"),
+                    "idle_since": None
+                    if working
+                    else datetime.fromtimestamp(since, UTC).isoformat(timespec="seconds"),
+                    **(used or {"ram_mb": None, "cpu": None, "up_s": None, "processes": []}),
+                }
+            )
+        body = {
+            "at": _now(),
+            "runner": self.id,
+            "ram_total_mb": self._ram_total_mb,
+            "agents": rows,
+        }
+        try:
+            write_private(self._usage_path, json.dumps(body))
+        except OSError as e:
+            self.log.print(f"[dim]couldn't write what agents use: {e}[/dim]")
+
+    def _count_subagents(self, report: dict[str, Any]) -> None:
+        """Each agent's open and finished subagent steps, as the session
+        follower counted them: numbers only, so its subagents end when their
+        steps do."""
+        follower = getattr(self, "_follower", None)
+        if follower is None:
+            return
+        opened = dict(follower.subagents_open)
+        finished = dict(follower.subagents_finished)
+        for workspace in report.get("workspaces") or []:
+            for agent in workspace.get("agents") or []:
+                key = (agent.get("room"), agent.get("handle"))
+                agent["subagents_open"] = opened.get(key)
+                agent["subagents_finished"] = finished.get(key)
 
     def _restartable(self, spec: dict[str, Any]) -> list[this_machine.Agent]:
         """The agents a ``restart`` job names, read now, each one restartable."""
@@ -906,12 +1006,12 @@ class Runner:
                 self.state.save(self._state_path)
 
     def framework(self, framework_id: str) -> agents.AgentKind:
-        known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
-        # One the scan didn't find is still started: herdr types its command at
-        # the person's own prompt, whose PATH may have it.
-        if known is None or found is None:
+        if found is None:
             raise JobError(f"{framework_id} is not an agent CLI {self.label} knows.")
+        # A kind herdr can start that the table doesn't know is started by
+        # herdr's name for it, with nothing of Mycelium's added.
+        known = agents.by_id(framework_id) or of_kind(framework_id)
         if not found.launchable or known.herdr_kind is None:
             host = self.host.name
             raise JobError(
@@ -1067,9 +1167,7 @@ class Runner:
                 session=session,
             )
         except HostError as e:
-            seen = next((f for f in self.found if f.id == known.id), None)
-            missing = seen is not None and not seen.installed
-            raise self._start_failed(e, known.name, handle, missing=missing) from e
+            raise self._start_failed(e, known, handle) from e
         agent = Tracked(
             handle=handle,
             room=room,
@@ -1105,14 +1203,13 @@ class Runner:
             )
         return result
 
-    def _start_failed(
-        self, e: HostError, name: str, handle: str, *, missing: bool = False
-    ) -> JobError:
+    def _start_failed(self, e: HostError, known: agents.AgentKind, handle: str) -> JobError:
         """A start that didn't come up, said as what happened and what to do next.
 
-        ``missing``: the scan didn't find the CLI here. herdr starts it anyway,
-        since the pane's shell may find what the scan didn't; when no agent then
-        appears on the pane, its shell most likely said there's no such command.
+        Nothing looks for a CLI before starting it: herdr types its command in
+        the pane's shell, which finds what a new terminal window would. One the
+        shell had no command for (``e.missing``) is said as not installed, and
+        pointed at the docs section on it.
 
         What the host said stays in the result's ``detail`` and in the log, for
         whoever is debugging; the sentence is for the person who asked.
@@ -1120,6 +1217,7 @@ class Runner:
         from mycelium.integrations.herdr import AgentExitedError, AgentNotReadyError
         from mycelium.integrations.herdr.starting import SHELL_WAIT_S
 
+        name = known.name
         where = (
             f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
         )
@@ -1133,11 +1231,13 @@ class Runner:
                 f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
                 f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
             )
-        elif e.step == STEP_AGENT and missing and isinstance(e.__cause__, AgentExitedError):
+        elif e.step == STEP_AGENT and e.missing:
             why = "missing"
+            command = known.binaries[0] if known.binaries else known.id
             message = (
-                f"{name} isn't installed on {self.label}. {where}, showing what its shell "
-                f"said. Install {name} there, then start @{handle} again."
+                f"{name} isn't installed on {self.label}. Install it, then open a new "
+                f"terminal window there and run `{command}`. When it runs there, add "
+                f"@{handle} again. See {MISSING_CLI_DOC}"
             )
         elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
             # What it printed on the way out is on its screen, which stays on
@@ -1306,6 +1406,52 @@ class Runner:
         return result
 
     def stop_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent: end its process to free its memory, keeping its pane
+        and conversation for a start, or with ``close``, close its pane too.
+
+        A hub that predates the difference sends no ``close``, and meant the
+        stop that closes the pane.
+        """
+        if spec.get("close", True):
+            return self._close_agent(spec)
+        return self._end_agent(str(spec["room"]), str(spec["handle"]))
+
+    def _end_agent(self, room: str, handle: str) -> dict[str, Any]:
+        """End what runs in the agent's pane, leaving the pane and its shell.
+
+        The agent's conversation is its CLI's own session, kept on disk, so a
+        start (a ``restart``) brings it back in it, in this same pane. Its
+        mapping is left as it was: a pane still open retires nobody.
+        """
+        host, pane, kind = self._running(room, handle)
+        before = self._usage_by_pane.get(pane, {}).get("ram_mb")
+        try:
+            host.interrupt(pane, kind)
+        except HostError as e:
+            log.info("stop @%s: couldn't interrupt %s first: %s", handle, pane, e)
+        try:
+            ended = end_foreground(self.bridge.process_info(pane))
+        except HerdrError as e:
+            raise JobError(f"herdr couldn't say what runs in @{handle}'s pane {pane}: {e}") from e
+        with self._lock:
+            agent = self.state.agents.get(f"{room}/{handle}")
+            if agent is not None:
+                agent.status = "stopped"
+                # Stopped where it ran, which is still open: started there
+                # again, it is this agent running again.
+                agent.exited = True
+                agent.detail = "stopped to free its memory; start it to bring it back"
+                agent.stopped_at = _now()
+                self.state.save(self._state_path)
+        self._usage_by_pane.pop(pane, None)
+        self.log.print(
+            f"[yellow]stopped[/yellow] @{handle} in {room} ({pane} kept open"
+            f"{f', {before} MB freed' if before else ''})"
+        )
+        return {"pane": pane, "ended": len(ended), "freed_mb": before, "kept_pane": True}
+
+    def _close_agent(self, spec: dict[str, Any]) -> dict[str, Any]:
+        """Stop an agent and close its pane."""
         key = f"{spec['room']}/{spec['handle']}"
         with self._lock:
             agent = self.state.agents.get(key)
@@ -2027,6 +2173,7 @@ class Runner:
         from mycelium.runner.sessions import SESSIONS_S, Follower
 
         follower = Follower(self.bridge)
+        self._follower = follower
         while not self._stop.wait(SESSIONS_S):
             try:
                 follower.tick()

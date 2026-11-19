@@ -137,13 +137,27 @@ def _no_remembered_session() -> None:
 def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test finds the developer's own agent CLIs in their install folders.
 
-    The scan and ``AgentKind.offers`` look in ``~/.nvm``, Homebrew's folders and
+    ``AgentKind.offers`` and ``run`` look in ``~/.nvm``, Homebrew's folders and
     the like when a CLI isn't on the process's PATH, which in a test is most of
     them. A test that wants one there stubs ``install_dirs``.
     """
-    from mycelium.runner import frameworks
+    from mycelium import terminal_path
 
-    monkeypatch.setattr(frameworks, "install_dirs", list)
+    monkeypatch.setattr(terminal_path, "install_dirs", list)
+
+
+@pytest.fixture(autouse=True)
+def _never_the_real_herdr_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test talks to the developer's own herdr.
+
+    ``HerdrBridge.api`` goes to herdr's socket directly, not through the
+    bridge's stand-in runner, and an agent's pane points ``HERDR_SOCKET_PATH``
+    at the live herdr. So it answers nothing here; a test that wants an answer
+    stubs ``api`` on its bridge.
+    """
+    from mycelium.integrations.herdr import HerdrBridge
+
+    monkeypatch.setattr(HerdrBridge, "api", lambda _self, _method, _params=None: None)
 
 
 # ── SLIM transport ────────────────────────────────────────────────────────────

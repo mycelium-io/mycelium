@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Loader2, Lock, Plus } from "lucide-react";
 import { createRoom } from "@/lib/api";
 import { Kbd } from "@/components/ui/kbd";
+import { MODAL_BACKDROP, ModalDialog } from "@/components/ui/modal-dialog";
 import { usePrincipal } from "@/components/current-user";
 
 interface Props {
@@ -52,78 +53,69 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-6 pt-[12vh]">
-      <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] motion-safe:animate-in motion-safe:fade-in-0"
-        onClick={handleClose}
-        aria-hidden
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="New room"
-        className="relative w-full max-w-md overflow-hidden rounded-lg border border-border bg-elevated shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
-      >
-        <div className="flex h-11 items-center gap-2.5 px-3">
-          {loading ? (
-            <Loader2 className="size-4 flex-shrink-0 animate-spin text-accent" />
-          ) : (
-            <Plus className="size-4 flex-shrink-0 text-faint" />
-          )}
+    <ModalDialog
+      onClose={handleClose}
+      aria-label="New room"
+      className={`mx-auto mt-[12vh] w-[calc(100%-3rem)] max-w-md overflow-hidden rounded-lg border border-border bg-elevated shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 ${MODAL_BACKDROP}`}
+    >
+      <div className="flex h-11 items-center gap-2.5 px-3">
+        {loading ? (
+          <Loader2 className="size-4 flex-shrink-0 animate-spin text-accent" />
+        ) : (
+          <Plus className="size-4 flex-shrink-0 text-faint" />
+        )}
+        <input
+          value={name}
+          onChange={e => {
+            setName(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter") void handleCreate();
+          }}
+          placeholder="Name the room, e.g. design-review"
+          aria-label="Room name"
+          autoFocus
+          data-autofocus
+          spellCheck={false}
+          className="min-w-0 flex-1 bg-transparent text-body text-text placeholder:text-faint focus:outline-none"
+        />
+      </div>
+      {error && (
+        <p role="alert" className="border-t border-border px-3 py-2 text-label break-words text-red">
+          {error}
+        </p>
+      )}
+      {isPrivate && (
+        <p className="border-t border-border px-3 py-2 text-micro text-muted-foreground">
+          Only you see it in the room list. Anyone who knows its name can still open it.
+        </p>
+      )}
+      <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-micro text-faint">
+        <label
+          className="flex cursor-pointer items-center gap-1.5 text-muted-foreground transition-colors hover:text-text"
+          title={principal ? undefined : "Say who you are first: a private room is listed for its owner"}
+        >
           <input
-            value={name}
-            onChange={e => {
-              setName(e.target.value);
-              if (error) setError(null);
-            }}
+            type="checkbox"
+            checked={isPrivate}
+            disabled={!principal}
+            onChange={e => setIsPrivate(e.target.checked)}
             onKeyDown={e => {
               if (e.key === "Enter") void handleCreate();
-              if (e.key === "Escape") handleClose();
             }}
-            placeholder="Name the room, e.g. design-review"
-            aria-label="Room name"
-            autoFocus
-            spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent text-body text-text placeholder:text-faint focus:outline-none"
+            className="size-3 accent-[var(--accent)]"
           />
-        </div>
-        {error && (
-          <p role="alert" className="border-t border-border px-3 py-2 text-label break-words text-red">
-            {error}
-          </p>
-        )}
-        {isPrivate && (
-          <p className="border-t border-border px-3 py-2 text-micro text-muted-foreground">
-            Only you see it in the room list. Anyone who knows its name can still open it.
-          </p>
-        )}
-        <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-micro text-faint">
-          <label
-            className="flex cursor-pointer items-center gap-1.5 text-muted-foreground transition-colors hover:text-text"
-            title={principal ? undefined : "Say who you are first: a private room is listed for its owner"}
-          >
-            <input
-              type="checkbox"
-              checked={isPrivate}
-              disabled={!principal}
-              onChange={e => setIsPrivate(e.target.checked)}
-              onKeyDown={e => {
-                if (e.key === "Enter") void handleCreate();
-                if (e.key === "Escape") handleClose();
-              }}
-              className="size-3 accent-[var(--accent)]"
-            />
-            <Lock className="size-3" />
-            Private
-          </label>
-          <span className="ml-auto flex items-center gap-1">
-            <Kbd size="xs" tone="muted">↵</Kbd> create
-          </span>
-          <span className="flex items-center gap-1">
-            <Kbd size="xs" tone="muted">esc</Kbd> cancel
-          </span>
-        </div>
+          <Lock className="size-3" />
+          Private
+        </label>
+        <span className="ml-auto flex items-center gap-1">
+          <Kbd size="xs" tone="muted">↵</Kbd> create
+        </span>
+        <span className="flex items-center gap-1">
+          <Kbd size="xs" tone="muted">esc</Kbd> cancel
+        </span>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

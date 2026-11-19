@@ -861,7 +861,9 @@ export function RoomDock({
             aria-orientation="vertical"
             aria-label="Resize the open tabs"
             onPointerDown={startResize}
-            className="w-px flex-shrink-0 cursor-col-resize bg-border transition-colors hover:bg-accent"
+            // A 1px line with a 12px strip over it to grab, as the app's
+            // other dividers have (`ui/resizable.tsx`).
+            className="relative z-10 w-px flex-shrink-0 cursor-col-resize touch-none bg-border transition-colors hover:bg-accent after:absolute after:inset-y-0 after:left-1/2 after:w-3 after:-translate-x-1/2 after:content-['']"
           />
         )}
         {/* Always mounted, so the tabs' layout survives having none open. */}

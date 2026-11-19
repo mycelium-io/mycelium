@@ -57,6 +57,10 @@ class AgentKind:
     #: Whether Mycelium can read this CLI's session file for the rendered view
     #: (a converter in this package); a CLI without one shows its terminal only.
     renders: ClassVar[bool] = False
+    #: Whether herdr reads it as ready before its screen takes input, so a start
+    #: waits for the screen to draw before typing its introduction
+    #: (``starting.wait_drawn``). Only these CLIs have their screen looked at for it.
+    draws_late: ClassVar[bool] = False
 
     def session_path(self, folder: str | None, session: str) -> Path | None:  # noqa: ARG002 - a CLI with a converter finds it
         """The file this CLI keeps ``session`` in, begun in ``folder``; ``None``
@@ -90,6 +94,11 @@ class AgentKind:
     def launch_args(self) -> list[str]:
         """Arguments every agent of this kind starts with."""
         return []
+
+    def launch_env(self) -> dict[str, str]:
+        """Environment every agent of this kind starts with, set on the pane it
+        runs in. Only for that pane: never the person's own settings."""
+        return {}
 
     def resume_args(self, session: str) -> list[str] | None:  # noqa: ARG002 - a CLI that can resume says how
         """Arguments that start it in ``session``, its conversation so far; ``None``
@@ -126,7 +135,7 @@ class AgentKind:
     def run(self, *args: str, timeout: float = 15) -> subprocess.CompletedProcess | None:
         """The installed CLI run with ``args``, found and run the way :meth:`offers`
         does; ``None`` when it isn't found or couldn't be run."""
-        from mycelium.runner.frameworks import locate
+        from mycelium.terminal_path import locate
 
         found, search = locate(self.binaries)
         if not found:
@@ -154,13 +163,13 @@ class AgentKind:
         has it: an older one would refuse to start over an option it doesn't
         know, which is worse than starting without it.
 
-        The CLI is found the way the scan finds it (``runner.frameworks.locate``:
-        this process's PATH, then the usual install folders), and its ``--help``
-        runs with that folder first on its PATH: one installed under nvm is often
-        a Node script that needs the ``node`` beside it. One the scan doesn't
-        find is started without the flags.
+        The CLI is found on this process's PATH, then in the folders a
+        terminal's PATH usually adds (``terminal_path.locate``), and its
+        ``--help`` runs with that folder first on its PATH: one installed under
+        nvm is often a Node script that needs the ``node`` beside it. One not
+        found there is started without the flags.
         """
-        from mycelium.runner.frameworks import locate
+        from mycelium.terminal_path import locate
 
         found, search = locate(self.binaries)
         if not found:

@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 # Stable synthetic ids so a room maps to one presence session and
 # repeated (session, handle) joins are idempotent — no database sequence to lean
@@ -98,6 +99,16 @@ class StoredMessage:
     # When this message was last revised by an amendment, folded in on read. The
     # amendment's own row carries None — it is the revision, not a revised thing.
     edited_at: datetime | None = None
+    # The id of the message this one reacts to, when it is an
+    # ``exchange:reaction``, with the emoji and whether it puts it on or takes it
+    # off. The read path folds a reaction into its message
+    # (``persister.collapse_reactions``) and never shows it as a row.
+    reacts: str | None = None
+    reaction: str | None = None
+    reaction_on: bool = True
+    # The emoji on this message, folded in on read: each emoji once, in the order
+    # it was first put on, with who put it on (oldest first).
+    reactions: list[dict[str, Any]] = field(default_factory=list)
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime = field(default_factory=_now)
 

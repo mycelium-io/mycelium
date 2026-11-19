@@ -226,7 +226,7 @@ async def test_what_a_worker_says_is_posted_as_it_said_it(monkeypatch: pytest.Mo
 
     ((env, text),) = _posted(managed)
     assert text == said
-    asking = asked(serialize_content(env, extra={"content": text}))
+    asking = asked(serialize_content(env, extra={"content": text}), _ROOM)
     assert asking == {"agent-2": "mention", "aligner": "mention", "agent-3": "interrupt"}
     assert manager.pings == ["agent-1"]
 

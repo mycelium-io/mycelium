@@ -52,8 +52,10 @@ MEMORY_PAGE = 1000
 
 # The hub's rule (``contracts/mentions.json``, asserted in
 # ``tests/test_mentions_contract.py``): a token at the start of the text or
-# after whitespace, ``(`` or ``<``, and never inside code.
-_MENTION = re.compile(r"(?:^|(?<=[\s(<]))@([!~]?)([A-Za-z0-9][\w-]*)")
+# after whitespace, ``(`` or ``<``, and never inside code. A handle may hold
+# dots but never end on one, and may end in a subagent's ``:name``.
+_PART = r"[A-Za-z0-9](?:[\w.-]*[\w-])?"
+_MENTION = re.compile(rf"(?:^|(?<=[\s(<]))@([!~]?)({_PART}(?::{_PART})?)")
 _MENTION_MODES = {"!": "urgent", "~": "silent"}
 #: ``@here`` and ``@all`` mention a group (``contracts/mentions.json``).
 _GROUPS = frozenset({"here", "all"})

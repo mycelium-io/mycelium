@@ -23,7 +23,7 @@ import pytest
 from rich.console import Console
 
 from mycelium.config import MyceliumConfig
-from mycelium.runner import daemon, frameworks
+from mycelium.runner import daemon
 from mycelium.runner.hosts import OmnigentHost, branch_for
 from tests.conftest import install_stand_in_hub
 
@@ -152,7 +152,6 @@ def omnigent(monkeypatch: pytest.MonkeyPatch) -> Omnigent:
         return f"/usr/bin/{name}" if name in ("claude", "codex", "opencode") else None
 
     monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
     return Omnigent()
 
 

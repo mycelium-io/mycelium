@@ -75,9 +75,9 @@ export function AgentOpenerProvider({ roomName, children }: { roomName: string; 
       {children}
       {opened && (
         <AgentScreenWindow
-          // One per agent, so each opens where that agent's was left.
-          key={opened.handle}
+          // One window: switching agents from its list keeps it where it is.
           onClose={() => setOpened(null)}
+          onSwitch={open}
           room={roomName}
           handle={opened.handle}
           runner={opened.runner}

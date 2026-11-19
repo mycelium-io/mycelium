@@ -280,6 +280,13 @@ class MessageInterrupted(BaseModel):
     at: datetime = Field(..., description="When")
 
 
+class MessageReactions(BaseModel):
+    """One emoji on a message and who put it on, oldest first."""
+
+    emoji: str
+    by: list[str]
+
+
 class MessageRead(BaseModel):
     id: UUID
     # Polymorphic: exactly one of room_name / coordination_session_id is set.
@@ -307,9 +314,26 @@ class MessageRead(BaseModel):
             "None for a message nobody was interrupted with."
         ),
     )
+    reactions: list[MessageReactions] = Field(
+        default_factory=list,
+        description=(
+            "The emoji on it, folded in on read: each emoji once, in the order it "
+            "was first put on, with who put it on."
+        ),
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class MessageReact(BaseModel):
+    """Put an emoji on a message, or take yours off."""
+
+    emoji: str = Field(..., min_length=1, max_length=32, description="The emoji, as itself")
+    on: bool = Field(True, description="False takes your reaction off")
+    sender_handle: str | None = Field(
+        None, description="Who is reacting. Defaults to the token-verified caller."
+    )
 
 
 class MessageInterrupt(BaseModel):
@@ -1017,6 +1041,86 @@ class WhoamiRead(BaseModel):
     handle: str | None = Field(None, description="The verified handle; none on an ungated hub")
     subject: str | None = Field(None, description="The token's subject claim")
     role: str | None = Field(None, description="The principal's role")
+    needs_handle: bool = Field(
+        False,
+        description=(
+            "A person signed in whose sign-in gives no handle yet: they pick one "
+            "(POST /api/whoami/handle) before anything else"
+        ),
+    )
+    suggested: str | None = Field(
+        None, description="With needs_handle, the short handle their sign-in would give"
+    )
+
+
+class HandlePick(BaseModel):
+    """The handle a signed-in person picks for themselves."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
+
+
+class SubagentCreate(BaseModel):
+    """Start a subagent of ``parent``'s, with a handle of its own."""
+
+    name: str = Field(..., min_length=1, max_length=48, description="Its own name: `review`")
+    parent: str | None = Field(
+        None, description="Whose subagent it is; the caller when left out on a gated hub"
+    )
+
+
+class SubagentRead(BaseModel):
+    """An agent's subagent, recorded with its parent."""
+
+    handle: str = Field(..., description="The parent's handle, a colon, its name: `builder:review`")
+    parent: str
+    name: str
+    state: Literal["working", "done", "ended"]
+    started_at: str
+    ended_at: str | None = None
+    ended_by: Literal["finished", "end", "parent", "timeout"] | None = Field(
+        None,
+        description="Why it ended: its step finished, `subagent end`, its parent "
+        "stopped, or it timed out",
+    )
+
+
+class KnowledgeTaskRead(BaseModel):
+    """A task the room's knowledge was learned in."""
+
+    key: str
+    title: str
+
+
+class KnowledgeRead(BaseModel):
+    """One thing the team learned: a memory with a kind."""
+
+    key: str
+    kind: Literal["fact", "finding", "dead-end", "decision"]
+    title: str = Field(..., description="The memory's first line")
+    by: str = Field(..., description="Who wrote it: a person, an agent or a subagent")
+    task: str | None = Field(None, description="The task it was learned in")
+    open: bool = Field(False, description="Still being worked on, rather than settled")
+    derived_from: list[str] = Field(default_factory=list, description="What it came from")
+    relates_to: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    updated_at: str = ""
+    in_task: bool | None = Field(
+        None,
+        description="Through a task's lens: whether the task produced it, rather than "
+        "it being where the task's memories came from or went",
+    )
+
+
+class KnowledgeGraphRead(BaseModel):
+    """What a room's team learned, or one task's lens on it."""
+
+    tasks: list[KnowledgeTaskRead]
+    memories: list[KnowledgeRead]
+
+
+class KnowledgeSettle(BaseModel):
+    key: str = Field(..., min_length=1)
+    handle: str | None = Field(None, description="Who settles it (default: the caller)")
 
 
 class UserCreate(BaseModel):
@@ -1044,6 +1148,13 @@ class UserRead(BaseModel):
     teams: list[str] = Field(default_factory=list)
     notify: str | None = None
     owns: list[OwnedAgentRead] = Field(default_factory=list)
+    was: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Handles this person had before (the one their sign-in gave before "
+            "they had a short one), which past messages still carry"
+        ),
+    )
 
 
 class RoomFolder(BaseModel):
@@ -1135,9 +1246,48 @@ class AgentRenameRead(BaseModel):
 
 
 class AgentControl(BaseModel):
-    """Pause, resume or stop one agent. Only its owner may."""
+    """Pause, resume, stop or start one agent. Only its owner may."""
 
     by: str | None = Field(None, description="Who is asking; the verified caller wins")
+    close: bool = Field(
+        False,
+        description=(
+            "With stop: close its pane too. Without it, a stop ends its process to free "
+            "its memory and keeps its pane for a start"
+        ),
+    )
+
+
+class AgentKeep(BaseModel):
+    """Keep an agent running when agents are stopped in bulk, or stop keeping it."""
+
+    by: str | None = Field(None, description="Who is asking; the verified caller wins")
+    keep: bool = Field(True, description="False to stop keeping it")
+
+
+class AgentRunningRead(BaseModel):
+    """One agent on a machine: where it runs and in what state, for stopping and
+    starting agents. What it uses never comes here; the desktop app on its own
+    machine reads that there."""
+
+    room: str
+    handle: str
+    owner: str | None = None
+    #: herdr's state on its machine, or ``paused`` when its owner paused it.
+    state: Literal["working", "idle", "blocked", "paused", "stopped", "gone", "unknown"]
+    kind: str | None = None
+    runner: str
+    machine: str
+    #: Its herdr pane, for opening its terminal on that machine.
+    pane: str | None = None
+    keep: bool = False
+    restartable: bool = False
+
+
+class AgentsRunningRead(BaseModel):
+    """Every agent a connected machine runs, with its state and machine."""
+
+    agents: list[AgentRunningRead] = Field(default_factory=list)
 
 
 class AgentsControl(BaseModel):
@@ -1163,10 +1313,12 @@ class AgentControlRead(BaseModel):
     handle: str
     #: The pause it has now: ``None`` once resumed or stopped.
     paused: PauseRead | None = None
-    #: The machine asked to interrupt or stop it, and that job. ``None`` when no
+    #: The machine asked to interrupt, stop or start it, and that job. ``None`` when no
     #: connected machine runs it (a pause still holds its wakes).
     runner: str | None = None
     job: str | None = None
+    #: Whether bulk stops leave it out.
+    keep: bool | None = None
 
 
 class AgentsControlRead(BaseModel):
@@ -1287,6 +1439,21 @@ class MachineAgentRead(BaseModel):
     resumes: bool = Field(
         False,
         description="A restart brings it back in its own session, keeping its conversation",
+    )
+    subagents_open: int | None = Field(
+        None,
+        description=(
+            "How many subagent steps are open in its session file, a count and never "
+            "their text; null when its CLI's session file isn't read"
+        ),
+    )
+    subagents_finished: int | None = Field(
+        None,
+        description=(
+            "How many subagent steps its session has finished since the runner first "
+            "read it, a count that only goes up (it starts again when the runner "
+            "does); null when its CLI's session file isn't read"
+        ),
     )
 
 

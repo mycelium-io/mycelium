@@ -96,6 +96,53 @@ def test_a_fresh_home_in_client_mode_uses_the_app_s_hub(isolated_home: Path):
     assert ("hub", APP_HUB, caller.DESKTOP) in caller.explain(config)
 
 
+# ── an agent given the app's hub before the app restarted ───────────────────
+
+
+def _app_hub_on(home: Path, port: int) -> None:
+    folder = home / ".mycelium"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / caller.STARTED_FILE).write_text(json.dumps({"hub": {"pid": 1, "port": port}}))
+
+
+def _closed_port() -> int:
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_an_agent_s_old_address_for_the_app_s_hub_finds_where_it_is_now(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Started with the hub on one port, the agent keeps that address; the app
+    restarted and its hub came back on another."""
+    old = _closed_port()
+    _app_hub_on(isolated_home, 51206)
+    monkeypatch.setenv(caller.HUB_ENV, f"http://127.0.0.1:{old}")
+    config = MyceliumConfig.load()
+    assert config.server.api_url == "http://127.0.0.1:51206"
+    assert caller.hub(config) == caller.Answer("http://127.0.0.1:51206", caller.ENVIRONMENT)
+
+
+def test_an_address_that_answers_or_isn_t_this_computer_is_kept(
+    isolated_home: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import socket
+
+    _app_hub_on(isolated_home, 51206)
+    with socket.socket() as live:
+        live.bind(("127.0.0.1", 0))
+        live.listen(1)
+        url = f"http://127.0.0.1:{live.getsockname()[1]}"
+        assert caller.follow_app_hub(url) == url, "a hub someone runs here, answering"
+    assert caller.follow_app_hub("https://hub.example.com:3718") == "https://hub.example.com:3718"
+    (isolated_home / ".mycelium" / caller.STARTED_FILE).unlink()
+    gone = f"http://127.0.0.1:{_closed_port()}"
+    assert caller.follow_app_hub(gone) == gone, "no app hub running: nothing to follow"
+
+
 def test_whoami_sources_says_the_hub_came_from_the_app(isolated_home: Path):
     _app(isolated_home)
     result = runner.invoke(app, ["whoami", "--sources"])
@@ -115,6 +162,14 @@ def test_a_saved_default_hub_is_no_hub_of_its_own(isolated_home: Path):
     """A whole-config save writes the default too; it doesn't hide the app's hub."""
     _app(isolated_home)
     _config_toml(isolated_home, caller.DEFAULT_HUB)
+    assert MyceliumConfig.load().server.api_url == APP_HUB
+
+
+def test_the_app_s_own_hub_saved_earlier_doesn_t_hide_the_hub_it_joins(isolated_home: Path):
+    """Running its own hub, the app points config.toml at it (on whichever
+    port it took). Switched to a team's hub, that local address names none."""
+    _app(isolated_home)
+    _config_toml(isolated_home, "http://127.0.0.1:3718")
     assert MyceliumConfig.load().server.api_url == APP_HUB
 
 

@@ -444,8 +444,8 @@ class TestPing:
         await self._post(client, episode=thread, text="@sec thoughts?")
 
         _ping, content = live.persister.pings[0]
-        assert not asks(content, "sec")
-        assert not asks(content, "api")
+        assert not asks(content, "sec", ROOM)
+        assert not asks(content, "api", ROOM)
 
     @pytest.mark.asyncio
     async def test_a_message_to_the_room_pings_nothing(self, client, room, live):

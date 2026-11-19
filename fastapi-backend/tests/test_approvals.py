@@ -104,8 +104,15 @@ def room(monkeypatch):
     monkeypatch.setattr(manager, "raise_ping", _no_ping)
     monkeypatch.setattr(manager, "refresh_lease", lambda *a, **k: None)
     monkeypatch.setattr(waiting, "_records", lambda _r: managed.persister.log.records)
-    # Builder and lead are agents, Julia and Morgan people; anyone else is unknown.
-    kinds = {"builder": "agent", "lead": "agent", "julia": "user", "morgan": "user"}
+    # Builder and lead are agents, builder:review builder's subagent, Julia and
+    # Morgan people; anyone else is unknown.
+    kinds = {
+        "builder": "agent",
+        "lead": "agent",
+        "builder:review": "subagent",
+        "julia": "user",
+        "morgan": "user",
+    }
     monkeypatch.setattr(principals, "classify_sender", lambda _room, h: kinds.get(h, "unknown"))
     monkeypatch.setattr(participate, "room_exists", lambda _r: True)
     monkeypatch.setattr(participate.actor, "authorize_handle", lambda *a, **k: None)
@@ -393,6 +400,17 @@ class TestAnswering:
             await approvals.answer(ROOM, ask["id"], decision="approved", by=who)
         assert refused.value.status == 403
         assert "agent" in refused.value.detail
+
+    @pytest.mark.asyncio
+    async def test_an_agent_s_subagent_may_not_answer_its_ask(self, room):
+        """Its parent's token may act as it, so counting it as a person would let
+        an agent approve its own work."""
+        ask, _record, _task = await _ask()
+        with pytest.raises(approvals.Refused) as refused:
+            await approvals.answer(ROOM, ask["id"], decision="approved", by="builder:review")
+        assert refused.value.status == 403
+        assert approvals.asked(room.persister.log.records, ROOM)[ask["id"]].answer is None
+        assert len(waiting.waiting(ROOM, "julia", NOW)) == 1, "still waiting on Julia"
 
     @pytest.mark.asyncio
     async def test_a_person_with_no_user_record_may_answer(self, room):

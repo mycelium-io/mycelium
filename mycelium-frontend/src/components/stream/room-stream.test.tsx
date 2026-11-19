@@ -47,6 +47,7 @@ vi.mock("@/lib/stream-hub", () => ({
   },
 }));
 vi.mock("@/lib/room-data", () => ({
+  useRoomSubagents: () => new Map(),
   useRoomThreads: () => new Map([[THREAD, { keys: ["work/zoom"], title: "Zoom and pan" }]]),
   useRoomAgents: () => ({ agents: [] }),
   useMessageThreads: () => new Map(),

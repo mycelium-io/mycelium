@@ -295,6 +295,12 @@ def convert(
             _assistant(line, entries, calls, said, agents)
         elif kind == "user" and not line.get("isSidechain"):
             _user(line, entries, calls)
+        elif kind == "attachment" and not line.get("isSidechain"):
+            # A notification that came while the agent was mid-turn is written
+            # as a queued command, not a message of its own.
+            queued = line.get("attachment")
+            if isinstance(queued, dict) and isinstance(queued.get("prompt"), str):
+                _note_ended(queued["prompt"], calls)
 
     # A call with no result is running if nothing was asked after it, else it was stopped.
     asked_after = False
@@ -441,12 +447,47 @@ def _user(
                 call = calls.get(str(block.get("tool_use_id") or ""))
                 if call is not None:
                     _result(call, block, line)
+                    _note_launch(call, block)
             elif block.get("type") == "text" and isinstance(block.get("text"), str):
                 texts.append(block["text"])
         if texts:
+            _note_ended("\n\n".join(texts), calls)
             _prompt(line, "\n\n".join(texts), entries)
     elif isinstance(content, str):
+        _note_ended(content, calls)
         _prompt(line, content, entries)
+
+
+#: What a step started in the background gets back at once: that it was
+#: launched, not what it did.
+_LAUNCHED = "Async agent launched"
+#: How Claude Code tells the session that a step it started in the background
+#: ended: a message naming the step's tool call, and how it ended.
+_NOTIFIED = re.compile(
+    r"<task-notification>.*?<tool-use-id>\s*(\S+?)\s*</tool-use-id>.*?<status>\s*(\w+)\s*</status>",
+    re.S,
+)
+
+
+def _note_launch(call: dict[str, Any], block: dict[str, Any]) -> None:
+    """Mark a subagent step that runs on in the background: its result coming
+    back is its launch, not its end (``_meta.background``)."""
+    if call.get("name") not in ("Agent", "Task"):
+        return
+    given = call.get("rawInput")
+    flagged = isinstance(given, dict) and given.get("run_in_background") is True
+    if flagged or _LAUNCHED in json.dumps(block.get("content"))[:400]:
+        call["_meta"]["background"] = True
+
+
+def _note_ended(text: str, calls: dict[str, dict[str, Any]]) -> None:
+    """A step started in the background ended: say how on its call
+    (``_meta.ended``). The message itself is the CLI's, not a prompt, so it
+    isn't kept as one."""
+    for call_id, status in _NOTIFIED.findall(text):
+        call = calls.get(call_id)
+        if call is not None:
+            call["_meta"]["ended"] = status
 
 
 #: A paste, as the terminal wraps one; herdr pastes each wake.

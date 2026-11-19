@@ -24,6 +24,7 @@ import { nameOf, useNames } from "@/lib/people";
 import { useRoomRevalidate } from "@/lib/room-data";
 import { Ago } from "@/lib/relative-time";
 import { Button } from "@/components/ui/button";
+import { SendPlaneIcon } from "@/components/send-plane-icon";
 import { cn } from "@/lib/utils";
 
 const KIND_ICON: Record<AskKind, typeof CircleHelp> = {
@@ -184,11 +185,14 @@ export function AskCard({
   if (ask.undo) facts.push(["To undo", ask.undo]);
   const waitsOnMe = mine && !answer;
   const pickedCount = picked.length;
+  const canSend = ask.kind === "question" ? Boolean(note.trim()) : ask.kind === "choose" ? pickedCount > 0 : true;
 
   return (
     <div
       data-ask={ask.id}
-      className={cn("@container mt-1.5 max-w-2xl rounded-lg border bg-surface", waitsOnMe ? "border-yellow/40" : "border-border")}
+      // A hairline like the app's other surfaces: the yellow label and icon say
+      // it waits on you, so the border doesn't shout it in the chat too.
+      className="@container mt-1.5 max-w-2xl rounded-lg border border-border bg-surface"
     >
       <div className="px-3 pt-2.5 pb-2.5">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-micro">
@@ -290,7 +294,13 @@ export function AskCard({
           </div>
         )}
       </div>
-      <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border px-3 py-1.5">
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-1.5 px-3",
+          // The answer field is a frame of its own, so no divider above it.
+          answer ? "min-h-9 border-t border-border py-1.5" : "pb-3",
+        )}
+      >
         {answer ? (
           <div className="min-w-0 flex-1 text-label">
             <p className="text-text">
@@ -310,65 +320,47 @@ export function AskCard({
             {answer.text && <p className="mt-0.5 text-muted-foreground">“{answer.text}”</p>}
           </div>
         ) : (
+          // One field, shaped like the room's composer: the note (or a
+          // question's answer) on top, then a bar inside it with the other
+          // answers and Skip on the left and the main answer on the right,
+          // where the composer's send is.
           <form
-            className="flex min-w-0 flex-1 flex-wrap items-start gap-1.5"
+            className="w-full rounded-lg border border-border2 bg-bg transition-colors focus-within:border-accent"
             onSubmit={(e) => {
               e.preventDefault();
               void send(ask.kind === "approve" ? "approved" : undefined);
             }}
           >
-            {ask.kind === "question" ? (
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                rows={2}
-                placeholder={mine ? "Your answer" : `Answer for ${who(ask.to)}`}
-                aria-label="Your answer"
-                className="min-h-[3.25rem] min-w-0 flex-1 resize-y rounded-md border border-border2 bg-bg px-2 py-1 text-label text-text outline-none placeholder:text-faint focus:border-accent"
-              />
-            ) : (
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={mine ? "Add a note (optional)" : `Answer for ${who(ask.to)} (optional note)`}
-                aria-label="Note"
-                className="h-7 min-w-0 flex-1 basis-40 rounded-md border border-border2 bg-bg px-2 text-label text-text outline-none placeholder:text-faint focus:border-accent"
-              />
-            )}
-            <span className="flex flex-shrink-0 items-center gap-1.5">
-              {ask.kind === "approve" ? (
-                <>
-                  <Button type="submit" size="xs" variant={mine ? "default" : "outline"} disabled={busy}>
-                    <Check className="size-3.5" /> Approve
-                  </Button>
-                  <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void send("declined")}>
-                    Decline
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    type="submit"
-                    size="xs"
-                    variant={mine ? "default" : "outline"}
-                    disabled={busy || (ask.kind === "question" ? !note.trim() : pickedCount === 0)}
-                  >
-                    {ask.kind === "choose" && ask.multiple && pickedCount > 0 ? `Send ${pickedCount}` : "Send"}
-                  </Button>
-                  {/* None of them is an answer too, said on purpose rather
-                      than by sending with nothing ticked. The note goes with it. */}
-                  {ask.kind === "choose" && (
-                    <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void send(undefined, true)}>
-                      None of these
-                    </Button>
-                  )}
-                </>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => {
+                // ⌘↵ sends what was typed or picked. On an approve the note is
+                // as likely a Decline's, so a yes or no is only ever a click.
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && ask.kind !== "approve" && canSend) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={ask.kind === "question" ? 2 : 1}
+              placeholder={
+                ask.kind === "question" ? (mine ? "Your answer" : `Answer for ${who(ask.to)}`) : "Add a note"
+              }
+              aria-label={ask.kind === "question" ? "Your answer" : "Note"}
+              className="block w-full resize-none bg-transparent px-2.5 py-2 text-label text-text outline-none placeholder:text-faint"
+            />
+            <div className="flex items-center gap-1.5 px-1.5 pb-1.5">
+              {ask.kind === "approve" && (
+                <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => void send("declined")}>
+                  <X className="size-3.5" /> Decline
+                </Button>
+              )}
+              {/* None of them is an answer too, said on purpose rather than by
+                  sending with nothing ticked. The note goes with it. */}
+              {ask.kind === "choose" && (
+                <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void send(undefined, true)}>
+                  None of these
+                </Button>
               )}
               {/* Not an answer: the agent carries on with its own judgment. */}
               <Button
@@ -381,7 +373,31 @@ export function AskCard({
               >
                 Skip
               </Button>
-            </span>
+              <span className="ml-auto">
+                {ask.kind === "question" ? (
+                  <button
+                    type="submit"
+                    disabled={busy || !canSend}
+                    aria-label="Send"
+                    className="flex size-7 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent-soft disabled:text-faint disabled:hover:bg-transparent"
+                  >
+                    <SendPlaneIcon className="size-4" />
+                  </button>
+                ) : (
+                  <Button type="submit" size="xs" variant={mine ? "default" : "outline"} disabled={busy || !canSend}>
+                    {ask.kind === "approve" ? (
+                      <>
+                        <Check className="size-3.5" /> Approve
+                      </>
+                    ) : ask.multiple && pickedCount > 0 ? (
+                      `Send ${pickedCount}`
+                    ) : (
+                      "Send"
+                    )}
+                  </Button>
+                )}
+              </span>
+            </div>
           </form>
         )}
         {error && (

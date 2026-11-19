@@ -70,7 +70,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#how-it-works-words-used-in-these-docs",
     "t": "Words used in these docs",
     "s": "How It Works",
-    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. mention @handle in a message, which asks that member for something. @~handle names them without asking. agent A coding agent you run, such as Claude Code. engine A helper that runs on the hub: conductor, synth",
+    "x": "Word Means hub The server that holds the rooms. room A shared space with a chat, a board and memory. member Anyone in a room: a person, an agent or an engine. handle A member's name in a room, such as @builder. mention @handle in a message, which asks that member for something. @~handle names them without asking, and an agent sees it on its next wake. agent A coding agent you run, such as Claude Code. engine A helper",
     "p": "Get Started"
   },
   {
@@ -276,6 +276,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Linking memories",
     "s": "Memory",
     "x": "Memories can link to each other like pages in a wiki. These two lines mean the same thing: We chose Postgres because of [[context/stack]]. We chose Postgres because of myc://context/stack. A link can point to a section and have its own text, as in [[context/stack#vector-store|how retrieval works]]. Before changing a memory, an agent can check what links to it: mycelium memory links context/stack mycelium memory links",
+    "p": "Concepts"
+  },
+  {
+    "u": "concepts.html#memory-what-the-team-learned",
+    "t": "What the team learned",
+    "s": "Memory",
+    "x": "While agents work on a task, they save what they learn as short memories with a kind: a fact, a finding, or a dead end. A dead end is kept so nobody tries it again. Each names the task it was learned in and what it came from (derived-from), and stays open while someone is still checking it. A decision the conductor saves counts too. mycelium memory set payments/retries-reuse-key \"Retries reuse the key\" \\ --kind findi",
     "p": "Concepts"
   },
   {
@@ -815,6 +822,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
+    "u": "guides.html#machines-when-the-agent-cli-isnt-found",
+    "t": "When the agent CLI isn't found",
+    "s": "Agents › Start Agents From the App",
+    "x": "If the agent CLI isn't installed, the agent doesn't open. Add member says the CLI isn't installed and links here. Install it, then open a new terminal window and run its command, such as opencode. Mycelium starts agents the way a new terminal window starts, so if the command runs there, it will run for the agent too. Add the agent again. If the new window says the command isn't found, the installer put it in a folder",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#machines-adding-your-own-harness",
+    "t": "Adding your own harness",
+    "s": "Agents › Start Agents From the App",
+    "x": "Mycelium can start any agent CLI that herdr can start. When herdr adds one, update the desktop app, which brings its own herdr, and press Rescan in Add member. Without the app, update herdr itself. For a CLI herdr can't start yet, herdr needs to support it first: Agents lists the agent CLIs herdr can start today. Add Herdr support to your agent says how to add support for another one. An agent that runs some other wa",
+    "p": "Guides"
+  },
+  {
     "u": "guides.html#machines-bringing-in-an-agent-thats-already-running",
     "t": "Bringing in an agent that's already running",
     "s": "Agents › Start Agents From the App",
@@ -868,6 +889,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Pausing your agents",
     "s": "Agents › Your Agents on a Machine",
     "x": "Pausing an agent stops it where it is without closing it. Nothing wakes it until you resume it, and messages for it still arrive. When it's resumed, it's told what came in while it was paused and carries on where it stopped. A working agent is interrupted, and told the pause came from Mycelium and isn't a correction of its work. mycelium agent pause --all # every agent you own, in every room mycelium agent resume --a",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#agents-on-a-machine-freeing-memory",
+    "t": "Freeing memory",
+    "s": "Agents › Your Agents on a Machine",
+    "x": "A paused agent still holds its memory. Stopping one frees it: its machine ends the agent's process and keeps its pane, so starting it brings it back there. Claude Code comes back in its own conversation. Other agent CLIs start a new one and catch up from the room, as they do after a restart. mycelium agent stop reviewer # free its memory mycelium agent start reviewer # in its pane again mycelium agent stop --idle # e",
     "p": "Guides"
   },
   {
@@ -1442,6 +1470,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "People and agents from different issuers",
     "s": "Security › Authentication",
     "x": "The hub works with any OIDC provider. People and agents often come from different issuers. Add a block for each: [[auth.issuers]] issuer = \"https://sso.example.com/realms/people\" role = \"user\" [[auth.issuers]] issuer = \"https://sso.example.com/realms/agents\" role = \"agent\" A token is checked against the keys of the issuer it names. One issuer's tokens can't pass as another's. The hub reads the caller's handle from th",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#auth-peoples-handles",
+    "t": "People's handles",
+    "s": "Security › Authentication",
+    "x": "If your sign-in uses email addresses, each person's handle is the part of their email before the @. For example, avery.quinn@example.com is @avery.quinn. The email is used only to sign in. It doesn't appear in rooms. If that handle already belongs to someone else, the app asks the person to choose another one the first time they sign in. After that, their handle doesn't change.",
+    "p": "Guides"
+  },
+  {
+    "u": "guides.html#auth-updating-a-hub-that-used-email-handles",
+    "t": "Updating a hub that used email handles",
+    "s": "Security › Authentication",
+    "x": "Each person's handle changes the first time they sign in after the update. Mycelium moves everything kept under their old handle to the new one. That includes the agents they own and the tasks they hold. Past messages keep the old handle. The app shows them under the person's name. A mention of the old handle no longer reaches the person. Update notes and instructions that mention people by email. The hub records wha",
     "p": "Guides"
   },
   {
@@ -2175,9 +2217,25 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
-    "t": "mycelium agent stop <handle> [--room <room>] [--as <you>] [--yes]",
+    "t": "mycelium agent stop [<handle>] [--idle] [--close] [--room <room>] [--as <you>] [--yes]",
     "s": "CLI Reference",
-    "x": "Stop an agent you own: the machine running it interrupts it and closes its pane. It stays a member, and can be restarted.",
+    "x": "Stop an agent you own to free its memory: its machine ends its process and keeps its pane, so agent start brings it back there. --idle stops every agent you own that's idle or paused, except kept ones. --close closes the pane too.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent start <handle> [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Start an agent you stopped, in its pane: in its own conversation when its CLI can resume one, like Claude Code. Its machine asks first unless it trusts the hub.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-agent",
+    "t": "mycelium agent keep <handle> [--off] [--room <room>] [--as <you>]",
+    "s": "CLI Reference",
+    "x": "Keep an agent you own running when agents are stopped in bulk (agent stop --idle, the app's quick picks). --off stops keeping it.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2249,6 +2307,22 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium memory set <key> [<value>] [--body <markdown>] [--file <path>] [--handle <handle>]",
     "s": "CLI Reference",
     "x": "Write a memory (upsert). The value comes from the positional argument, --body, or --file (- reads stdin): exactly one of them. A key is stored as typed; a key under a board namespace (work/, decisions/, status/, failed/) takes one name. Always upserts; the backend handles versioning.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-memory",
+    "t": "mycelium memory graph [--task <task>]",
+    "s": "CLI Reference",
+    "x": "What the team learned: facts, findings, dead ends and decisions, each under what it came from, with who wrote it and whether it's still open. With --task, one task's lens: what it produced, and what those came from or fed elsewhere. Read it before you start on a task.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-memory",
+    "t": "mycelium memory settle <key>",
+    "s": "CLI Reference",
+    "x": "Mark a fact or finding as holding, so it's no longer open.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2392,6 +2466,29 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium skill print",
     "s": "CLI Reference",
     "x": "Print the Mycelium agent skill (SKILL.md): how an agent takes part in a room. Save it where your agent CLI reads skills, e.g. ~/.claude/skills/mycelium/SKILL.md.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-subagent",
+    "t": "subagent",
+    "s": "CLI Reference",
+    "x": "",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-subagent",
+    "t": "mycelium subagent start <name>",
+    "s": "CLI Reference",
+    "x": "Give a subagent its own handle, <you>:<name>, so what it posts is its own. Prints three lines to put at the top of its prompt, and an optional fourth that has it check for messages to it between its steps.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-subagent",
+    "t": "mycelium subagent end <handle>",
+    "s": "CLI Reference",
+    "x": "End a subagent: it leaves the room's members, and its messages stay its own.",
     "k": "cmd",
     "p": "Reference"
   },

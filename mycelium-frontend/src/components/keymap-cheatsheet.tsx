@@ -4,11 +4,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useId, useMemo } from "react";
 import { X } from "lucide-react";
 import { settingHref, useClientSetting } from "@/lib/client-settings";
 import { bindingsInScope, type Binding, type KeyScope } from "@/lib/keymap";
 import { Kbd, KbdChord } from "@/components/ui/kbd";
+import { MODAL_BACKDROP, ModalDialog } from "@/components/ui/modal-dialog";
 
 interface Props {
   open: boolean;
@@ -31,26 +32,20 @@ function groupBindings(bindings: Binding[]): [string, Binding[]][] {
 /** The `?` overlay: every binding live in the current context, read straight
  *  off the keymap so it can't drift from what the keys actually do. */
 export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const restoreTo = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
-    restoreTo.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-    // The sheet is modal, so the app's keybinds are inert while it's up; it
-    // handles its own dismissal.
+    // The sheet is modal, so the app's keybinds are inert while it's up. The
+    // `?` that opened it closes it again, and the dialog handles Escape.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "?") {
+      if (e.key === "?") {
         e.preventDefault();
         onClose();
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      restoreTo.current?.focus?.();
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
   // The person's own keys, so the sheet shows what the keys do for them.
@@ -61,73 +56,67 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-      <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] motion-safe:animate-in motion-safe:fade-in-0"
-        onClick={onClose}
-        aria-hidden
-      />
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Keyboard shortcuts"
-        tabIndex={-1}
-        className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-2xl outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
-      >
-        <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
-          <h2 className="text-ui font-semibold text-text">Keyboard shortcuts</h2>
-          <span className="text-micro text-muted-foreground">
-            Hold <Kbd size="xs">{mac ? "⌥" : "Alt"}</Kbd>{" "}
-            to see each key on the thing it selects. Keys are inert while you&apos;re typing —{" "}
-            <Kbd size="xs">Esc</Kbd> returns to command mode.
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="ml-auto flex size-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-          >
-            <X className="size-4" />
-          </button>
-        </header>
+    <ModalDialog
+      onClose={onClose}
+      aria-labelledby={titleId}
+      // The sheet itself takes focus, so the close button doesn't open with a
+      // focus ring when the sheet was opened from the keyboard.
+      tabIndex={-1}
+      data-autofocus
+      className={`m-auto max-h-[80vh] w-[calc(100%-3rem)] max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-elevated shadow-2xl outline-none open:flex motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 ${MODAL_BACKDROP}`}
+    >
+      <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
+        <h2 id={titleId} className="text-ui font-semibold text-text">Keyboard shortcuts</h2>
+        <span className="text-micro text-muted-foreground">
+          Hold <Kbd size="xs">{mac ? "⌥" : "Alt"}</Kbd>{" "}
+          to see each key on the thing it selects. Keys are inert while you&apos;re typing —{" "}
+          <Kbd size="xs">Esc</Kbd> returns to command mode.
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="ml-auto flex size-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+        >
+          <X className="size-4" />
+        </button>
+      </header>
 
-        <div className="grid min-h-0 flex-1 gap-x-8 gap-y-5 overflow-y-auto p-5 sm:grid-cols-2">
-          {groups.map(([group, bindings]) => (
-            <section key={group}>
-              <h3 className="mb-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">{group}</h3>
-              <dl className="space-y-1">
-                {bindings.map((b) => (
-                  <div key={b.id} className="flex items-baseline gap-3">
-                    <dt className="flex flex-shrink-0 items-baseline gap-1">
-                      <KbdChord size="md" chord={b.keys[0]} mac={mac} />
-                      {b.abbreviate ? (
+      <div className="grid min-h-0 flex-1 gap-x-8 gap-y-5 overflow-y-auto p-5 sm:grid-cols-2">
+        {groups.map(([group, bindings]) => (
+          <section key={group}>
+            <h3 className="mb-2 text-micro font-semibold uppercase tracking-wide text-muted-foreground">{group}</h3>
+            <dl className="space-y-1">
+              {bindings.map((b) => (
+                <div key={b.id} className="flex items-baseline gap-3">
+                  <dt className="flex flex-shrink-0 items-baseline gap-1">
+                    <KbdChord size="md" chord={b.keys[0]} mac={mac} />
+                    {b.abbreviate ? (
+                      <>
+                        <span className="text-micro text-faint">…</span>
+                        <KbdChord size="md" chord={b.keys[b.keys.length - 1]} mac={mac} />
+                      </>
+                    ) : (
+                      b.keys.length > 1 && (
                         <>
-                          <span className="text-micro text-faint">…</span>
-                          <KbdChord size="md" chord={b.keys[b.keys.length - 1]} mac={mac} />
+                          <span className="text-micro text-faint">or</span>
+                          <KbdChord size="md" tone="muted" chord={b.keys[1]} mac={mac} />
                         </>
-                      ) : (
-                        b.keys.length > 1 && (
-                          <>
-                            <span className="text-micro text-faint">or</span>
-                            <KbdChord size="md" tone="muted" chord={b.keys[1]} mac={mac} />
-                          </>
-                        )
-                      )}
-                    </dt>
-                    <dd className="min-w-0 text-label text-muted-foreground">{b.label}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-          ))}
-        </div>
-        <footer className="border-t border-border px-5 py-2.5 text-micro text-muted-foreground">
-          <Link href={settingHref("keys")} onClick={onClose} className="text-accent hover:underline">
-            Change shortcuts…
-          </Link>
-        </footer>
+                      )
+                    )}
+                  </dt>
+                  <dd className="min-w-0 text-label text-muted-foreground">{b.label}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
       </div>
-    </div>
+      <footer className="border-t border-border px-5 py-2.5 text-micro text-muted-foreground">
+        <Link href={settingHref("keys")} onClick={onClose} className="text-accent hover:underline">
+          Change shortcuts…
+        </Link>
+      </footer>
+    </ModalDialog>
   );
 }

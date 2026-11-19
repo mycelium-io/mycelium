@@ -50,6 +50,7 @@ from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
     read_memory_file,
+    room_path,
     system_meta,
 )
 
@@ -293,7 +294,15 @@ def _describe(room: str, key: str, meta: dict, now: datetime) -> dict:
 
 
 async def _write(
-    room: str, key: str, meta: dict, content: str, patch: dict, handle: str, *, notify: bool = True
+    room: str,
+    key: str,
+    meta: dict,
+    content: str,
+    patch: dict,
+    handle: str,
+    *,
+    notify: bool = True,
+    keep_version: bool = False,
 ) -> dict:
     """Put a assignment change on the row, through the canonical memory upsert.
 
@@ -303,7 +312,9 @@ async def _write(
     """
     from app.services.fields import upsert_patch
 
-    fresh_meta = await upsert_patch(room, key, meta, content, patch, handle, notify=notify)
+    fresh_meta = await upsert_patch(
+        room, key, meta, content, patch, handle, notify=notify, keep_version=keep_version
+    )
     return _describe(room, key, fresh_meta, datetime.now(UTC))
 
 
@@ -504,12 +515,34 @@ async def renew(room: str, handle: str, now: datetime) -> list[dict]:
                 continue
             if (freshness(meta, now) or "fresh") == "fresh":
                 continue
+            # Not an edit, so the version stays: an editor open on the row
+            # isn't told someone else changed it.
             renewed.append(
                 await _write(
-                    room, key, meta, content, {"claimed_at": now.isoformat()}, handle, notify=False
+                    room,
+                    key,
+                    meta,
+                    content,
+                    {"claimed_at": now.isoformat()},
+                    handle,
+                    notify=False,
+                    keep_version=True,
                 )
             )
     return renewed
+
+
+def claimed_by(room: str, handle: str, now: datetime) -> list[str]:
+    """The rows ``handle`` holds by claiming them, not by being given them."""
+    who = handle.lstrip("@").lower()
+    return [
+        key
+        for namespace in ASSIGNABLE_NAMESPACES
+        for key, meta, _ in list_memory_files(room_path(room), prefix=f"{namespace}/", limit=None)
+        if meta.get(FIELD) == "held"
+        and state_of(meta, now) == "held"
+        and str(meta.get("owner") or "").lstrip("@").lower() == who
+    ]
 
 
 def read(room: str, key: str, now: datetime) -> dict:

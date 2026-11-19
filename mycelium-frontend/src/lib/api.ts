@@ -14,6 +14,7 @@ import { uiTokenHeaders } from "@/lib/ui-token";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
 import type { LockRecord, TallyRecord } from "@/lib/conductor-line";
+import { fromWire, type KnowledgeGraph, type KnowledgeTask, type KnowledgeWire } from "@/lib/knowledge";
 
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser console.
@@ -999,6 +1000,26 @@ export async function interruptMention(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ handle, by }),
+  });
+}
+
+/** One emoji on a message and who put it on, oldest first. */
+export interface MessageReactions {
+  emoji: string;
+  by: string[];
+}
+
+/** Put an emoji on a message (`on`), or take yours off. Answers with the
+ *  message as the room now reads it, its reactions folded in. */
+export async function reactToMessage(
+  room: string,
+  messageId: string,
+  body: { emoji: string; on: boolean; sender_handle: string },
+): Promise<RoomMessage & { reactions: MessageReactions[] }> {
+  return apiFetch(`${roomApiPath(room)}/messages/${encodeURIComponent(messageId)}/reactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -2109,32 +2130,77 @@ export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> 
   };
 }
 
-/** What happened to one agent you paused, resumed or stopped. */
+/** What happened to one agent you paused, resumed, stopped, started or kept. */
 export interface AgentControlResult {
   room: string;
   handle: string;
   paused: (AgentPause & { room: string }) | null;
   runner: string | null;
   job: string | null;
+  keep?: boolean | null;
 }
 
-export type AgentControlVerb = "pause" | "resume" | "stop";
+/** `stop` ends an agent's process to free its memory and keeps its pane and
+ *  conversation; `start` brings it back there. */
+export type AgentControlVerb = "pause" | "resume" | "stop" | "start";
 
-/** Pause, resume or stop one agent you own. */
+/** Pause, resume, stop or start one agent you own. A stop with `close`
+ *  closes its pane too. */
 export async function controlAgent(
   roomName: string,
   handle: string,
   verb: AgentControlVerb,
   by: string,
+  { close = false }: { close?: boolean } = {},
 ): Promise<AgentControlResult> {
   return apiFetch<AgentControlResult>(
     `${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/${verb}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ by: by || null }),
+      body: JSON.stringify({ by: by || null, close }),
     },
   );
+}
+
+/** Keep an agent you own running when agents are stopped in bulk, or stop keeping it. */
+export async function keepAgent(
+  roomName: string,
+  handle: string,
+  keep: boolean,
+  by: string,
+): Promise<AgentControlResult> {
+  return apiFetch<AgentControlResult>(`${roomApiPath(roomName)}/agents/${encodeURIComponent(handle)}/keep`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ by: by || null, keep }),
+  });
+}
+
+/** One agent a connected machine runs: where, in what state, and whether it's
+ *  kept running. What it uses never comes from the hub (`useLocalUsage`). */
+export interface AgentRunning {
+  room: string;
+  handle: string;
+  owner: string | null;
+  /** herdr's state, or `paused` when its owner paused it. `stopped`: its
+   *  process ended to free memory, its pane kept for Start. */
+  state: "working" | "idle" | "blocked" | "paused" | "stopped" | "gone" | "unknown";
+  kind: string | null;
+  runner: string;
+  machine: string;
+  pane: string | null;
+  keep: boolean;
+  restartable: boolean;
+}
+
+/** The room's agents on connected machines. */
+export async function fetchAgentsRunning(roomName: string): Promise<AgentRunning[]> {
+  const data = await apiFetch<{ agents?: AgentRunning[] }>(`${roomApiPath(roomName)}/agents/running`, {
+    cache: "no-store",
+    fallback: { agents: [] },
+  });
+  return Array.isArray(data.agents) ? data.agents : [];
 }
 
 /** Pause or resume every agent `by` owns, in every room. */
@@ -2219,6 +2285,19 @@ export interface User {
   teams: string[];
   notify: string | null;
   owns: OwnedAgent[];
+  /** Handles this person had before (their sign-in's email, before they had
+   *  a short handle), which past messages still carry. */
+  was?: string[];
+}
+
+/** Pick your handle on a hub whose sign-in gave you none (taken, or not a
+ *  valid handle). It's kept with your sign-in and never changes after. */
+export async function pickHandle(handle: string): Promise<{ handle: string | null }> {
+  return apiFetch<{ handle: string | null }>(`/api/whoami/handle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ handle }),
+  });
 }
 
 export interface Team {
@@ -2228,6 +2307,43 @@ export interface Team {
 }
 
 /** List registered users with their owned-agent roll-up. */
+/** An agent's subagent, recorded with its parent: `builder:review` is
+ *  `review`, a subagent of @builder. Kept after it ends, so its messages still
+ *  read as its. */
+export interface Subagent {
+  handle: string;
+  parent: string;
+  name: string;
+  state: "working" | "done" | "ended";
+  started_at: string;
+  ended_at: string | null;
+}
+
+/** What the room's team learned: its memories with a kind, the tasks they were
+ *  learned in, and what each came from (`lib/knowledge.ts`). An older hub has
+ *  none. */
+export async function fetchKnowledge(room: string): Promise<KnowledgeGraph> {
+  const wire = await apiFetch<{ tasks: KnowledgeTask[]; memories: KnowledgeWire[] }>(
+    `${roomApiPath(room)}/knowledge`,
+    {
+      cache: "no-store",
+      fallback: { tasks: [], memories: [] },
+      guard: (d: unknown): d is { tasks: KnowledgeTask[]; memories: KnowledgeWire[] } =>
+        !!d && typeof d === "object" && Array.isArray((d as { memories?: unknown }).memories),
+    },
+  );
+  return { tasks: wire.tasks, memories: wire.memories.map(fromWire) };
+}
+
+/** Every subagent the room has had, ended ones too. */
+export async function fetchSubagents(room: string): Promise<Subagent[]> {
+  return apiFetch<Subagent[]>(`${roomApiPath(room)}/subagents`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is Subagent[],
+  });
+}
+
 export async function fetchUsers(): Promise<User[]> {
   const data = await apiFetch<{ users?: User[] }>(`/api/users`, { cache: "no-store", fallback: {} });
   return Array.isArray(data.users) ? data.users : [];

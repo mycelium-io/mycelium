@@ -138,18 +138,22 @@ def _append_messages(lines: list[str], ep: EpisodeState) -> None:
 
 
 def _write_record(ep: EpisodeState, lines: list[str]) -> None:
-    from app.services.filesystem import get_room_dir, write_memory_file
+    from app.services.filesystem import get_room_dir, read_memory_file, write_memory_file
     from app.services.tasks import carry_thread
 
     base = get_room_dir(ep.parent_room)
     base.mkdir(parents=True, exist_ok=True)
     key = f"log/episodes/{ep.short_id}"
+    # Each step is a new version of the record, so a reader can tell it moved.
+    existing = read_memory_file(base, key)
+    before = existing[0].get("version", 0) if existing else 0
     write_memory_file(
         base,
         key,
         "\n".join(lines),
         created_by=message_format.SYSTEM_ACTOR_ID,
         updated_by=message_format.SYSTEM_ACTOR_ID,
+        version=(before if isinstance(before, int) else 0) + 1,
         # This write skips the upsert that mints an episode binding; the
         # episode record is part of the conversation thread.
         extra_meta=carry_thread(ep.parent_room, key),

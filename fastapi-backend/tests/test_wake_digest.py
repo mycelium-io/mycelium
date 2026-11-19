@@ -7,9 +7,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.services import message_format, wake_digest
+import pytest
+
+from app.services import message_format, room_channels, room_people, wake_digest
+from app.services.asks import asks
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.persister import TranscriptRecord
+from app.services.room_channels import MemberPresence
 
 ROOM = "digest-room"
 NOW = datetime(2026, 10, 1, 10, 44, tzinfo=UTC)
@@ -277,9 +281,70 @@ def test_the_await_step_says_what_it_does_in_a_line():
     ]
     digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
     assert (
-        "            (marks these read and says you're on it; 1 more was said since your last turn)"
-        in digest
+        "            (marks messages as read and shows any messages that came in since; "
+        "1 more was said since your last turn)"
+    ) in digest
+
+
+def _skill(digest: str) -> str | None:
+    return next((ln for ln in digest.splitlines() if ln.startswith("Skill:")), None)
+
+
+def test_a_wake_after_a_day_without_one_says_to_read_the_skill_again(monkeypatch):
+    records = [_said(1, "hay", "@builder look", 1)]
+    wake = {"handle": "builder", "from": "hay"}
+
+    # Never woken here: its first wake points at the skill.
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW)) == (
+        "Skill:   this is your first wake here; "
+        "run `mycelium skill print` to read how Mycelium works"
     )
+    # Woken an hour ago: nothing to say.
+    _woken_with(monkeypatch, "w1", [], 60)
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW)) is None
+    # Its last wake over a day ago: it says how long.
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW + timedelta(hours=49))) == (
+        "Skill:   your last wake here was 2d ago; "
+        "run `mycelium skill print` to re-read how Mycelium works"
+    )
+    # What `await` prints is a turn the agent is already taking, not a wake.
+    assert _skill(wake_digest.build(ROOM, wake, records, NOW, awaited=True)) is None
+
+
+def test_a_mention_of_a_subagent_wakes_its_parent_saying_whose_it_is():
+    from app.services import subagents
+
+    get_room_dir(ROOM)
+    subagents.start(ROOM, "builder", "review")
+    records = [
+        _said(1, "builder", "back", 60),
+        _said(2, "hay", "@builder:review is the retry path covered?", 1),
+    ]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert "is the retry path covered?" in digest
+    assert (
+        "For:     your subagent @builder:review. Answer it yourself, pass it on in its next "
+        "step, or have it check in with `mycelium await --as builder:review`."
+    ) in digest
+
+
+def test_a_subagent_handle_the_room_doesnt_have_is_nobodys():
+    """The parent is the room's record, never the name: a handle shaped like
+    a subagent's, recorded in another room or nowhere, asks no parent here."""
+    get_room_dir(ROOM)
+    records = [
+        _said(1, "builder", "back", 60),
+        _said(2, "hay", "quoting them: @builder:hello said hi", 1),
+    ]
+    assert not [r for r in records if asks(r.content, "builder", ROOM)]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert "For:" not in digest
+
+
+def test_a_plain_mention_names_no_subagent():
+    records = [_said(1, "builder", "back", 60), _said(2, "hay", "@builder look", 1)]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert "For:" not in digest
 
 
 def test_other_asks_share_a_budget_and_the_rest_are_named():
@@ -315,6 +380,63 @@ def test_an_ask_past_the_cap_ends_on_how_to_read_the_rest():
     # Cut on a line's end, so no line of the log is left half.
     last = [ln for ln in digest.splitlines() if ln.startswith("│ ")][-1]
     assert last.endswith("which goes on")
+
+
+def _named_block(digest: str) -> list[str]:
+    lines = digest.splitlines()
+    if not any(ln.startswith("Mentioned:") for ln in lines):
+        return []
+    start = next(i for i, ln in enumerate(lines) if ln.startswith("Mentioned:"))
+    end = next(
+        (i for i in range(start + 1, len(lines)) if not lines[i].startswith("   ")), len(lines)
+    )
+    return lines[start:end]
+
+
+def test_silent_mentions_since_the_last_turn_ride_along_in_the_next_wake():
+    _task_thread()
+    records = [
+        _said(1, "hay", "@~builder saw the same drift last week", 300),
+        _said(2, "builder", "back", 200),
+        _said(3, "hay", "context first\nas @~builder found, it's the rounding", 90, THREAD),
+        _said(4, "sam", "cc @~builder for the record", 30),
+        _said(5, "sam", "@builder and @~builder, can you look?", 10),
+        _said(6, "hay", "@builder ready?", 1),
+    ]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert _named_block(digest) == [
+        "Mentioned: you were mentioned silently (@~) 2 times since your last turn:",
+        f"         @sam · 30m ago · in the room: cc @~builder for the record"
+        f"   (mycelium room messages {ROOM} --id {wake_digest.short_id(records[3])})",
+        f'         @hay · 1h ago · in "Fix the receipt tax": as @~builder found, it\'s the rounding'
+        f"   (mycelium room messages {ROOM} --id {wake_digest.short_id(records[2])})",
+    ]
+    # Before its last turn, it's no news; one that also asks for it is shown as an ask.
+    assert "saw the same drift" not in "\n".join(_named_block(digest))
+    assert "can you look?" not in "\n".join(_named_block(digest))
+    # What `await` prints hands these messages over itself.
+    awaited = wake_digest.build(ROOM, {"handle": "builder"}, records, NOW, awaited=True)
+    assert _named_block(awaited) == []
+
+
+def test_silent_mentions_past_a_handful_are_counted_with_where_to_find_them():
+    records = [_said(0, "builder", "back", 100)]
+    records += [_said(n, "hay", f"note {n} for @~builder", 60 - n) for n in range(1, 9)]
+    records.append(_said(20, "hay", "@builder ping", 1))
+    block = _named_block(
+        wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    )
+    assert block[0].endswith("8 times since your last turn:")
+    assert [ln.split(": ", 1)[1].split("   (")[0] for ln in block[1:6]] == [
+        f"note {n} for @~builder" for n in range(8, 3, -1)
+    ]
+    assert block[6] == f'         and 3 more: mycelium room search "mentions:builder" --room {ROOM}'
+
+
+def test_no_silent_mention_no_section():
+    records = [_said(1, "builder", "back", 60), _said(2, "hay", "@builder look", 1)]
+    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "hay"}, records, NOW)
+    assert "Mentioned:" not in digest
 
 
 def test_a_room_mention_replies_into_the_room():
@@ -658,3 +780,111 @@ def test_a_title_on_the_board_and_tasks_lines_carries_no_control_character():
     assert "\x1b" not in digest
     assert 'Tasks:   yours "Fix it[201~now"' in digest
     assert '@lead filed "Fix it[201~now"' in digest
+
+
+def _room_of(monkeypatch: pytest.MonkeyPatch, agents: list[str], states: dict[str, str | None]):
+    """A room whose agents are ``agents``, present with the live ``states`` given
+    (a handle missing from ``states`` is away), beside a person who's working."""
+    monkeypatch.setattr(
+        room_people,
+        "roster",
+        lambda _r: {
+            "people": [{"handle": "operator"}],
+            "agents": [{"handle": a} for a in agents],
+            "engines": [],
+            "others": [],
+        },
+    )
+    present = {h: MemberPresence(kind="herdr", status=s) for h, s in states.items()}
+    present["operator"] = MemberPresence(kind="lease", status="working")
+    monkeypatch.setattr(room_channels.manager, "presence", lambda _r: present)
+
+
+def _handed(monkeypatch, n: int, agent: str, minutes_ago: int, **wake: str) -> None:
+    """A wake the hub handed ``agent`` ``minutes_ago``: why, from whom and where."""
+    from app.services import wake_log
+
+    at = (NOW - timedelta(minutes=minutes_ago)).isoformat()
+    monkeypatch.setattr(wake_log, "_now", lambda: at)
+    wake_log.handed(ROOM, {"id": f"w{n}", "handle": agent, **wake}, {"messages": []})
+
+
+def test_every_wake_shows_the_rooms_other_agents_as_a_members_pane(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _task_thread()
+    _room_of(
+        monkeypatch,
+        ["builder", "desktop", "design", "research", "reviewer", "themes", "voice"],
+        {
+            "builder": "working",
+            "desktop": "working",
+            "design": "idle",
+            "research": "done",
+            "reviewer": "working",
+            "themes": "blocked",
+        },
+    )
+    # What each working agent is on is the last wake it was handed.
+    _handed(monkeypatch, 1, "builder", 20, reason="mention", **{"from": "hay"})
+    _handed(monkeypatch, 2, "builder", 3, reason="mention", episode=THREAD, **{"from": "scout"})
+    _handed(monkeypatch, 3, "reviewer", 0, reason="assigned", key="work/fix-the-receipt-tax")
+    digest = wake_digest.build(
+        ROOM, {"handle": "desktop"}, [_said(1, "hay", "@desktop look", 1)], NOW
+    )
+    lines = digest.splitlines()
+    start = lines.index("Members (5 other agents)")
+    assert start > next(i for i, line in enumerate(lines) if line.startswith("Board:"))
+    # Busy and stuck first; not the agent woken, not a person, not one who's away.
+    assert lines[start + 1 : start + 6] == [
+        '  ● working   @builder   answering @scout in "Fix the receipt tax", 3m ago',
+        '              @reviewer  on "Fix the receipt tax", now',
+        "  ▲ blocked   @themes    waiting for input on its machine",
+        "  ○ idle      @design",
+        "  ✓ done      @research",
+    ]
+    # Set off from the lines around it.
+    assert lines[start - 1] == ""
+    assert lines[start + 6] == ""
+
+
+def test_what_a_working_agent_is_on_says_how_long_ago(monkeypatch: pytest.MonkeyPatch):
+    """Its last wake can be hours old, and it may have moved on since: the row
+    says when, so no one reads an old answer as what it's doing now."""
+    _room_of(monkeypatch, ["builder"], {"builder": "working"})
+    _handed(monkeypatch, 1, "builder", 125, reason="mention", **{"from": "hay"})
+    pane = wake_digest.members(ROOM, "someone", NOW)
+    assert pane[1] == "  ● working   @builder  answering @hay in the room, 2h ago"
+
+
+def test_a_working_agent_with_no_wake_says_only_that_its_working(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    _room_of(monkeypatch, ["builder"], {"builder": "working"})
+    assert wake_digest.members(ROOM, "someone")[1] == "  ● working   @builder"
+
+
+def test_the_members_pane_counts_the_rest_past_a_few(monkeypatch: pytest.MonkeyPatch):
+    idle = [f"agent{n}" for n in range(7)]
+    working = [f"busy{n}" for n in range(6)]
+    _room_of(
+        monkeypatch,
+        idle + working,
+        {**dict.fromkeys(idle, "idle"), **dict.fromkeys(working, "working")},
+    )
+    pane = wake_digest.members(ROOM, "someone")
+    assert pane[0] == "Members (13 other agents)"
+    assert pane[5] == "              and 2 more"
+    assert pane[6] == "  ○ idle      @agent0  @agent1  @agent2  @agent3  +3"
+
+
+def test_no_members_pane_when_no_other_agent_says_what_it_is_doing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Away, or present with no state a host reports: nothing true to say.
+    _room_of(monkeypatch, ["builder", "design"], {"design": None})
+    assert wake_digest.members(ROOM, "builder") == []
+    digest = wake_digest.build(
+        ROOM, {"handle": "builder"}, [_said(1, "hay", "@builder hi", 1)], NOW
+    )
+    assert "Members (" not in digest

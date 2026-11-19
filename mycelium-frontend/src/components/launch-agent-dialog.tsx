@@ -691,11 +691,7 @@ function HarnessLabel({ framework, active = true }: { framework: Runner["framewo
         <span className={cn("block truncate text-label", active ? "text-text" : "text-muted-foreground")}>
           {framework.name}
         </span>
-        {framework.installed ? (
-          version && <span className="block font-mono text-micro text-faint">{version}</span>
-        ) : (
-          <span className="block text-micro text-faint">not found</span>
-        )}
+        {version && <span className="block font-mono text-micro text-faint">{version}</span>}
       </span>
     </>
   );
@@ -874,9 +870,16 @@ function LaunchProgress({
     // What the machine answered on the person's behalf (trusting the folder they chose).
     ...report.passed.map((label) => ({ label, state: "done" as StepState })),
   ];
+  const command = runner.frameworks.find((f) => f.id === job?.spec?.framework)?.command ?? null;
   const help =
     failed && report.why
-      ? startHelp(report.why, { machine, cli: frameworkName, handle, detail: report.detail })
+      ? startHelp(report.why, {
+          machine,
+          cli: frameworkName,
+          handle,
+          detail: report.detail,
+          command,
+        })
       : null;
   const terminal = desktop && herdr && report.pane ? terminalLink(report.pane) : null;
   // The person is needed at the terminal: the agent asked something, its shell
@@ -957,7 +960,7 @@ function LaunchProgress({
           </div>
           {report.pane ? (
             <div className="flex h-48 flex-col">
-              <AgentScreen room={room} handle={handle} openLink={false} />
+              <AgentScreen room={room} handle={handle} openLink={false} fit />
             </div>
           ) : (
             <p className="px-3 py-3 text-label text-faint">
@@ -1002,6 +1005,16 @@ function LaunchProgress({
                 <li key={step}>{step}</li>
               ))}
             </ol>
+            {help.link && (
+              <a
+                href={help.link.href}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block text-accent hover:underline"
+              >
+                {help.link.label}
+              </a>
+            )}
           </div>
           {report.detail && (
             <details className="text-micro text-muted-foreground">

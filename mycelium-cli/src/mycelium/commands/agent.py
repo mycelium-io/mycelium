@@ -1572,9 +1572,9 @@ def agent_rename(
         raise typer.Exit(1) from None
 
 
-# ── pause, resume, stop ──────────────────────────────────────────────────────
+# ── pause, resume, stop, start, keep ─────────────────────────────────────────
 
-_CONTROL_DONE = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped"}
+_CONTROL_DONE = {"pause": "Paused", "resume": "Resumed", "stop": "Stopped", "start": "Starting"}
 _NOT_RUNNING = "no machine is running it; its wakes are held"
 #: How long to wait for the machines' pause jobs to say what they did: the
 #: runner gives a working agent 20 seconds to stop before giving up.
@@ -1633,8 +1633,10 @@ def _control(
     by: str | None,
     *,
     every: bool,
+    close: bool = False,
 ) -> None:
-    """Pause, resume or stop one agent, or (``every``) every agent ``by`` owns.
+    """Pause, resume, stop or start one agent, or (``every``) pause or resume
+    every agent ``by`` owns. A stop with ``close`` closes the agent's pane too.
 
     Always through the hub, which records it and asks the machine running the
     agent, so what the hub says and what the agent was told can't disagree.
@@ -1660,6 +1662,9 @@ def _control(
         resume_mine_api_agents_resume_post as resume_mine_api,
     )
     from mycelium_backend_client.api.agents import (
+        start_agent_api_rooms_room_name_agents_handle_start_post as start_api,
+    )
+    from mycelium_backend_client.api.agents import (
         stop_agent_api_rooms_room_name_agents_handle_stop_post as stop_api,
     )
     from mycelium_backend_client.models import (
@@ -1680,9 +1685,17 @@ def _control(
             else:
                 name = (handle or "").lstrip("@")
                 where = _resolve_room(config, room)
-                one_api = {"pause": pause_api, "resume": resume_api, "stop": stop_api}[verb]
+                one_api = {
+                    "pause": pause_api,
+                    "resume": resume_api,
+                    "stop": stop_api,
+                    "start": start_api,
+                }[verb]
                 resp = one_api.sync_detailed(
-                    where, name, client=client, body=AgentControl.from_dict({"by": by})
+                    where,
+                    name,
+                    client=client,
+                    body=AgentControl.from_dict({"by": by, "close": close}),
                 )
         if resp.status_code >= 400:  # noqa: PLR2004
             try:
@@ -1704,7 +1717,23 @@ def _control(
             line = f"[green]{_CONTROL_DONE[verb]}[/green] @{agent.handle} in {agent.room}"
             if verb == "pause":
                 line += f" ({outcomes.get(agent.handle + '@' + agent.room, _NOT_RUNNING)})"
+            elif verb == "stop":
+                line += (
+                    " (its pane is closed)"
+                    if close
+                    else " (its process ends to free its memory; its pane stays for a start)"
+                )
+            elif verb == "start":
+                line += (
+                    " in its pane, in its own conversation if its CLI can resume one. Its "
+                    "machine asks first unless it trusts this hub: say yes there, or run "
+                    f"`mycelium runner approve {agent.job}` on it."
+                )
             console.print(line)
+        if verb == "stop" and not close:
+            console.print(
+                f"Start it again with `mycelium agent start {handle} --room {done[0].room}`."
+            )
         if verb == "pause":
             again = "--all" if every else f"{handle} --room {done[0].room}"
             console.print(f"Resume with `mycelium agent resume {again}`.")
@@ -1777,33 +1806,219 @@ def agent_resume(
 
 
 @doc_ref(
-    usage="mycelium agent stop <handle> [--room <room>] [--as <you>] [--yes]",
+    usage=(
+        "mycelium agent stop [<handle>] [--idle] [--close] [--room <room>] [--as <you>] [--yes]"
+    ),
     desc=(
-        "Stop an agent you own: the machine running it interrupts it and closes its "
-        "pane. It stays a member, and can be restarted."
+        "Stop an agent you own to free its memory: its machine ends its process and "
+        "keeps its pane, so <code>agent start</code> brings it back there. "
+        "<code>--idle</code> stops every agent you own that's idle or paused, except "
+        "kept ones. <code>--close</code> closes the pane too."
     ),
     group="agent",
 )
 @app.command("stop")
-@in_room(resolve=False, help="The agent's room")
+@in_room(resolve=False, help="The agent's room, or with --idle only that room's agents")
 @acts_as("by", fallback=None)
 @confirms()
 @emits_json()
 def agent_stop(
     ctx: typer.Context,
-    handle: str = typer.Argument(..., help="The agent to stop"),
+    handle: str | None = typer.Argument(None, help="The agent to stop"),
+    idle: bool = typer.Option(
+        False, "--idle", help="Every agent you own that's idle or paused, except kept ones"
+    ),
+    close: bool = typer.Option(False, "--close", help="Close its pane too, as the stop for good"),
     room: str | None = None,
     by: str | None = None,
     yes: bool = False,
 ) -> None:
-    """Stop an agent you own and close its pane on the machine running it.
+    """Stop an agent you own, to free the memory it holds.
 
-    The hard stop: unlike a pause, its session ends. It stays a member of the
-    room, and its machine can start it again.
+    Its machine ends its process and keeps its pane, so ``mycelium agent
+    start`` brings it back there: in its own conversation when its CLI can
+    resume one, like Claude Code, else in a new one that catches up from the
+    room. Unlike a pause, it holds no memory while stopped. ``--close`` also closes
+    its pane, as the stop for good. ``--idle`` stops every agent you own that's
+    idle or paused, leaving out kept ones (``mycelium agent keep``).
     """
-    if not yes and not typer.confirm(f"Stop @{handle.lstrip('@')} and close its pane?"):
+    if bool(handle) == idle:
+        console.print("[red]Name one agent to stop, or pass --idle, not both.[/red]")
+        raise typer.Exit(2)
+    if idle:
+        _stop_idle(ctx, room, str(by), yes=yes, close=close)
+        return
+    name = str(handle).lstrip("@")
+    what = "and close its pane" if close else "to free its memory (its pane stays for a start)"
+    if not yes and not typer.confirm(f"Stop @{name} {what}?"):
         raise typer.Exit(0)
-    _control(ctx, "stop", handle, room, by, every=False)
+    _control(ctx, "stop", handle, room, by, every=False, close=close)
+
+
+def _mb(mb: object) -> str:
+    """Memory as a person reads it; ``?`` when the machine didn't say."""
+    if not isinstance(mb, int):
+        return "?"
+    return f"{mb / 1024:.1f} GB" if mb >= 1000 else f"{mb} MB"  # noqa: PLR2004
+
+
+#: What ``--idle`` stops: an agent not working, and not waiting on a person.
+_IDLE_STATES = ("idle", "paused")
+
+
+def _local_usage() -> dict[tuple[str, str], dict[str, Any]]:
+    """What each agent on this machine uses, as the runner here last wrote it
+    (``runner/usage.py``), by ``(room, handle)``. Read from this machine's own
+    file: the hub never has it, so an agent elsewhere has no numbers."""
+    from mycelium.runner.daemon import USAGE_FILE, runner_dir
+    from mycelium.runner.usage import read_local
+
+    rows = read_local(runner_dir() / USAGE_FILE).get("agents") or []
+    return {(r.get("room"), r.get("handle")): r for r in rows if isinstance(r, dict)}
+
+
+def _stop_idle(ctx: typer.Context, room: str | None, by: str, *, yes: bool, close: bool) -> None:
+    """Stop every agent ``by`` owns that's idle or paused, leaving out kept
+    ones: listed, with what each holds when it runs on this machine, and asked
+    about once."""
+    import httpx
+
+    from mycelium_backend_client.api.agents import (
+        running_of_mine_api_agents_running_get as running_api,
+    )
+    from mycelium_backend_client.models import AgentsRunningRead
+
+    try:
+        config = MyceliumConfig.load()
+        with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = running_api.sync_detailed(client=client, owner=by)
+        running = answered(resp, AgentsRunningRead)
+    except httpx.HTTPError as e:
+        console.print(f"[red]Couldn't reach the hub:[/red] {e}")
+        raise typer.Exit(1) from None
+    agents = running.agents or []
+    picked = [
+        a
+        for a in agents
+        if a.state in _IDLE_STATES and not a.keep and (room is None or a.room == room)
+    ]
+    kept = [a for a in agents if a.keep and a.state not in ("stopped", "gone")]
+    if not picked:
+        if ctx.obj and ctx.obj.get("json"):
+            print(json_module.dumps({"stopped": []}))
+            return
+        console.print("Nothing to stop: none of your agents that isn't kept running is idle.")
+        if kept:
+            console.print(f"[dim]Kept running: {', '.join('@' + a.handle for a in kept)}[/dim]")
+        return
+    if not (ctx.obj and ctx.obj.get("json")):
+        here = _local_usage()
+        console.print("Idle or paused:")
+        for a in picked:
+            used = here.get((a.room, a.handle), {}).get("ram_mb")
+            console.print(
+                f"  @{a.handle} in {a.room} on {a.machine}"
+                + (f"  {_mb(used)}" if isinstance(used, int) else "")
+            )
+        freed = sum(
+            m
+            for a in picked
+            if isinstance(m := here.get((a.room, a.handle), {}).get("ram_mb"), int)
+        )
+        if freed:
+            console.print(f"Stopping them frees about {_mb(freed)} on this computer.")
+        if kept:
+            console.print(f"[dim]Kept running: {', '.join('@' + a.handle for a in kept)}[/dim]")
+    if not yes and not typer.confirm(f"Stop these {len(picked)}?"):
+        raise typer.Exit(0)
+    for a in picked:
+        _control(ctx, "stop", a.handle, a.room, by, every=False, close=close)
+
+
+@doc_ref(
+    usage="mycelium agent start <handle> [--room <room>] [--as <you>]",
+    desc=(
+        "Start an agent you stopped, in its pane: in its own conversation when its CLI "
+        "can resume one, like Claude Code. Its machine asks first unless it trusts the hub."
+    ),
+    group="agent",
+)
+@app.command("start")
+@in_room(resolve=False, help="The agent's room")
+@acts_as("by", fallback=None)
+@emits_json()
+def agent_start(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="The agent to start"),
+    room: str | None = None,
+    by: str | None = None,
+) -> None:
+    """Start an agent you own that was stopped, in its pane on its machine: in
+    its own conversation when its CLI can resume one, like Claude Code, else in
+    a new one that catches up from the room. Like any restart, the machine asks
+    the person there first, unless it trusts the hub."""
+    _control(ctx, "start", handle, room, by, every=False)
+
+
+@doc_ref(
+    usage="mycelium agent keep <handle> [--off] [--room <room>] [--as <you>]",
+    desc=(
+        "Keep an agent you own running when agents are stopped in bulk "
+        "(<code>agent stop --idle</code>, the app's quick picks). <code>--off</code> "
+        "stops keeping it."
+    ),
+    group="agent",
+)
+@app.command("keep")
+@in_room(resolve=False, help="The agent's room")
+@acts_as("by", fallback=None)
+@emits_json()
+def agent_keep(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="The agent to keep running"),
+    off: bool = typer.Option(False, "--off", help="Stop keeping it"),
+    room: str | None = None,
+    by: str | None = None,
+) -> None:
+    """Keep an agent you own running when agents are stopped in bulk. Stopping
+    it by name still stops it."""
+    import httpx
+
+    from mycelium_backend_client.api.agents import (
+        keep_agent_api_rooms_room_name_agents_handle_keep_post as keep_api,
+    )
+    from mycelium_backend_client.models import AgentControlRead, AgentKeep
+
+    name = handle.lstrip("@")
+    try:
+        config = MyceliumConfig.load()
+        where = _resolve_room(config, room)
+        with _typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
+            resp = keep_api.sync_detailed(
+                where, name, client=client, body=AgentKeep.from_dict({"by": by, "keep": not off})
+            )
+        if resp.status_code >= 400:  # noqa: PLR2004
+            try:
+                detail = json_module.loads(resp.content).get("detail")
+            except ValueError:
+                detail = resp.content.decode(errors="replace")
+            console.print(f"[red]Couldn't change @{name}:[/red] {detail}")
+            raise typer.Exit(1)
+        body = answered(resp, AgentControlRead)
+    except typer.Exit:
+        raise
+    except httpx.HTTPError as e:
+        console.print(f"[red]Couldn't reach the hub:[/red] {e}")
+        raise typer.Exit(1) from None
+    if ctx.obj and ctx.obj.get("json"):
+        print(json_module.dumps(body.to_dict()))
+        return
+    if body.keep:
+        console.print(
+            f"[green]Keeping[/green] @{name} running. Stopping agents in bulk leaves it out."
+        )
+    else:
+        console.print(f"@{name} is no longer kept running.")
 
 
 # ── credential ───────────────────────────────────────────────────────────────

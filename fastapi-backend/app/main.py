@@ -26,7 +26,7 @@ from typing import Any
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.a2a_agents import router as a2a_agents_router
@@ -43,6 +43,7 @@ from app.routes.episodes import router as episodes_router
 from app.routes.fields import router as fields_router
 from app.routes.hub import router as hub_router
 from app.routes.joins import router as joins_router
+from app.routes.knowledge import router as knowledge_router
 from app.routes.links import router as links_router
 from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
@@ -60,6 +61,7 @@ from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
+from app.routes.subagents import router as subagents_router
 from app.routes.subscriptions import router as subscriptions_router
 from app.routes.tasks import router as tasks_router
 from app.routes.threads import router as threads_router
@@ -67,7 +69,7 @@ from app.routes.uploads import router as uploads_router
 from app.routes.users import router as users_router
 from app.routes.verifier import router as verifier_router
 from app.routes.voice import router as voice_router
-from app.schemas import HealthRead, WhoamiRead, refusals
+from app.schemas import HandlePick, HealthRead, WhoamiRead, refusals
 from app.services.auth import GATE_REFUSALS, auth_gate
 from app.services.filesystem import UnsafePathError
 
@@ -426,6 +428,8 @@ app.include_router(assignments_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(fields_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(tasks_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(threads_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(subagents_router, prefix="/api", responses=GATE_REFUSALS)
+app.include_router(knowledge_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(board_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")
@@ -471,12 +475,49 @@ async def whoami(request: Request):
     principal = getattr(request.state, "principal", None)
     if principal is None:
         return {"gated": settings.AUTH_ENABLED, "handle": None, "subject": None, "role": None}
+    return _whoami_of(principal)
+
+
+def _whoami_of(principal: Any) -> dict[str, Any]:
+    from app.services import identities
+
+    claimed = str(principal.claims.get(settings.AUTH_HANDLE_CLAIM) or "")
     return {
         "gated": True,
-        "handle": principal.handle,
+        "handle": principal.handle or None,
         "subject": principal.subject,
         "role": principal.role,
+        "needs_handle": principal.needs_handle,
+        "suggested": identities.short_of(claimed) if principal.needs_handle else None,
     }
+
+
+@app.post(
+    "/api/whoami/handle",
+    tags=["auth"],
+    response_model=WhoamiRead,
+    responses={**GATE_REFUSALS, **refusals(409, 422)},
+)
+async def pick_handle(payload: HandlePick, request: Request):
+    """Pick your handle, when your sign-in gives none (``needs_handle``): the
+    one its claim would give is taken or isn't a valid handle. It's kept with
+    your sign-in, so it never changes after; a sign-in that has one keeps it."""
+    from dataclasses import replace
+
+    from app.services import identities, short_handles
+
+    principal = getattr(request.state, "principal", None)
+    if principal is None:
+        raise HTTPException(status_code=409, detail="This hub doesn't sign people in.")
+    claimed = str(principal.claims.get(settings.AUTH_HANDLE_CLAIM) or "")
+    try:
+        handle = identities.pick(principal.issuer, principal.subject, claimed, payload.handle)
+    except identities.HandleTaken as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    await short_handles.settle(principal.issuer, principal.subject, claimed, handle)
+    return _whoami_of(replace(principal, handle=handle, needs_handle=False))
 
 
 @app.get("/", tags=["health"], response_model=HealthRead, response_model_exclude_unset=True)

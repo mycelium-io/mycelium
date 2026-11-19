@@ -140,6 +140,14 @@ describe("<MemoryView />", () => {
     expect(screen.getByRole("button", { name: "Jump to latest, 1 new" })).toBeInTheDocument();
   });
 
+  it("offers no editor for an upload, and says why in its place", async () => {
+    const upload = { ...MEMORY, key: "uploads/plan.md" };
+    vi.mocked(fetchMemory).mockResolvedValue(upload);
+    renderWithSWR(<MemoryView roomName="demo" memoryKey={upload.key} onOpenMemory={vi.fn()} />);
+    expect(await screen.findByLabelText(/Upload the file again/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
   it("gives the body more room full page, where someone came to read it", async () => {
     vi.mocked(fetchMemory).mockResolvedValue(TASK);
     renderWithSWR(
