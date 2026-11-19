@@ -12,8 +12,9 @@ import {
   CircleAlert,
   ExternalLink,
   FolderOpen,
-  GitBranch,
+  Laptop,
   Loader2,
+  Server,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -57,6 +58,7 @@ import { useRoomRevalidate } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Monogram } from "@/components/ui/monogram";
+import { Checkbox } from "@/components/ui/checkbox";
 import { AgentScreen } from "@/components/agent-screen";
 import { FolderPicker } from "@/components/folder-picker";
 import { HarnessIcon } from "@/components/harness-icon";
@@ -125,7 +127,16 @@ export function LaunchAgentForm({
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
 
-  const runner = connected.find((r) => r.id === here) ?? connected[0];
+  const [machinePick, setMachinePick] = useState<string | null>(null);
+  const runner =
+    connected.find((r) => r.id === machinePick) ?? connected.find((r) => r.id === here) ?? connected[0];
+  // The agent CLI and folder belong to a machine, so a new machine starts from its own.
+  const pickMachine = (id: string) => {
+    if (id === runner?.id) return;
+    setMachinePick(id);
+    setFolderTyped(null);
+    setWorktreePick(false);
+  };
   const startable = useMemo(() => (runner ? launchable(runner) : []), [runner]);
   // Only one the machine's shell found can be picked; the first of those is the default.
   const ready = startable.filter((f) => f.installed);
@@ -268,6 +279,9 @@ export function LaunchAgentForm({
       </div>
 
       <RunsOn
+        machines={connected}
+        here={here}
+        onMachine={pickMachine}
         runner={runner}
         frameworkId={framework?.id ?? null}
         folder={folderShown}
@@ -594,8 +608,15 @@ export function InstructionsEditor({
 const fieldClass =
   "rounded-md border border-border bg-bg px-2 py-1 text-label text-text outline-none hover:border-border2 focus:border-accent";
 
-/** Where the agent runs: agent CLI and folder on this machine, in one strip beside the button. */
+/**
+ * Where the agent runs, as a few labeled rows above the button: the machine
+ * (when there's more than one), the agent CLI, and the folder, with whether it
+ * gets a branch of its own under it. One row each, so nothing is squeezed.
+ */
 function RunsOn({
+  machines,
+  here,
+  onMachine,
   runner,
   frameworkId,
   folder,
@@ -605,6 +626,9 @@ function RunsOn({
   onWorktree,
   children,
 }: {
+  machines: Runner[];
+  here: string | null;
+  onMachine: (id: string) => void;
   runner: Runner;
   frameworkId: string | null;
   folder: string;
@@ -616,76 +640,127 @@ function RunsOn({
 }) {
   const startable = launchable(runner);
   const roots = runner.roots.map(tildePath);
+  const label = "text-label text-muted-foreground";
   return (
-    <MemberFooter
-      action={children}
-      above={
-        <>
-          {!runner.herdr ? (
-            <HostMissing runner={runner} />
-          ) : startable.length === 0 ? (
-            <div className="flex items-center gap-1 text-micro text-muted-foreground">
-              No agent CLI on this machine that {hostOf(runner).name} can start. Install one, then rescan.
-              <RescanButton runner={runner} iconOnly />
+    <div className="border-t border-border bg-surface/60 px-5 pt-4 pb-4">
+      {!runner.herdr ? (
+        <div className="mb-3">
+          <HostMissing runner={runner} />
+        </div>
+      ) : startable.length === 0 ? (
+        <div className="mb-3 flex items-center gap-1 text-micro text-muted-foreground">
+          No agent CLI on this machine that {hostOf(runner).name} can start. Install one, then rescan.
+          <RescanButton runner={runner} iconOnly />
+        </div>
+      ) : null}
+      <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3">
+        {machines.length > 1 && (
+          <>
+            <span className={label}>Machine</span>
+            <div>
+              <MachineSelect machines={machines} here={here} value={runner} onChange={onMachine} />
             </div>
-          ) : null}
-        </>
-      }
-    >
-      {/* One row: which agent CLI, the folder it works in on this machine (named
-          before the path, never a choice), and whether it gets a branch of its own. */}
-      {startable.length > 0 && (
-        <HarnessPicker runner={runner} frameworks={startable} value={frameworkId} onChange={onFramework} />
-      )}
-      <div className={cn(fieldClass, "flex h-10 min-w-0 flex-1 items-center gap-1.5 py-0 focus-within:border-accent")}>
-        <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
-        <span className="max-w-28 flex-shrink-0 truncate text-faint" title={`On ${runnerName(runner)}, this machine`}>
-          {runnerName(runner)}
-        </span>
-        <label htmlFor="launch-folder" className="sr-only">
+          </>
+        )}
+        {startable.length > 0 && (
+          <>
+            <span className={label}>Agent CLI</span>
+            <div>
+              <HarnessPicker runner={runner} frameworks={startable} value={frameworkId} onChange={onFramework} />
+            </div>
+          </>
+        )}
+        <label htmlFor="launch-folder" className={label}>
           Folder
         </label>
-        <input
-          id="launch-folder"
-          list="launch-folder-roots"
-          value={folder}
-          onChange={(e) => onFolder(e.target.value)}
-          spellCheck={false}
-          placeholder={roots[0] ?? "~/code/project"}
-          title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
-          className="min-w-0 flex-1 bg-transparent py-1.5 font-mono text-text outline-none placeholder:text-faint"
-        />
+        <div className="flex min-w-0 items-center gap-2">
+          <div
+            className={cn(fieldClass, "flex h-9 min-w-0 flex-1 items-center gap-2 py-0 focus-within:border-accent")}
+          >
+            <FolderOpen className="size-3.5 flex-shrink-0 text-faint" aria-hidden />
+            <input
+              id="launch-folder"
+              list="launch-folder-roots"
+              value={folder}
+              onChange={(e) => onFolder(e.target.value)}
+              spellCheck={false}
+              placeholder={roots[0] ?? "~/code/project"}
+              title={roots.length ? `Inside ${roots.join(" or ")}` : undefined}
+              className="min-w-0 flex-1 bg-transparent font-mono text-text outline-none placeholder:text-faint"
+            />
+          </div>
+          <datalist id="launch-folder-roots">
+            {roots.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+          <FolderPicker
+            runner={runner}
+            value={expandPath(folder, runner.roots)}
+            onPick={(path) => onFolder(tildePath(path))}
+          />
+        </div>
+        {startsInHerdr(runner) && (
+          <>
+            <span aria-hidden />
+            <label className="flex w-fit cursor-pointer items-center gap-2 text-label text-text">
+              <Checkbox checked={worktree} onCheckedChange={(on) => onWorktree(on === true)} />
+              Give it a branch of its own
+              <span className="text-faint">git worktree</span>
+            </label>
+          </>
+        )}
       </div>
-      <datalist id="launch-folder-roots">
-        {roots.map((r) => (
-          <option key={r} value={r} />
+      <div className="mt-4 flex justify-end">{children}</div>
+    </div>
+  );
+}
+
+/** Which of your connected machines it starts on: this computer first, then by name. */
+function MachineSelect({
+  machines,
+  here,
+  value,
+  onChange,
+}: {
+  machines: Runner[];
+  here: string | null;
+  value: Runner;
+  onChange: (id: string) => void;
+}) {
+  const sorted = [...machines].sort(
+    (a, b) => Number(b.id === here) - Number(a.id === here) || runnerName(a).localeCompare(runnerName(b)),
+  );
+  const line = (m: Runner, active = true) => {
+    const Icon = m.platform.startsWith("darwin") ? Laptop : Server;
+    return (
+      <>
+        <Icon className="size-4 flex-shrink-0 text-faint" aria-hidden />
+        <span className={cn("truncate text-label", active ? "text-text" : "text-muted-foreground")}>
+          {runnerName(m)}
+        </span>
+        {m.id === here && <span className="text-micro text-faint">This computer</span>}
+      </>
+    );
+  };
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Machine: ${runnerName(value)}`}
+        className="flex h-9 min-w-0 items-center gap-2 rounded-md border border-border px-2.5 transition-colors hover:border-border2 hover:bg-hairline data-[popup-open]:border-accent"
+      >
+        {line(value)}
+        <ChevronDown className="ml-1 size-3.5 flex-shrink-0 text-faint" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-56">
+        {sorted.map((m) => (
+          <DropdownMenuItem key={m.id} onClick={() => onChange(m.id)} className="gap-2 py-1.5">
+            {line(m, m.id === value.id)}
+            {m.id === value.id && <Check className="ml-auto size-3.5 text-accent" aria-label="chosen" />}
+          </DropdownMenuItem>
         ))}
-      </datalist>
-      <FolderPicker
-        runner={runner}
-        value={expandPath(folder, runner.roots)}
-        onPick={(path) => onFolder(tildePath(path))}
-      />
-      {startsInHerdr(runner) && (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={worktree}
-          aria-label="Own worktree"
-          title="Start it in a git worktree of this folder, on a branch of its own"
-          onClick={() => onWorktree(!worktree)}
-          className={cn(
-            "flex h-10 flex-shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-label transition-colors",
-            worktree
-              ? "border-accent bg-accent/10 text-text"
-              : "border-border text-muted-foreground hover:border-border2 hover:text-text",
-          )}
-        >
-          <GitBranch className={cn("size-3.5", worktree ? "text-accent" : "text-faint")} aria-hidden />
-          Worktree
-        </button>
-      )}
-    </MemberFooter>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
