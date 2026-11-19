@@ -320,10 +320,14 @@ def _alive(pid: int) -> bool:
 def test_a_command_kept_running_shows_its_last_line_and_starts_again_after_a_wait(
     tmp_path: Path,
 ):
+    # The command holds at its first line until the test has seen it, so how
+    # fast the machine runs doesn't decide which line the test finds.
+    go = tmp_path / "go"
     path = _config(
         tmp_path / "config.toml",
         KEEP.format(
-            "echo starting; echo 'Warning: slow' >&2; sleep 0.5; "
+            f"echo starting; echo 'Warning: slow' >&2; "
+            f"while [ ! -e '{go}' ]; do sleep 0.02; done; "
             "echo 'connection refused' >&2; exit 3"
         ),
     )
@@ -336,6 +340,7 @@ def test_a_command_kept_running_shows_its_last_line_and_starts_again_after_a_wai
         assert _run_of(widgets)["running"] is True
 
         # It exits: the row says how and why, and it waits a second to start again.
+        go.touch()
         _until(lambda: widgets._kept[0].proc.poll() is not None)
         widgets.tick()
         run = _run_of(widgets)
