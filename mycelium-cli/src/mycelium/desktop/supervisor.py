@@ -1525,6 +1525,8 @@ class Supervisor:
     def _tick_widgets(self) -> None:
         """Run the widgets that are due, and send the app what they say when it changes."""
         try:
+            # Every widget command is given the port of the hub this app runs.
+            self.widgets.hub_port = self.hub_port if self.mode == "hub" else None
             if self.widgets.tick():
                 self.emit(self.widgets.snapshot())
         except Exception as e:  # noqa: BLE001 - a widget never stops the supervisor
@@ -1534,6 +1536,11 @@ class Supervisor:
         self._stop.set()
 
     def _shutdown(self) -> None:
+        # A widget's command kept running stops with the app, with what it started.
+        try:
+            self.widgets.stop()
+        except Exception as e:  # noqa: BLE001 - the rest still stops
+            self.emit({"type": "log", "component": "widgets", "line": f"widgets: {e}"})
         if self.runner is not None:
             self.runner.stop()
             self.runner.goodbye()

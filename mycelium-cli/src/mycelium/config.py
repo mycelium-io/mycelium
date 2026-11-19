@@ -849,6 +849,8 @@ class MetricsConfig(BaseModel):
 
 #: The shortest a widget's command may wait between runs.
 WIDGET_MIN_EVERY_S = 5
+#: A widget's ``every`` for a command kept running while the app is open.
+WIDGET_ALWAYS = "always"
 #: The theme colors a widget can be drawn in, by name, so every theme still reads.
 WIDGET_COLORS = ("accent", "green", "yellow", "red", "muted")
 #: The states a widget's dot can show (the app's own ``StatusDot``).
@@ -929,7 +931,8 @@ class StatusWidget(BaseModel):
     ``every``) or ``text`` (fixed words). A command shows the first line it
     prints, or, when what it prints is one JSON object, sets its fields for
     that run: ``text`` and the look fields (:func:`widget_look`), over the
-    config's. Text is inline markdown. A look field that's wrong is left out
+    config's. ``every = "always"`` keeps the command running while the app is
+    open instead, and shows the last line it printed. Text is inline markdown. A look field that's wrong is left out
     with a note (``notes``), never stopping the widget or its other fields.
     """
 
@@ -940,11 +943,18 @@ class StatusWidget(BaseModel):
     text: str | None = Field(default=None, description="Fixed words to show instead of a command.")
     every: str = Field(
         default="1m",
-        pattern=r"^\d+\s*[smh]$",
-        description="How often the command runs: seconds, minutes or hours, e.g. '30s', '5m'.",
+        pattern=r"^(\d+\s*[smh]|always)$",
+        description=(
+            "How often the command runs: seconds, minutes or hours, e.g. '30s', '5m'. "
+            "Or 'always': it runs the whole time the app is open, and is started "
+            "again when it stops."
+        ),
     )
     timeout: float = Field(
-        default=10.0, gt=0, le=600, description="Seconds before a run counts as hung."
+        default=10.0,
+        gt=0,
+        le=600,
+        description="Seconds before a run counts as hung. Not used with every = 'always'.",
     )
     icon: str | None = Field(
         default=None, description="A Lucide icon's kebab-case name, or one emoji."
@@ -985,15 +995,19 @@ class StatusWidget(BaseModel):
     def _one_source(self) -> "StatusWidget":
         if (self.command is None) == (self.text is None):
             raise ValueError(f"widget {self.label!r} needs exactly one of 'command' or 'text'")
-        if self.seconds() < WIDGET_MIN_EVERY_S:
+        if not self.always() and self.seconds() < WIDGET_MIN_EVERY_S:
             raise ValueError(
                 f"widget {self.label!r}: every must be at least {WIDGET_MIN_EVERY_S}s, "
                 f"not {self.every!r}"
             )
         return self
 
+    def always(self) -> bool:
+        """Whether the command is kept running rather than run on an interval."""
+        return self.every == WIDGET_ALWAYS
+
     def seconds(self) -> float:
-        """``every`` in seconds."""
+        """``every`` in seconds (not for a widget kept running, :meth:`always`)."""
         n, unit = int(self.every[:-1].strip()), self.every[-1]
         return float(n * {"s": 1, "m": 60, "h": 3600}[unit])
 
@@ -1027,7 +1041,10 @@ class StatuslineSection(BaseModel):
             "A command can print one JSON object instead of a line to set any of these "
             'for that run, e.g. {"text": "**38%** free", "icon": "memory-stick", '
             '"state": "warn", "meter": 38, "tooltip": "Swap is *2.1G*"}. Checked by '
-            "the desktop app, which notes any field it ignored in Settings > Widgets."
+            "the desktop app, which notes any field it ignored in Settings > Widgets. "
+            'every = "always" keeps a command running while the app is open, and its '
+            "row shows whether it's running. Every command gets the port of the hub "
+            "the app runs as $MYCELIUM_HUB_PORT."
         ),
     )
 
