@@ -146,6 +146,20 @@ def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(terminal_path, "install_dirs", list)
 
 
+@pytest.fixture(autouse=True)
+def _never_the_real_herdr_socket(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test talks to the developer's own herdr.
+
+    ``HerdrBridge.api`` goes to herdr's socket directly, not through the
+    bridge's stand-in runner, and an agent's pane points ``HERDR_SOCKET_PATH``
+    at the live herdr. So it answers nothing here; a test that wants an answer
+    stubs ``api`` on its bridge.
+    """
+    from mycelium.integrations.herdr import HerdrBridge
+
+    monkeypatch.setattr(HerdrBridge, "api", lambda _self, _method, _params=None: None)
+
+
 # ── SLIM transport ────────────────────────────────────────────────────────────
 
 

@@ -57,6 +57,13 @@ export function earlierSessions(runners: Runner[]): EarlierSession[] {
     .sort((a, b) => b.session.last_used.localeCompare(a.session.last_used));
 }
 
+/** Which agent CLIs' sessions can be brought in, as a sentence. */
+export function sessionsNote(supported: string[]): string {
+  if (supported.length === 0) return "Sessions can't be brought in from these machines yet.";
+  const names = new Intl.ListFormat("en", { type: "conjunction" }).format(supported);
+  return `Sessions can be brought in from ${names} so far.`;
+}
+
 /** The agent CLIs whose earlier sessions can be brought in, by name. */
 export function sessionsSupported(runners: Runner[]): string[] {
   const names = new Set<string>();
@@ -249,10 +256,7 @@ export function RunningAgentMember({
   // to add another.
   const missing = (
     <p className="text-micro text-faint">
-      Not seeing your sessions?{" "}
-      {supported.length > 0
-        ? `Only ${supported.join(", ")} sessions can be brought in yet.`
-        : "Sessions can't be brought in from these machines yet."}{" "}
+      Not seeing your sessions? {sessionsNote(supported)}{" "}
       <a href={ADD_SESSION_SUPPORT_URL} target="_blank" rel="noreferrer" className="text-accent hover:underline">
         Add support
       </a>
