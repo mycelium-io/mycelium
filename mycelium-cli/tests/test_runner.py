@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -22,7 +23,7 @@ from typing import Any
 import httpx
 import pytest
 
-from mycelium import machine
+from mycelium import machine, terminal_path
 from mycelium.config import MyceliumConfig
 from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavailableError, starting
 from mycelium.integrations.herdr.bridge import CALL_TIMEOUT_S, call_timeout
@@ -33,7 +34,7 @@ from tests.conftest import install_stand_in_hub, memory_read
 from tests.herdr_layout import HerdrLayout
 
 #: The real install folders, which every test but the one about them has stubbed out.
-REAL_INSTALL_DIRS = frameworks.install_dirs
+REAL_INSTALL_DIRS = terminal_path.install_dirs
 
 HELP = """Start a supported interactive agent in an existing pane
 
@@ -287,7 +288,7 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
 
 @pytest.fixture
 def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
-    real_which = frameworks.shutil.which
+    real_which = shutil.which
 
     def which(name: str, path: str | None = None) -> str | None:
         if path is not None:
@@ -350,13 +351,24 @@ def test_the_scan_looks_for_no_programs(herdr: Herdr, monkeypatch: pytest.Monkey
     lists no CLI as not found. ``installed`` is kept on the wire, the same as
     ``launchable``, for apps from before."""
     looked: list[str] = []
-    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: looked.append(name))
+    monkeypatch.setattr("shutil.which", lambda name, path=None: looked.append(name))
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail(f"ran {a}"))
     found = frameworks.scan({"codex", "claude"})
     assert looked == []
     assert all(f.path is None and f.version is None for f in found)
     assert all(f.installed == f.launchable for f in found)
     assert not any("not found" in (f.note or "") for f in found)
+
+
+def test_a_kind_herdr_can_start_that_mycelium_doesnt_know_is_offered_by_its_name():
+    """Once herdr supports a CLI, it's offered: the table only adds what
+    Mycelium knows about one."""
+    found = {f.id: f for f in frameworks.scan({"claude", "kilo"})}
+    assert found["kilo"].launchable and found["kilo"].note is None
+    assert (found["kilo"].name, found["kilo"].command) == ("kilo", "kilo")
+    # One the table knows keeps its own name, and isn't listed twice.
+    assert found["claude"].name == "Claude Code"
+    assert [f.id for f in frameworks.scan({"claude", "kilo"})].count("claude") == 1
 
 
 def _program(path: Path, text: str = "#!/bin/sh\necho 1.0\n") -> Path:
@@ -372,7 +384,7 @@ def test_codex_under_nvm_is_found_for_its_flags_in_the_newest_node(
     """codex under nvm: not on the PATH the desktop app hands the runner. Its
     flags are read from the newest Node's codex, run with that folder first on
     PATH, where its ``node`` is."""
-    monkeypatch.setattr(frameworks, "install_dirs", REAL_INSTALL_DIRS)
+    monkeypatch.setattr(terminal_path, "install_dirs", REAL_INSTALL_DIRS)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("NVM_DIR", raising=False)
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
@@ -383,7 +395,7 @@ def test_codex_under_nvm_is_found_for_its_flags_in_the_newest_node(
     _program(nodes / "v24.10.1" / "bin" / "node")
     real = _program(nodes / "v24.10.1" / "bin" / "codex")
 
-    found, search = frameworks.locate(("codex",))
+    found, search = terminal_path.locate(("codex",))
     assert found == str(real)
     assert search == f"{real.parent}:/usr/bin:/bin"
 
@@ -396,7 +408,7 @@ def test_the_scan_runs_nothing_of_the_persons_shell(
     shell = _program(tmp_path / "shell", "#!/bin/sh\ntouch " + str(tmp_path / "ran") + "\n")
     monkeypatch.setenv("SHELL", str(shell))
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
-    monkeypatch.setattr(frameworks, "install_dirs", lambda: [tmp_path / "bin"])
+    monkeypatch.setattr(terminal_path, "install_dirs", lambda: [tmp_path / "bin"])
     _program(tmp_path / "bin" / "codex", "#!/bin/sh\necho 'codex --approve-for-me'\n")
     real_run = subprocess.run
     argv: list[list[str]] = []
@@ -414,7 +426,6 @@ def test_the_scan_runs_nothing_of_the_persons_shell(
     assert not (tmp_path / "ran").exists()
     assert argv
     assert all(str(shell) not in cmd and "-ilc" not in cmd for cmd in argv)
-    assert not hasattr(frameworks, "terminal_path")
 
 
 def test_without_herdr_nothing_is_startable(herdr: Herdr):
@@ -863,6 +874,23 @@ def test_with_sign_in_off_there_is_no_verdict_on_anyone(
     _agent_here(r, herdr, "mine")
     r.keep_credentials(now=1000.0)
     assert r.credentials_report() == []
+
+
+def test_a_kind_only_herdr_knows_is_started_by_its_name_with_nothing_added(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        "tests.test_runner.HELP", HELP.replace("codex, opencode]", "codex, opencode, kilo]")
+    )
+    r = make_runner()
+    assert any(f.id == "kilo" and f.launchable for f in r.found)
+
+    r.launch({"room": "eng", "handle": "scout", "framework": "kilo"})
+
+    start = herdr.of("agent start")[0]
+    assert start[2:6] == ["scout_eng", "--kind", "kilo", "--pane"]
+    assert "--" not in start  # no arguments of Mycelium's own
+    assert "You are @scout" in herdr.of("agent prompt")[0][3]
 
 
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(

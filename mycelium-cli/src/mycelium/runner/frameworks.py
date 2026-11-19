@@ -10,29 +10,17 @@ the command at an interactive prompt in a pane, where the person's own shell
 finds it on their real PATH. So every kind herdr has is offered, and the start
 is the test of whether it's installed: one whose shell can't find it says so,
 with where to install it (``Runner._start_failed``). The scan doesn't look for
-programs itself. What to call each CLI is the table in
-:mod:`mycelium.integrations.agents`.
-
-:func:`locate` still finds a CLI's program for the few times the runner runs
-it before a start (Codex's ``--help`` and ``login status``): on this process's
-``PATH``, then in the folders version managers put programs in
-(:func:`install_dirs`). Nothing of the person's runs to answer it: not their
-shell, not its rc files.
+programs. What Mycelium knows about each CLI, beyond herdr's name for it, is
+the table in :mod:`mycelium.integrations.agents`.
 """
 
 from __future__ import annotations
 
-import os
-import re
-import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from mycelium.integrations.agents import KNOWN, by_id
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
 
 
 @dataclass
@@ -102,65 +90,15 @@ def _can_start_in(folder: Any, roots: list[Path]) -> bool:
     return any(path == root or root in path.parents for root in roots)
 
 
-def _newest_first(dirs: Iterable[Path]) -> list[Path]:
-    """Version managers' folders, the newest version first, read from the
-    ``v24.1.0``-style part of each path."""
-
-    def version(p: Path) -> tuple[int, ...]:
-        for part in reversed(p.parts):
-            if m := re.fullmatch(r"v?(\d+(?:\.\d+)*)", part):
-                return tuple(int(n) for n in m.group(1).split("."))
-        return ()
-
-    return sorted(dirs, key=version, reverse=True)
-
-
-def install_dirs() -> list[Path]:
-    """Where agent CLIs are commonly installed when they're not on this
-    process's PATH: nvm's Node versions (newest first), Volta, fnm, asdf's
-    shims, Bun, ``~/.local/bin`` and Homebrew's folders. The desktop app starts
-    the runner without the PATH a terminal has, and these are what a terminal
-    usually adds."""
-    home = Path.home()
-    nvm = Path(os.environ.get("NVM_DIR") or home / ".nvm") / "versions" / "node"
-    fnm = [Path(d) for d in (os.environ.get("FNM_DIR"),) if d] + [
-        home / ".local" / "share" / "fnm",
-        home / "Library" / "Application Support" / "fnm",
-    ]
-    asdf = Path(os.environ.get("ASDF_DATA_DIR") or home / ".asdf")
-    return [
-        *_newest_first(nvm.glob("*/bin")),
-        home / ".volta" / "bin",
-        *(d / "aliases" / "default" / "bin" for d in fnm),
-        *_newest_first(p for d in fnm for p in d.glob("node-versions/*/installation/bin")),
-        asdf / "shims",
-        home / ".bun" / "bin",
-        home / ".local" / "bin",
-        Path("/opt/homebrew/bin"),
-        Path("/usr/local/bin"),
-    ]
-
-
-def locate(binaries: tuple[str, ...]) -> tuple[str | None, str | None]:
-    """The first of ``binaries`` on this process's PATH, else in
-    :func:`install_dirs`, and the PATH to run it with: ``None`` for this
-    process's own, or that folder ahead of it, so a CLI that's a Node script
-    (``#!/usr/bin/env node``) finds the ``node`` installed beside it.
-    ``(None, None)`` when it isn't found."""
-    if found := next((p for b in binaries if (p := shutil.which(b))), None):
-        return found, None
-    for folder in install_dirs():
-        if found := next((p for b in binaries if (p := shutil.which(b, path=str(folder)))), None):
-            return found, f"{folder}{os.pathsep}{os.environ.get('PATH', os.defpath)}"
-    return None, None
-
-
 def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
-    """Every known framework, what the host can start first.
+    """Every agent CLI the host can start, then the known ones it can't.
 
     ``kinds`` is what the runner's host (named ``host``) says it can start, or
     ``None`` when the host is not here. A framework is launchable when the host
-    has its kind; whether it's installed is found out by starting it.
+    has its kind; whether it's installed is found out by starting it. A kind the
+    host has that :mod:`mycelium.integrations.agents` doesn't know is offered
+    too, by the host's name for it: what the table adds is only what Mycelium
+    knows about a CLI (its name, arguments, install page).
 
     ``path`` and ``version`` are always ``None`` and ``installed`` is the same
     as ``launchable``: the wire still carries them for apps from before the
@@ -189,5 +127,20 @@ def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
                 note=note,
             )
         )
+    known = {k.id for k in KNOWN} | {k.herdr_kind for k in KNOWN if k.herdr_kind}
+    # herdr names a kind by its canonical executable, which is all there is to call it.
+    out.extend(
+        Found(
+            id=kind,
+            name=kind,
+            command=kind,
+            path=None,
+            version=None,
+            installed=True,
+            launchable=True,
+            note=None,
+        )
+        for kind in sorted((kinds or set()) - known)
+    )
     out.sort(key=lambda f: not f.launchable)
     return out

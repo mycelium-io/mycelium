@@ -63,9 +63,10 @@ the installer usually says which line to add to your shell's startup file.
 
 ## Adding your own harness
 
-Mycelium starts agent CLIs through herdr, so the ones it can start are the ones
-herdr can start. To use one that isn't offered yet, it first needs herdr
-support:
+Mycelium can start any agent CLI that herdr can start. Once herdr supports a
+CLI, it shows up in **Add member** after you update herdr and press **Rescan**,
+with no change to Mycelium. To use one herdr can't start yet, it first needs
+herdr support:
 
 - [Agents](https://herdr.dev/docs/agents/) lists the agent CLIs herdr can
   start today.

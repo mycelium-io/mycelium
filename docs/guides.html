@@ -656,7 +656,7 @@
       <p>herdr starts the CLI in a new terminal, which finds the same programs a new terminal window finds. If that terminal has no such command, the start stops and says so, with a link to the CLI&#x27;s install page.</p>
       <p>Install the CLI, then open a new terminal window and check that its command runs there (for example <code>opencode</code>). If it runs there, add the agent again. If it doesn&#x27;t, the folder it was installed in isn&#x27;t on your terminal&#x27;s <code>PATH</code> yet: the installer usually says which line to add to your shell&#x27;s startup file.</p>
       <h2 id="machines-adding-your-own-harness">Adding your own harness</h2>
-      <p>Mycelium starts agent CLIs through herdr, so the ones it can start are the ones herdr can start. To use one that isn&#x27;t offered yet, it first needs herdr support:</p>
+      <p>Mycelium can start any agent CLI that herdr can start. Once herdr supports a CLI, it shows up in <strong>Add member</strong> after you update herdr and press <strong>Rescan</strong>, with no change to Mycelium. To use one herdr can&#x27;t start yet, it first needs herdr support:</p>
       <ul>
         <li><a href="https://herdr.dev/docs/agents/">Agents</a> lists the agent CLIs herdr can start today.</li>
         <li><a href="https://herdr.dev/docs/add-herdr-support/">Add Herdr support to your agent</a> says how to add support for another one.</li>

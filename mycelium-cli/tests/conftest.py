@@ -137,13 +137,13 @@ def _no_remembered_session() -> None:
 def _never_the_real_install_dirs(monkeypatch: pytest.MonkeyPatch) -> None:
     """No test finds the developer's own agent CLIs in their install folders.
 
-    The scan and ``AgentKind.offers`` look in ``~/.nvm``, Homebrew's folders and
+    ``AgentKind.offers`` and ``run`` look in ``~/.nvm``, Homebrew's folders and
     the like when a CLI isn't on the process's PATH, which in a test is most of
     them. A test that wants one there stubs ``install_dirs``.
     """
-    from mycelium.runner import frameworks
+    from mycelium import terminal_path
 
-    monkeypatch.setattr(frameworks, "install_dirs", list)
+    monkeypatch.setattr(terminal_path, "install_dirs", list)
 
 
 # ── SLIM transport ────────────────────────────────────────────────────────────

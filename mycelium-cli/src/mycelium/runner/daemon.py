@@ -1002,12 +1002,12 @@ class Runner:
                 self.state.save(self._state_path)
 
     def framework(self, framework_id: str) -> agents.AgentKind:
-        known = agents.by_id(framework_id)
         found = next((f for f in self.found if f.id == framework_id), None)
-        # One the scan didn't find is still started: herdr types its command at
-        # the person's own prompt, whose PATH may have it.
-        if known is None or found is None:
+        if found is None:
             raise JobError(f"{framework_id} is not an agent CLI {self.label} knows.")
+        # A kind herdr can start that the table doesn't know is started by
+        # herdr's name for it, with nothing of Mycelium's added.
+        known = agents.by_id(framework_id) or of_kind(framework_id)
         if not found.launchable or known.herdr_kind is None:
             host = self.host.name
             raise JobError(
