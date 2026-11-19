@@ -137,7 +137,7 @@ def may_act_as(principal: Principal, room: str, handle: str | None) -> bool:
     if subagents.SEPARATOR in normalized:
         # A subagent: its parent's token may act as it, while it's recorded
         # and hasn't ended. Never read from the name.
-        parent = subagents.parent_of(room, normalized)
+        parent = subagents.acting_parent(room, normalized)
         return parent is not None and _mine(principal, parent)
     return _mine(principal, normalized) or principals.delegates_to(
         room, normalized, principal.handle
@@ -151,7 +151,7 @@ def _refuse_unrecorded_subagent(room: str, claimed: str | None, field: str) -> N
     normalized = normalize_handle((claimed or "").partition("#")[0])
     if normalized is None or subagents.SEPARATOR not in normalized:
         return
-    if subagents.parent_of(room, normalized) is None:
+    if subagents.acting_parent(room, normalized) is None:
         raise HTTPException(
             status_code=403,
             detail=(

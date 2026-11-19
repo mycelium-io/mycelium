@@ -33,6 +33,7 @@ def _read(entry: dict) -> SubagentRead:
         state=entry.get("state", "working"),
         started_at=entry.get("started_at", ""),
         ended_at=entry.get("ended_at"),
+        ended_by=entry.get("ended_by"),
     )
 
 

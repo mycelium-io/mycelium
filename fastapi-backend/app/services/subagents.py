@@ -31,8 +31,10 @@ A row a subagent claimed goes back to the board when it ends
 
 Known limits: the counts are per parent, not per subagent, so with several
 running, finished steps are matched to them oldest first, and a subagent step
-the parent ran without ``subagent start`` counts too. Ended records are kept
-for good, and the whole list is what every open Members rail reads.
+the parent ran without ``subagent start`` counts too. So a subagent can end for
+another's step; when one ended that way acts again, it was still running, and
+:func:`acting_parent` puts it back to working. Ended records are kept for good,
+and the whole list is what every open Members rail reads.
 """
 
 from __future__ import annotations
@@ -50,6 +52,11 @@ FILENAME = ".subagents.json"
 SEPARATOR = ":"
 
 State = Literal["working", "done", "ended"]
+
+#: Why a subagent ended, kept on its record as ``ended_by``. Only ``finished``
+#: is a guess (a step count matched oldest first), so only that one is undone
+#: by the subagent acting again.
+FINISHED, ENDED, PARENT_STOPPED, TIMED_OUT = "finished", "end", "parent", "timeout"
 
 #: How long a done subagent is still listed, faded, before it leaves.
 DONE_FOR = timedelta(minutes=2)
@@ -101,10 +108,11 @@ def _settle(entries: list[dict[str, Any]], now: datetime) -> bool:
     a working one after :data:`TIMEOUT`. Whether anything changed."""
     changed = False
     for e in entries:
-        if (e.get("state") == "done" and now - _at(e.get("done_at"), now) >= DONE_FOR) or (
-            e.get("state") == "working" and now - _at(e.get("started_at"), now) >= TIMEOUT
-        ):
-            e.update(state="ended", ended_at=now.isoformat())
+        if e.get("state") == "done" and now - _at(e.get("done_at"), now) >= DONE_FOR:
+            e.update(state="ended", ended_at=now.isoformat(), ended_by=FINISHED)
+            changed = True
+        elif e.get("state") == "working" and now - _at(e.get("started_at"), now) >= TIMEOUT:
+            e.update(state="ended", ended_at=now.isoformat(), ended_by=TIMED_OUT)
             changed = True
     return changed
 
@@ -136,6 +144,46 @@ def parent_of(room: str, handle: str) -> str | None:
     """The parent of a subagent that hasn't ended, recorded in ``room``."""
     found = record(room, handle)
     return found["parent"] if found and found.get("state") != "ended" else None
+
+
+def _guessed_ended(entry: dict[str, Any]) -> bool:
+    """Whether a record ended only because a finished step was matched to it.
+    A record written before ``ended_by`` was kept tells by having been done."""
+    if entry.get("state") != "ended":
+        return False
+    if "ended_by" in entry:
+        return entry["ended_by"] == FINISHED
+    return "done_at" in entry
+
+
+def acting_parent(room: str, handle: str) -> str | None:
+    """The parent of a subagent that is acting now: posting, or claiming a row.
+
+    Like :func:`parent_of`, except that a subagent ended only by a guess (a
+    finished step matched to it, oldest first, when it may have been another
+    subagent's) is put back to working, since acting shows it's still running.
+    One ended by ``subagent end``, by its parent stopping or by the timeout
+    stays ended.
+    """
+    wanted = norm_handle(handle)
+    if not room_exists(room):
+        return None
+    with _lock:
+        entries = _read(room)
+        _settle(entries, _now())
+        found = next((e for e in entries if e["handle"] == wanted), None)
+        if found is None:
+            return None
+        if _guessed_ended(found):
+            for stale in ("done_at", "ended_at", "ended_by", "released"):
+                found.pop(stale, None)
+            found.update(state="working", seen_open=True)
+            if (base := _last_finished.get((room, found["parent"]))) is not None:
+                found["finished_base"] = base
+            else:
+                found.pop("finished_base", None)
+            _write(room, entries)
+        return found["parent"] if found.get("state") != "ended" else None
 
 
 def start(room: str, parent: str, name: str) -> dict[str, Any]:
@@ -177,7 +225,7 @@ def end(room: str, handle: str) -> dict[str, Any] | None:
         if found is None:
             return None
         if found.get("state") != "ended":
-            found.update(state="ended", ended_at=_now().isoformat())
+            found.update(state="ended", ended_at=_now().isoformat(), ended_by=ENDED)
             _write(room, entries)
         return found
 
@@ -215,7 +263,7 @@ def observe(
         )
         if parent_state in ("stopped", "gone"):
             for e in mine:
-                e.update(state="ended", ended_at=now.isoformat())
+                e.update(state="ended", ended_at=now.isoformat(), ended_by=PARENT_STOPPED)
                 changed = True
         elif finished_steps is not None:
             changed = _follow_finished(room, me, mine, finished_steps, now) or changed

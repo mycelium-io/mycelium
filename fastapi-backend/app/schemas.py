@@ -1053,6 +1053,11 @@ class SubagentRead(BaseModel):
     state: Literal["working", "done", "ended"]
     started_at: str
     ended_at: str | None = None
+    ended_by: Literal["finished", "end", "parent", "timeout"] | None = Field(
+        None,
+        description="Why it ended: its step finished, `subagent end`, its parent "
+        "stopped, or it timed out",
+    )
 
 
 class KnowledgeTaskRead(BaseModel):
