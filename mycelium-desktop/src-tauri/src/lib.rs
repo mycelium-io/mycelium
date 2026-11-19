@@ -13,6 +13,7 @@
 
 mod close;
 mod download;
+mod hub_check;
 mod paths;
 mod session;
 mod settings;
@@ -20,6 +21,7 @@ mod signature;
 mod supervisor;
 mod terminal;
 mod updates;
+mod usage;
 mod versions;
 mod zoom;
 
@@ -1132,6 +1134,14 @@ async fn experiences_cli(args: Vec<String>) -> Result<Value, String> {
     serde_json::from_slice(&out.stdout).map_err(|_| "The experiences came back unreadable.".into())
 }
 
+/// Why the address entered to join a team's hub isn't one, or null when a
+/// Mycelium hub answers there, so the place step says so where it's typed.
+#[tauri::command]
+async fn check_hub(app: AppHandle, webview: Webview, url: String) -> Result<Option<String>, String> {
+    local_only(&app, &webview)?;
+    Ok(hub_check::problem(&url, MACHINE).await)
+}
+
 /// What the hub is set up with, read-only: `mycelium hub settings --json`
 /// against the team's hub (or this Mac's). No key is ever in the answer.
 #[tauri::command]
@@ -1250,6 +1260,36 @@ fn open_log(app: AppHandle, webview: Webview) -> Result<(), String> {
     open_log_file(&desktop_log())
 }
 
+/// The person's own widgets as the supervisor last ran them, from
+/// `[statusline]` in this computer's config file: each one's settings and its
+/// last run. The page reads them and nothing else: it can't name a command,
+/// and only that file says what runs. `None` until the supervisor has said.
+#[tauri::command]
+fn widgets(app: AppHandle, webview: Webview) -> Result<Option<Value>, String> {
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
+    Ok(app.state::<Supervisor>().widgets())
+}
+
+/// Open this computer's config file (`~/.mycelium/config.toml`), where the
+/// widgets are, in the person's text editor.
+#[tauri::command]
+fn open_widgets_config(app: AppHandle, webview: Webview) -> Result<(), String> {
+    local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
+    let config = paths::home().join(".mycelium").join("config.toml");
+    if !config.exists() {
+        return Err("There's no config file yet. It's made when Mycelium first starts.".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // `-t` opens it in the default text editor, whatever owns `.toml`.
+        paths::command("open").arg("-t").arg(&config).spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        paths::open(config.as_os_str()).map_err(|e| e.to_string())
+    }
+}
+
 /// Back to the room UI from one of the app's own pages, once it is up.
 #[tauri::command]
 fn open_room(app: AppHandle, webview: Webview) -> Result<(), String> {
@@ -1319,6 +1359,16 @@ async fn agent_session(
     tauri::async_runtime::spawn_blocking(move || session::session(&room, &handle))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// What each agent on this machine uses (memory, CPU, processes), as the
+/// runner here last wrote it, for the Agents pane. The same rule as
+/// `agent_screen`: it never goes to the hub, and another hub's pages get
+/// nothing.
+#[tauri::command]
+async fn agent_usage(app: AppHandle, webview: Webview) -> Result<Value, String> {
+    own_ui_only(&app, &webview)?;
+    tauri::async_runtime::spawn_blocking(usage::usage).await.map_err(|e| e.to_string())?
 }
 
 /// The `limit` entries of an agent's session before the entry `before`, for
@@ -1396,6 +1446,16 @@ async fn choose_agent_folder(
 async fn start(app: AppHandle, webview: Webview, settings: Settings) -> Result<paths::PathSetup, String> {
     local_only(&app, &webview).or_else(|_| own_ui_only(&app, &webview))?;
     let settings = settings.validate()?;
+    // A new hub to join is checked here too, whichever page asked, so no way
+    // of saving it skips the check the place step makes.
+    if let (Mode::Client, Some(hub)) = (&settings.mode, &settings.hub_url) {
+        let saved = settings::load().and_then(|s| s.hub_url);
+        if saved.as_deref() != Some(hub.as_str()) {
+            if let Some(problem) = hub_check::problem(hub, MACHINE).await {
+                return Err(problem);
+            }
+        }
+    }
     if let Some(question) = settings::load().and_then(|saved| changed_trust(&saved, &settings)) {
         confirmed_here(&app, &webview, question.0, question.1, "Change").await?;
     }
@@ -1685,8 +1745,10 @@ pub fn run() {
             agent_screen,
             agent_session,
             agent_session_page,
+            agent_usage,
             earlier_sessions,
             run_doctor,
+            check_hub,
             herdr_integrations,
             get_model,
             save_model,
@@ -1699,6 +1761,8 @@ pub fn run() {
             set_autostart,
             open_room,
             open_log,
+            widgets,
+            open_widgets_config,
             start,
             update_progress,
             update_retry,

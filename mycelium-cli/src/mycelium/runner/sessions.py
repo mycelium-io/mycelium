@@ -104,6 +104,17 @@ class Follower:
         self.base = base or sessions_dir()
         #: What each file was last written from, so an unchanged one isn't again.
         self._written: dict[tuple[str, str], tuple[Any, ...]] = {}
+        #: How many subagent steps each agent's session has open, by (room,
+        #: handle); ``None`` when its CLI's session isn't read. A count is all
+        #: the hub is told (:func:`open_subagents`), never what they say.
+        self.subagents_open: dict[tuple[str, str], int | None] = {}
+        #: How many subagent steps each agent's session has finished since
+        #: this runner first read it. It only goes up, so a step that opened
+        #: and closed between two looks still counts.
+        self.subagents_finished: dict[tuple[str, str], int | None] = {}
+        #: The finished steps in each session's latest entries, kept only
+        #: here, so a step is counted once.
+        self._finished_ids: dict[tuple[str, str], set[str]] = {}
 
     def tick(self) -> None:
         try:
@@ -146,17 +157,39 @@ class Follower:
         self, key: tuple[str, str], kind: Any, session: str | None, folder: str | None, state: str
     ) -> None:
         if not kind.renders:
+            self._unread(key)
             self._write(key, ("no_converter",), {"unavailable": "no_converter"})
             return
         path = kind.session_path(folder, session) if session else None
         if path is None:
+            self._unread(key)
             self._write(key, ("no_session",), {"unavailable": "no_session"})
             return
         stamp = (str(path), state, *(_stamp(p) for p in kind.session_files(path)))
         if self._written.get(key) == stamp:
             return
         body = kind.read_session(path)
+        self.subagents_open[key] = open_subagents(body)
+        self._count_finished(key, finished_subagents(body))
         self._write(key, stamp, {**body, "state": state, "waitingOn": None}, force=True)
+
+    def _unread(self, key: tuple[str, str]) -> None:
+        self.subagents_open[key] = None
+        self.subagents_finished[key] = None
+        self._finished_ids.pop(key, None)
+
+    def _count_finished(self, key: tuple[str, str], ids: set[str]) -> None:
+        """Add the steps that finished since the last look. The first look
+        counts none: what had finished by then is where the count starts. A
+        step that scrolls out of the latest entries never comes back, so only
+        the ones still in them are kept."""
+        known = self._finished_ids.get(key)
+        before = self.subagents_finished.get(key)
+        if known is None or before is None:
+            self.subagents_finished[key] = 0
+        else:
+            self.subagents_finished[key] = before + len(ids - known)
+        self._finished_ids[key] = ids
 
     def _write(
         self,
@@ -184,8 +217,59 @@ class Follower:
 
     def _remove(self, key: tuple[str, str]) -> None:
         self._written.pop(key, None)
+        self.subagents_open.pop(key, None)
+        self.subagents_finished.pop(key, None)
+        self._finished_ids.pop(key, None)
         with contextlib.suppress(OSError):
             (self.base / key[0] / f"{key[1]}.json").unlink()
+
+
+#: The tool a session starts a subagent with (Claude Code's `Agent`, before
+#: that `Task`).
+SUBAGENT_TOOLS = frozenset({"Agent", "Task"})
+
+
+def _subagent_steps(body: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """``(open, finished)``: the ids of a read session's subagent steps.
+
+    A step in the foreground is open until its tool call's result comes back.
+    One started in the background gets its result at once, saying it was
+    launched, while the subagent goes on working (the converter marks it
+    ``_meta.background``); it's open until the session is told it ended
+    (``_meta.ended``). Counting the launch as the end is what ended a subagent
+    a minute into its work, and refused everything it said after.
+    """
+    entries = body.get("entries") or []
+    opened: set[str] = set()
+    finished: set[str] = set()
+    for at, e in enumerate(entries):
+        if e.get("sessionUpdate") != "tool_call" or e.get("name") not in SUBAGENT_TOOLS:
+            continue
+        # One with no id can't be followed from one look to the next, but is
+        # still a step to count as open now.
+        call = str(e.get("toolCallId") or f"#{at}")
+        meta = e.get("_meta") if isinstance(e.get("_meta"), dict) else {}
+        if e.get("status") in ("pending", "in_progress"):
+            opened.add(call)
+        elif not meta.get("background") or meta.get("ended"):
+            finished.add(call)
+        # A launch that failed never ran; one that came back launched runs on.
+        elif e.get("status") != "failed":
+            opened.add(call)
+    return opened, finished
+
+
+def open_subagents(body: dict[str, Any]) -> int:
+    """How many subagent steps a read session has open (:func:`_subagent_steps`).
+    Counted here, so only the number leaves."""
+    return len(_subagent_steps(body)[0])
+
+
+def finished_subagents(body: dict[str, Any]) -> set[str]:
+    """The ids of the subagent steps a read session has finished
+    (:func:`_subagent_steps`), kept on this machine to count them; only the
+    count leaves (:class:`Follower`)."""
+    return {call for call in _subagent_steps(body)[1] if not call.startswith("#")}
 
 
 def page(

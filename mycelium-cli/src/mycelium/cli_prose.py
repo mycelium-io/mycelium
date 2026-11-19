@@ -53,7 +53,12 @@ SOURCES = (
 
 #: Commands written on purpose in a shape the CLI does not take, with why.
 #: Keyed by (path relative to the root, the command as written).
-EXEMPT: dict[tuple[str, str], str] = {}
+EXEMPT: dict[tuple[str, str], str] = {
+    (
+        "mycelium-frontend/src/lib/wake-digest.test.ts",
+        "mycelium wake for @builder in checkout",
+    ): "The first line of a wake, which the app's wake parser reads. It's text, not a command.",
+}
 
 #: Whole files known to be out of date, waiting on a rewrite, with where that
 #: is tracked. A listed file that checks clean is reported, so this shrinks.

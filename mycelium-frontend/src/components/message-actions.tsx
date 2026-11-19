@@ -4,19 +4,21 @@
 "use client";
 
 /**
- * The row of buttons on a channel message the pointer is on: Reply and Quote
+ * The row of buttons on a channel message the pointer is on: an emoji
+ * reaction, Reply and Quote
  * (into the room's composer), Copy text and Copy link, Make a task, and More,
  * which holds the right-click menu's remaining items. It sits on the message's
  * top edge so it never moves the text, and draws nothing until its row is
  * hovered or has focus, so a long channel carries no open bars.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AtSign,
   Braces,
   Check,
   Copy,
+  Download,
   Link2,
   ListPlus,
   Loader2,
@@ -24,9 +26,12 @@ import {
   MessageSquarePlus,
   MoreHorizontal,
   Quote,
+  SmilePlus,
 } from "lucide-react";
-import { createTask, createThread } from "@/lib/api";
-import { useRoomRevalidate, type MessageThread } from "@/lib/room-data";
+import { createTask, createThread, type MessageReactions } from "@/lib/api";
+import { useRoomRevalidate, useRoomUploads, type MessageThread } from "@/lib/room-data";
+import { saveBlob, zipName, zipUploads } from "@/lib/upload-zip";
+import { uploadKeysIn } from "@/lib/uploads";
 import { absoluteUrl, copyText } from "@/lib/clipboard";
 import {
   insertIntoComposer,
@@ -42,6 +47,7 @@ import { IconButton, iconButtonClass } from "@/components/ui/icon-button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { RawMessageDialog } from "@/components/raw-message-dialog";
+import { ReactionPicker, useReact } from "@/components/messages/reactions";
 
 interface Props {
   roomName: string;
@@ -51,6 +57,8 @@ interface Props {
   content: string;
   sender: string;
   wire?: Record<string, unknown>;
+  /** The emoji already on it, so picking one you put on takes it off. */
+  reactions?: MessageReactions[];
   /** Opens the task a message was just made into, on its thread. */
   onOpenThread?: (episode: string) => void;
   /** The message's clock time, shown at the bar's start. */
@@ -75,6 +83,7 @@ export function MessageActions(props: Props) {
   const anchor = useRef<HTMLSpanElement>(null);
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [picking, setPicking] = useState(false);
   useEffect(() => {
     const row = anchor.current?.parentElement;
     if (!row) return;
@@ -105,8 +114,15 @@ export function MessageActions(props: Props) {
   return (
     <>
       <span ref={anchor} hidden />
-      {(hovered || menuOpen) && (
-        <Bar {...props} menuOpen={menuOpen} onMenuOpen={setMenuOpen} onViewRaw={() => setRawOpen(true)} />
+      {(hovered || menuOpen || picking) && (
+        <Bar
+          {...props}
+          menuOpen={menuOpen}
+          onMenuOpen={setMenuOpen}
+          picking={picking}
+          onPicking={setPicking}
+          onViewRaw={() => setRawOpen(true)}
+        />
       )}
       {rawOpen && props.wire && <RawMessageDialog open onClose={() => setRawOpen(false)} message={props.wire} />}
     </>
@@ -124,11 +140,21 @@ function Bar({
   time,
   thread = null,
   threads = false,
+  reactions = [],
   menuOpen,
   onMenuOpen,
+  picking,
+  onPicking,
   onViewRaw,
-}: Props & { menuOpen: boolean; onMenuOpen: (open: boolean) => void; onViewRaw: () => void }) {
+}: Props & {
+  menuOpen: boolean;
+  onMenuOpen: (open: boolean) => void;
+  picking: boolean;
+  onPicking: (open: boolean) => void;
+  onViewRaw: () => void;
+}) {
   const { principal } = useCurrentUser();
+  const { me, react, failed: reactFailed } = useReact(roomName, messageId);
   const [copied, setCopied] = useState<"text" | "link" | null>(null);
   const [making, setMaking] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
@@ -139,6 +165,25 @@ function Bar({
   }, [copied]);
 
   const link = messageId ? absoluteUrl(messagePath(roomName, messageId)) : null;
+
+  // A message with several files saves them all, as one zip, from here: taking
+  // a copy of a message lives in this bar, and the files under it stay as they are.
+  const keys = useMemo(() => uploadKeysIn(content), [content]);
+  const { uploads } = useRoomUploads(keys.length > 1 ? roomName : "");
+  const files = useMemo(() => keys.flatMap((k) => uploads.filter((u) => u.key === k)), [keys, uploads]);
+  const [zipping, setZipping] = useState(false);
+  const [zipFailed, setZipFailed] = useState(false);
+  const downloadAll = async () => {
+    setZipping(true);
+    setZipFailed(false);
+    try {
+      saveBlob(await zipUploads(files), zipName(roomName));
+    } catch {
+      setZipFailed(true);
+    } finally {
+      setZipping(false);
+    }
+  };
   // The bar sits in its message's row, so it says which pane the click is from.
   const bar = useRef<HTMLDivElement>(null);
   const insert = (text: string) => insertIntoComposer({ room: roomName, episode, text, from: bar.current });
@@ -197,6 +242,26 @@ function Bar({
       className="absolute -top-3.5 right-4 z-10 flex items-center gap-px rounded-lg border border-border2 bg-elevated p-0.5 shadow-md"
     >
       {time && <span className="px-1.5 text-micro tabular text-faint">{time}</span>}
+      {messageId && (
+        <ReactionPicker
+          open={picking}
+          onOpenChange={onPicking}
+          onPick={(emoji) => {
+            const found = reactions.find((r) => r.emoji === emoji);
+            void react(emoji, !found?.by.includes(me));
+          }}
+          trigger={
+            <Tooltip content={reactFailed ? `Couldn't react: ${reactFailed}` : "Add a reaction"}>
+              <PopoverTrigger
+                aria-label="Add a reaction"
+                className={iconButtonClass("sm", reactFailed ? "size-7 text-red" : "size-7")}
+              >
+                <SmilePlus />
+              </PopoverTrigger>
+            </Tooltip>
+          }
+        />
+      )}
       {/* Reply names the sender in the composer, so it's drawn as the @ it
           types; an arrow read as "reply in a thread", which this isn't. */}
       <IconButton label={`Reply to @${sender}`} action="message.reply" className="size-7" onClick={reply}>
@@ -244,6 +309,16 @@ function Bar({
           onClick={() => void copyText(link).then(() => setCopied("link"))}
         >
           {copied === "link" ? <Check /> : <Link2 />}
+        </IconButton>
+      )}
+      {files.length > 1 && (
+        <IconButton
+          label={zipFailed ? "Couldn't download. Try again." : `Download all ${files.length} files`}
+          className={zipFailed ? "size-7 text-red" : "size-7"}
+          disabled={zipping}
+          onClick={() => void downloadAll()}
+        >
+          {zipping ? <Loader2 className="animate-spin" /> : <Download />}
         </IconButton>
       )}
       <Divider />

@@ -164,6 +164,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("skill", "skill", "skill"),
     ("schedule", "schedule", "schedule"),
     ("subscribe", "subscribe", "subscribe"),
+    ("subagent", "subagent", "subagent"),
     ("theme", "theme", "theme"),
     ("file", "file", "file"),
     ("negotiate", "negotiate", "negotiate"),
@@ -622,6 +623,7 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     import mycelium.commands.pattern  # noqa: F401
     import mycelium.commands.room  # noqa: F401
     import mycelium.commands.skill  # noqa: F401
+    import mycelium.commands.subagent  # noqa: F401
     import mycelium.commands.ui  # noqa: F401
     import mycelium.commands.version  # noqa: F401
     from mycelium.doc_ref import get_registry

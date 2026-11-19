@@ -23,8 +23,15 @@ def test_a_cli_with_nothing_of_its_own_adds_nothing():
     gemini = agents.of_kind("gemini")
     assert gemini.launch_args() == []
     assert gemini.blocked_hint() is None
+    assert gemini.launch_env() == {}
     unknown = agents.of_kind("someday")
     assert (unknown.id, unknown.launch_args(), unknown.adapter) == ("someday", [], "claude_code")
+
+
+def test_opencode_starts_without_its_update_dialog():
+    """Its update dialog opens over its input while herdr reads it as idle, so a
+    wake would be typed into it and could answer it."""
+    assert agents.of_kind("opencode").launch_env() == {"OPENCODE_DISABLE_AUTOUPDATE": "1"}
 
 
 CLAUDE_HELP = (
@@ -152,7 +159,7 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     a Node CLI's ``#!/usr/bin/env node`` needs the node installed beside it.
     Asked any other way, it says nothing, and Codex would start without the
     flags it has."""
-    from mycelium.runner import frameworks
+    from mycelium import terminal_path
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))  # the runner's own: no codex
@@ -164,7 +171,7 @@ def test_a_codex_under_nvm_is_asked_about_its_flags_with_its_node_on_path(
     codex = nvm / "codex"
     codex.write_text("#!/usr/bin/env fakenode\n")
     codex.chmod(0o755)
-    monkeypatch.setattr(frameworks, "install_dirs", lambda: [nvm])
+    monkeypatch.setattr(terminal_path, "install_dirs", lambda: [nvm])
 
     args = agents.of_kind("codex").launch_args()
     assert args[0] == "--approve-for-me"

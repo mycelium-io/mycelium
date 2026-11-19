@@ -152,3 +152,39 @@ def test_a_slow_shell_is_said_once_and_still_waited_for(monkeypatch: pytest.Monk
     assert came_up is None
     assert told == ["slow"]
     assert len(attempts) == 4
+
+
+def test_nothing_is_typed_until_the_agent_s_screen_has_drawn(monkeypatch: pytest.MonkeyPatch):
+    """herdr reads an agent as ready before its screen takes input (OpenCode's);
+    the wait goes on until the screen is drawn and stays the same."""
+    monkeypatch.setattr(starting, "DRAW_POLL_S", 0)
+    screens = iter([None, "", "loading", "input box", "input box", "input box", "unreached"])
+    reads: list[str | None] = []
+
+    class _Bridge:
+        def read_pane(self, pane: str, **_: object) -> str | None:
+            reads.append(screen := next(screens))
+            return screen
+
+    starting.wait_drawn(_Bridge(), "w9:p1", "opencode")
+    assert reads == [None, "", "loading", "input box", "input box", "input box"]
+
+    class _Unread:
+        def read_pane(self, *_: object, **__: object) -> str:
+            raise AssertionError("a CLI that takes input once herdr says so isn't read")
+
+    starting.wait_drawn(_Unread(), "w9:p1", "claude")
+
+
+def test_a_screen_that_never_settles_is_waited_for_only_so_long(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(starting, "DRAW_POLL_S", 0)
+    monkeypatch.setattr(starting, "DRAW_WAIT_S", 0.05)
+    ticks = iter(range(10**9))
+
+    class _Bridge:
+        def read_pane(self, pane: str, **_: object) -> str:
+            return f"spinner {next(ticks)}"
+
+    began = time.monotonic()
+    starting.wait_drawn(_Bridge(), "w9:p1", "opencode")
+    assert time.monotonic() - began < 1

@@ -17,7 +17,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Lock, SquareTerminal } from "lucide-react";
-import { parseAnsi, readable, type AnsiStyle } from "@/lib/ansi";
+import { parseAnsi, readable, type AnsiRun, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
 import { runnerName, useRunners } from "@/lib/runners";
@@ -42,6 +42,9 @@ export interface AgentScreenProps {
   view?: ScreenView;
   /** Asked to switch, from inside the rendered view. */
   onView?: (view: ScreenView) => void;
+  /** Fit the whole screen into a small box, for a glance at it rather than
+   *  reading it: its blank margins are cut and its text sized to fit. */
+  fit?: boolean;
 }
 
 export type ScreenView = "rendered" | "terminal";
@@ -53,6 +56,7 @@ export function AgentScreen({
   openLink = true,
   view = "terminal",
   onView,
+  fit = false,
 }: AgentScreenProps) {
   const desktop = useIsDesktop();
   const thisMachine = useThisMachine();
@@ -112,6 +116,8 @@ export function AgentScreen({
           cli={cliOf(runners, room, handle, runnerOf)}
           onShowTerminal={showTerminal}
         />
+      ) : fit ? (
+        <FittedScreen text={screen.text} error={screen.error} />
       ) : (
         <Screen text={screen.text} error={screen.error} />
       )}
@@ -190,6 +196,123 @@ function Screen({ text, error }: { text: string | null; error: string | null }) 
         </div>
       ))}
     </pre>
+  );
+}
+
+/** The text size a fitted screen starts at, and the smallest it shrinks to
+ *  before it scrolls instead, in pixels. */
+const FIT_MAX_PX = 11;
+const FIT_MIN_PX = 4;
+/** A line's height, in ems, as `leading-snug` draws it. */
+const LINE_EM = 1.375;
+
+/** The columns `[from, to)` of a line of runs. */
+function sliceRuns(runs: AnsiRun[], from: number, to: number): AnsiRun[] {
+  const out: AnsiRun[] = [];
+  let col = 0;
+  for (const r of runs) {
+    const start = col;
+    const end = col + r.text.length;
+    col = end;
+    if (end <= from || start >= to) continue;
+    out.push({ ...r, text: r.text.slice(Math.max(0, from - start), Math.min(r.text.length, to - start)) });
+  }
+  return out;
+}
+
+/** A screen's lines with its blank space cut: the blank rows above and below
+ *  what's drawn, every run of blank rows inside it down to one, and the blank
+ *  columns either side of it. A full-screen interface that spreads itself over
+ *  a big terminal comes out as what it drew. */
+export function cropScreen(lines: AnsiRun[][]): { lines: AnsiRun[][]; cols: number } {
+  const plain = lines.map((runs) => runs.map((r) => r.text).join(""));
+  const used = plain.map((p, i) => (p.trim() ? i : -1)).filter((i) => i >= 0);
+  if (!used.length) return { lines: [], cols: 0 };
+  const kept: number[] = [];
+  for (let i = used[0]; i <= used[used.length - 1]; i++) {
+    const blank = !plain[i].trim();
+    if (blank && kept.length && !plain[kept[kept.length - 1]].trim()) continue;
+    kept.push(i);
+  }
+  const drawn = kept.filter((i) => plain[i].trim());
+  const left = Math.min(...drawn.map((i) => plain[i].length - plain[i].trimStart().length));
+  const right = Math.max(...drawn.map((i) => plain[i].trimEnd().length));
+  return { lines: kept.map((i) => sliceRuns(lines[i], left, right)), cols: right - left };
+}
+
+/** How wide one character of `el`'s font is, per pixel of font size. */
+function charRatio(el: HTMLElement): number {
+  const probe = document.createElement("span");
+  probe.textContent = "0".repeat(100);
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font-size:100px";
+  el.appendChild(probe);
+  const width = probe.getBoundingClientRect().width;
+  probe.remove();
+  return width > 0 ? width / 100 / 100 : 0.6;
+}
+
+/**
+ * An agent's screen fitted into a small box, for a glance while it starts.
+ *
+ * Its blank margins are cut (`cropScreen`), then its text is sized so the
+ * whole of what's left fits the box, down to a floor below which it scrolls
+ * from the bottom like the full view. A screen with nothing drawn on it yet
+ * says it's still starting, so a blank box never reads as a broken one.
+ */
+function FittedScreen({ text, error }: { text: string | null; error: string | null }) {
+  const { lines, cols } = useMemo(() => cropScreen(text ? parseAnsi(text) : []), [text]);
+  const ref = useRef<HTMLDivElement | null>(null);
+  // The box's size, and how wide its font's characters are.
+  const [box, setBox] = useState<{ w: number; h: number; ratio: number } | null>(null);
+  const surface = useSurface(ref, text !== null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ratio = charRatio(el);
+    const measure = () => setBox({ w: el.clientWidth, h: el.clientHeight, ratio });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines, box]);
+
+  // Room for the text inside the padding (px-3 py-2).
+  const byWidth = box && cols ? (box.w - 24) / (cols * box.ratio) : FIT_MAX_PX;
+  const byHeight = box && lines.length ? (box.h - 16) / (lines.length * LINE_EM) : FIT_MAX_PX;
+  const size = Math.max(FIT_MIN_PX, Math.min(FIT_MAX_PX, byWidth, byHeight));
+
+  return (
+    <div
+      ref={ref}
+      aria-label="Its terminal"
+      className="relative min-h-0 flex-1 overflow-auto bg-bg px-3 py-2 font-mono leading-snug text-text"
+    >
+      {error && text === null ? (
+        <Note>{error}</Note>
+      ) : text === null || !lines.length ? (
+        // Nothing drawn yet: a CLI clears its screen before its first frame.
+        <span className="absolute inset-0 flex items-center justify-center gap-2 font-sans text-label text-muted-foreground">
+          <span aria-hidden className="size-1.5 rounded-full bg-accent motion-safe:animate-pulse" />
+          {text === null ? "Reading its terminal" : "Starting up"}
+        </span>
+      ) : (
+        <pre style={{ fontSize: `${size}px` }} className="w-max">
+          {lines.map((runs, i) => (
+            <div key={i} className="min-h-[1lh] whitespace-pre">
+              {runs.map((r, j) => (
+                <span key={j} style={cssOf(r.style, surface)}>
+                  {r.text}
+                </span>
+              ))}
+            </div>
+          ))}
+        </pre>
+      )}
+    </div>
   );
 }
 

@@ -13,17 +13,19 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
-from mycelium import machine
+from mycelium import machine, terminal_path
 from mycelium.config import MyceliumConfig
-from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavailableError
+from mycelium.integrations.herdr import HerdrBridge, HerdrRegistry, HerdrUnavailableError, starting
 from mycelium.integrations.herdr.bridge import CALL_TIMEOUT_S, call_timeout
 from mycelium.runner import approvals, daemon, frameworks
 from mycelium.runner.log import open_log
@@ -32,7 +34,7 @@ from tests.conftest import install_stand_in_hub, memory_read
 from tests.herdr_layout import HerdrLayout
 
 #: The real install folders, which every test but the one about them has stubbed out.
-REAL_INSTALL_DIRS = frameworks.install_dirs
+REAL_INSTALL_DIRS = terminal_path.install_dirs
 
 HELP = """Start a supported interactive agent in an existing pane
 
@@ -68,6 +70,10 @@ class Herdr:
         self.fail_start = False
         #: ``agent start`` runs the agent CLI, which exits before it comes up.
         self.exits_on_start = False
+        #: ``agent start`` types a command the shell doesn't have: herdr keeps
+        #: the agent's name on the pane as ``unknown`` and waits this long for
+        #: it, then times out, as herdr 0.9.5 does.
+        self.never_runs_s: float | None = None
         #: ``agent start`` fails, but leaves an agent on the pane in this state,
         #: the way one stopped at a first-run prompt never reads as ready.
         self.start_leaves: str | None = None
@@ -83,6 +89,8 @@ class Herdr:
         self.screens_after_keys: list[str] = []
         #: The folder herdr says an agent's process runs in.
         self.agent_cwd: str | None = None
+        #: What ``pane process-info`` says runs in a pane, by pane.
+        self.processes: dict[str, dict] = {}
         self.layout = HerdrLayout(self._pane)
 
     def _pane(self, workspace: str = "w9") -> str:
@@ -122,6 +130,12 @@ class Herdr:
             if self.exits_on_start:
                 exited = "agent process exited before becoming interactive"
                 return _proc(stderr=json.dumps({"error": exited}), returncode=1)
+            if self.never_runs_s is not None:
+                self.live[pane] = "unknown"
+                time.sleep(self.never_runs_s)
+                self.live.pop(pane, None)
+                timeout = {"code": "timeout", "message": "timed out waiting for agent startup"}
+                return _proc(stderr=json.dumps({"error": timeout}), returncode=1)
             self.live[args[args.index("--pane") + 1]] = "idle"
             return _proc(_ok({}))
         if head == "agent prompt":
@@ -139,6 +153,10 @@ class Herdr:
             return _proc(_ok({"agents": agents}))
         if head == "pane read":
             return _proc(_ok({"text": self.screen}))
+        if head == "pane process-info":
+            pane = args[args.index("--pane") + 1]
+            info = {"pane_id": pane, **self.processes.get(pane, {})}
+            return _proc(_ok({"process_info": info, "type": "pane_process_info"}))
         if head in ("pane run", "pane send-keys"):
             if head == "pane send-keys" and self.keys_settle and args[2] in self.live:
                 self.live[args[2]] = "idle"
@@ -270,7 +288,7 @@ def hub(monkeypatch: pytest.MonkeyPatch) -> Hub:
 
 @pytest.fixture
 def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
-    real_which = frameworks.shutil.which
+    real_which = shutil.which
 
     def which(name: str, path: str | None = None) -> str | None:
         if path is not None:
@@ -280,7 +298,6 @@ def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
         return None if name != "git" else real_which(name)
 
     monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
     return Herdr()
 
 
@@ -316,29 +333,42 @@ def test_herdr_decides_what_can_be_started(herdr: Herdr):
     assert bridge.supported_kinds() == {"pi", "claude", "codex", "opencode"}
 
     found = {f.id: f for f in frameworks.scan(bridge.supported_kinds())}
-    assert found["claude"].installed and found["claude"].launchable
-    assert found["claude"].version == "claude 1.0"
-    # Installed, but herdr has no kind for it.
-    assert found["aider"].installed and not found["aider"].launchable
+    assert found["claude"].launchable and found["claude"].note is None
+    # herdr has no kind for it.
+    assert not found["aider"].launchable
     assert "no aider kind" in (found["aider"].note or "")
-    # Not found here, and still offered: herdr starts it from the person's own
-    # shell, which may have it, and the start says if it doesn't.
-    assert not found["codex"].installed and found["codex"].launchable
-    assert found["codex"].note == "not found on this machine"
-    # What can be started leads the list, found ones first.
-    assert [(f.launchable, f.installed) for f in found.values()][:3] == [
-        (True, True),
-        (True, True),
-        (True, False),
-    ]
+    # Not on this process's PATH, and offered the same: herdr starts it from
+    # the person's own shell, and the start says if it isn't there.
+    assert found["codex"].launchable and found["codex"].note is None
+    # What can be started leads the list.
+    assert [f.launchable for f in found.values()][:4] == [True] * 4
+    assert not any(f.launchable for f in list(found.values())[4:])
 
 
-def test_a_startable_cli_carries_no_note(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
-    found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
-    assert found["codex"].launchable
-    assert found["codex"].note is None
-    assert found["claude"].note is None
+def test_the_scan_looks_for_no_programs(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
+    """Whether a CLI is installed is found out by starting it, where the
+    person's shell looks: the scan neither looks for nor runs a program, and
+    lists no CLI as not found. ``installed`` is kept on the wire, the same as
+    ``launchable``, for apps from before."""
+    looked: list[str] = []
+    monkeypatch.setattr("shutil.which", lambda name, path=None: looked.append(name))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail(f"ran {a}"))
+    found = frameworks.scan({"codex", "claude"})
+    assert looked == []
+    assert all(f.path is None and f.version is None for f in found)
+    assert all(f.installed == f.launchable for f in found)
+    assert not any("not found" in (f.note or "") for f in found)
+
+
+def test_a_kind_herdr_can_start_that_mycelium_doesnt_know_is_offered_by_its_name():
+    """Once herdr supports a CLI, it's offered: the table only adds what
+    Mycelium knows about one."""
+    found = {f.id: f for f in frameworks.scan({"claude", "kilo"})}
+    assert found["kilo"].launchable and found["kilo"].note is None
+    assert (found["kilo"].name, found["kilo"].command) == ("kilo", "kilo")
+    # One the table knows keeps its own name, and isn't listed twice.
+    assert found["claude"].name == "Claude Code"
+    assert [f.id for f in frameworks.scan({"claude", "kilo"})].count("claude") == 1
 
 
 def _program(path: Path, text: str = "#!/bin/sh\necho 1.0\n") -> Path:
@@ -348,13 +378,13 @@ def _program(path: Path, text: str = "#!/bin/sh\necho 1.0\n") -> Path:
     return path
 
 
-def test_a_cli_under_nvm_is_found_in_the_newest_node_and_run_with_it_first(
+def test_codex_under_nvm_is_found_for_its_flags_in_the_newest_node(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """codex under nvm: not on the PATH the desktop app hands the runner. The
-    scan finds it in nvm's folders, newest Node first, and its --version runs
-    with that folder first on PATH, where its ``node`` is."""
-    monkeypatch.setattr(frameworks, "install_dirs", REAL_INSTALL_DIRS)
+    """codex under nvm: not on the PATH the desktop app hands the runner. Its
+    flags are read from the newest Node's codex, run with that folder first on
+    PATH, where its ``node`` is."""
+    monkeypatch.setattr(terminal_path, "install_dirs", REAL_INSTALL_DIRS)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("NVM_DIR", raising=False)
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
@@ -365,18 +395,9 @@ def test_a_cli_under_nvm_is_found_in_the_newest_node_and_run_with_it_first(
     _program(nodes / "v24.10.1" / "bin" / "node")
     real = _program(nodes / "v24.10.1" / "bin" / "codex")
 
-    ran: list[tuple] = []
-    monkeypatch.setattr(
-        frameworks, "_version", lambda path, search=None: ran.append((path, search)) or "1.0"
-    )
-    found = {f.id: f for f in frameworks.scan({"codex"})}
-
-    assert found["codex"].installed and found["codex"].launchable
-    assert found["codex"].path == str(real)
-    # (Homebrew's folders are real on this machine, so only codex is checked.)
-    assert [r for r in ran if r[0].endswith("/codex")] == [
-        (str(real), f"{real.parent}:/usr/bin:/bin")
-    ]
+    found, search = terminal_path.locate(("codex",))
+    assert found == str(real)
+    assert search == f"{real.parent}:/usr/bin:/bin"
 
 
 def test_the_scan_runs_nothing_of_the_persons_shell(
@@ -387,7 +408,7 @@ def test_the_scan_runs_nothing_of_the_persons_shell(
     shell = _program(tmp_path / "shell", "#!/bin/sh\ntouch " + str(tmp_path / "ran") + "\n")
     monkeypatch.setenv("SHELL", str(shell))
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
-    monkeypatch.setattr(frameworks, "install_dirs", lambda: [tmp_path / "bin"])
+    monkeypatch.setattr(terminal_path, "install_dirs", lambda: [tmp_path / "bin"])
     _program(tmp_path / "bin" / "codex", "#!/bin/sh\necho 'codex --approve-for-me'\n")
     real_run = subprocess.run
     argv: list[list[str]] = []
@@ -405,7 +426,6 @@ def test_the_scan_runs_nothing_of_the_persons_shell(
     assert not (tmp_path / "ran").exists()
     assert argv
     assert all(str(shell) not in cmd and "-ilc" not in cmd for cmd in argv)
-    assert not hasattr(frameworks, "terminal_path")
 
 
 def test_without_herdr_nothing_is_startable(herdr: Herdr):
@@ -419,7 +439,7 @@ def test_the_hello_says_what_this_machine_has(make_runner):
     assert body["id"] == "julias-mbp-ab12"
     assert body["herdr"] is True
     startable = [(f["id"], f["installed"]) for f in body["frameworks"] if f["launchable"]]
-    assert startable == [("claude", True), ("opencode", True), ("codex", False), ("pi", False)]
+    assert startable == [("claude", True), ("codex", True), ("opencode", True), ("pi", True)]
     assert body["agents"] == []
 
 
@@ -856,6 +876,23 @@ def test_with_sign_in_off_there_is_no_verdict_on_anyone(
     assert r.credentials_report() == []
 
 
+def test_a_kind_only_herdr_knows_is_started_by_its_name_with_nothing_added(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(
+        "tests.test_runner.HELP", HELP.replace("codex, opencode]", "codex, opencode, kilo]")
+    )
+    r = make_runner()
+    assert any(f.id == "kilo" and f.launchable for f in r.found)
+
+    r.launch({"room": "eng", "handle": "scout", "framework": "kilo"})
+
+    start = herdr.of("agent start")[0]
+    assert start[2:6] == ["scout_eng", "--kind", "kilo", "--pane"]
+    assert "--" not in start  # no arguments of Mycelium's own
+    assert "You are @scout" in herdr.of("agent prompt")[0][3]
+
+
 def test_a_launch_opens_a_pane_starts_the_agent_and_tells_it_who_it_is(
     make_runner, herdr: Herdr, hub: Hub, tmp_path: Path
 ):
@@ -1160,26 +1197,87 @@ def test_a_cli_with_no_first_run_screens_never_has_its_screen_read(
 ):
     herdr.screen = SIGN_IN
     r = make_runner()
-    r.launch({"room": "eng", "handle": "scout", "framework": "opencode"})
+    r.launch({"room": "eng", "handle": "scout", "framework": "pi"})
     r.refresh()
     assert herdr.of("pane read") == []
     assert len(herdr.of("agent prompt")) == 1
 
 
-def test_a_cli_the_scan_didnt_find_is_started_and_said_to_be_missing_when_it_isnt_there(
-    make_runner, herdr: Herdr, hub: Hub
+def test_a_cli_that_draws_late_gets_its_introduction_once_its_screen_settles(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):
-    # Its shell says "command not found", so no agent ever appears on the pane.
+    """OpenCode reads as ready before its screen takes input. Its pane is also
+    opened with its update dialog off, which a wake would be typed into."""
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.DRAW_POLL_S", 0)
+    herdr.screen = "its input box, drawn"
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "opencode"})
+    heads = [" ".join(c[:2]) for c in herdr.calls]
+    reads = [i for i, h in enumerate(heads) if h == "pane read"]
+    # Looked at until it stayed the same, then the introduction.
+    assert len(reads) >= starting.DRAW_STEADY + 1
+    assert max(reads) < heads.index("agent prompt")
+    opened = next(c for c in herdr.calls if " ".join(c[:2]) in ("workspace create", "pane split"))
+    assert "OPENCODE_DISABLE_AUTOUPDATE=1" in opened
+
+
+@pytest.mark.parametrize(
+    "said",
+    [
+        "zsh: command not found: codex",
+        "bash: codex: command not found",
+        "fish: Unknown command: codex",
+    ],
+)
+def test_a_cli_its_shell_cant_find_is_said_to_be_missing_with_where_to_install_it(
+    make_runner, herdr: Herdr, hub: Hub, said: str
+):
+    # Nothing looks for it first: herdr starts it in the pane's shell, which
+    # says there's no such command, so no agent ever appears on the pane.
     herdr.exits_on_start = True
+    herdr.screen = f"~/shop % codex\n{said}\n~/shop % "
     r = make_runner()
     with pytest.raises(daemon.JobError, match="Codex isn't installed on") as failed:
         r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
-    assert "Install Codex there, then start @scout again" in str(failed.value)
+    assert "open a new terminal window there and run `codex`" in str(failed.value)
+    assert str(failed.value).endswith(f"See {daemon.MISSING_CLI_DOC}")
     assert failed.value.result is not None
     assert failed.value.result["why"] == "missing"
     assert failed.value.result["pane"] == "w9:p1"
-    # It was tried: the person's own shell may have had it.
+    # Only the yes or no leaves the machine, never what the shell printed.
+    assert "command not found" not in json.dumps(failed.value.result).replace(
+        failed.value.result.get("detail", ""), ""
+    )
     assert len(herdr.of("agent start")) == 1
+
+
+def test_a_cli_that_isnt_installed_is_said_missing_without_waiting_out_herdr(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """What herdr really does with a command the shell doesn't have: keeps the
+    agent's name on the pane, as unknown, until its own timeout. The start
+    reads the shell's "command not found" there and stops at once."""
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.EXIT_POLL_S", 0.05)
+    herdr.never_runs_s = 5.0
+    herdr.screen = "~/shop % pi\nzsh: command not found: pi\n~/shop % "
+    r = make_runner()
+    began = time.monotonic()
+    with pytest.raises(daemon.JobError, match="Pi isn't installed on") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "pi"})
+    assert time.monotonic() - began < 2
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "missing"
+
+
+def test_a_cli_that_exits_on_its_own_is_not_said_to_be_missing(make_runner, herdr: Herdr, hub: Hub):
+    """Another command's "not found", or none: the CLI ran and exited."""
+    herdr.exits_on_start = True
+    herdr.screen = "~/shop % codex\nError: config.toml: model not found\n~/shop % "
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="exited before it started") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "exited"
 
 
 def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(
@@ -1520,6 +1618,106 @@ def test_stop_reaches_an_agent_the_runner_did_not_start(make_runner, herdr: Herd
     assert mapping.managed is False
 
 
+def test_a_stop_ends_the_agent_and_keeps_its_pane_for_a_start(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """A stop frees the memory and keeps the pane: what ran in it ends, the
+    shell stays, and the agent can be started there again in its session."""
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    info = {"shell_pid": 100, "foreground_processes": [{"pid": 200, "name": "claude"}]}
+    herdr.processes["w9:p1"] = info
+    ended: list[dict] = []
+    monkeypatch.setattr(daemon, "end_foreground", lambda i: ended.append(i) or [200, 201])
+
+    result = r.do({"kind": "stop", "spec": {"room": "eng", "handle": "scout", "close": False}})
+
+    assert result == {"pane": "w9:p1", "ended": 2, "freed_mb": None, "kept_pane": True}
+    assert ended == [{"pane_id": "w9:p1", **info}]
+    assert herdr.of("pane close") == []
+    agent = r.state.agents["eng/scout"]
+    # Stopped where it ran, which is still open: started there again, it's this agent.
+    assert (agent.status, agent.exited) == ("stopped", True)
+    assert r.bridge.registry.get("eng", "scout") is not None
+    # Its workspace is kept, so a start has somewhere to go.
+    assert r.state.owned != {}
+
+
+def test_a_stop_keeps_the_pane_of_an_agent_the_runner_did_not_start(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    from mycelium.integrations.herdr import HerdrPaneMapping
+
+    r = make_runner()
+    pane = herdr._pane("w3")
+    mapping = HerdrPaneMapping(room="eng", handle="planner", pane=pane, kind="claude", managed=True)
+    r.bridge.registry.set(mapping)
+    herdr.live[pane] = "idle"
+    herdr.processes[pane] = {"shell_pid": 10, "foreground_processes": [{"pid": 11}]}
+    monkeypatch.setattr(daemon, "end_foreground", lambda _i: [11])
+    spec = {"room": "eng", "handle": "planner", "close": False}
+    assert r.do({"kind": "stop", "spec": spec})["kept_pane"] is True
+    assert herdr.of("pane close") == []
+    # A pane still open retires nobody, so its mapping stays as it was.
+    assert r.bridge.registry.get("eng", "planner") == mapping
+
+
+def test_what_each_agent_uses_stays_on_this_machine(make_runner, herdr: Herdr, hub: Hub):
+    """The runner reads what each agent here uses and writes it to a file on
+    this machine, readable by this user alone, for the desktop app. The
+    heartbeat carries none of it."""
+    import json
+    import stat
+
+    from mycelium.runner.usage import Proc, Usage
+
+    r = make_runner()
+    r.launch({"room": "eng", "handle": "scout", "framework": "claude"})
+    herdr.live["w9:p1"] = "working"
+    herdr.processes["w9:p1"] = {"shell_pid": 100, "foreground_processes": [{"pid": 200}]}
+    cpu = {"claude": 10.0}
+    clock = [0.0]
+
+    def ps() -> dict[int, Proc]:
+        return {
+            100: Proc(100, 1, 40 * 1024, 0.0, 3600, "-zsh"),
+            200: Proc(200, 100, 800 * 1024, cpu["claude"], 600, "claude --resume abc"),
+            # An MCP server the CLI started, under it.
+            300: Proc(300, 200, 200 * 1024, 1.0, 590, "npx some-mcp --api-key sk-123"),
+            # Not in the pane at all.
+            400: Proc(400, 1, 900 * 1024, 50.0, 10, "elsewhere"),
+        }
+
+    r._usage = Usage(ps=ps, clock=lambda: clock[0])
+    written = r._state_path.with_name(daemon.USAGE_FILE)
+
+    def agent() -> dict:
+        r._usage_read_at = 0.0  # read again now, not after USAGE_EVERY_S
+        (ws,) = r.hello_body()["machine"]["workspaces"]
+        # Nothing about what it uses rides the heartbeat.
+        assert not {"ram_mb", "cpu", "processes", "idle_since"} & ws["agents"][0].keys()
+        (row,) = json.loads(written.read_text())["agents"]
+        return row
+
+    first = agent()
+    assert stat.S_IMODE(written.stat().st_mode) == 0o600
+    assert (first["room"], first["handle"], first["pane"]) == ("eng", "scout", "w9:p1")
+    assert (first["ram_mb"], first["cpu"], first["up_s"]) == (1040, None, 600)
+    assert [p["name"] for p in first["processes"]] == ["claude", "npx", "zsh"]
+    # Shown on this machine's screen, which can be shared: a secret's value isn't.
+    assert first["processes"][1]["command"] == "npx some-mcp --api-key …"
+    assert first["idle_since"] is None
+
+    # Thirty seconds and three CPU-seconds later: 10% of a core.
+    clock[0], cpu["claude"] = 30.0, 13.0
+    assert agent()["cpu"] == 10.0
+
+    herdr.live["w9:p1"] = "idle"
+    assert agent()["idle_since"] is not None
+    assert json.loads(written.read_text())["ram_total_mb"] == r._ram_total_mb
+    assert "ram_total_mb" not in r.hello_body()["machine"]
+
+
 def test_the_runner_remembers_its_agents_across_a_restart(make_runner, herdr: Herdr, hub: Hub):
     make_runner().launch({"room": "eng", "handle": "scout", "framework": "claude"})
     again = make_runner()
@@ -1626,6 +1824,8 @@ def test_a_launch_from_a_hub_the_runner_does_not_own_waits_for_a_yes(
     [waiting] = approvals.pending(base=tmp_path)
     assert waiting["title"] == f"Start @a on {r.label}?"
     assert "Asked for by @bob" in waiting["message"]
+    # The runner says it's waiting before it hands the request on.
+    _until(lambda: asked)
     assert asked == [waiting]
 
     approvals.answer("a1b2c3d4", yes=True, base=tmp_path)

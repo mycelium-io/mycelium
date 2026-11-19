@@ -67,12 +67,17 @@ async def upsert_patch(
     handle: str,
     *,
     notify: bool = True,
+    keep_version: bool = False,
+    base_version: int | None = None,
 ) -> dict:
     """Merge ``patch`` into a memory's frontmatter and return the fresh half.
 
     The single writer behind both a board field write and a assignment lease, so
     the two cannot drift in how a frontmatter change reaches the store.  A
     ``None`` value clears its key, which is how a lease hands a row back.
+    ``keep_version`` is for a lease's renewal, which isn't an edit. With
+    ``base_version``, the write is refused (409) when the row moved on since
+    ``meta`` and ``content`` were read.
     """
     from app.routes.memory import _reconstruct_value, upsert_memories
     from app.schemas import MemoryBatchCreate, MemoryCreate
@@ -89,10 +94,11 @@ async def upsert_patch(
                 embed=False,
                 created_by=handle,
                 meta=patch,
+                base_version=base_version,
             )
         ]
     )
-    written = await upsert_memories(room, payload, notify=notify)
+    written = await upsert_memories(room, payload, notify=notify, keep_version=keep_version)
     return {**unmanaged_meta(meta), **patch, "version": written[0].version}
 
 

@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Check,
   CheckCheck,
@@ -15,13 +15,14 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import TextareaAutosize from "react-textarea-autosize";
 import { createTask, sendRoomMessage } from "@/lib/api";
 import { INTENTS, intentById, ready, type IntentId } from "@/lib/intents";
 import { useRoomRevalidate, useRoomRoster } from "@/lib/room-data";
 import { useCurrentUser } from "@/components/current-user";
 import { Kbd } from "@/components/ui/kbd";
+import { MODAL_BACKDROP, ModalDialog } from "@/components/ui/modal-dialog";
 import { Monogram } from "@/components/ui/monogram";
+import { GrowTextarea } from "@/components/ui/grow-textarea";
 
 const FIELD =
   "w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-label text-text placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-1 focus:ring-accent/30";
@@ -59,8 +60,6 @@ export function IntentDialog({
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [group, setGroup] = useState<string[]>([]);
   const [note, setNote] = useState("");
-  const detailsRef = useRef<HTMLTextAreaElement | null>(null);
-  const [detailsScroll, setDetailsScroll] = useState(false);
   const [title, setTitle] = useState("");
   const [assignee, setAssignee] = useState("");
   const [busy, setBusy] = useState(false);
@@ -135,143 +134,132 @@ export function IntentDialog({
     setGroup(g => (g.includes(h) ? g.filter(x => x !== h) : [...g, h]));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-6 pt-[12vh]">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px] motion-safe:animate-in motion-safe:fade-in-0" onClick={onClose} aria-hidden />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={intent.label}
-        onKeyDown={e => {
-          if (e.key === "Escape") onClose();
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void start();
-        }}
-        className="relative w-full max-w-lg overflow-hidden rounded-lg border border-border bg-elevated shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95"
-      >
-        {/* What you want, as four plain choices. */}
-        <div className="flex items-stretch border-b border-border">
-          {offered.map(i => {
-            const Icon = ICONS[i.id];
-            const on = i.id === intentId;
-            return (
-              <button
-                key={i.id}
-                type="button"
-                aria-pressed={on}
-                title={i.when}
-                onClick={() => switchTo(i.id)}
-                className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-r border-border px-2 py-2 text-micro last:border-r-0 transition-colors ${
-                  on ? "bg-bg text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
-                }`}
-              >
-                <Icon className="size-3.5" />
-                {i.label}
-              </button>
-            );
-          })}
-        </div>
+    <ModalDialog
+      onClose={onClose}
+      aria-label={intent.label}
+      onKeyDown={e => {
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void start();
+      }}
+      className={`mx-auto mt-[12vh] w-[calc(100%-3rem)] max-w-lg overflow-hidden rounded-lg border border-border bg-elevated shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 ${MODAL_BACKDROP}`}
+    >
+      {/* What you want, as four plain choices. */}
+      <div className="flex items-stretch border-b border-border">
+        {offered.map(i => {
+          const Icon = ICONS[i.id];
+          const on = i.id === intentId;
+          return (
+            <button
+              key={i.id}
+              type="button"
+              aria-pressed={on}
+              title={i.when}
+              onClick={() => switchTo(i.id)}
+              className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap border-r border-border px-2 py-2 text-micro last:border-r-0 transition-colors ${
+                on ? "bg-bg text-text" : "text-muted-foreground hover:bg-hairline hover:text-text"
+              }`}
+            >
+              <Icon className="size-3.5" />
+              {i.label}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* What it is: plain labeled fields. */}
-        <div className="space-y-3 px-4 py-3">
-          {needsTitle && (
-            <label className="block">
-              <span className="mb-1 block text-micro text-muted-foreground">Title</span>
-              <input
-                autoFocus
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-                placeholder="e.g. Fix the flaky login test"
-                className={FIELD}
-              />
-            </label>
-          )}
+      {/* What it is: plain labeled fields. */}
+      <div className="space-y-3 px-4 py-3">
+        {needsTitle && (
           <label className="block">
-            <span className="mb-1 block text-micro text-muted-foreground">
-              {intent.id === "settle" ? "What they disagree about" : "Details"}{" "}
-              <span className="text-faint">(optional)</span>
-            </span>
-            <TextareaAutosize
-              autoFocus={!needsTitle}
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              minRows={2}
-              maxRows={6}
-              // Scrolls only once it's grown to its cap (WebKit otherwise draws
-              // a scrollbar for a fraction of a pixel).
-              ref={detailsRef}
-              onHeightChange={() => {
-                const el = detailsRef.current;
-                if (el) setDetailsScroll(el.scrollHeight > el.clientHeight + 1);
-              }}
-              style={{ overflowY: detailsScroll ? "auto" : "hidden" }}
-              className={`${FIELD} resize-none leading-relaxed`}
+            <span className="mb-1 block text-micro text-muted-foreground">Title</span>
+            <input
+              autoFocus
+              data-autofocus
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="e.g. Fix the flaky login test"
+              className={FIELD}
             />
           </label>
-        </div>
-
-        {/* Who: one picker per role, labeled like the fields above. */}
-        <div className="space-y-3 px-4 pb-3">
-          {plainTask && (
-            <Row label="For" hint="optional">
-              <AgentPicker
-                key={`${intent.id}-for`}
-                agents={workers}
-                active={active}
-                placeholder="Choose one agent, or leave it for anyone"
-                selected={assignee ? [assignee] : []}
-                onPick={h => setAssignee(a => (a === h ? "" : h))}
-              />
-            </Row>
-          )}
-          {intent.roles.map(role => (
-            <Row key={role.id} label={role.label}>
-              <AgentPicker
-                key={`${intent.id}-${role.id}`}
-                agents={workers}
-                active={active}
-                placeholder="Choose one agent"
-                selected={roles[role.id] ? [roles[role.id]] : []}
-                disabled={Object.entries(roles).filter(([k]) => k !== role.id).map(([, v]) => v)}
-                onPick={h => setRoles(r => ({ ...r, [role.id]: r[role.id] === h ? "" : h }))}
-              />
-            </Row>
-          ))}
-          {intent.minGroup > 0 && (
-            <Row label="Agents" hint={`pick ${intent.minGroup} or more`}>
-              <AgentPicker
-                key={`${intent.id}-group`}
-                multiple
-                agents={workers}
-                active={active}
-                placeholder={`Choose ${intent.minGroup} or more agents`}
-                selected={group}
-                onPick={toggleGroup}
-              />
-            </Row>
-          )}
-          <p className="pt-1 text-micro text-faint">{intent.then}</p>
-          {error && <p role="alert" className="text-micro text-red">{error}</p>}
-        </div>
-
-        <div className="flex items-center gap-3 border-t border-border px-4 py-2">
-          {/* The summon it sends: learnable, never required. */}
-          <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint" title={preview || undefined}>
-            {preview}
-          </code>
-          <span className="flex items-center gap-1 text-micro text-faint">
-            <Kbd size="xs" tone="muted">⌘↵</Kbd>
+        )}
+        <label className="block">
+          <span className="mb-1 block text-micro text-muted-foreground">
+            {intent.id === "settle" ? "What they disagree about" : "Details"}{" "}
+            <span className="text-faint">(optional)</span>
           </span>
-          <button
-            type="button"
-            disabled={!canStart}
-            onClick={() => void start()}
-            className="flex h-7 items-center gap-1.5 rounded-md bg-accent px-3 text-label font-medium text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-hairline disabled:text-faint disabled:hover:opacity-100"
-          >
-            {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {plainTask ? "File it" : "Start"}
-          </button>
-        </div>
+          <GrowTextarea
+            autoFocus={!needsTitle}
+            data-autofocus={needsTitle ? undefined : ""}
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            minRows={2}
+            maxRows={6}
+            className={`${FIELD} resize-none leading-relaxed`}
+          />
+        </label>
       </div>
-    </div>
+
+      {/* Who: one picker per role, labeled like the fields above. */}
+      <div className="space-y-3 px-4 pb-3">
+        {plainTask && (
+          <Row label="For" hint="optional">
+            <AgentPicker
+              key={`${intent.id}-for`}
+              agents={workers}
+              active={active}
+              placeholder="Choose one agent, or leave it for anyone"
+              selected={assignee ? [assignee] : []}
+              onPick={h => setAssignee(a => (a === h ? "" : h))}
+            />
+          </Row>
+        )}
+        {intent.roles.map(role => (
+          <Row key={role.id} label={role.label}>
+            <AgentPicker
+              key={`${intent.id}-${role.id}`}
+              agents={workers}
+              active={active}
+              placeholder="Choose one agent"
+              selected={roles[role.id] ? [roles[role.id]] : []}
+              disabled={Object.entries(roles).filter(([k]) => k !== role.id).map(([, v]) => v)}
+              onPick={h => setRoles(r => ({ ...r, [role.id]: r[role.id] === h ? "" : h }))}
+            />
+          </Row>
+        ))}
+        {intent.minGroup > 0 && (
+          <Row label="Agents" hint={`pick ${intent.minGroup} or more`}>
+            <AgentPicker
+              key={`${intent.id}-group`}
+              multiple
+              agents={workers}
+              active={active}
+              placeholder={`Choose ${intent.minGroup} or more agents`}
+              selected={group}
+              onPick={toggleGroup}
+            />
+          </Row>
+        )}
+        <p className="pt-1 text-micro text-faint">{intent.then}</p>
+        {error && <p role="alert" className="text-micro text-red">{error}</p>}
+      </div>
+
+      <div className="flex items-center gap-3 border-t border-border px-4 py-2">
+        {/* The summon it sends: learnable, never required. */}
+        <code className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint" title={preview || undefined}>
+          {preview}
+        </code>
+        <span className="flex items-center gap-1 text-micro text-faint">
+          <Kbd size="xs" tone="muted">⌘↵</Kbd>
+        </span>
+        <button
+          type="button"
+          disabled={!canStart}
+          onClick={() => void start()}
+          className="flex h-7 items-center gap-1.5 rounded-md bg-accent px-3 text-label font-medium text-bg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:bg-hairline disabled:text-faint disabled:hover:opacity-100"
+        >
+          {busy && <Loader2 className="size-3.5 animate-spin" />}
+          {plainTask ? "File it" : "Start"}
+        </button>
+      </div>
+    </ModalDialog>
   );
 }
 
@@ -378,7 +366,10 @@ function AgentPicker({
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => {
+              // Escape closes the list, not the dialog around it: preventing
+              // the default stops the browser treating it as a close request.
               if (e.key === "Escape") {
+                e.preventDefault();
                 e.stopPropagation();
                 setOpen(false);
               }

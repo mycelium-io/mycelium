@@ -27,7 +27,7 @@ import {
   threadShortId,
   upstreamInChat,
 } from "@/lib/threads";
-import { CHAT_TYPES, parseEvent, type Event } from "@/lib/room-events";
+import { CHAT_TYPES, parseEvent, withReaction, type Event } from "@/lib/room-events";
 import { foldAnswers } from "@/lib/approvals";
 import { conductorLineOf, runProgress, type RunProgress } from "@/lib/conductor-line";
 import {
@@ -486,6 +486,20 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
+/** Fold a live reaction into the message it's on. The hub folds a read; live,
+ *  the reaction arrives as a message of its own and is never a row. Its message
+ *  is matched by its envelope id when it arrived live, or by its read id when
+ *  it was read from history. One whose message isn't here is dropped. */
+export function foldReaction(events: Event[], reaction: Event): Event[] {
+  const r = reaction.reacts;
+  if (!r) return events;
+  return events.map((e) =>
+    (r.messageId !== null && e.messageId === r.messageId) || (e.wireId !== null && e.wireId === r.wireId)
+      ? { ...e, reactions: withReaction(e.reactions, r.emoji, reaction.sender, r.on) }
+      : e,
+  );
+}
+
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
@@ -734,6 +748,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       refreshMemories();
     }
     setEvents((prev) => {
+      if (event.reacts) return foldReaction(prev, event);
       if (event.amends) return foldAmendment(prev, event);
       // A catch-up may have read it from the hub before its live frame landed.
       if (event.messageId !== null && prev.some((x) => x.messageId === event.messageId)) return prev;
@@ -782,18 +797,22 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return out;
   }, [events, roomName]);
 
-  // A ping from a thread started from a message draws nothing of its own, in
-  // the chat or on the rail: the line under that message is where it reads.
-  const inChannel = useMemo(
+  // A ping from a thread started from a message draws nothing in the chat,
+  // where the line under that message says it; on the rail it moves the
+  // thread up, as a reply in a task's thread moves the task.
+  const onTimeline = useMemo(
     () =>
       events.filter(
         (e) =>
           CHANNEL_VIEW_TYPES.has(e.type) &&
           (!inAThread(e, roomName) || e.conductor?.event === "open") &&
-          !isVerifierCheck(e) &&
-          !(e.type === PING_TYPE && e.thread && messageThreads.has(e.thread)),
+          !isVerifierCheck(e),
       ),
-    [events, roomName, messageThreads],
+    [events, roomName],
+  );
+  const inChannel = useMemo(
+    () => onTimeline.filter((e) => !(e.type === PING_TYPE && e.thread && messageThreads.has(e.thread))),
+    [onTimeline, messageThreads],
   );
 
   // Who each message's sender interrupted with it, for the ⚡ by its time: what
@@ -888,7 +907,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // per burst. Sorted by what moved last, which is the order a reader wants.
   const activity = useMemo<ActivityItem[]>(() => {
     const bySubject = new Map<string, Event[]>();
-    for (const event of inChannel) {
+    for (const event of onTimeline) {
       if (!isActivity(event)) continue;
       const subject = subjectOf(event, threads);
       if (!subject) continue;
@@ -899,31 +918,38 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     return [...bySubject.entries()]
       .map(([subject, members]) => {
         const latest = members[members.length - 1];
-        const { title, episode } = nameActivity(subject, members, threads, rowNames);
+        // A thread started from a message is a conversation, not a task: it
+        // has no board state, and opening it opens the thread.
+        const started = members.map((m) => m.thread && messageThreads.get(m.thread)).find(Boolean);
+        const named = nameActivity(subject, members, threads, rowNames);
+        const title = started ? started.title : named.title;
+        const episode = started ? started.episode : named.episode;
         // The last board move the task made is the state it is standing in —
         // the one thing about a row worth seeing without opening it.
         const standing = [...members]
           .reverse()
           .find((m) => m.type === NOTICE_TYPE)?.raw.subkind as string | undefined;
+        const ownRow = !started && !subject.startsWith("urn:");
         return {
           subject,
           title,
           episode,
+          thread: Boolean(started),
           // A thread nobody's row is bound to has no details to open — the
           // conversation is the whole of what the room knows about it.
-          memoryKey: subject.startsWith("urn:") ? null : subject,
+          memoryKey: ownRow ? subject : null,
           actors: actorsOf(members),
           lastActor: actorOf(latest),
           time: latest.time,
-          standing: standing ?? null,
-          note: subject.startsWith("urn:") ? null : (rowNames.get(subject)?.note ?? null),
+          standing: started ? null : (standing ?? null),
+          note: ownRow ? (rowNames.get(subject)?.note ?? null) : null,
           updates: members.map((member) => {
             const { label, detail } = activityLine(member);
             return {
               id: member.id,
               time: member.time,
               at: Date.parse(member.at) || 0,
-              label,
+              label: started && member.type === PING_TYPE ? "Reply" : label,
               detail,
               subkind: member.type === NOTICE_TYPE ? ((member.raw.subkind as string) || "filed") : null,
             };
@@ -938,7 +964,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
         const stalled = (x: { standing: string | null }) => (x.standing === "blocked" ? 0 : 1);
         return stalled(a) - stalled(b) || b.at - a.at;
       });
-  }, [inChannel, threads, rowNames]);
+  }, [onTimeline, threads, rowNames, messageThreads]);
 
   // Arriving from search: mark the named message and scroll it into sight once
   // history has landed. The mark outlives the request that carried it — a

@@ -190,7 +190,29 @@ async def runner_hello(payload: RunnerHello, request: Request) -> RunnerRead:
                 "Give this runner its own id and start it again.",
             )
         payload.owner = principal.handle
+    await _subagents_follow(payload)
     return registry.hello(payload)
+
+
+async def _subagents_follow(hello: RunnerHello) -> None:
+    """Each agent's subagents follow what its machine says: its open and
+    finished subagent steps (counts, never their text) and whether it's still
+    running. The rows any subagent that ended was holding go back."""
+    from app.services import subagents
+
+    rooms: set[str] = set()
+    for workspace in hello.machine.workspaces if hello.machine else []:
+        for agent in workspace.agents:
+            subagents.observe(
+                agent.room,
+                agent.handle,
+                agent.subagents_open,
+                agent.state,
+                finished_steps=agent.subagents_finished,
+            )
+            rooms.add(agent.room)
+    for room in rooms:
+        await subagents.release_ended(room)
 
 
 @router.delete("/{runner_id}", status_code=204, responses=refusals(404))

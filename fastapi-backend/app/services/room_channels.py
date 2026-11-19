@@ -36,7 +36,7 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import custody, groups, message_format, slim_identity
@@ -704,7 +704,7 @@ class RoomChannelManager:
             payload_type="message",
         )
         noted: list[str] = []
-        for handle, why in asked(serialize_content(envelope, extra=extra)).items():
+        for handle, why in asked(serialize_content(envelope, extra=extra), room).items():
             if classify_sender(room, handle) != "agent":
                 continue
             wake_log.dropped(
@@ -740,6 +740,10 @@ class RoomChannelManager:
         (:mod:`app.services.interrupts`); otherwise it rings as a ``mention``.
         """
         name = handle.lstrip("@").lower()
+        if ":" in name:
+            # A subagent has no doorbell; the same message asks its parent,
+            # which is rung for it (``asks``).
+            return False
         status = self.herdr_status(room, name)
         if status is None:
             if self._unreachable_agent(room, name):
@@ -1394,6 +1398,7 @@ class RoomChannelManager:
         subkind: str | None = None,
         parents: list[str] | None = None,
         episode: str | None = None,
+        data: dict[str, Any] | None = None,
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
@@ -1405,7 +1410,8 @@ class RoomChannelManager:
 
         ``subkind``/``parents`` carry an ``amend`` revising an earlier message —
         the same publish in every other respect, since a revision is a message
-        the room hears like any other, mentions included.
+        the room hears like any other, mentions included. A reaction rides the
+        same way, with ``data`` carrying its ``reaction`` beside the text.
 
         ``episode`` names the **thread** the message lands in; without one it
         lands in the room itself. A thread is a tag over this same channel, so a
@@ -1427,6 +1433,8 @@ class RoomChannelManager:
         # ``@here`` and ``@all`` reach who they reach now, kept on the message so
         # every later read of who it asked gives the same answer.
         extra, by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
+        if data:
+            extra = {**data, **extra}
         # Every mention is a message recipient (the semantic "to"); everyone else on
         # the channel is an observer. Absent mentions stay recipients so the
         # intent is recorded, but only present ones actually receive the broadcast.

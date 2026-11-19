@@ -41,6 +41,8 @@ import {
   learnOnTask,
   learnOnThreadRead,
 } from "./learn";
+import { mockKnowledgeWire } from "./knowledge";
+import { mockAgentsRunning, mockRunningControl } from "./agent-usage";
 import { memoryChangedFrame, noticeFrame, publish } from "./live";
 import { mockMessageSearch } from "./message-search";
 import { PATTERN_ROOMS, fromExplorer, patternList, patternRead } from "./patterns";
@@ -68,6 +70,8 @@ import type {
   ScheduleRun,
 } from "@/lib/api";
 import { memorySummaryOf } from "@/lib/memory-preview";
+import { kindOf } from "@/lib/memory-kinds";
+import { withReaction } from "@/lib/room-events";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -688,7 +692,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (sub.length === 2 && method === "PUT") {
         const done = setRoomSettingMock(roomName, id, await readJson(req));
         if ("ok" in done) return json(done.ok);
-        return json({ detail: { error: "room_setting", message: done.message, key: `settings/${id}` } }, done.status);
+        return json({ detail: { error: "memory.setting_invalid", message: done.message, key: `settings/${id}` } }, done.status);
       }
       if (sub.length === 2 && method === "DELETE") {
         const reset = resetRoomSettingMock(roomName, id);
@@ -723,14 +727,22 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const items = body.items ?? [];
 
         for (const item of items) {
+          // A kind nobody edits is refused before anything is saved, with the
+          // hub's code and sentence (contracts/memory-kinds.json).
+          const kind = kindOf(item.key);
+          if (kind.edit === "none") {
+            return json({ detail: { error: "memory.read_only", message: kind.says, key: item.key } }, 409);
+          }
           const existing = fx.memories.find((m) => m.key === item.key);
           const currentVersion = existing?.version ?? 0;
           if (item.base_version !== undefined && item.base_version !== currentVersion) {
             return json({
-              error: "stale_base",
-              message: `Write for '${item.key}' expected version ${item.base_version} but current version is ${currentVersion}`,
-              key: item.key,
-              current_version: currentVersion,
+              detail: {
+                error: "memory.stale_base",
+                message: `Write for '${item.key}' expected version ${item.base_version} but current version is ${currentVersion}`,
+                key: item.key,
+                current_version: currentVersion,
+              },
             }, 409);
           }
         }
@@ -874,6 +886,32 @@ export async function handleMock(req: Request): Promise<Response | null> {
       // POST /messages/{id}/interrupt — the sender turning a plain mention of a
       // working member into an interrupt, once, as the hub does
       // (`services/interrupts.py:upgrade`), with its refusals.
+      // POST /messages/{id}/reactions — put an emoji on a message or take
+      // yours off. Kept on the message, as the hub folds it on read, and said
+      // live as the reaction it is, which the open channel folds the same way.
+      if (sub[1] && sub[2] === "reactions") {
+        if (method !== "POST") return null;
+        const message = fx.messages.find((m) => m.id.startsWith(sub[1]));
+        if (!message) return notFound(`No message ${sub[1]} in ${roomName}.`);
+        const body = await readJson(req);
+        const emoji = String(body.emoji ?? "").trim();
+        const on = body.on !== false;
+        const who = String(body.sender_handle ?? "operator");
+        if (!emoji || /[\x20-\x7e]/.test(emoji)) return json({ detail: `'${emoji}' isn't an emoji` }, 422);
+        message.reactions = withReaction(message.reactions ?? [], emoji, who, on);
+        publish(roomName, {
+          id: `r-${Date.now()}`,
+          sender_handle: who,
+          message_type: "broadcast",
+          content: on && who !== message.sender_handle ? `@~${message.sender_handle} ${emoji}` : emoji,
+          reacts: message.id,
+          reaction: { emoji, on, message: message.id },
+          created_at: new Date().toISOString(),
+          room_name: roomName,
+          episode: message.episode ?? null,
+        });
+        return json({ ...message, room_name: roomName }, 201);
+      }
       if (sub[1] && sub[2] === "interrupt") {
         if (method !== "POST") return null;
         const message = fx.messages.find((m) => m.id.startsWith(sub[1]));
@@ -1125,6 +1163,12 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return json(memoryRead(roomName, row), 201);
     }
 
+    case "subagents":
+      return method === "GET" && sub.length === 1 ? json(fx.subagents ?? []) : null;
+
+    case "knowledge":
+      return method === "GET" && sub.length === 1 ? json(mockKnowledgeWire(roomName)) : null;
+
     case "threads": {
       if (method !== "POST") return null;
       const body = await readJson(req);
@@ -1310,10 +1354,19 @@ export async function handleMock(req: Request): Promise<Response | null> {
         if (!brief) return json({ detail: "Say what the agent is for first." }, 422);
         return json({ notes: mockNotesDraft(brief, fx) });
       }
-      // POST /agents/{handle}/pause|resume|stop — for its owner only.
-      if (sub.length === 3 && ["pause", "resume", "stop"].includes(sub[2]) && method === "POST") {
-        const by = String((await readJson(req)).by ?? "").replace(/^@/, "").toLowerCase();
-        return controlOne(fx, roomName, decodeURIComponent(sub[1]), sub[2], by);
+      // GET /agents/running — the room's agents on connected machines, no numbers.
+      if (sub[1] === "running" && sub.length === 2 && method === "GET") {
+        return json(mockAgentsRunning(roomName));
+      }
+      // POST /agents/{handle}/pause|resume|stop|start|keep — for its owner only.
+      if (sub.length === 3 && ["pause", "resume", "stop", "start", "keep"].includes(sub[2]) && method === "POST") {
+        const body = await readJson(req);
+        const by = String(body.by ?? "").replace(/^@/, "").toLowerCase();
+        const handle = decodeURIComponent(sub[1]);
+        const listed = mockRunningControl(roomName, handle, sub[2], by, body.keep as boolean | undefined);
+        if (listed) return listed;
+        if (sub[2] === "start" || sub[2] === "keep") return json({ detail: `No machine has @${handle}.` }, 409);
+        return controlOne(fx, roomName, handle, sub[2], by);
       }
       // POST /agents/{handle}/rename — one a machine runs waits for a yes
       // there (the job is queued, nothing moves); any other is renamed at once,

@@ -41,7 +41,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import re
+import threading
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
@@ -73,15 +75,21 @@ logger = logging.getLogger(__name__)
 TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 
 # An ``@``-summon token: ``@`` followed by a handle (letter/digit start, then
-# word chars or hyphens). Guarded so it doesn't fire mid-word (e.g. an email).
+# word chars, hyphens or dots, never ending on a dot, so ``@avery.quinn`` is
+# one handle and a sentence's full stop stays out). Guarded so it doesn't fire
+# mid-word (e.g. an email).
 # ``@~handle`` is a silent mention (``contracts/mentions.json``): the ``~`` keeps
 # it out of this pattern, so it never wakes, addresses or summons anyone.
 # ``@!handle`` is an interrupting mention: a mention like ``@handle`` that also
 # stops the agent mid-turn, so it is in this pattern and in its own.
-_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?([A-Za-z0-9][\w-]*)")
-_SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~([A-Za-z0-9][\w-]*)")
-_INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!([A-Za-z0-9][\w-]*)")
-_NAMED_RE = re.compile(r"(?:^|(?<=[\s(<]))@[~!]?([A-Za-z0-9][\w-]*)")
+# A handle may end in ``:name``, a subagent's (``app.services.subagents``),
+# spelled the same way.
+_PART = r"[A-Za-z0-9](?:[\w.-]*[\w-])?"
+_HANDLE = rf"({_PART}(?::{_PART})?)"
+_SUMMON_RE = re.compile(r"(?:^|(?<=[\s(<]))@!?" + _HANDLE)
+_SILENT_RE = re.compile(r"(?:^|(?<=[\s(<]))@~" + _HANDLE)
+_INTERRUPT_RE = re.compile(r"(?:^|(?<=[\s(<]))@!" + _HANDLE)
+_NAMED_RE = re.compile(r"(?:^|(?<=[\s(<]))@[~!]?" + _HANDLE)
 
 # Code is quoted, never addressed: a handle inside a code span or a fenced block
 # is no mention of any kind (``contracts/mentions.json``). A fence opens on a
@@ -498,14 +506,88 @@ def _parse_jsonl(text: str) -> list[TranscriptRecord]:
     return records
 
 
+@dataclass
+class _Parsed:
+    """A room's transcript as far as it has been read: the records, how many
+    bytes they came from, and the last bytes of those, to tell the file that
+    was read from one written over it."""
+
+    inode: int
+    offset: int
+    tail: bytes
+    records: list[TranscriptRecord]
+
+
+#: The parsed transcripts of the rooms read most recently, by file, oldest
+#: first. A transcript only grows (``append_transcript``), so a read after an
+#: append parses the new lines alone; a busy room's transcript is tens of
+#: megabytes, and every read parsing all of it held the event loop for a fifth
+#: of a second each time.
+_parsed: dict[str, _Parsed] = {}
+_parsed_lock = threading.Lock()
+#: How many rooms keep their parsed transcript. Parsed, a transcript takes about
+#: four times its size on disk, so keeping every room ever read would hold a
+#: few hundred megabytes on a hub with a handful of busy rooms. A room that
+#: falls out is read in full the next time it's read.
+_PARSED_ROOMS = 2
+#: How many of the last bytes read are kept to check the file is the same one.
+_TAIL_BYTES = 256
+
+
 def load_transcript(room: str) -> list[TranscriptRecord]:
-    """Read a room's persisted ``log/transcript.jsonl`` (empty when none exists)."""
+    """Read a room's persisted ``log/transcript.jsonl`` (empty when none exists).
+
+    Read once in full, then only what was appended since: the file is
+    append-only, so what was parsed stays parsed, for the few rooms read most
+    recently (``_PARSED_ROOMS``). A file that's been replaced
+    or rewritten (its inode, length or the bytes last read differ) is read in
+    full again. The records are shared between callers, which only read them;
+    the list is each caller's own.
+    """
     from app.services.filesystem import get_room_dir
 
     path = get_room_dir(room) / TRANSCRIPT_FILENAME
-    if not path.exists():
+    key = str(path)
+    try:
+        stat = path.stat()
+    except OSError:
+        with _parsed_lock:
+            _parsed.pop(key, None)
         return []
-    return _parse_jsonl(path.read_text(encoding="utf-8"))
+    with _parsed_lock:
+        known = _parsed.pop(key, None)
+        with path.open("rb") as fh:
+            if known is not None and not _same_file(fh, stat, known):
+                known = None
+            start = known.offset if known is not None else 0
+            fh.seek(start)
+            added = fh.read()
+        # A line still being written has no newline yet: leave it for next time.
+        whole = added[: added.rfind(b"\n") + 1]
+        records = (known.records if known is not None else []) + _parse_jsonl(
+            whole.decode("utf-8", errors="replace")
+        )
+        offset = start + len(whole)
+        if whole:
+            tail = whole[-_TAIL_BYTES:]
+            if len(tail) < _TAIL_BYTES and known is not None:
+                tail = (known.tail + tail)[-_TAIL_BYTES:]
+        else:
+            tail = known.tail if known is not None else b""
+        _parsed[key] = _Parsed(inode=stat.st_ino, offset=offset, tail=tail, records=records)
+        while len(_parsed) > _PARSED_ROOMS:
+            del _parsed[next(iter(_parsed))]
+        return list(records)
+
+
+def _same_file(fh: Any, stat: os.stat_result, known: _Parsed) -> bool:
+    """Whether the open file is the one ``known`` was read from, grown or not."""
+    if stat.st_ino != known.inode or stat.st_size < known.offset:
+        return False
+    if not known.tail:
+        return known.offset == 0
+    fh.seek(known.offset - len(known.tail))
+    return fh.read(len(known.tail)) == known.tail
 
 
 def append_transcript(room: str, record: TranscriptRecord) -> None:
@@ -553,13 +635,27 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
     """The human-facing chat text of a record, or None if it isn't chat.
 
     Only a human ``message`` and an agent ``reply`` are chat; presence/ping and
-    other control payloads carry no chat text and stay out of the list.
+    other control payloads carry no chat text and stay out of the list. A
+    reaction isn't chat either: it is read as the emoji on another message
+    (:func:`reaction_text`).
     """
-    payload_type = content.get("l9", {}).get("payload", {}).get("type")
+    l9 = content.get("l9", {})
+    if l9.get("header", {}).get("subkind") == message_format.REACTION_SUBKIND:
+        return None
+    payload_type = l9.get("payload", {}).get("type")
     text = content.get("content")
     if payload_type not in ("message", "reply") or not isinstance(text, str) or not text:
         return None
     return text
+
+
+def reaction_text(content: dict[str, Any]) -> str | None:
+    """A reaction record's text (``@~author 👍``), or None if it isn't one."""
+    l9 = content.get("l9", {})
+    if l9.get("header", {}).get("subkind") != message_format.REACTION_SUBKIND:
+        return None
+    text = content.get("content")
+    return text if isinstance(text, str) and text else None
 
 
 def parse_recorded_at(recorded_at: str) -> datetime | None:
@@ -584,6 +680,63 @@ def amended_target(subkind: str | None, parents: Any) -> str | None:
         return None
     target = parents[0]
     return target if isinstance(target, str) and target else None
+
+
+def reaction_of(
+    subkind: str | None, parents: Any, content: dict[str, Any]
+) -> tuple[str, str, bool] | None:
+    """The message an ``exchange:reaction`` is on, its emoji, and whether it puts
+    the emoji on (``True``) or takes it off. ``None`` for anything else."""
+    if subkind != message_format.REACTION_SUBKIND or not isinstance(parents, list) or not parents:
+        return None
+    target, reaction = parents[0], content.get("reaction")
+    if not isinstance(target, str) or not target or not isinstance(reaction, dict):
+        return None
+    emoji = reaction.get("emoji")
+    if not isinstance(emoji, str) or not emoji:
+        return None
+    return target, emoji, reaction.get("on") is not False
+
+
+def collapse_reactions(messages: list[StoredMessage]) -> list[StoredMessage]:
+    """Fold each reaction into the message it is on, and drop it as a row.
+
+    A reaction is a record like any other, so putting an emoji on and taking it
+    off are both kept. The newest record for each (message, person, emoji) wins.
+    Unlike an amendment, a reaction whose message isn't in this view is dropped:
+    an emoji on its own says nothing.
+    """
+    if not any(m.reacts for m in messages):
+        return messages
+    by_id: dict[str, StoredMessage] = {}
+    for m in messages:
+        by_id[str(m.id)] = m
+        if m.message_id:
+            by_id[m.message_id] = m
+
+    # (target row id, emoji, who) -> on; a dict keeps the order each was first put on.
+    state: dict[tuple[uuid.UUID, str, str], bool] = {}
+    for r in sorted((m for m in messages if m.reacts), key=lambda m: m.created_at):
+        target = by_id.get(r.reacts or "")
+        if target is None or target.reacts or not r.reaction:
+            continue
+        key = (target.id, r.reaction, r.sender_handle)
+        if r.reaction_on and key not in state:
+            state[key] = True
+        elif key in state:
+            state[key] = r.reaction_on
+
+    on: dict[uuid.UUID, dict[str, list[str]]] = {}
+    for (target_id, emoji, who), is_on in state.items():
+        if is_on:
+            on.setdefault(target_id, {}).setdefault(emoji, []).append(who)
+    return [
+        replace(m, reactions=[{"emoji": e, "by": by} for e, by in on[m.id].items()])
+        if m.id in on
+        else m
+        for m in messages
+        if not m.reacts
+    ]
 
 
 def collapse_amendments(messages: list[StoredMessage]) -> list[StoredMessage]:
@@ -653,7 +806,9 @@ def stored_message_from_record(
     """
     from app.services.in_memory_store import StoredMessage
 
-    text = _conversational_text(record.content)
+    # A reaction projects as a row only so the read path can fold it into its
+    # message (:func:`collapse_reactions`); it is never shown as one.
+    text = _conversational_text(record.content) or reaction_text(record.content)
     if text is not None:
         # Chat: a plain broadcast row carrying the prose.
         message_type: str = MessageType.BROADCAST
@@ -690,16 +845,26 @@ def stored_message_from_record(
         amends=amended_target(record.subkind, header.get("message", {}).get("parents")),
         id=read_id(record),
     )
+    reaction = reaction_of(record.subkind, header.get("message", {}).get("parents"), record.content)
+    if reaction is not None:
+        msg.reacts, msg.reaction, msg.reaction_on = reaction
     recorded = parse_recorded_at(record.recorded_at) or fallback
     if recorded is not None:
         msg.created_at = recorded
     return msg
 
 
-# Per-room cache of the mapped conversational view, invalidated when the
-# transcript file changes, so a hot UI poll re-stats (cheap) rather than
-# re-parsing the whole file every read.
-_conversational_cache: dict[str, tuple[tuple[int, int], list[StoredMessage]]] = {}
+@dataclass
+class _Projected:
+    """A room's conversational view as far as its transcript was projected:
+    the last record projected (the same object while the transcript only
+    grows, ``load_transcript``), how many records that was, and the last
+    usable stamp among them."""
+
+    last: TranscriptRecord
+    count: int
+    stamp: datetime | None
+    messages: list[StoredMessage]
 
 
 def _stat_stamp(path: Path) -> tuple[int, int] | None:
@@ -709,6 +874,13 @@ def _stat_stamp(path: Path) -> tuple[int, int] | None:
     except OSError:
         return None
     return (st.st_mtime_ns, st.st_size)
+
+
+# Per-room cache of the mapped conversational view. The UI reads it for every
+# thread a board shows, and a busy room appends between most of those reads,
+# so what was appended is projected onto it rather than the whole transcript
+# again; a rewritten transcript is projected in full.
+_conversational_cache: dict[str, _Projected] = {}
 
 
 def _project_transcript(room: str, records: list[TranscriptRecord]) -> list[StoredMessage]:
@@ -747,18 +919,34 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     broadcast both land in the transcript). Event-ledger rows live only in
     ``in_memory_store`` and are merged in by the route.
     """
-    from app.services.filesystem import get_room_dir
-
-    path = get_room_dir(room) / TRANSCRIPT_FILENAME
-    stamp = _stat_stamp(path)
-    if stamp is None:
+    records = load_transcript(room)
+    if not records:
         _conversational_cache.pop(room, None)
         return []
     cached = _conversational_cache.get(room)
-    if cached is not None and cached[0] == stamp:
-        return list(cached[1])
-    messages = _project_transcript(room, load_transcript(room))
-    _conversational_cache[room] = (stamp, messages)
+    if (
+        cached is not None
+        and cached.stamp is not None
+        and 0 < cached.count <= len(records)
+        and records[cached.count - 1] is cached.last
+    ):
+        # The same transcript, grown: project what was appended, each
+        # unstamped record taking the stamp before it, as a whole read would.
+        messages = list(cached.messages)
+        earlier = cached.stamp
+        for record in records[cached.count :]:
+            stamp = parse_recorded_at(record.recorded_at)
+            earlier = stamp or earlier
+            if (msg := stored_message_from_record(room, record, fallback=earlier)) is not None:
+                messages.append(msg)
+    else:
+        messages = _project_transcript(room, records)
+        earlier = next(
+            (s for r in reversed(records) if (s := parse_recorded_at(r.recorded_at))), None
+        )
+    _conversational_cache[room] = _Projected(
+        last=records[-1], count=len(records), stamp=earlier, messages=messages
+    )
     return list(messages)
 
 
@@ -772,14 +960,15 @@ def room_conversation(room: str) -> list[StoredMessage]:
     Dedup is by envelope ``message_id`` — a distinct id space from
     ``StoredMessage.id``. The merged view is then folded by
     :func:`collapse_amendments`, so a revised message reads as one row carrying
-    its latest text while the transcript keeps every version.
+    its latest text while the transcript keeps every version, and by
+    :func:`collapse_reactions`, so each message carries the emoji on it.
     """
     from app.services import in_memory_store
 
     mem = in_memory_store.list_messages(room)
     live_ids = {m.message_id for m in mem if m.message_id}
     disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
-    return collapse_amendments(disk + mem)
+    return collapse_reactions(collapse_amendments(disk + mem))
 
 
 def prose_messages(room: str) -> list[StoredMessage]:
@@ -1323,7 +1512,7 @@ class RoomPersister:
         from app.services.asks import asked
 
         message_text = content.get("content", "") if isinstance(content, dict) else ""
-        asking = asked(content)
+        asking = asked(content, self.room)
         summons = [h for h, why in asking.items() if why != "turn"]
         for handle in summons:
             try:

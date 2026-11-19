@@ -18,6 +18,17 @@ vi.mock("@/lib/clipboard", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/clipboard")>()),
   copyText: (text: string) => copyText(text),
 }));
+const roomUploads = vi.hoisted(() => ({ uploads: [] as import("@/lib/api").Upload[] }));
+vi.mock("@/lib/room-data", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/room-data")>()),
+  useRoomUploads: () => ({ uploads: roomUploads.uploads, loading: false }),
+}));
+const saved = vi.hoisted(() => [] as string[]);
+vi.mock("@/lib/upload-zip", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/upload-zip")>()),
+  zipUploads: async (uploads: { name: string }[]) => new Blob(uploads.map((u) => u.name)),
+  saveBlob: (_blob: Blob, name: string) => void saved.push(name),
+}));
 vi.mock("@/components/current-user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/components/current-user")>()),
   useCurrentUser: () => ({ principal: "julia" }),
@@ -63,6 +74,54 @@ beforeEach(() => {
   copyText.mockClear();
 });
 
+describe("<MessageActions /> files", () => {
+  const file = (name: string) => ({
+    name,
+    key: `uploads/${name}`,
+    filename: name,
+    kind: "text" as const,
+    content_type: "text/plain",
+    size: 10,
+    sha256: name,
+    created_by: "julia",
+    created_at: "2026-11-14T12:00:00Z",
+    url: `/api/rooms/demo/uploads/${name}/raw`,
+  });
+
+  function withFiles(names: string[]) {
+    roomUploads.uploads = names.map(file);
+    render(
+      <KeymapProvider>
+        <InRoom />
+        <div data-testid="row">
+          <MessageActions
+            roomName="demo"
+            messageId="m2"
+            content={`the notes ${names.map((n) => `[[uploads/${n}]]`).join(" ")}`}
+            sender="builder"
+          />
+        </div>
+      </KeymapProvider>,
+    );
+    fireEvent.mouseEnter(screen.getByTestId("row"));
+  }
+
+  it("offers no Download all for a message with one file", () => {
+    withFiles(["notes.md"]);
+    expect(screen.queryByRole("button", { name: /Download all/ })).toBeNull();
+  });
+
+  it("saves a message's files as one zip from beside Copy link", async () => {
+    saved.length = 0;
+    withFiles(["notes.md", "refunds.csv"]);
+    const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+    expect(names.indexOf("Download all 2 files")).toBe(names.indexOf("Copy link") + 1);
+    fireEvent.click(screen.getByRole("button", { name: "Download all 2 files" }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0]).toMatch(/^demo-\d{4}-\d{2}-\d{2}-\d{4}\.zip$/);
+  });
+});
+
 describe("<MessageActions /> threads", () => {
   const started: MessageThread = {
     key: "threads/stripe-payments-are-merged",
@@ -73,11 +132,12 @@ describe("<MessageActions /> threads", () => {
     task: null,
   };
 
-  it("orders the bar reply, quote, task, thread, then copy and link", () => {
+  it("orders the bar reaction, reply, quote, task, thread, then copy and link", () => {
     render(<Row threads />);
     fireEvent.mouseEnter(screen.getByTestId("row"));
     const names = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label") ?? b.textContent);
-    expect(names.slice(0, 6)).toEqual([
+    expect(names.slice(0, 7)).toEqual([
+      "Add a reaction",
       "Reply to @builder",
       "Quote",
       "Make a task",

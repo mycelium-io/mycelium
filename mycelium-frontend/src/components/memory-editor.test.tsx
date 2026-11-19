@@ -192,9 +192,9 @@ describe("MemoryEditor", () => {
     expect(await screen.findByRole("button", { name: "Copy my text" })).toBeInTheDocument();
   });
 
-  it("shows the memory key read-only and the editor body", () => {
+  it("shows the memory key read-only, to copy, and the editor body", () => {
     renderEditor();
-    expect(screen.getByTitle("context/overview")).toHaveTextContent("context/overview");
+    expect(screen.getByRole("button", { name: "Copy context/overview" })).toHaveTextContent("context/overview");
     expect(screen.getByTestId("md-editor")).toHaveValue("Hello world");
   });
 
