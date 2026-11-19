@@ -23,7 +23,11 @@ describe("a start that stopped", () => {
       slow: false,
       waiting: null,
       passed: [],
+      install: null,
     });
+    // Where to install a CLI its shell couldn't find: an https page only.
+    expect(startReport({ result: { install: "https://opencode.ai/docs" } }).install).toBe("https://opencode.ai/docs");
+    expect(startReport({ result: { install: "javascript:alert(1)" } }).install).toBeNull();
     expect(startReport({ result: { passed: ["Trusted the folder for Claude Code", 3, ""] } }).passed).toEqual([
       "Trusted the folder for Claude Code",
     ]);
@@ -52,10 +56,23 @@ describe("a start that stopped", () => {
     expect(exited.happened).toBe("Codex exited before it started on studio-mini.");
     expect(exited.steps.join(" ")).toContain("showing what Codex printed");
     expect(startReport({ result: { why: "exited" } }).why).toBe("exited");
-    // One its shell couldn't find says it isn't installed, and to install it there.
-    const missing = startHelp("missing", names);
-    expect(missing.happened).toBe("Codex isn't installed on studio-mini.");
-    expect(missing.steps.join(" ")).toContain("Install Codex on studio-mini");
+    // One its shell couldn't find: not installed, or a new terminal can't find
+    // it. Install it from its makers' page, check it runs there, add it again.
+    const missing = startHelp("missing", {
+      ...names,
+      command: "codex",
+      install: "https://github.com/openai/codex",
+    });
+    expect(missing.happened).toBe(
+      "Codex isn't installed on studio-mini, or a new terminal window there can't find codex.",
+    );
+    expect(missing.steps).toEqual([
+      "Install Codex on studio-mini, from the page linked below.",
+      "Check that codex runs in a new terminal window on studio-mini.",
+      "Then add @reviewer again.",
+    ]);
+    expect(missing.link).toEqual({ label: "How to install Codex", href: "https://github.com/openai/codex" });
+    expect(startHelp("missing", names).link).toBeUndefined();
     expect(startReport({ result: { why: "missing" } }).why).toBe("missing");
     // One that needs setting up first (a sign-in) says what the runner found, as its step.
     const signIn = "Codex isn't signed in here yet. Run `codex` once in a terminal. Then try again.";
@@ -99,7 +116,7 @@ describe("which machines are yours", () => {
 });
 
 describe("runner helpers", () => {
-  it("orders frameworks startable and found, startable, found, then neither", () => {
+  it("orders frameworks startable first, each by name, whatever a runner says is installed", () => {
     const sorted = sortFrameworks([
       framework({ id: "zed", name: "Zed", installed: false, launchable: false }),
       framework({ id: "amp", name: "Amp", launchable: false, note: "herdr can't start it" }),
@@ -107,7 +124,7 @@ describe("runner helpers", () => {
       framework({ id: "opencode", name: "opencode" }),
       framework({ id: "claude", name: "Claude Code" }),
     ]);
-    expect(sorted.map((f) => f.id)).toEqual(["claude", "opencode", "codex", "amp", "zed"]);
+    expect(sorted.map((f) => f.id)).toEqual(["claude", "codex", "opencode", "amp", "zed"]);
   });
 
   it("offers a CLI the scan didn't find when the host can start it, after the found ones", () => {

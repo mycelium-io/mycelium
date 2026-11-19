@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Laptop } from "lucide-react";
-import { adoptRunnerAgent, resumeAgentSession, type Framework, type MachineUnenrolled, type Runner } from "@/lib/api";
+import { adoptRunnerAgent, resumeAgentSession, type MachineUnenrolled, type Runner } from "@/lib/api";
 import { EarlierSessions, sessionKey, type EarlierSession } from "@/components/earlier-sessions";
 import { runnerName, useRunnerJob, useRunners, useRunnersRevalidate } from "@/lib/runners";
 import { signFor } from "@/lib/device-key";
@@ -51,17 +51,17 @@ export function earlierSessions(runners: Runner[]): EarlierSession[] {
   return runners
     .flatMap((runner) =>
       runner.frameworks.flatMap((framework) =>
-        framework.installed ? (framework.sessions ?? []).map((session) => ({ runner, framework, session })) : [],
+        (framework.sessions ?? []).map((session) => ({ runner, framework, session })),
       ),
     )
     .sort((a, b) => b.session.last_used.localeCompare(a.session.last_used));
 }
 
-/** The installed agent CLIs whose sessions can't be listed yet. */
-export function sessionsUnsupported(runners: Runner[]): Framework[] {
-  const seen = new Map<string, Framework>();
-  for (const r of runners) for (const f of r.frameworks) if (f.installed && !f.sessions) seen.set(f.id, f);
-  return [...seen.values()];
+/** The agent CLIs whose earlier sessions can be brought in, by name. */
+export function sessionsSupported(runners: Runner[]): string[] {
+  const names = new Set<string>();
+  for (const r of runners) for (const f of r.frameworks) if (f.sessions) names.add(f.name);
+  return [...names].sort();
 }
 
 /** Where to read how an agent CLI's integration lists and resumes sessions. */
@@ -106,7 +106,7 @@ export function RunningAgentMember({
   const revalidateRunners = useRunnersRevalidate();
   const candidates = useMemo(() => runningAgents(connected), [connected]);
   const earlier = useMemo(() => earlierSessions(connected), [connected]);
-  const unsupported = useMemo(() => sessionsUnsupported(connected), [connected]);
+  const supported = useMemo(() => sessionsSupported(connected), [connected]);
   // Titles are read on the machine the sessions are on, by the app there.
   const thisMachine = useThisMachine();
   const titles = useSessionTitles(earlier.some((s) => s.runner.id === thisMachine));
@@ -245,16 +245,19 @@ export function RunningAgentMember({
     );
   }
 
-  // Not seeing them? Each agent CLI whose sessions can't be listed says so,
-  // and where to add it.
-  const missing = unsupported.map((f) => (
-    <p key={f.id} className="text-micro text-faint">
-      Not seeing your {f.name} sessions? They can&apos;t be brought in yet.{" "}
+  // Not seeing them? Which agent CLIs' sessions can be brought in, and where
+  // to add another.
+  const missing = (
+    <p className="text-micro text-faint">
+      Not seeing your sessions?{" "}
+      {supported.length > 0
+        ? `Only ${supported.join(", ")} sessions can be brought in yet.`
+        : "Sessions can't be brought in from these machines yet."}{" "}
       <a href={ADD_SESSION_SUPPORT_URL} target="_blank" rel="noreferrer" className="text-accent hover:underline">
         Add support
       </a>
     </p>
-  ));
+  );
 
   if (!chosenAny) {
     const where = connected.length === 1 ? runnerName(connected[0]) : "your machines";

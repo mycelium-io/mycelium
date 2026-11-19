@@ -1,21 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The scan: which agent CLIs this machine can start, and which look installed.
+"""The scan: which agent CLIs this machine can start.
 
 What can be started is herdr's call, read from ``herdr agent start --help``
 rather than listed here, so a herdr that learns a new kind makes it startable
 with no change to this file. herdr never looks for a CLI's program: it types
 the command at an interactive prompt in a pane, where the person's own shell
-finds it on their real PATH. So every kind herdr has is offered, found or not,
-and the start is the real test of whether it's installed.
-
-Whether a CLI is found is a hint for the list, and for asking an installed CLI
-about its flags: its program on this process's ``PATH``, then in the folders
-version managers and installers put programs in (:func:`install_dirs`).
-Nothing of the person's runs to answer it: not their shell, not its rc files.
-What to look for and what to call it is the table in
+finds it on their real PATH. So every kind herdr has is offered, and the start
+is the test of whether it's installed: one whose shell can't find it says so,
+with where to install it (``Runner._start_failed``). The scan doesn't look for
+programs itself. What to call each CLI is the table in
 :mod:`mycelium.integrations.agents`.
+
+:func:`locate` still finds a CLI's program for the few times the runner runs
+it before a start (Codex's ``--help`` and ``login status``): on this process's
+``PATH``, then in the folders version managers put programs in
+(:func:`install_dirs`). Nothing of the person's runs to answer it: not their
+shell, not its rc files.
 """
 
 from __future__ import annotations
@@ -23,8 +25,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -33,9 +33,6 @@ from mycelium.integrations.agents import KNOWN, by_id
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-#: How long one ``--version`` may take before the scan gives up on it.
-VERSION_TIMEOUT_S = 4.0
 
 
 @dataclass
@@ -158,53 +155,20 @@ def locate(binaries: tuple[str, ...]) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _version(path: str, search_path: str | None = None) -> str | None:
-    """``<path> --version``'s first line, run with ``search_path`` as its PATH
-    when it was found outside this process's."""
-    env = {**os.environ, "PATH": search_path} if search_path else None
-    try:
-        proc = subprocess.run(  # noqa: S603 - a path the scan found, fixed argument
-            [path, "--version"],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=VERSION_TIMEOUT_S,
-            check=False,
-            stdin=subprocess.DEVNULL,
-            env=env,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    line = next(
-        (ln.strip() for ln in (proc.stdout or proc.stderr or "").splitlines() if ln.strip()), ""
-    )
-    return line[:60] or None
-
-
 def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
-    """Every known framework: what the host can start first, found ones first
-    among those.
+    """Every known framework, what the host can start first.
 
     ``kinds`` is what the runner's host (named ``host``) says it can start, or
     ``None`` when the host is not here. A framework is launchable when the host
-    has its kind, whether or not the scan found its program: the host's shell
-    may find what the scan didn't.
-    """
-    located = {k.id: locate(k.binaries) for k in KNOWN}
-    found = [k.id for k in KNOWN if located[k.id][0]]
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        versions = dict(
-            zip(
-                found,
-                pool.map(lambda i: _version(str(located[i][0]), located[i][1]), found),
-                strict=True,
-            )
-        )
+    has its kind; whether it's installed is found out by starting it.
 
+    ``path`` and ``version`` are always ``None`` and ``installed`` is the same
+    as ``launchable``: the wire still carries them for apps from before the
+    scan stopped looking for programs, which would otherwise list every CLI as
+    not found.
+    """
     out: list[Found] = []
     for k in KNOWN:
-        path = located[k.id][0]
         host_can = bool(k.herdr_kind and kinds is not None and k.herdr_kind in kinds)
         note = None
         if kinds is None:
@@ -213,19 +177,17 @@ def scan(kinds: set[str] | None, *, host: str = "herdr") -> list[Found]:
             note = f"{host} has no {k.id} kind yet"
         elif not host_can:
             note = f"this {host} can't start {k.herdr_kind}; it may need updating"
-        elif path is None:
-            note = "not found on this machine"
         out.append(
             Found(
                 id=k.id,
                 name=k.name,
                 command=k.binaries[0],
-                path=path,
-                version=versions.get(k.id),
-                installed=path is not None,
+                path=None,
+                version=None,
+                installed=host_can,
                 launchable=host_can,
                 note=note,
             )
         )
-    out.sort(key=lambda f: (not f.launchable, not f.installed))
+    out.sort(key=lambda f: not f.launchable)
     return out

@@ -94,18 +94,17 @@ export function useRunnersRevalidate(): () => void {
   }, [mutate]);
 }
 
-/** Frameworks as a picker lists them: startable and found first, then startable,
- *  then the rest, found ones first. */
+/** Frameworks as a picker lists them: the ones the machine's host can start
+ *  first, then the rest, each by name. Whether one is installed isn't known
+ *  until it's started: the host starts it from the person's own shell, and
+ *  the start says if it isn't there. */
 export function sortFrameworks(frameworks: Framework[]): Framework[] {
-  const rank = (f: Framework) => (f.launchable ? 0 : 2) + (f.installed ? 0 : 1);
+  const rank = (f: Framework) => (f.launchable ? 0 : 1);
   return [...frameworks].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
 /** Frameworks a machine can start right now: its host can start the kind and is
- *  running there. One the scan didn't find is included: the host starts it from
- *  the person's own shell, which may have it, and the start says if it doesn't.
- *  Found ones first, so the first is a sensible default. Empty on a machine
- *  whose host isn't running. */
+ *  running there. Empty on a machine whose host isn't running. */
 export function launchable(runner: Runner): Framework[] {
   if (!runner.herdr) return [];
   return sortFrameworks(runner.frameworks.filter((f) => f.launchable));
@@ -223,6 +222,9 @@ export interface StartReport {
   /** What the machine answered for the person on the way, from their choice
    *  to start it there ("Trusted the folder for Claude Code"). */
   passed: string[];
+  /** Where the CLI's makers say how to install it, when its shell had no
+   *  command for it. */
+  install: string | null;
 }
 
 const STEPS: readonly string[] = ["terminal", "shell", "agent", "intro"];
@@ -242,6 +244,10 @@ export function startReport(job: Pick<RunnerJob, "result"> | null | undefined): 
     slow: r.slow === true,
     waiting: text(r.waiting),
     passed: Array.isArray(r.passed) ? r.passed.filter((p): p is string => typeof p === "string" && p !== "") : [],
+    install: (() => {
+      const url = text(r.install);
+      return url && /^https:\/\//.test(url) ? url : null;
+    })(),
   };
 }
 
@@ -253,6 +259,8 @@ export interface StartHelp {
   steps: string[];
   /** A few words for a status line with no room for the rest. */
   short: string;
+  /** A page that helps, shown as a link under the steps. */
+  link?: { label: string; href: string };
 }
 
 /** The person's way through a start that stopped, by why it stopped. */
@@ -263,12 +271,18 @@ export function startHelp(
     cli,
     handle,
     detail = null,
+    command = null,
+    install = null,
   }: {
     machine: string;
     cli: string;
     handle: string;
     /** What the host said, when it refused for a reason of its own. */
     detail?: string | null;
+    /** The command the CLI runs as (`opencode`), for saying what to check. */
+    command?: string | null;
+    /** Where its makers say how to install it. */
+    install?: string | null;
   },
 ): StartHelp {
   if (why === "shell") {
@@ -307,14 +321,17 @@ export function startHelp(
     };
   }
   if (why === "missing") {
+    // Shown as plain text: the command as typed, no code marks around it.
+    const run = command ?? cli;
     return {
-      happened: `${cli} isn't installed on ${machine}.`,
+      happened: `${cli} isn't installed on ${machine}, or a new terminal window there can't find ${run}.`,
       steps: [
-        `Look at its terminal on ${machine}. It's still open, showing what its shell said.`,
-        `Install ${cli} on ${machine}, and check that a new terminal window there can run it.`,
-        `Then try again.`,
+        `Install ${cli} on ${machine}${install ? ", from the page linked below" : ""}.`,
+        `Check that ${run} runs in a new terminal window on ${machine}.`,
+        `Then add @${handle} again.`,
       ],
       short: `${cli} isn't installed on ${machine}`,
+      ...(install ? { link: { label: `How to install ${cli}`, href: install } } : {}),
     };
   }
   if (why === "exited") {

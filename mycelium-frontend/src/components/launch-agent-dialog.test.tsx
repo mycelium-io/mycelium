@@ -345,6 +345,35 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
+  it("says how to install a CLI its shell couldn't find, linking to its makers' page", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({
+        status: "failed",
+        spec: { framework: "claude" },
+        error: "Claude Code isn't installed on julias-mbp, or a new terminal window there can't find `claude`.",
+        result: {
+          step: "agent",
+          why: "missing",
+          pane: "w7:p1",
+          install: "https://code.claude.com/docs/en/setup",
+        },
+      }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("or a new terminal window there can't find claude");
+    expect(alert).toHaveTextContent("Check that claude runs in a new terminal window on julias-mbp");
+    expect(screen.getByRole("link", { name: "How to install Claude Code" })).toHaveAttribute(
+      "href",
+      "https://code.claude.com/docs/en/setup",
+    );
+  });
+
   it("says a CLI that needs setting up does, before any terminal was opened", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValue(job());

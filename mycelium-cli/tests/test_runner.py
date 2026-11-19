@@ -15,6 +15,7 @@ import json
 import re
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,10 @@ class Herdr:
         self.fail_start = False
         #: ``agent start`` runs the agent CLI, which exits before it comes up.
         self.exits_on_start = False
+        #: ``agent start`` types a command the shell doesn't have: herdr keeps
+        #: the agent's name on the pane as ``unknown`` and waits this long for
+        #: it, then times out, as herdr 0.9.5 does.
+        self.never_runs_s: float | None = None
         #: ``agent start`` fails, but leaves an agent on the pane in this state,
         #: the way one stopped at a first-run prompt never reads as ready.
         self.start_leaves: str | None = None
@@ -124,6 +129,12 @@ class Herdr:
             if self.exits_on_start:
                 exited = "agent process exited before becoming interactive"
                 return _proc(stderr=json.dumps({"error": exited}), returncode=1)
+            if self.never_runs_s is not None:
+                self.live[pane] = "unknown"
+                time.sleep(self.never_runs_s)
+                self.live.pop(pane, None)
+                timeout = {"code": "timeout", "message": "timed out waiting for agent startup"}
+                return _proc(stderr=json.dumps({"error": timeout}), returncode=1)
             self.live[args[args.index("--pane") + 1]] = "idle"
             return _proc(_ok({}))
         if head == "agent prompt":
@@ -286,7 +297,6 @@ def herdr(monkeypatch: pytest.MonkeyPatch) -> Herdr:
         return None if name != "git" else real_which(name)
 
     monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setattr(frameworks, "_version", lambda path, *_a: f"{Path(path).name} 1.0")
     return Herdr()
 
 
@@ -322,29 +332,31 @@ def test_herdr_decides_what_can_be_started(herdr: Herdr):
     assert bridge.supported_kinds() == {"pi", "claude", "codex", "opencode"}
 
     found = {f.id: f for f in frameworks.scan(bridge.supported_kinds())}
-    assert found["claude"].installed and found["claude"].launchable
-    assert found["claude"].version == "claude 1.0"
-    # Installed, but herdr has no kind for it.
-    assert found["aider"].installed and not found["aider"].launchable
+    assert found["claude"].launchable and found["claude"].note is None
+    # herdr has no kind for it.
+    assert not found["aider"].launchable
     assert "no aider kind" in (found["aider"].note or "")
-    # Not found here, and still offered: herdr starts it from the person's own
-    # shell, which may have it, and the start says if it doesn't.
-    assert not found["codex"].installed and found["codex"].launchable
-    assert found["codex"].note == "not found on this machine"
-    # What can be started leads the list, found ones first.
-    assert [(f.launchable, f.installed) for f in found.values()][:3] == [
-        (True, True),
-        (True, True),
-        (True, False),
-    ]
+    # Not on this process's PATH, and offered the same: herdr starts it from
+    # the person's own shell, and the start says if it isn't there.
+    assert found["codex"].launchable and found["codex"].note is None
+    # What can be started leads the list.
+    assert [f.launchable for f in found.values()][:4] == [True] * 4
+    assert not any(f.launchable for f in list(found.values())[4:])
 
 
-def test_a_startable_cli_carries_no_note(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: f"/usr/bin/{name}")
-    found = {f.id: f for f in frameworks.scan({"codex", "claude"})}
-    assert found["codex"].launchable
-    assert found["codex"].note is None
-    assert found["claude"].note is None
+def test_the_scan_looks_for_no_programs(herdr: Herdr, monkeypatch: pytest.MonkeyPatch):
+    """Whether a CLI is installed is found out by starting it, where the
+    person's shell looks: the scan neither looks for nor runs a program, and
+    lists no CLI as not found. ``installed`` is kept on the wire, the same as
+    ``launchable``, for apps from before."""
+    looked: list[str] = []
+    monkeypatch.setattr(frameworks.shutil, "which", lambda name, path=None: looked.append(name))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail(f"ran {a}"))
+    found = frameworks.scan({"codex", "claude"})
+    assert looked == []
+    assert all(f.path is None and f.version is None for f in found)
+    assert all(f.installed == f.launchable for f in found)
+    assert not any("not found" in (f.note or "") for f in found)
 
 
 def _program(path: Path, text: str = "#!/bin/sh\necho 1.0\n") -> Path:
@@ -354,12 +366,12 @@ def _program(path: Path, text: str = "#!/bin/sh\necho 1.0\n") -> Path:
     return path
 
 
-def test_a_cli_under_nvm_is_found_in_the_newest_node_and_run_with_it_first(
+def test_codex_under_nvm_is_found_for_its_flags_in_the_newest_node(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """codex under nvm: not on the PATH the desktop app hands the runner. The
-    scan finds it in nvm's folders, newest Node first, and its --version runs
-    with that folder first on PATH, where its ``node`` is."""
+    """codex under nvm: not on the PATH the desktop app hands the runner. Its
+    flags are read from the newest Node's codex, run with that folder first on
+    PATH, where its ``node`` is."""
     monkeypatch.setattr(frameworks, "install_dirs", REAL_INSTALL_DIRS)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("NVM_DIR", raising=False)
@@ -371,18 +383,9 @@ def test_a_cli_under_nvm_is_found_in_the_newest_node_and_run_with_it_first(
     _program(nodes / "v24.10.1" / "bin" / "node")
     real = _program(nodes / "v24.10.1" / "bin" / "codex")
 
-    ran: list[tuple] = []
-    monkeypatch.setattr(
-        frameworks, "_version", lambda path, search=None: ran.append((path, search)) or "1.0"
-    )
-    found = {f.id: f for f in frameworks.scan({"codex"})}
-
-    assert found["codex"].installed and found["codex"].launchable
-    assert found["codex"].path == str(real)
-    # (Homebrew's folders are real on this machine, so only codex is checked.)
-    assert [r for r in ran if r[0].endswith("/codex")] == [
-        (str(real), f"{real.parent}:/usr/bin:/bin")
-    ]
+    found, search = frameworks.locate(("codex",))
+    assert found == str(real)
+    assert search == f"{real.parent}:/usr/bin:/bin"
 
 
 def test_the_scan_runs_nothing_of_the_persons_shell(
@@ -425,7 +428,7 @@ def test_the_hello_says_what_this_machine_has(make_runner):
     assert body["id"] == "julias-mbp-ab12"
     assert body["herdr"] is True
     startable = [(f["id"], f["installed"]) for f in body["frameworks"] if f["launchable"]]
-    assert startable == [("claude", True), ("opencode", True), ("codex", False), ("pi", False)]
+    assert startable == [("claude", True), ("codex", True), ("opencode", True), ("pi", True)]
     assert body["agents"] == []
 
 
@@ -1190,20 +1193,67 @@ def test_a_cli_that_draws_late_gets_its_introduction_once_its_screen_settles(
     assert "OPENCODE_DISABLE_AUTOUPDATE=1" in opened
 
 
-def test_a_cli_the_scan_didnt_find_is_started_and_said_to_be_missing_when_it_isnt_there(
-    make_runner, herdr: Herdr, hub: Hub
+@pytest.mark.parametrize(
+    "said",
+    [
+        "zsh: command not found: codex",
+        "bash: codex: command not found",
+        "fish: Unknown command: codex",
+    ],
+)
+def test_a_cli_its_shell_cant_find_is_said_to_be_missing_with_where_to_install_it(
+    make_runner, herdr: Herdr, hub: Hub, said: str
 ):
-    # Its shell says "command not found", so no agent ever appears on the pane.
+    # Nothing looks for it first: herdr starts it in the pane's shell, which
+    # says there's no such command, so no agent ever appears on the pane.
     herdr.exits_on_start = True
+    herdr.screen = f"~/shop % codex\n{said}\n~/shop % "
     r = make_runner()
     with pytest.raises(daemon.JobError, match="Codex isn't installed on") as failed:
         r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
-    assert "Install Codex there, then start @scout again" in str(failed.value)
+    assert "or a new terminal window there can't find `codex`" in str(failed.value)
+    assert "Install it (https://github.com/openai/codex)" in str(failed.value)
+    assert "check that `codex` runs in a new terminal window" in str(failed.value)
     assert failed.value.result is not None
     assert failed.value.result["why"] == "missing"
+    assert failed.value.result["install"] == "https://github.com/openai/codex"
     assert failed.value.result["pane"] == "w9:p1"
-    # It was tried: the person's own shell may have had it.
+    # Only the yes or no leaves the machine, never what the shell printed.
+    assert "command not found" not in json.dumps(failed.value.result).replace(
+        failed.value.result.get("detail", ""), ""
+    )
     assert len(herdr.of("agent start")) == 1
+
+
+def test_a_cli_that_isnt_installed_is_said_missing_without_waiting_out_herdr(
+    make_runner, herdr: Herdr, hub: Hub, monkeypatch: pytest.MonkeyPatch
+):
+    """What herdr really does with a command the shell doesn't have: keeps the
+    agent's name on the pane, as unknown, until its own timeout. The start
+    reads the shell's "command not found" there and stops at once."""
+    monkeypatch.setattr("mycelium.integrations.herdr.starting.EXIT_POLL_S", 0.05)
+    herdr.never_runs_s = 5.0
+    herdr.screen = "~/shop % pi\nzsh: command not found: pi\n~/shop % "
+    r = make_runner()
+    began = time.monotonic()
+    with pytest.raises(daemon.JobError, match="Pi isn't installed on") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "pi"})
+    assert time.monotonic() - began < 2
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "missing"
+    assert failed.value.result["install"] == "https://github.com/badlogic/pi-mono"
+
+
+def test_a_cli_that_exits_on_its_own_is_not_said_to_be_missing(make_runner, herdr: Herdr, hub: Hub):
+    """Another command's "not found", or none: the CLI ran and exited."""
+    herdr.exits_on_start = True
+    herdr.screen = "~/shop % codex\nError: config.toml: model not found\n~/shop % "
+    r = make_runner()
+    with pytest.raises(daemon.JobError, match="exited before it started") as failed:
+        r.launch({"room": "eng", "handle": "scout", "framework": "codex"})
+    assert failed.value.result is not None
+    assert failed.value.result["why"] == "exited"
+    assert "install" not in failed.value.result
 
 
 def test_an_agent_cli_that_never_comes_up_says_what_it_may_be_waiting_on(

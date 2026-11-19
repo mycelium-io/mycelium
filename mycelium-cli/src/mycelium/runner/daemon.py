@@ -1163,9 +1163,7 @@ class Runner:
                 session=session,
             )
         except HostError as e:
-            seen = next((f for f in self.found if f.id == known.id), None)
-            missing = seen is not None and not seen.installed
-            raise self._start_failed(e, known.name, handle, missing=missing) from e
+            raise self._start_failed(e, known, handle) from e
         agent = Tracked(
             handle=handle,
             room=room,
@@ -1201,14 +1199,13 @@ class Runner:
             )
         return result
 
-    def _start_failed(
-        self, e: HostError, name: str, handle: str, *, missing: bool = False
-    ) -> JobError:
+    def _start_failed(self, e: HostError, known: agents.AgentKind, handle: str) -> JobError:
         """A start that didn't come up, said as what happened and what to do next.
 
-        ``missing``: the scan didn't find the CLI here. herdr starts it anyway,
-        since the pane's shell may find what the scan didn't; when no agent then
-        appears on the pane, its shell most likely said there's no such command.
+        Nothing looks for a CLI before starting it: herdr types its command in
+        the pane's shell, which finds what a new terminal window would. One the
+        shell had no command for (``e.missing``) is said as not installed, with
+        where its makers say how to install it (``install`` in the result).
 
         What the host said stays in the result's ``detail`` and in the log, for
         whoever is debugging; the sentence is for the person who asked.
@@ -1216,6 +1213,8 @@ class Runner:
         from mycelium.integrations.herdr import AgentExitedError, AgentNotReadyError
         from mycelium.integrations.herdr.starting import SHELL_WAIT_S
 
+        name = known.name
+        install = None
         where = (
             f"It's still open in herdr (pane {e.ref})" if e.ref else "Its terminal is still open"
         )
@@ -1229,11 +1228,15 @@ class Runner:
                 f"didn't reach a shell prompt within {SHELL_WAIT_S:.0f} seconds. {where}. "
                 f"When it shows a prompt, start @{handle} again: it goes back to that terminal."
             )
-        elif e.step == STEP_AGENT and missing and isinstance(e.__cause__, AgentExitedError):
+        elif e.step == STEP_AGENT and e.missing:
             why = "missing"
+            command = known.binaries[0] if known.binaries else known.id
+            install = known.install_url
+            how = f"Install it ({install})" if install else "Install it"
             message = (
-                f"{name} isn't installed on {self.label}. {where}, showing what its shell "
-                f"said. Install {name} there, then start @{handle} again."
+                f"{name} isn't installed on {self.label}, or a new terminal window there "
+                f"can't find `{command}`. {how}, check that `{command}` runs in a new "
+                f"terminal window, then add @{handle} again."
             )
         elif e.step == STEP_AGENT and isinstance(e.__cause__, AgentExitedError):
             # What it printed on the way out is on its screen, which stays on
@@ -1261,6 +1264,7 @@ class Runner:
             "why": why,
             "pane": e.ref,
             "detail": str(e),
+            "install": install,
         }
         return JobError(message, result={k: v for k, v in result.items() if v})
 
