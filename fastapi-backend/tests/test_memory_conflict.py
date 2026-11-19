@@ -63,7 +63,7 @@ async def test_stale_base_rejected_with_details(client: AsyncClient):
     resp = await _write(client, "cas-stale", "k", "clobber", "bob", base_version=0)
     assert resp.status_code == 409
     detail = resp.json()["detail"]
-    assert detail["error"] == "stale_base"
+    assert detail["error"] == "memory.stale_base"
     assert detail["current_version"] == 1
     assert detail["current_content"] == "current-value"
     assert detail["updated_by"] == "alice"

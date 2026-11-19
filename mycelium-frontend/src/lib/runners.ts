@@ -22,6 +22,7 @@ import {
   type Runner,
   type RunnerJob,
 } from "@/lib/api";
+import { DOCS_URL } from "@/lib/install";
 import { useMyMachines } from "@/lib/my-machines";
 import { usePrincipal } from "@/components/current-user";
 
@@ -94,18 +95,17 @@ export function useRunnersRevalidate(): () => void {
   }, [mutate]);
 }
 
-/** Frameworks as a picker lists them: startable and found first, then startable,
- *  then the rest, found ones first. */
+/** Frameworks as a picker lists them: the ones the machine's host can start
+ *  first, then the rest, each by name. Whether one is installed isn't known
+ *  until it's started: the host starts it from the person's own shell, and
+ *  the start says if it isn't there. */
 export function sortFrameworks(frameworks: Framework[]): Framework[] {
-  const rank = (f: Framework) => (f.launchable ? 0 : 2) + (f.installed ? 0 : 1);
+  const rank = (f: Framework) => (f.launchable ? 0 : 1);
   return [...frameworks].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
 }
 
 /** Frameworks a machine can start right now: its host can start the kind and is
- *  running there. One the scan didn't find is included: the host starts it from
- *  the person's own shell, which may have it, and the start says if it doesn't.
- *  Found ones first, so the first is a sensible default. Empty on a machine
- *  whose host isn't running. */
+ *  running there. Empty on a machine whose host isn't running. */
 export function launchable(runner: Runner): Framework[] {
   if (!runner.herdr) return [];
   return sortFrameworks(runner.frameworks.filter((f) => f.launchable));
@@ -143,7 +143,7 @@ export function hostOf(runner: Pick<Runner, "host">): HostCopy {
   return HOSTS[id] ?? { name: id, where: `${id}`, start: `Start ${id} there` };
 }
 
-/** Whether a runner starts agents in herdr, which is what a swarm needs. */
+/** Whether a runner starts agents in herdr. */
 export function startsInHerdr(runner: Pick<Runner, "host">): boolean {
   return (runner.host || "herdr") === "herdr";
 }
@@ -167,8 +167,6 @@ export function describeJob(job: RunnerJob): string {
       return `Interrupt ${handle ?? "an agent"}`;
     case "scan":
       return "Scan for agent CLIs";
-    case "swarm":
-      return typeof spec.room === "string" ? `Start a swarm in ${spec.room}` : "Start a swarm";
     case "restart": {
       if (spec.all) return "Restart every stopped agent";
       const agents = Array.isArray(spec.agents) ? (spec.agents as { handle?: string }[]) : [];
@@ -227,6 +225,10 @@ export interface StartReport {
   passed: string[];
 }
 
+/** The docs section on an agent CLI that isn't installed, which links on to
+ *  herdr's list of the CLIs it can start. */
+export const MISSING_CLI_DOC = `${DOCS_URL}/guides.html#machines-when-the-agent-cli-isnt-found`;
+
 const STEPS: readonly string[] = ["terminal", "shell", "agent", "intro"];
 const WHYS: readonly string[] = ["shell", "cli", "exited", "missing", "setup", "signin", "host"];
 
@@ -255,6 +257,8 @@ export interface StartHelp {
   steps: string[];
   /** A few words for a status line with no room for the rest. */
   short: string;
+  /** A page that helps, shown as a link under the steps. */
+  link?: { label: string; href: string };
 }
 
 /** The person's way through a start that stopped, by why it stopped. */
@@ -265,12 +269,15 @@ export function startHelp(
     cli,
     handle,
     detail = null,
+    command = null,
   }: {
     machine: string;
     cli: string;
     handle: string;
     /** What the host said, when it refused for a reason of its own. */
     detail?: string | null;
+    /** The command the CLI runs as (`opencode`), for saying what to check. */
+    command?: string | null;
   },
 ): StartHelp {
   if (why === "shell") {
@@ -309,14 +316,17 @@ export function startHelp(
     };
   }
   if (why === "missing") {
+    // Shown as plain text: the command as typed, no code marks around it.
+    const run = command ?? cli;
     return {
       happened: `${cli} isn't installed on ${machine}.`,
       steps: [
-        `Look at its terminal on ${machine}. It's still open, showing what its shell said.`,
-        `Install ${cli} on ${machine}, and check that a new terminal window there can run it.`,
-        `Then try again.`,
+        `Install ${cli} on ${machine}.`,
+        `Open a new terminal window on ${machine} and run ${run}. If it runs there, it will run for the agent too.`,
+        `Add @${handle} again.`,
       ],
       short: `${cli} isn't installed on ${machine}`,
+      link: { label: "When the agent CLI isn't found", href: MISSING_CLI_DOC },
     };
   }
   if (why === "exited") {

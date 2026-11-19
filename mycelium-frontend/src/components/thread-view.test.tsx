@@ -9,10 +9,14 @@ import { act } from "react";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 import { layOut } from "@/test/scroll";
+import { summaryOf } from "@/test/memory-summary";
+import type { Memory } from "@/lib/api";
 
 const fetchMessages = vi.fn();
 const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
-const fetchMemories = vi.fn();
+/** What the room holds: the list names each one, and each is read by its key.
+ *  Each read answers in one step, as a stubbed fetch does. */
+const room: { memories: Memory[] } = { memories: [] };
 
 // The real module underneath, so a read the composer starts making later
 // falls through to it rather than failing every test here.
@@ -27,10 +31,14 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   fetchProtocols: vi.fn().mockResolvedValue([]),
   fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchEpisodes: vi.fn().mockResolvedValue([]),
-  fetchMemories: (...args: unknown[]) => fetchMemories(...args),
+  fetchMemorySummaries: () => Promise.resolve(room.memories.map(summaryOf)),
+  fetchMemory: (_room: string, key: string) =>
+    Promise.resolve(room.memories.find((m) => m.key === key) ?? null),
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
   fetchSkills: vi.fn().mockResolvedValue([]),
+  createThreadTask: (...args: unknown[]) => createThreadTask(...args),
 }));
+const createThreadTask = vi.fn().mockResolvedValue({ key: "work/payment-alert", episode: "urn:e:task" });
 
 vi.mock("@/components/current-user", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/components/current-user")>()),
@@ -61,13 +69,14 @@ const TASK = {
   content_text: "the reads have to flip behind a flag",
   version: 1,
   created_by: "julia",
+  updated_at: "2026-08-04T09:00:00+00:00",
   episode: THREAD,
 };
 
 describe("<ThreadView />", () => {
   beforeEach(() => {
     fetchMessages.mockReset().mockResolvedValue(NEWEST_FIRST);
-    fetchMemories.mockReset().mockResolvedValue([]);
+    room.memories = [];
     sendRoomMessage.mockClear();
     resetStreamHub();
     FakeEventSource.reset();
@@ -244,11 +253,48 @@ describe("<ThreadView />", () => {
     await waitFor(() => expect(fetchMessages.mock.calls.length).toBe(reads + 1));
   });
 
+  it("opens a message's thread on the message it was started from, and files a task from it", async () => {
+    room.memories = [
+      {
+        key: "threads/when-should-the-payment-alert-fire",
+        value: "When should the payment alert fire?",
+        version: 1,
+        created_by: "reviewer",
+        updated_at: "2026-08-04T09:00:00+00:00",
+        episode: THREAD,
+        meta: { from: "h6" },
+      },
+    ];
+    const parent = {
+      id: "h6",
+      sender_handle: "operator",
+      message_type: "broadcast",
+      content: "adding an alert for when payments start failing",
+      created_at: "2026-08-04T09:00:00+00:00",
+    };
+    fetchMessages.mockImplementation(async (_room: string, _limit: number, query?: { id?: string }) =>
+      query?.id ? { messages: [parent], total: 1 } : NEWEST_FIRST,
+    );
+    renderWithSWR(<ThreadView roomName="atlas" target={{ episode: THREAD }} onClose={vi.fn()} />);
+
+    const origin = await screen.findByTestId("thread-origin");
+    expect(origin).toHaveTextContent("operator");
+    expect(origin).toHaveTextContent("adding an alert for when payments start failing");
+    expect(screen.getByText("When should the payment alert fire?")).toBeInTheDocument();
+    // The thread is about a message, not a memory to edit.
+    expect(screen.queryByRole("button", { name: "Edit task" })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Make a task" }));
+    await waitFor(() =>
+      expect(createThreadTask).toHaveBeenCalledWith("atlas", "threads/when-should-the-payment-alert-fire", "julia"),
+    );
+  });
+
   it("is one scroll region — the task's body and its conversation share it", async () => {
     // Two nested scroll areas cause inconsistent wheel behavior depending on
     // pointer position; the task reads as one column instead, the way an
     // issue body runs into its comments.
-    fetchMemories.mockResolvedValue([TASK]);
+    room.memories = [TASK];
     renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
     );
@@ -284,7 +330,7 @@ describe("<ThreadView />", () => {
   });
 
   it("opens a task's thread on the task, and follows replies once the reader is at the bottom", async () => {
-    fetchMemories.mockResolvedValue([TASK]);
+    room.memories = [TASK];
     renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD, title: "flip reads" }} onClose={vi.fn()} />,
     );

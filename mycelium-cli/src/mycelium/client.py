@@ -269,13 +269,19 @@ def hub_error_detail(content: bytes) -> str:
 
     FastAPI serializes ``HTTPException`` as ``{"detail": "..."}``; we surface
     that string so the caller sees the backend's actual message rather than a
-    bare status code.  Falls back to the raw decoded body, and to an empty
-    string for truly empty responses.
+    bare status code.  A structured refusal (``{"error": <code>, "message":
+    ...}``, contracts/memory-kinds.json) reads as its sentence with its code,
+    which an agent can match on.  Falls back to the raw decoded body, and to
+    an empty string for truly empty responses.
     """
     try:
         body = json.loads(content)
         if isinstance(body, dict) and "detail" in body:
-            return str(body["detail"])
+            detail = body["detail"]
+            if isinstance(detail, dict) and isinstance(detail.get("message"), str):
+                code = detail.get("error")
+                return f"{detail['message']} ({code})" if code else detail["message"]
+            return str(detail)
     except (ValueError, KeyError):
         pass
     return content.decode(errors="replace").strip()

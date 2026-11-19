@@ -13,15 +13,18 @@ import {
   FileText,
   ListChecks,
   MessageCircleQuestion,
+  SkipForward,
   X,
 } from "lucide-react";
 import { answerAsk } from "@/lib/api";
-import { linkKind, verdictOf, type ApprovalAsk, type AskAnswer, type AskKind, type Decision } from "@/lib/approvals";
+import { MarkdownContent } from "@/components/markdown-content";
+import { askLine, linkKind, verdictOf, type ApprovalAsk, type AskAnswer, type AskKind, type Decision } from "@/lib/approvals";
 import { useCurrentUser } from "@/components/current-user";
 import { nameOf, useNames } from "@/lib/people";
 import { useRoomRevalidate } from "@/lib/room-data";
 import { Ago } from "@/lib/relative-time";
 import { Button } from "@/components/ui/button";
+import { SendPlaneIcon } from "@/components/send-plane-icon";
 import { cn } from "@/lib/utils";
 
 const KIND_ICON: Record<AskKind, typeof CircleHelp> = {
@@ -104,21 +107,24 @@ export function AskCard({
   const who = (handle: string) => (handle.toLowerCase() === me ? "you" : (nameOf(names, handle) ?? handle));
   const Icon = KIND_ICON[ask.kind];
 
-  /** `none` answers a choose with none of its options, whatever is ticked. */
-  const send = async (decision?: Decision, none = false) => {
+  /** `none` answers a choose with none of its options, whatever is ticked.
+   *  `skip` answers nothing: the person isn't answering this one, and only a
+   *  note goes with it (a question's text box is its answer, so not that). */
+  const send = async (decision?: Decision, none = false, skip = false) => {
     if (busy || !me) return;
-    const text = note.trim() || null;
-    if (ask.kind === "question" && !text) return;
-    if (ask.kind === "choose" && !none && (picked.length === 0 || (!ask.multiple && picked.length > 1))) return;
+    const text = skip && ask.kind === "question" ? null : note.trim() || null;
+    if (!skip && ask.kind === "question" && !text) return;
+    if (!skip && ask.kind === "choose" && !none && (picked.length === 0 || (!ask.multiple && picked.length > 1))) return;
     setBusy(true);
     setError(null);
     const choices =
-      ask.kind === "choose" && !none ? ask.options.filter((o) => picked.includes(o.id)).map((o) => o.id) : [];
+      ask.kind === "choose" && !none && !skip ? ask.options.filter((o) => picked.includes(o.id)).map((o) => o.id) : [];
     try {
       await answerAsk(roomName, ask.id, {
         by: me,
+        ...(skip ? { skipped: true } : {}),
         ...(decision ? { decision } : {}),
-        ...(ask.kind === "choose" ? { choices } : {}),
+        ...(ask.kind === "choose" && !skip ? { choices } : {}),
         ...(text ? { text } : {}),
       });
       setSent({
@@ -131,6 +137,7 @@ export function AskCard({
         choices,
         chosen: ask.options.filter((o) => choices.includes(o.id)).map((o) => o.label),
         text,
+        skipped: skip,
       });
       revalidate();
     } catch (e) {
@@ -143,7 +150,6 @@ export function AskCard({
   // Answered: the question, and under it what was answered, each cut to fit
   // the card. It opens to the whole record.
   if (answer && !open) {
-    const declined = answer.kind === "approve" && answer.decision === "declined";
     return (
       <button
         type="button"
@@ -152,12 +158,8 @@ export function AskCard({
         aria-expanded={false}
         className="mt-1.5 grid w-full max-w-2xl grid-cols-[auto_minmax(0,1fr)_auto] items-baseline gap-x-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-label hover:bg-hairline"
       >
-        {declined ? (
-          <X className="size-3.5 self-center text-red" aria-hidden />
-        ) : (
-          <Check className="size-3.5 self-center text-green" aria-hidden />
-        )}
-        <span className="truncate text-text">{ask.question}</span>
+        <VerdictMark answer={answer} className="self-center" />
+        <span className="truncate text-text">{askLine(ask.question)}</span>
         <span className="flex items-center gap-1 text-micro whitespace-nowrap text-faint">
           {who(answer.by)}
           {answer.for && answer.for.toLowerCase() !== answer.by.toLowerCase() && ` for ${who(answer.for)}`}
@@ -183,11 +185,14 @@ export function AskCard({
   if (ask.undo) facts.push(["To undo", ask.undo]);
   const waitsOnMe = mine && !answer;
   const pickedCount = picked.length;
+  const canSend = ask.kind === "question" ? Boolean(note.trim()) : ask.kind === "choose" ? pickedCount > 0 : true;
 
   return (
     <div
       data-ask={ask.id}
-      className={cn("@container mt-1.5 max-w-2xl rounded-lg border bg-surface", waitsOnMe ? "border-yellow/40" : "border-border")}
+      // A hairline like the app's other surfaces: the yellow label and icon say
+      // it waits on you, so the border doesn't shout it in the chat too.
+      className="@container mt-1.5 max-w-2xl rounded-lg border border-border bg-surface"
     >
       <div className="px-3 pt-2.5 pb-2.5">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-micro">
@@ -213,15 +218,26 @@ export function AskCard({
             </button>
           )}
         </div>
-        <p className="mt-1 text-body font-medium text-text">{ask.question}</p>
+        {/* The first paragraph is the question; what follows it is its detail. */}
+        <MarkdownContent
+          className="markdown-ui mt-1 text-body text-text [&>*:first-child]:font-medium"
+          onLinkClick={onOpenMemory}
+        >
+          {ask.question}
+        </MarkdownContent>
         {facts.length > 0 && (
           // Each fact is a paragraph with its label run in, so it wraps as
           // text does at any width, with no column to squeeze it.
           <div className="mt-1.5 space-y-1 text-label text-text">
             {facts.map(([label, value]) => (
-              <p key={label}>
-                <span className="font-medium text-muted-foreground">{label}</span> {value}
-              </p>
+              <div key={label}>
+                <span className="font-medium text-muted-foreground">{label}</span>{" "}
+                {/* The label runs into the first paragraph; a list after it
+                    starts on a line of its own. */}
+                <MarkdownContent className="markdown-ui inline [&>p:first-child]:inline" onLinkClick={onOpenMemory}>
+                  {value}
+                </MarkdownContent>
+              </div>
             ))}
           </div>
         )}
@@ -229,7 +245,7 @@ export function AskCard({
         {ask.kind === "choose" && (
           <div
             role={ask.multiple ? "group" : "radiogroup"}
-            aria-label={ask.question}
+            aria-label={askLine(ask.question)}
             className="mt-2 flex flex-col overflow-hidden rounded-md border border-border bg-bg"
           >
             {ask.options.map((o, i) => {
@@ -259,7 +275,10 @@ export function AskCard({
                       its detail, so neither breaks the sentence. */}
                   <span className="min-w-0 flex-1 text-label">
                     <span className="text-text">
-                      <span className="tabular text-faint">{o.id}.</span> {o.label}
+                      <span className="tabular text-faint">{o.id}.</span>{" "}
+                      <MarkdownContent inline onLinkClick={onOpenMemory}>
+                        {o.label}
+                      </MarkdownContent>
                     </span>
                     {(o.detail || ask.recommend.includes(o.id)) && (
                       <span className="mt-0.5 block text-micro text-muted-foreground">
@@ -275,7 +294,13 @@ export function AskCard({
           </div>
         )}
       </div>
-      <div className="flex min-h-9 flex-wrap items-center gap-1.5 border-t border-border px-3 py-1.5">
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-1.5 px-3",
+          // The answer field is a frame of its own, so no divider above it.
+          answer ? "min-h-9 border-t border-border py-1.5" : "pb-3",
+        )}
+      >
         {answer ? (
           <div className="min-w-0 flex-1 text-label">
             <p className="text-text">
@@ -295,67 +320,84 @@ export function AskCard({
             {answer.text && <p className="mt-0.5 text-muted-foreground">“{answer.text}”</p>}
           </div>
         ) : (
+          // One field, shaped like the room's composer: the note (or a
+          // question's answer) on top, then a bar inside it with the other
+          // answers and Skip on the left and the main answer on the right,
+          // where the composer's send is.
           <form
-            className="flex min-w-0 flex-1 flex-wrap items-start gap-1.5"
+            className="w-full rounded-lg border border-border2 bg-bg transition-colors focus-within:border-accent"
             onSubmit={(e) => {
               e.preventDefault();
               void send(ask.kind === "approve" ? "approved" : undefined);
             }}
           >
-            {ask.kind === "question" ? (
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                rows={2}
-                placeholder={mine ? "Your answer" : `Answer for ${who(ask.to)}`}
-                aria-label="Your answer"
-                className="min-h-[3.25rem] min-w-0 flex-1 resize-y rounded-md border border-border2 bg-bg px-2 py-1 text-label text-text outline-none placeholder:text-faint focus:border-accent"
-              />
-            ) : (
-              <input
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder={mine ? "Add a note (optional)" : `Answer for ${who(ask.to)} (optional note)`}
-                aria-label="Note"
-                className="h-7 min-w-0 flex-1 basis-40 rounded-md border border-border2 bg-bg px-2 text-label text-text outline-none placeholder:text-faint focus:border-accent"
-              />
-            )}
-            <span className="flex flex-shrink-0 items-center gap-1.5">
-              {ask.kind === "approve" ? (
-                <>
-                  <Button type="submit" size="xs" variant={mine ? "default" : "outline"} disabled={busy}>
-                    <Check className="size-3.5" /> Approve
-                  </Button>
-                  <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void send("declined")}>
-                    Decline
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    type="submit"
-                    size="xs"
-                    variant={mine ? "default" : "outline"}
-                    disabled={busy || (ask.kind === "question" ? !note.trim() : pickedCount === 0)}
-                  >
-                    {ask.kind === "choose" && ask.multiple && pickedCount > 0 ? `Send ${pickedCount}` : "Send"}
-                  </Button>
-                  {/* None of them is an answer too, said on purpose rather
-                      than by sending with nothing ticked. The note goes with it. */}
-                  {ask.kind === "choose" && (
-                    <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void send(undefined, true)}>
-                      None of these
-                    </Button>
-                  )}
-                </>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              onKeyDown={(e) => {
+                // ⌘↵ sends what was typed or picked. On an approve the note is
+                // as likely a Decline's, so a yes or no is only ever a click.
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && ask.kind !== "approve" && canSend) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              rows={ask.kind === "question" ? 2 : 1}
+              placeholder={
+                ask.kind === "question" ? (mine ? "Your answer" : `Answer for ${who(ask.to)}`) : "Add a note"
+              }
+              aria-label={ask.kind === "question" ? "Your answer" : "Note"}
+              className="block w-full resize-none bg-transparent px-2.5 py-2 text-label text-text outline-none placeholder:text-faint"
+            />
+            <div className="flex items-center gap-1.5 px-1.5 pb-1.5">
+              {ask.kind === "approve" && (
+                <Button type="button" size="xs" variant="outline" disabled={busy} onClick={() => void send("declined")}>
+                  <X className="size-3.5" /> Decline
+                </Button>
               )}
-            </span>
+              {/* None of them is an answer too, said on purpose rather than by
+                  sending with nothing ticked. The note goes with it. */}
+              {ask.kind === "choose" && (
+                <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void send(undefined, true)}>
+                  None of these
+                </Button>
+              )}
+              {/* Not an answer: the agent carries on with its own judgment. */}
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => void send(undefined, false, true)}
+                className="text-muted-foreground"
+              >
+                Skip
+              </Button>
+              <span className="ml-auto">
+                {ask.kind === "question" ? (
+                  <button
+                    type="submit"
+                    disabled={busy || !canSend}
+                    aria-label="Send"
+                    className="flex size-7 items-center justify-center rounded-md text-accent transition-colors hover:bg-accent-soft disabled:text-faint disabled:hover:bg-transparent"
+                  >
+                    <SendPlaneIcon className="size-4" />
+                  </button>
+                ) : (
+                  <Button type="submit" size="xs" variant={mine ? "default" : "outline"} disabled={busy || !canSend}>
+                    {ask.kind === "approve" ? (
+                      <>
+                        <Check className="size-3.5" /> Approve
+                      </>
+                    ) : ask.multiple && pickedCount > 0 ? (
+                      `Send ${pickedCount}`
+                    ) : (
+                      "Send"
+                    )}
+                  </Button>
+                )}
+              </span>
+            </div>
           </form>
         )}
         {error && (
@@ -371,8 +413,6 @@ export function AskCard({
 /** What was decided, under the open card. The options above already show
  *  which were picked, ticked, so a pick is named by its numbers alone. */
 function Verdict({ answer }: { answer: AskAnswer }) {
-  const declined = answer.kind === "approve" && answer.decision === "declined";
-  const Mark = declined ? X : Check;
   const ids = answer.choices;
   const said =
     answer.kind === "choose" && ids.length > 0
@@ -380,8 +420,17 @@ function Verdict({ answer }: { answer: AskAnswer }) {
       : verdictOf(answer);
   return (
     <span className="font-medium text-text">
-      <Mark className={cn("mr-1 inline size-3.5 align-[-2px]", declined ? "text-red" : "text-green")} aria-hidden />
+      <VerdictMark answer={answer} className="mr-1 inline align-[-2px]" />
       {said}
     </span>
   );
+}
+
+/** A check for an answer, a cross for a declined approve, and a quiet skip mark
+ *  for an ask that was skipped rather than answered. */
+function VerdictMark({ answer, className }: { answer: AskAnswer; className?: string }) {
+  if (answer.skipped) return <SkipForward className={cn("size-3.5 text-faint", className)} aria-hidden />;
+  const declined = answer.kind === "approve" && answer.decision === "declined";
+  const Mark = declined ? X : Check;
+  return <Mark className={cn("size-3.5", declined ? "text-red" : "text-green", className)} aria-hidden />;
 }

@@ -28,6 +28,8 @@ function event(over: Partial<Event>): Event {
     episode: null,
     amends: null,
     edited: false,
+    reactions: [],
+    reacts: null,
     thread: null,
     pingSenders: [],
     conductor: null,

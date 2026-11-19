@@ -8,13 +8,14 @@ import { renderWithSWR } from "@/test/swr";
 
 const createTask = vi.fn().mockResolvedValue({ key: "work/fix-the-flaky-login-test", episode: "urn:e:t1" });
 const sendRoomMessage = vi.fn().mockResolvedValue(undefined);
+const fetchRoomAgents = vi.fn().mockResolvedValue([]);
 
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   logFetchError: () => () => undefined,
   createTask: (...args: unknown[]) => createTask(...args),
   sendRoomMessage: (...args: unknown[]) => sendRoomMessage(...args),
-  fetchRoomAgents: vi.fn().mockResolvedValue([]),
+  fetchRoomAgents: (...args: unknown[]) => fetchRoomAgents(...args),
   fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: async () => [],
@@ -31,6 +32,26 @@ import { IntentDialog } from "@/components/intent-dialog";
 beforeEach(() => {
   createTask.mockClear();
   sendRoomMessage.mockClear();
+  fetchRoomAgents.mockResolvedValue([]);
+});
+
+describe("<IntentDialog /> closing", () => {
+  it("closes the agent list on Escape and keeps the dialog open", async () => {
+    fetchRoomAgents.mockResolvedValue([{ handle: "ada", adapter: "claude-code" }]);
+    const onClose = vi.fn();
+    const user = userEvent.setup();
+    renderWithSWR(<IntentDialog roomName="demo" initial="task" onClose={onClose} />);
+
+    await user.click(await screen.findByRole("button", { name: /Choose one agent/ }));
+    expect(screen.getByPlaceholderText("Search 1 agents")).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByPlaceholderText("Search 1 agents")).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("<IntentDialog /> filing a plain task", () => {

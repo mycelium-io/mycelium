@@ -345,6 +345,34 @@ describe("LaunchAgentForm", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
+  it("says how to install a CLI its shell couldn't find, linking to the docs on it", async () => {
+    connected = [runner()];
+    launchRunnerAgent.mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({
+        status: "failed",
+        spec: { framework: "claude" },
+        error: "Claude Code isn't installed on studio-mini.",
+        result: {
+          step: "agent",
+          why: "missing",
+          pane: "w7:p1",
+        },
+      }),
+    );
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "scout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/Claude Code isn't installed on \S+\./);
+    expect(alert).toHaveTextContent(/Open a new terminal window on \S+ and run claude\./);
+    expect(screen.getByRole("link", { name: "When the agent CLI isn't found" })).toHaveAttribute(
+      "href",
+      "https://mycelium-io.github.io/mycelium/guides.html#machines-when-the-agent-cli-isnt-found",
+    );
+  });
+
   it("says a CLI that needs setting up does, before any terminal was opened", async () => {
     connected = [runner()];
     launchRunnerAgent.mockResolvedValue(job());

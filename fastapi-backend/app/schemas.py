@@ -272,6 +272,21 @@ class MessageCreate(BaseModel):
         return self
 
 
+class MessageInterrupted(BaseModel):
+    """A member its sender interrupted with a message after sending it."""
+
+    by: str = Field(..., description="Who sent the message, and so interrupted")
+    handle: str = Field(..., description="The member it interrupted")
+    at: datetime = Field(..., description="When")
+
+
+class MessageReactions(BaseModel):
+    """One emoji on a message and who put it on, oldest first."""
+
+    emoji: str
+    by: list[str]
+
+
 class MessageRead(BaseModel):
     id: UUID
     # Polymorphic: exactly one of room_name / coordination_session_id is set.
@@ -292,9 +307,42 @@ class MessageRead(BaseModel):
             "None for a message nobody amended."
         ),
     )
+    interrupted: list[MessageInterrupted] | None = Field(
+        None,
+        description=(
+            "Who its sender interrupted with it after sending it, folded in on read. "
+            "None for a message nobody was interrupted with."
+        ),
+    )
+    reactions: list[MessageReactions] = Field(
+        default_factory=list,
+        description=(
+            "The emoji on it, folded in on read: each emoji once, in the order it "
+            "was first put on, with who put it on."
+        ),
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class MessageReact(BaseModel):
+    """Put an emoji on a message, or take yours off."""
+
+    emoji: str = Field(..., min_length=1, max_length=32, description="The emoji, as itself")
+    on: bool = Field(True, description="False takes your reaction off")
+    sender_handle: str | None = Field(
+        None, description="Who is reacting. Defaults to the token-verified caller."
+    )
+
+
+class MessageInterrupt(BaseModel):
+    """Turn a plain ``@handle`` in a message you sent into an interrupt."""
+
+    handle: str = Field(..., min_length=1, description="A member the message mentioned")
+    by: str | None = Field(
+        None, description="Who is asking; must be the message's sender. Defaults to the caller."
+    )
 
 
 class MessageAmended(MessageRead):
@@ -597,6 +645,52 @@ class MemoryRead(BaseModel):
     file_path: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ThreadRepliesRead(BaseModel):
+    """What a thread started from a message has had said in it, for the line under
+    that message. Worked out on read, never stored."""
+
+    replies: int = 0
+    last_reply_at: datetime | None = None
+    repliers: list[str] = Field(default_factory=list, description="The newest few, newest first")
+    last_reply: str | None = Field(None, description="The newest reply's first line")
+
+
+class MemorySummaryRead(BaseModel):
+    """A memory as a list shows it: what it's called and its frontmatter, not its text.
+
+    Read one memory for its value; this is for lists of many, where the text
+    of every one would be most of what's sent.
+    """
+
+    key: str
+    title: str = Field(
+        ...,
+        description=(
+            "What it's called: a structured value's ``title``, else the first line "
+            "of its text (a heading's marker dropped, at most 120 characters), else its key"
+        ),
+    )
+    structured: bool = Field(
+        False, description="Its value is structured data with no ``text``, not prose"
+    )
+    created_by: str
+    updated_by: str | None = None
+    version: int
+    tags: list[str] | None = None
+    meta: dict[str, Any] | None = Field(None, description="As on ``MemoryRead``")
+    episode: str | None = Field(None, description="As on ``MemoryRead``")
+    expandable: bool = False
+    created_at: datetime
+    updated_at: datetime
+    thread: ThreadRepliesRead | None = Field(
+        None,
+        description=(
+            "On a thread started from a message (``threads/``): what has been said "
+            "in it, worked out from the room's history when the list is read"
+        ),
+    )
 
 
 class MemorySearchRequest(BaseModel):
@@ -947,6 +1041,86 @@ class WhoamiRead(BaseModel):
     handle: str | None = Field(None, description="The verified handle; none on an ungated hub")
     subject: str | None = Field(None, description="The token's subject claim")
     role: str | None = Field(None, description="The principal's role")
+    needs_handle: bool = Field(
+        False,
+        description=(
+            "A person signed in whose sign-in gives no handle yet: they pick one "
+            "(POST /api/whoami/handle) before anything else"
+        ),
+    )
+    suggested: str | None = Field(
+        None, description="With needs_handle, the short handle their sign-in would give"
+    )
+
+
+class HandlePick(BaseModel):
+    """The handle a signed-in person picks for themselves."""
+
+    handle: str = Field(..., min_length=1, max_length=64)
+
+
+class SubagentCreate(BaseModel):
+    """Start a subagent of ``parent``'s, with a handle of its own."""
+
+    name: str = Field(..., min_length=1, max_length=48, description="Its own name: `review`")
+    parent: str | None = Field(
+        None, description="Whose subagent it is; the caller when left out on a gated hub"
+    )
+
+
+class SubagentRead(BaseModel):
+    """An agent's subagent, recorded with its parent."""
+
+    handle: str = Field(..., description="The parent's handle, a colon, its name: `builder:review`")
+    parent: str
+    name: str
+    state: Literal["working", "done", "ended"]
+    started_at: str
+    ended_at: str | None = None
+    ended_by: Literal["finished", "end", "parent", "timeout"] | None = Field(
+        None,
+        description="Why it ended: its step finished, `subagent end`, its parent "
+        "stopped, or it timed out",
+    )
+
+
+class KnowledgeTaskRead(BaseModel):
+    """A task the room's knowledge was learned in."""
+
+    key: str
+    title: str
+
+
+class KnowledgeRead(BaseModel):
+    """One thing the team learned: a memory with a kind."""
+
+    key: str
+    kind: Literal["fact", "finding", "dead-end", "decision"]
+    title: str = Field(..., description="The memory's first line")
+    by: str = Field(..., description="Who wrote it: a person, an agent or a subagent")
+    task: str | None = Field(None, description="The task it was learned in")
+    open: bool = Field(False, description="Still being worked on, rather than settled")
+    derived_from: list[str] = Field(default_factory=list, description="What it came from")
+    relates_to: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    updated_at: str = ""
+    in_task: bool | None = Field(
+        None,
+        description="Through a task's lens: whether the task produced it, rather than "
+        "it being where the task's memories came from or went",
+    )
+
+
+class KnowledgeGraphRead(BaseModel):
+    """What a room's team learned, or one task's lens on it."""
+
+    tasks: list[KnowledgeTaskRead]
+    memories: list[KnowledgeRead]
+
+
+class KnowledgeSettle(BaseModel):
+    key: str = Field(..., min_length=1)
+    handle: str | None = Field(None, description="Who settles it (default: the caller)")
 
 
 class UserCreate(BaseModel):
@@ -974,6 +1148,13 @@ class UserRead(BaseModel):
     teams: list[str] = Field(default_factory=list)
     notify: str | None = None
     owns: list[OwnedAgentRead] = Field(default_factory=list)
+    was: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Handles this person had before (the one their sign-in gave before "
+            "they had a short one), which past messages still carry"
+        ),
+    )
 
 
 class RoomFolder(BaseModel):
@@ -1065,9 +1246,48 @@ class AgentRenameRead(BaseModel):
 
 
 class AgentControl(BaseModel):
-    """Pause, resume or stop one agent. Only its owner may."""
+    """Pause, resume, stop or start one agent. Only its owner may."""
 
     by: str | None = Field(None, description="Who is asking; the verified caller wins")
+    close: bool = Field(
+        False,
+        description=(
+            "With stop: close its pane too. Without it, a stop ends its process to free "
+            "its memory and keeps its pane for a start"
+        ),
+    )
+
+
+class AgentKeep(BaseModel):
+    """Keep an agent running when agents are stopped in bulk, or stop keeping it."""
+
+    by: str | None = Field(None, description="Who is asking; the verified caller wins")
+    keep: bool = Field(True, description="False to stop keeping it")
+
+
+class AgentRunningRead(BaseModel):
+    """One agent on a machine: where it runs and in what state, for stopping and
+    starting agents. What it uses never comes here; the desktop app on its own
+    machine reads that there."""
+
+    room: str
+    handle: str
+    owner: str | None = None
+    #: herdr's state on its machine, or ``paused`` when its owner paused it.
+    state: Literal["working", "idle", "blocked", "paused", "stopped", "gone", "unknown"]
+    kind: str | None = None
+    runner: str
+    machine: str
+    #: Its herdr pane, for opening its terminal on that machine.
+    pane: str | None = None
+    keep: bool = False
+    restartable: bool = False
+
+
+class AgentsRunningRead(BaseModel):
+    """Every agent a connected machine runs, with its state and machine."""
+
+    agents: list[AgentRunningRead] = Field(default_factory=list)
 
 
 class AgentsControl(BaseModel):
@@ -1093,10 +1313,12 @@ class AgentControlRead(BaseModel):
     handle: str
     #: The pause it has now: ``None`` once resumed or stopped.
     paused: PauseRead | None = None
-    #: The machine asked to interrupt or stop it, and that job. ``None`` when no
+    #: The machine asked to interrupt, stop or start it, and that job. ``None`` when no
     #: connected machine runs it (a pause still holds its wakes).
     runner: str | None = None
     job: str | None = None
+    #: Whether bulk stops leave it out.
+    keep: bool | None = None
 
 
 class AgentsControlRead(BaseModel):
@@ -1115,14 +1337,54 @@ RunnerAgentStatus = Literal[
     "starting", "running", "idle", "working", "blocked", "stopped", "failed"
 ]
 RunnerJobKind = Literal[
-    "launch", "stop", "scan", "swarm", "restart", "pair", "interrupt", "adopt", "rename", "pause"
+    "launch",
+    "stop",
+    "scan",
+    "restart",
+    "pair",
+    "interrupt",
+    "adopt",
+    "rename",
+    "pause",
+    "resume",
 ]
 #: ``waiting``: the runner took it and is asking the person at that machine first.
 RunnerJobStatus = Literal["queued", "running", "waiting", "done", "failed"]
 
 
+class SessionMemberRead(BaseModel):
+    """The member an earlier session was, from the runner's own record."""
+
+    room: str
+    handle: str
+
+
+class AgentSessionRead(BaseModel):
+    """An earlier agent session on a runner's machine, that could be brought into a room.
+
+    Where and when it was, never what was said in it: a title or anything else
+    from inside the session stays on the machine, so a field the runner sends
+    beyond these is dropped here.
+    """
+
+    id: str = Field(..., min_length=1, max_length=128, description="The agent CLI's own id")
+    folder: str
+    last_used: datetime
+    branch: str | None = Field(None, description="The git branch it was on")
+    member: SessionMemberRead | None = Field(
+        None, description="The member it was, when the runner started it for one"
+    )
+
+
 class FrameworkRead(BaseModel):
-    """One agent CLI a runner knows about, found on its machine or not."""
+    """One agent CLI a runner knows about, found on its machine or not.
+
+    A runner sends it and the hub hands it back in the same shape, so it is one
+    schema, as for ``MachineReport``: split into ``-Input`` and ``-Output``, the
+    generated client drops ``RunnerRead``.
+    """
+
+    model_config = ConfigDict(json_schema_mode_override="validation")
 
     id: str
     name: str
@@ -1132,6 +1394,10 @@ class FrameworkRead(BaseModel):
     installed: bool = False
     launchable: bool = Field(False, description="herdr can start it in a pane")
     note: str | None = None
+    sessions: list[AgentSessionRead] | None = Field(
+        None,
+        description="Its earlier sessions there, newest first; none when it can't list them",
+    )
 
 
 class RunnerAgentRead(BaseModel):
@@ -1173,6 +1439,21 @@ class MachineAgentRead(BaseModel):
     resumes: bool = Field(
         False,
         description="A restart brings it back in its own session, keeping its conversation",
+    )
+    subagents_open: int | None = Field(
+        None,
+        description=(
+            "How many subagent steps are open in its session file, a count and never "
+            "their text; null when its CLI's session file isn't read"
+        ),
+    )
+    subagents_finished: int | None = Field(
+        None,
+        description=(
+            "How many subagent steps its session has finished since the runner first "
+            "read it, a count that only goes up (it starts again when the runner "
+            "does); null when its CLI's session file isn't read"
+        ),
     )
 
 
@@ -1280,7 +1561,6 @@ class RunnerPairingRead(BaseModel):
         default_factory=list, description="Folders it covers; empty: every root"
     )
     clis: list[str] = Field(default_factory=list, description="Agent CLIs it covers; empty: any")
-    swarms: bool = False
 
 
 class PairingOutcome(BaseModel):
@@ -1436,6 +1716,27 @@ class RunnerAgentAdopt(BaseModel):
     )
     handle: str = Field(..., min_length=1, max_length=64)
     created_by: str | None = None
+
+
+class RunnerSessionResume(BaseModel):
+    """Bring an earlier agent session on a runner's machine into a room as
+    ``handle``, resumed with its conversation. The runner asks the person
+    there first, as for a launch."""
+
+    room: str = Field(..., min_length=1)
+    handle: str = Field(..., min_length=1, max_length=64)
+    framework: str = Field(..., min_length=1, description="A framework id from the runner's scan")
+    session: str = Field(
+        ..., min_length=1, max_length=128, description="A session from that framework's list"
+    )
+    folder: str = Field(..., min_length=1, description="The session's folder, as listed")
+    instructions: str | None = Field(
+        None, description="How the agent should work; saved as its notes, which it reads first"
+    )
+    created_by: str | None = None
+    signature: DeviceSignature | None = Field(
+        None, description="From a device paired with the machine: starts without asking there"
+    )
 
 
 # ── Join codes ───────────────────────────────────────────────────────────────
@@ -2167,6 +2468,16 @@ class ReplyRead(BaseModel):
     room: str
     handle: str
     message_id: str | None = None
+    id: str | None = Field(
+        None, description="Its id in the room's history, the one a message is named by"
+    )
+    working: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Members it mentions who are mid-turn and so read it when their turn ends; "
+            "its sender can interrupt them with it (POST /messages/{id}/interrupt)"
+        ),
+    )
 
 
 # --- Approvals (an agent asks a person to decide) ---------------------------
@@ -2190,6 +2501,9 @@ class AskDecided(BaseModel):
     choices: list[str] | None = Field(None, description="On a choose: the option ids picked")
     chosen: list[str] | None = Field(None, description="On a choose: those options' labels")
     text: str | None = Field(None, description="The answer to a question, or a note on any kind")
+    skipped: bool | None = Field(
+        None, description="True when the person skipped it rather than answering"
+    )
 
 
 class AskOption(BaseModel):
@@ -2263,6 +2577,9 @@ class AskAnswerCreate(BaseModel):
     choices: list[str] | None = Field(None, description="A choose's: the option ids picked")
     text: str | None = Field(None, description="A question's answer, or a note on any kind")
     reason: str | None = Field(None, description="Another name for text, from before it")
+    skipped: bool = Field(
+        False, description="Skip it instead of answering, with at most a note; any kind"
+    )
 
 
 class AskAnswer(AskDecided):

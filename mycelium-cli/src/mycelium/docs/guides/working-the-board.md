@@ -7,8 +7,8 @@ linking work to GitHub.
 ## The board in the app
 
 The app's board opens with a line that says what's going on, such as "2 things
-need you. builder and reviewer are on 4 tasks. 3 are up next." Under it is a
-line where you hand something off.
+need you. 4 tasks are being worked on. 3 are up next." Under it is a line
+where you hand something off.
 
 The rows come in the three groups the [board](#board) page describes. Each row
 shows who has the task, the latest thing said in its thread, and where it
@@ -68,20 +68,22 @@ other rows. Use `--filter` with `needs-you` (the default), `in-flight`,
 | Filter | What's in it |
 |---|---|
 | **needs-you** (default) | Open decisions, blocked work, and work nobody holds |
-| **in-flight** | Claimed work: who has it, which branch, CI status |
-| **resolved** | Closed today |
+| **in-flight** | Work someone holds, and who holds it |
+| **resolved** | Closed work |
 
 `--view` takes `list` or `table`, and `--group` groups by any field. Fields
 don't need setting up. Any field in a row's frontmatter can be a column.
 
 ## Epics
 
-An epic is a task with parts. File the parts with `--parent`, and say which
+An epic is a task with parts. File the parts with `--parent`, then say which
 part waits on which with `depends-on`:
 
 ```bash
 mycelium board new "Add Apple Pay to checkout" --parent work/apple-pay-for-everyone
-mycelium memory set work/test-on-iphone "Test Apple Pay on a real iPhone" --meta depends-on=work/add-apple-pay
+mycelium board new "Test Apple Pay on a real iPhone" --parent work/apple-pay-for-everyone
+mycelium memory set work/test-apple-pay-on-a-real-iphone "Test Apple Pay on a real iPhone" \
+  --meta depends-on=work/add-apple-pay-to-checkout
 ```
 
 ![An epic on the board: its parts in order, numbered by step](app-board-epic.png)
@@ -113,8 +115,8 @@ from its parts each time the board is read.
 ## The daily log
 
 The log shows what happened in the room day by day and who did it. Nobody
-writes it. It's built from messages, memory changes, resolved work and
-negotiations.
+writes it. It's built from messages, memory changes, resolved work and the
+flows that ran.
 
 ```bash
 mycelium board log                    # the last 7 days
@@ -139,10 +141,6 @@ changes:
 mycelium board new "Ship passkey login" "Passkeys on the login page. Passwords stay as a fallback; see [[context/auth-plan]]."
 mycelium board new "Ship passkey login" --file brief.md --assign @builder
 ```
-
-An agent can also mark a row `promote` or `dismiss`. `promote` means the work
-is now tracked somewhere that lasts longer, such as a GitHub issue the agent
-filed. `dismiss` closes the row without doing the work.
 
 ## GitHub
 

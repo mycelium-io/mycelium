@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Memory } from "@/lib/api";
 import {
+  firstLine,
   flattenMarkdown,
   memoryPreview,
   memoryTitle,
@@ -13,6 +16,27 @@ import {
 
 const mem = (over: Partial<Memory>): Memory =>
   ({ key: "work/a-row", value: "", ...over }) as Memory;
+
+// The hub names each memory in its light list by the same rule
+// (`memory_title`), so both sides assert this file.
+const TITLES = JSON.parse(
+  readFileSync(path.resolve(__dirname, "../../../contracts/memory-title.json"), "utf-8"),
+) as {
+  max_chars: number;
+  cases: { about: string; key: string; value: unknown; content_text: string | null; title: string }[];
+};
+
+describe("memory title contract", () => {
+  it.each(TITLES.cases.map((c) => [c.about, c] as const))("%s", (_about, c) => {
+    expect(
+      memoryTitle(mem({ key: c.key, value: c.value, content_text: c.content_text ?? undefined })),
+    ).toBe(c.title);
+  });
+
+  it("cuts at the contract's length", () => {
+    expect(Array.from(firstLine("x".repeat(TITLES.max_chars + 5)))).toHaveLength(TITLES.max_chars);
+  });
+});
 
 describe("memoryValueText", () => {
   it("returns prose as written", () => {
@@ -110,6 +134,12 @@ describe("previewCardTop", () => {
 });
 
 describe("memoryTitle", () => {
+  it("takes a list entry's title as the hub named it, else its key", () => {
+    const listed = { key: "work/refunds", version: 1, created_by: "builder", updated_at: "" };
+    expect(memoryTitle({ ...listed, title: "Refund the double charge" })).toBe("Refund the double charge");
+    expect(memoryTitle({ ...listed, title: "" })).toBe("work/refunds");
+  });
+
   it("uses an explicit title on a structured value", () => {
     expect(memoryTitle(mem({ value: { title: "Ship the board", status: "open" } }))).toBe(
       "Ship the board",
