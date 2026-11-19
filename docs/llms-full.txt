@@ -2322,11 +2322,10 @@ say what to add to your shell's startup file.
 
 ## Adding your own harness
 
-Mycelium can start any agent CLI that herdr can start. Once herdr supports a
-CLI, it shows up in **Add member** after you update Mycelium and press
-**Rescan**. The desktop app brings its own herdr, so updating the app updates
-herdr too. Without the app, update herdr itself. To use one herdr can't start yet, it first needs
-herdr support:
+Mycelium can start any agent CLI that herdr can start. When herdr adds one,
+update the desktop app, which brings its own herdr, and press **Rescan** in
+**Add member**. Without the app, update herdr itself. For a CLI herdr can't
+start yet, herdr needs to support it first:
 
 - [Agents](https://herdr.dev/docs/agents/) lists the agent CLIs herdr can
   start today.

@@ -832,7 +832,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#machines-adding-your-own-harness",
     "t": "Adding your own harness",
     "s": "Agents › Start Agents From the App",
-    "x": "Mycelium can start any agent CLI that herdr can start. Once herdr supports a CLI, it shows up in Add member after you update Mycelium and press Rescan. The desktop app brings its own herdr, so updating the app updates herdr too. Without the app, update herdr itself. To use one herdr can't start yet, it first needs herdr support: Agents lists the agent CLIs herdr can start today. Add Herdr support to your agent says h",
+    "x": "Mycelium can start any agent CLI that herdr can start. When herdr adds one, update the desktop app, which brings its own herdr, and press Rescan in Add member. Without the app, update herdr itself. For a CLI herdr can't start yet, herdr needs to support it first: Agents lists the agent CLIs herdr can start today. Add Herdr support to your agent says how to add support for another one. An agent that runs some other wa",
     "p": "Guides"
   },
   {
