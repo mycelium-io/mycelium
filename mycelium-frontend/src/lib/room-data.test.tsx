@@ -39,12 +39,12 @@ function Recheck({ room, testId }: { room: string; testId: string }) {
 describe("useRoomUploads' recheck", () => {
   const list = (...keys: string[]) => ({ uploads: keys.map((key) => ({ key })) }) as never;
 
-  it("reads a room's files once however many messages ask at the same time", async () => {
-    let answer: (v: unknown) => void = () => {};
+  it("gives a message that asks during a read the read after it, shared by everyone who asked meanwhile", async () => {
+    const answers: ((v: unknown) => void)[] = [];
     vi.mocked(fetchUploads)
       .mockReset()
-      .mockResolvedValueOnce(list())
-      .mockImplementation(() => new Promise((done) => (answer = done)) as never);
+      .mockImplementation(() => new Promise((done) => answers.push(done)) as never);
+    // The list's own load, then the first message's read; the other two arrive while it's under way.
     renderWithSWR(
       <>
         <Recheck room="demo" testId="a" />
@@ -53,10 +53,17 @@ describe("useRoomUploads' recheck", () => {
       </>,
     );
     await waitFor(() => expect(fetchUploads).toHaveBeenCalledTimes(2));
-    await act(async () => answer(list("uploads/new.png")));
-    await waitFor(() => expect(screen.getByTestId("c")).toHaveTextContent("read:uploads/new.png"));
-    expect(screen.getByTestId("a")).toHaveTextContent("read:uploads/new.png");
-    expect(fetchUploads).toHaveBeenCalledTimes(2);
+    await act(async () => answers[0](list()));
+    // The first message's read began before the second image was added.
+    await act(async () => answers[1](list("uploads/one.png")));
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("read:uploads/one.png"));
+    expect(screen.getByTestId("b")).toHaveTextContent("asking");
+    // One more read, after it, for both later messages.
+    await waitFor(() => expect(fetchUploads).toHaveBeenCalledTimes(3));
+    await act(async () => answers[2](list("uploads/one.png", "uploads/two.png")));
+    await waitFor(() => expect(screen.getByTestId("c")).toHaveTextContent("read:uploads/one.png,uploads/two.png"));
+    expect(screen.getByTestId("b")).toHaveTextContent("read:uploads/one.png,uploads/two.png");
+    expect(fetchUploads).toHaveBeenCalledTimes(3);
   });
 
   it("says when the read failed, so nothing is concluded from it", async () => {
