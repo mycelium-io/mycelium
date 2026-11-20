@@ -213,7 +213,8 @@ interface Query<T> {
   data: T;
   loading: boolean;
   error: unknown;
-  refresh: () => void;
+  /** Fetch it again; settles once the new answer is in, or the fetch failed. */
+  refresh: () => Promise<void>;
 }
 
 function useRoomQuery<T>(
@@ -229,8 +230,12 @@ function useRoomQuery<T>(
     refreshInterval: opts.refreshInterval ?? fallbackInterval,
     ...config,
   });
-  const refresh = useCallback(() => {
-    void mutate();
+  const refresh = useCallback(async () => {
+    try {
+      await mutate();
+    } catch {
+      // A failed fetch shows in `error`; the caller only waits for it to finish.
+    }
   }, [mutate]);
   return { data: data ?? empty, loading: isLoading, error, refresh };
 }
