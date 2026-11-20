@@ -30,7 +30,7 @@ export async function GET(req: Request): Promise<Response> {
 
   if (idpError) return loginError(origin, `identity provider returned: ${idpError}`);
   if (!code || !state) return loginError(origin, "missing code or state");
-  if (!cfg) return loginError(origin, "this hub's sign-in couldn't be found");
+  if (!cfg) return loginError(origin, "couldn't reach the hub. Try signing in again.");
   if (!tx) return loginError(origin, "state mismatch");
 
   try {
