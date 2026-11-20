@@ -17,12 +17,54 @@ vi.mock("@/lib/api", () => ({
   fetchRoom: vi.fn(),
   fetchRooms: vi.fn(),
   fetchNetworkStatus: vi.fn(),
+  fetchUploads: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 
-import { fetchMessages, fetchRoomAgents, fetchRoomMembers, fetchRoomPeople } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { fetchMessages, fetchRoomAgents, fetchRoomMembers, fetchRoomPeople, fetchUploads } from "@/lib/api";
 import { CurrentUserProvider } from "@/components/current-user";
-import { useRoomMessages, useRoomRevalidate, useRoomRoster, useThreadMessages } from "@/lib/room-data";
+import { useRoomMessages, useRoomRevalidate, useRoomRoster, useRoomUploads, useThreadMessages } from "@/lib/room-data";
+
+/** A message's attachments asking for the room's files to be read again once mounted. */
+function Recheck({ room, testId }: { room: string; testId: string }) {
+  const { uploads, recheck } = useRoomUploads(room);
+  const [read, setRead] = useState<string>("asking");
+  useEffect(() => {
+    void recheck().then((ok) => setRead(ok ? "read" : "failed"));
+  }, [recheck]);
+  return <p data-testid={testId}>{`${read}:${uploads.map((u) => u.key).join(",")}`}</p>;
+}
+
+describe("useRoomUploads' recheck", () => {
+  const list = (...keys: string[]) => ({ uploads: keys.map((key) => ({ key })) }) as never;
+
+  it("reads a room's files once however many messages ask at the same time", async () => {
+    let answer: (v: unknown) => void = () => {};
+    vi.mocked(fetchUploads)
+      .mockReset()
+      .mockResolvedValueOnce(list())
+      .mockImplementation(() => new Promise((done) => (answer = done)) as never);
+    renderWithSWR(
+      <>
+        <Recheck room="demo" testId="a" />
+        <Recheck room="demo" testId="b" />
+        <Recheck room="demo" testId="c" />
+      </>,
+    );
+    await waitFor(() => expect(fetchUploads).toHaveBeenCalledTimes(2));
+    await act(async () => answer(list("uploads/new.png")));
+    await waitFor(() => expect(screen.getByTestId("c")).toHaveTextContent("read:uploads/new.png"));
+    expect(screen.getByTestId("a")).toHaveTextContent("read:uploads/new.png");
+    expect(fetchUploads).toHaveBeenCalledTimes(2);
+  });
+
+  it("says when the read failed, so nothing is concluded from it", async () => {
+    vi.mocked(fetchUploads).mockReset().mockResolvedValueOnce(list()).mockRejectedValue(new Error("down"));
+    renderWithSWR(<Recheck room="demo" testId="a" />);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("failed"));
+  });
+});
 
 const agent = (handle: string, extra: Record<string, unknown> = {}) => ({
   handle,

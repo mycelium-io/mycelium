@@ -213,8 +213,7 @@ interface Query<T> {
   data: T;
   loading: boolean;
   error: unknown;
-  /** Fetch it again; settles once the new answer is in, or the fetch failed. */
-  refresh: () => Promise<void>;
+  refresh: () => void;
 }
 
 function useRoomQuery<T>(
@@ -230,12 +229,8 @@ function useRoomQuery<T>(
     refreshInterval: opts.refreshInterval ?? fallbackInterval,
     ...config,
   });
-  const refresh = useCallback(async () => {
-    try {
-      await mutate();
-    } catch {
-      // A failed fetch shows in `error`; the caller only waits for it to finish.
-    }
+  const refresh = useCallback(() => {
+    void mutate();
   }, [mutate]);
   return { data: data ?? empty, loading: isLoading, error, refresh };
 }
@@ -878,7 +873,28 @@ export function useRoomUploads(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery<UploadList>(
     room, "uploads", (r) => fetchUploads(r), NO_UPLOADS, POLL.uploads, opts,
   );
-  return { ...data, loading, refresh };
+  const { mutate } = useSWRConfig();
+  const recheck = useCallback(() => recheckUploads(room, mutate), [room, mutate]);
+  return { ...data, loading, refresh, recheck };
+}
+
+/** One fresh read of a room's uploads at a time, however many messages ask. */
+const uploadChecks = new Map<string, Promise<boolean>>();
+
+/** Read a room's uploads again, into the shared cache. True once the new list
+ *  is in; false when the hub couldn't be read, so nothing is concluded from it. */
+function recheckUploads(room: string, mutate: ReturnType<typeof useSWRConfig>["mutate"]): Promise<boolean> {
+  const pending = uploadChecks.get(room);
+  if (pending) return pending;
+  const check = fetchUploads(room)
+    .then(async (list) => {
+      await mutate(roomKey(room, "uploads"), list, { revalidate: false });
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => uploadChecks.delete(room));
+  uploadChecks.set(room, check);
+  return check;
 }
 
 /** The flows the room's conductor can run. Pass `""` as the room to read nothing,

@@ -28,9 +28,9 @@ export function AttachmentStrip({
   keys: string[];
   onOpen: (upload: Upload) => void;
 }) {
-  const { uploads, loading, refresh } = useRoomUploads(roomName);
+  const { uploads, loading, recheck } = useRoomUploads(roomName);
   const byKey = new Map(uploads.map((u) => [u.key, u]));
-  const gone = useConfirmedGone(keys, byKey, loading, refresh);
+  const gone = useConfirmedGone(keys, byKey, loading, recheck);
   if (!keys.length) return null;
 
   return (
@@ -88,28 +88,37 @@ export function AttachmentStrip({
  * The list is cached and polled, so a message linking a file added a moment
  * ago usually arrives before the list knows of it; a missing file reads as
  * removed only once the list has been fetched again after it was missed.
+ * A read that fails proves nothing, so it's tried again a little later.
  */
 function useConfirmedGone(
   keys: string[],
   byKey: Map<string, Upload>,
   loading: boolean,
-  refresh: () => Promise<void>,
+  recheck: () => Promise<boolean>,
 ): Set<string> {
   const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
+  const [attempt, setAttempt] = useState(0);
   const unchecked = loading ? [] : keys.filter((k) => !byKey.has(k) && !checked.has(k));
   const asking = unchecked.join("\n");
   useEffect(() => {
     if (!asking) return;
     let live = true;
-    void refresh().then(() => {
-      if (live) setChecked((prev) => new Set([...prev, ...asking.split("\n")]));
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    void recheck().then((read) => {
+      if (!live) return;
+      if (read) setChecked((prev) => new Set([...prev, ...asking.split("\n")]));
+      else retry = setTimeout(() => setAttempt((n) => n + 1), RECHECK_AFTER_MS);
     });
     return () => {
       live = false;
+      clearTimeout(retry);
     };
-  }, [asking, refresh]);
+  }, [asking, recheck, attempt]);
   return new Set(keys.filter((k) => !byKey.has(k) && checked.has(k)));
 }
+
+/** How long after a failed read of the room's files it's read again. */
+const RECHECK_AFTER_MS = 5_000;
 
 /** An upload key that names an image, for sizing its placeholder before the
  *  room's file list says what kind it is. */

@@ -12,7 +12,7 @@ import type { Upload } from "@/lib/api";
 const roomUploads = vi.hoisted(() => ({
   uploads: [] as Upload[],
   loading: false,
-  refresh: (async () => {}) as () => Promise<void>,
+  recheck: (async () => true) as () => Promise<boolean>,
 }));
 vi.mock("@/lib/room-data", () => ({ useRoomUploads: () => roomUploads }));
 
@@ -66,17 +66,17 @@ describe("AttachmentStrip", () => {
   it("doesn't call a file removed when the room's list was read before it was added", async () => {
     roomUploads.uploads = [];
     roomUploads.loading = false;
-    let answer = () => {};
-    roomUploads.refresh = vi.fn(() => new Promise<void>((done) => (answer = done)));
+    let answer: (read: boolean) => void = () => {};
+    roomUploads.recheck = vi.fn(() => new Promise<boolean>((done) => (answer = done)));
     const { container, rerender } = strip();
     // The list it has doesn't know the file yet: a placeholder, and the list is fetched again.
     expect(screen.queryByText(/was removed/)).toBeNull();
     expect(container.querySelector(".animate-pulse")).not.toBeNull();
-    expect(roomUploads.refresh).toHaveBeenCalledTimes(1);
+    expect(roomUploads.recheck).toHaveBeenCalledTimes(1);
 
     // The new list has it.
     roomUploads.uploads = [SHOT];
-    await act(async () => answer());
+    await act(async () => answer(true));
     rerender(<AttachmentStrip roomName="r" keys={[SHOT.key]} onOpen={() => {}} />);
     expect(screen.queryByText(/was removed/)).toBeNull();
     expect(screen.getByAltText("shot.png")).toBeTruthy();
@@ -85,10 +85,28 @@ describe("AttachmentStrip", () => {
   it("calls a file removed once a fresh read of the room's list still doesn't have it", async () => {
     roomUploads.uploads = [];
     roomUploads.loading = false;
-    roomUploads.refresh = vi.fn(async () => {});
+    roomUploads.recheck = vi.fn(async () => true);
     strip();
     expect(await screen.findByText("shot.png was removed")).toBeTruthy();
-    expect(roomUploads.refresh).toHaveBeenCalledTimes(1);
+    expect(roomUploads.recheck).toHaveBeenCalledTimes(1);
+  });
+
+  it("never calls a file removed because the hub couldn't be read, and asks again later", async () => {
+    vi.useFakeTimers();
+    try {
+      roomUploads.uploads = [];
+      roomUploads.loading = false;
+      roomUploads.recheck = vi.fn(async () => false);
+      const { container } = strip();
+      await act(async () => {});
+      expect(screen.queryByText(/was removed/)).toBeNull();
+      expect(container.querySelector(".animate-pulse")).not.toBeNull();
+      expect(roomUploads.recheck).toHaveBeenCalledTimes(1);
+      await act(async () => vi.advanceTimersByTime(5_000));
+      expect(roomUploads.recheck).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the file's name when the image fails to load", () => {
