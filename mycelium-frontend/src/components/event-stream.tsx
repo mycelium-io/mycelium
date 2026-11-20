@@ -34,10 +34,13 @@ import {
   applyActivity,
   expireActivity,
   isActivityFrame,
+  noteTurnEpisode,
   settleActivity,
   splitActivity,
+  withHerdrState,
   type Responding,
 } from "@/lib/activity";
+import { useHerdrState } from "@/lib/use-herdr-state";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { reportToApp } from "@/lib/report-to-app";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
@@ -648,6 +651,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // handle's next message ends it too, whether or not the ending frame arrived;
   // and an entry nobody has heard from within its TTL expires on the tick below.
   const [responding, setResponding] = useState<Responding[]>([]);
+  // For an agent on a machine, herdr's state decides instead (`withHerdrState`),
+  // the same state the agent panel shows.
+  const [turnEpisodes, setTurnEpisodes] = useState<ReadonlyMap<string, string | null>>(() => new Map());
+  const herdr = useHerdrState(roomName);
+  const shownResponding = useMemo(
+    () => withHerdrState(responding, herdr, turnEpisodes),
+    [responding, herdr, turnEpisodes],
+  );
   // Interrupts made with sent messages since the history was read, by message id.
   const [liveInterrupts, setLiveInterrupts] = useState<ReadonlyMap<string, Interrupted[]>>(() => new Map());
   useEffect(() => {
@@ -723,6 +734,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     const msg = data as Record<string, unknown>;
     if (isActivityFrame(msg)) {
       setResponding((prev) => applyActivity(prev, msg, Date.now()));
+      setTurnEpisodes((prev) => noteTurnEpisode(prev, msg));
       return;
     }
     // A schedule ran or changed: the Schedules tab's business, never a line here.
@@ -1309,9 +1321,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       </div>
       {/* Outside the scroll, so it stays over the composer wherever the
           channel is scrolled to, and sending a message can't push it away. */}
-      {responding.length > 0 && (
+      {shownResponding.length > 0 && (
         <RespondingLine
-          entries={responding}
+          entries={shownResponding}
           room={roomName}
           threads={threads}
           onOpenThread={onOpenThread}

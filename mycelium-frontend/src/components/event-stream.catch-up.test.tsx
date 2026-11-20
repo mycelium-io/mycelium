@@ -21,6 +21,7 @@ import { resetStreamHub } from "@/lib/stream-hub";
 import { resetPending, sendPending } from "@/lib/pending-messages";
 
 vi.mock("@/lib/api", () => ({
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: vi.fn(),
   sendRoomMessage: vi.fn(),
   fetchUsers: vi.fn().mockResolvedValue([]),

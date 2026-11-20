@@ -8,10 +8,63 @@ import {
   applyActivity,
   expireActivity,
   isActivityFrame,
+  noteHerdr,
+  noteTurnEpisode,
   settleActivity,
   splitActivity,
+  withHerdrState,
+  type HerdrState,
   type Responding,
 } from "@/lib/activity";
+
+describe("herdr's state deciding for agents on a machine", () => {
+  const read = (statuses: Record<string, string | null>) =>
+    Object.entries(statuses).map(([handle, status]) => ({ handle, status }));
+  const turn = (handle: string, since: number, episode: string | null = null): Responding => ({
+    handle, episode, since, until: since + DEFAULT_TTL_MS,
+  });
+  const none = new Map<string, string | null>();
+
+  it("keeps when each agent's status last changed, not when it was last read", () => {
+    const first = noteHerdr(new Map(), read({ Builder: "working", aligner: null }), T0);
+    expect([...first]).toEqual([["builder", { status: "working", at: T0 }]]);
+    // The same state read again changes nothing.
+    expect(noteHerdr(first, read({ builder: "working" }), T0 + 30_000)).toBe(first);
+    const idle = noteHerdr(first, read({ builder: "idle" }), T0 + 60_000);
+    expect(idle.get("builder")).toEqual({ status: "idle", at: T0 + 60_000 });
+    expect(noteHerdr(idle, [], T0 + 90_000).size).toBe(0);
+  });
+
+  it("drops an agent herdr says went idle after its turn began, though it never posted", () => {
+    const herdr = new Map<string, HerdrState>([["builder", { status: "idle", at: T0 + 10_000 }]]);
+    expect(withHerdrState([turn("builder", T0)], herdr, none)).toEqual([]);
+  });
+
+  it("keeps a turn that began after herdr's last reading, which hasn't caught up with it yet", () => {
+    const herdr = new Map<string, HerdrState>([["builder", { status: "idle", at: T0 - 60_000 }]]);
+    expect(withHerdrState([turn("builder", T0)], herdr, none).map((r) => r.handle)).toEqual(["builder"]);
+  });
+
+  it("shows an agent herdr says is working past the hub's 90 seconds, where its last turn went", () => {
+    const herdr = new Map<string, HerdrState>([["builder", { status: "working", at: T0 }]]);
+    const episodes = new Map([["builder", "mycelium-general:c5ca92af"]]);
+    const shown = withHerdrState([], herdr, episodes);
+    expect(shown).toEqual([{ handle: "builder", episode: "mycelium-general:c5ca92af", since: T0, until: Infinity }]);
+    expect(expireActivity(shown, T0 + 10 * DEFAULT_TTL_MS)).toBe(shown);
+  });
+
+  it("leaves members herdr doesn't run to the hub's frames", () => {
+    const herdr = new Map<string, HerdrState>([["builder", { status: "idle", at: T0 + 10_000 }]]);
+    expect(withHerdrState([turn("conductor", T0)], herdr, none).map((r) => r.handle)).toEqual(["conductor"]);
+  });
+
+  it("remembers the thread of each handle's latest turn", () => {
+    const one = noteTurnEpisode(new Map(), frame("@Builder", "responding", { episode: "r:t1" }));
+    expect(one.get("builder")).toBe("r:t1");
+    expect(noteTurnEpisode(one, frame("builder", "done"))).toBe(one);
+    expect(noteTurnEpisode(one, frame("builder", "responding")).get("builder")).toBeNull();
+  });
+});
 
 const T0 = 1_000_000;
 const frame = (handle: string, state: "responding" | "done", extra: Record<string, unknown> = {}) => ({

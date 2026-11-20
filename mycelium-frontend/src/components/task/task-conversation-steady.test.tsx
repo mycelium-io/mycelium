@@ -12,6 +12,7 @@ const said = (id: string, content: string, at: string) =>
   ({ id, sender_handle: "builder", message_type: "broadcast", content, created_at: at }) as RoomMessage;
 
 vi.mock("@/lib/room-data", () => ({
+  useRoomMembers: () => ({ members: [] }),
   useThreadMessages: () => ({
     messages,
     loading: false,

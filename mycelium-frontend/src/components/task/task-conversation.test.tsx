@@ -41,6 +41,7 @@ const messages: RoomMessage[] = [
 ];
 
 vi.mock("@/lib/room-data", () => ({
+  useRoomMembers: () => ({ members: [] }),
   useThreadMessages: () => ({
     messages,
     loading: false,

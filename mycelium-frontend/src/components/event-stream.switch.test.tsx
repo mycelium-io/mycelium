@@ -13,6 +13,7 @@ import { layOut } from "@/test/scroll";
 
 const fetchMessages = vi.fn();
 vi.mock("@/lib/api", () => ({
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: (...a: unknown[]) => fetchMessages(...a),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),

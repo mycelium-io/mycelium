@@ -11,6 +11,7 @@ import { resetStreamHub } from "@/lib/stream-hub";
 import { layOut } from "@/test/scroll";
 
 vi.mock("@/lib/api", () => ({
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),

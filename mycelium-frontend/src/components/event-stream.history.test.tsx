@@ -16,6 +16,7 @@ import type { MessageSearchResponse } from "@/lib/message-search";
 const searchMessages = vi.fn();
 
 vi.mock("@/lib/api", () => ({
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),
