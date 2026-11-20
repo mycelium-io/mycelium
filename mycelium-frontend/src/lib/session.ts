@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { cookies } from "next/headers";
-import { heldInMemory, resolveOidcConfig } from "./auth-config";
+import { heldInMemory, resolveOidcConfig, type OidcConfig } from "./auth-config";
 import { endpoints, refreshTokens, claimsOf, handleFromClaims } from "./oidc";
 
 export const SESSION_COOKIE = "myc_session";
@@ -65,6 +65,13 @@ export interface SignInTx {
   returnTo: string;
 }
 
+/** A sign-in taken back by its callback. In the desktop app it carries the
+ *  sign-in it was started with, so finishing it doesn't depend on reading
+ *  the hub a second time. Never in a cookie: it holds the session secret. */
+export interface HeldSignIn extends SignInTx {
+  cfg?: OidcConfig;
+}
+
 // In the desktop app (a launch token is set, `lib/ui-guard.ts`) the server
 // is on 127.0.0.1, where a cookie goes to every port on the machine, so the
 // session, and any sign-in under way, is kept in this process's memory
@@ -73,7 +80,7 @@ export interface SignInTx {
 // route is bundled on its own and a dev server's reload mustn't drop it.
 const held = globalThis as unknown as {
   __myceliumSession?: Session | null;
-  __myceliumSignIns?: Map<string, SignInTx & { until: number }>;
+  __myceliumSignIns?: Map<string, HeldSignIn & { until: number }>;
 };
 const TX_TTL_S = 600;
 
@@ -88,12 +95,12 @@ export async function getSession(): Promise<Session | null> {
 }
 
 export async function writeSession(s: Session): Promise<void> {
-  const cfg = await resolveOidcConfig();
-  if (!cfg) return;
   if (heldInMemory()) {
     held.__myceliumSession = s;
     return;
   }
+  const cfg = await resolveOidcConfig();
+  if (!cfg) return;
   const sealed = await seal(s as unknown as Record<string, unknown>, cfg.sessionSecret, SESSION_TTL_S);
   const jar = await cookies();
   jar.set(SESSION_COOKIE, sealed, { ...cookieOpts, maxAge: SESSION_TTL_S });
@@ -109,21 +116,22 @@ export async function clearSession(): Promise<void> {
 }
 
 /** Keep a sign-in that's starting until its callback: in memory, or sealed in a cookie. */
-export async function saveSignIn(tx: SignInTx, secret: string): Promise<void> {
+export async function saveSignIn(tx: SignInTx, cfg: OidcConfig): Promise<void> {
   if (heldInMemory()) {
     const now = Date.now();
     const pending = (held.__myceliumSignIns ??= new Map());
     for (const [state, t] of pending) if (t.until < now) pending.delete(state);
-    pending.set(tx.state, { ...tx, until: now + TX_TTL_S * 1000 });
+    pending.set(tx.state, { ...tx, cfg, until: now + TX_TTL_S * 1000 });
     return;
   }
   const jar = await cookies();
-  jar.set(TX_COOKIE, await seal({ ...tx }, secret, TX_TTL_S), { ...cookieOpts, maxAge: TX_TTL_S });
+  jar.set(TX_COOKIE, await seal({ ...tx }, cfg.sessionSecret, TX_TTL_S), { ...cookieOpts, maxAge: TX_TTL_S });
 }
 
 /** The sign-in a callback's `state` belongs to, taken so it's used once. Null
- *  when there's none, it has expired, or the state doesn't match. */
-export async function takeSignIn(state: string, secret: string): Promise<SignInTx | null> {
+ *  when there's none, it has expired, or the state doesn't match. A cookie
+ *  can't be opened without `secret`. */
+export async function takeSignIn(state: string, secret: string | undefined): Promise<HeldSignIn | null> {
   if (heldInMemory()) {
     const tx = held.__myceliumSignIns?.get(state);
     held.__myceliumSignIns?.delete(state);
@@ -132,7 +140,7 @@ export async function takeSignIn(state: string, secret: string): Promise<SignInT
   const jar = await cookies();
   const raw = jar.get(TX_COOKIE)?.value;
   jar.set(TX_COOKIE, "", { path: "/", maxAge: 0 });
-  if (!raw) return null;
+  if (!raw || !secret) return null;
   const tx = await unseal<SignInTx>(raw, secret);
   return tx && tx.state === state ? tx : null;
 }

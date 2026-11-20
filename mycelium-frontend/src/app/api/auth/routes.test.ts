@@ -102,6 +102,38 @@ describe("signing in from the desktop app's UI", () => {
     expect(body.signInProblem).toContain("accepts sign-in from 2 identity providers");
   });
 
+  it("finishes a sign-in it started even when the hub can't be read on the way back", async () => {
+    serve();
+    const res = await login.POST(at("/api/auth/login", { method: "POST", body: JSON.stringify({ return_to: "/room/x" }) }));
+    const state = new URL(((await res.json()) as { url: string }).url).searchParams.get("state");
+
+    // Back from the identity provider: the hub doesn't answer, and what it said before has gone stale.
+    delete (globalThis as Record<string, unknown>).__myceliumOidc;
+    const claims = Buffer.from(JSON.stringify({ preferred_username: "sam" })).toString("base64url");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/.well-known/openid-configuration")) {
+          return Response.json({ issuer: ISSUER, authorization_endpoint: `${ISSUER}/auth`, token_endpoint: `${ISSUER}/token` });
+        }
+        if (url === `${ISSUER}/token`) return Response.json({ access_token: `e30.${claims}.x`, expires_in: 300 });
+        return new Response("down", { status: 503 });
+      }),
+    );
+    const back = await callback.GET(at(`/api/auth/callback?code=c&state=${state}`));
+    expect(back.headers.get("location")).toBe("http://127.0.0.1:3717/room/x");
+    const held = (globalThis as { __myceliumSession?: { handle?: string } }).__myceliumSession;
+    expect(held?.handle).toBe("sam");
+  });
+
+  it("sends a sign-in it can't finish back into the app with the reason, never to a page of its own", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));
+    const res = await callback.GET(at("/api/auth/callback?code=c&state=s"));
+    expect(res.status).toBeGreaterThanOrEqual(300);
+    expect(res.status).toBeLessThan(400);
+    expect(res.headers.get("location")).toContain("auth_error=");
+  });
+
   it("doesn't trap anyone behind a sign-in screen when the hub can't be read", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));
     const body = await (await session.GET()).json();

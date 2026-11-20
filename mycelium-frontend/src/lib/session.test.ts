@@ -68,7 +68,8 @@ describe("the desktop app's UI server signing in to its hub", () => {
 
   it("finishes a sign-in once, and only for the state it started with", async () => {
     hubSays({ enabled: true, issuers: ["https://sso.example.com/realms/team"] });
-    await saveSignIn({ verifier: "v", state: "s1", returnTo: "/room/x" }, "unused");
+    const cfg = await resolveOidcConfig();
+    await saveSignIn({ verifier: "v", state: "s1", returnTo: "/room/x" }, cfg!);
     expect(await takeSignIn("other", "unused")).toBeNull();
     expect((await takeSignIn("s1", "unused"))?.returnTo).toBe("/room/x");
     expect(await takeSignIn("s1", "unused")).toBeNull();

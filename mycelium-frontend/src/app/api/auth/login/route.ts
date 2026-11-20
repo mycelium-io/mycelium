@@ -44,7 +44,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const { verifier, challenge } = pkce();
   const state = randomState();
-  await saveSignIn({ verifier, state, returnTo }, cfg.sessionSecret);
+  await saveSignIn({ verifier, state, returnTo }, cfg);
 
   const auth = new URL(ep.authorizationEndpoint);
   auth.searchParams.set("response_type", "code");
