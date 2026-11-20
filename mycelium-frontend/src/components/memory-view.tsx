@@ -16,6 +16,8 @@ import { MemoryEditor } from "@/components/memory-editor";
 import { JumpToLatest } from "@/components/jump-to-latest";
 import { useConversationFollow } from "@/components/messages/use-follow-latest";
 import { TaskDiscussion } from "@/components/task/task-discussion";
+import { TaskHeader } from "@/components/task/task-header";
+import { memoryTitle } from "@/lib/memory-preview";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
 import { memoryEditPending, onMemoryEditRequest, takeMemoryEdit } from "@/lib/memory-edit-request";
@@ -143,6 +145,8 @@ export function MemoryView({
   // from its field) has no editor: the header says why instead, the hub's
   // own words, so nobody saves into a refusal.
   const readOnly = notEditable(kindOf(memory.key));
+  // A board task leads with its title, where it stands, and what to do with it.
+  const isTask = memory.key.startsWith("work/");
 
   // At the end of the memory's header, the same quiet button as its view
   // toggle.
@@ -209,6 +213,8 @@ export function MemoryView({
                 named={!page}
                 actions={actions}
                 bodyClassName={centered}
+                lead={isTask ? <TaskHeader roomName={roomName} memory={memory} /> : undefined}
+                title={isTask ? memoryTitle(memory) : undefined}
               />
               {hasDiscussion && memory.episode && (
                 <div className={centered}>
