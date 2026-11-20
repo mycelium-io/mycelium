@@ -42,6 +42,15 @@ describe("<MessageBody />", () => {
     expect(toggle.compareDocumentPosition(file) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("unfolds from a click on the faded lines, not the link half under them", () => {
+    const onOpenMemory = vi.fn();
+    render(<MessageBody content="A long note that ends on [[decisions/db]]." onOpenMemory={onOpenMemory} />);
+    fireEvent.click(screen.getByTestId("fold-cover"));
+    expect(screen.getByRole("button", { name: /show less/i })).toBeInTheDocument();
+    expect(screen.queryByTestId("fold-cover")).toBeNull();
+    expect(onOpenMemory).not.toHaveBeenCalled();
+  });
+
   it("folds to the height asked, for prose that repeats what's drawn above it", () => {
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 60 });
     const { container, rerender } = render(<MessageBody content="A: 75 - correct math\nB: 55 - no total line" />);
