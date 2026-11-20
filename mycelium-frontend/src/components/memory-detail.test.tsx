@@ -58,6 +58,13 @@ describe("MemoryDetail", () => {
     expect(writeText).toHaveBeenCalledWith("context/overview");
   });
 
+  it("drops a body's first line under a lead that already shows it as the title", () => {
+    const task = { ...memory, key: "work/ship-it", value: "# Ship it\n\nBehind a switch first.", content_text: undefined };
+    render(<MemoryDetail memory={task} roomName="demo" variant="page" lead={<h1>Ship it</h1>} title="Ship it" />);
+    expect(screen.getAllByText("Ship it")).toHaveLength(1);
+    expect(screen.getByText("Behind a switch first.")).toBeInTheDocument();
+  });
+
   it("lists each linked memory once, under the way it links", async () => {
     const onNavigate = vi.fn();
     render(<MemoryDetail memory={memory} roomName="demo" variant="page" onNavigate={onNavigate} />);

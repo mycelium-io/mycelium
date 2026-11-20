@@ -153,6 +153,10 @@ interface Props {
   /** Classes for everything under the header, so a page can center its body
    *  while the toolbar spans the width. */
   bodyClassName?: string;
+  /** What leads the body, such as a task's own header. When it names the
+   *  memory, `title` is that name, and a body that opens with it drops the line. */
+  lead?: React.ReactNode;
+  title?: string;
 }
 
 /** The body, clamped where the surface asked for it and untouched where it
@@ -235,6 +239,14 @@ export function MemoryKey({
   );
 }
 
+/** The body without its first line when that line is the title shown above it. */
+function withoutTitle(body: string, title: string): string {
+  const lines = body.split("\n");
+  const first = lines.findIndex((l) => l.trim() !== "");
+  if (first < 0 || lines[first].replace(/^#+\s*/, "").trim() !== title.trim()) return body;
+  return lines.slice(first + 1).join("\n").replace(/^\s+/, "");
+}
+
 /** Rendered or Raw, as one control rather than two words. */
 function ViewToggle({ raw, onChange }: { raw: boolean; onChange: (raw: boolean) => void }) {
   return (
@@ -270,6 +282,8 @@ export function MemoryDetail({
   named = false,
   actions,
   bodyClassName,
+  lead,
+  title,
 }: Props) {
   const pad = variant === "page" ? "px-6 md:px-8" : "px-5";
   const [raw, setRaw] = useState(false);
@@ -283,7 +297,8 @@ export function MemoryDetail({
   const [outbound, setOutbound] = useState<MemoryLink[]>([]);
   const [backlinks, setBacklinks] = useState<MemoryLink[]>([]);
   const text = memory.content_text ?? formatValue(memory.value);
-  const displayText = !raw && renderedBody ? renderedBody : text;
+  const shownBody = !raw && renderedBody ? renderedBody : text;
+  const displayText = !raw && title ? withoutTitle(shownBody, title) : shownBody;
   const rawIsJson = useMemo(() => isJsonRawText(text), [text]);
   // jsonView only means anything in raw mode.
   const effectiveJsonView = raw && jsonView;
@@ -442,6 +457,7 @@ export function MemoryDetail({
       )}
 
       <div className={bodyClassName}>
+      {lead && <div className={pad}>{lead}</div>}
       {isUpload && !raw && (
         <div className={`${pad} pt-4`}>
           {upload?.kind === "image" ? (
