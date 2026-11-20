@@ -829,6 +829,34 @@ body {
 .markdown-body .md-table:hover .md-table-copy,
 .markdown-body .md-table-copy:focus-visible { opacity: 1; }
 .markdown-body .md-table-copy:hover { color: var(--text); }
+/* A code block's Copy sits in its top corner, shown on hover like a table's. */
+.markdown-body .md-code { position: relative; }
+.markdown-body .md-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--muted-foreground);
+  font-size: var(--text-micro);
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.markdown-body .md-code:hover .md-code-copy,
+.markdown-body .md-code-copy:focus-visible { opacity: 1; }
+.markdown-body .md-code-copy:hover { color: var(--text); }
+/* A code span copies on a click: the copy cursor and a firmer border say so on hover. */
+.markdown-body code.md-code-inline {
+  cursor: copy;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.markdown-body code.md-code-inline:hover { border-color: var(--accent); background: var(--accent-soft); }
+.markdown-body code.md-code-inline[data-copied] { border-color: var(--green); background: var(--surface); }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
