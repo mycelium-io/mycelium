@@ -15,6 +15,7 @@
  * Framework-agnostic, so the folding and lanes are unit-tested without rendering.
  */
 
+import { formatDate } from "@/lib/date-format";
 import { parseMentions } from "@/lib/mentions";
 import { CHAT_TYPES, unwrapContent } from "@/lib/room-events";
 import { isLiveEpisode, noticeOf, pingOf } from "@/lib/threads";
@@ -318,7 +319,7 @@ export function dayLabel(iso: string, now: Date = new Date()): string {
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   if (day === dayOf(yesterday.toISOString())) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
+  return formatDate(d, {
     weekday: "long",
     month: "short",
     day: "numeric",
@@ -335,11 +336,13 @@ export function dayLabel(iso: string, now: Date = new Date()): string {
 export function shortStamp(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const clock = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
-  const day = dayLabel(iso, now);
-  if (day === "Today") return clock;
-  if (day === "Yesterday") return `Yesterday ${clock}`;
-  const date = d.toLocaleDateString(undefined, {
+  const clock = formatDate(d, { hour: "2-digit", minute: "2-digit", hour12: false });
+  const day = dayOf(iso);
+  if (day === dayOf(now.toISOString())) return clock;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (day === dayOf(yesterday.toISOString())) return `Yesterday ${clock}`;
+  const date = formatDate(d, {
     month: "short",
     day: "numeric",
     ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
