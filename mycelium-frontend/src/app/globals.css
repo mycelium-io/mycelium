@@ -844,6 +844,29 @@ body {
 .markdown-body.contrast :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) { max-width: 68ch; }
 .markdown-body.contrast p:first-child { margin-top: 0.15em; }
 
+/* A message off screen isn't laid out. A list keeps every message it has
+ * loaded, and without this a pane changing width wraps all of them again on
+ * every step of the drag. A message keeps the height it last had while it's
+ * skipped (48px until it has been drawn once). The row showing its actions bar
+ * is never skipped: the bar sits above the row, where a skipped row would clip
+ * it. `useFollowLatest` keeps the view steady when a skipped row gets its real
+ * height, since Safari doesn't, so rows and what's in them are kept out of the
+ * browser's own scroll anchoring and the two don't both move the view. */
+[data-event-id],
+[data-event-id] *,
+[data-line],
+[data-line] * {
+  overflow-anchor: none;
+}
+[data-event-id]:not(:has([role="toolbar"])) {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 48px;
+}
+[data-line] {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 22px;
+}
+
 /* Primary accent button: not a flat fill. A top-lit gradient, an inner
  * highlight edge, and a soft lift give it dimension so it doesn't read cheap. */
 .btn-accent {
