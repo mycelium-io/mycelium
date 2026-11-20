@@ -873,7 +873,40 @@ export function useRoomUploads(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery<UploadList>(
     room, "uploads", (r) => fetchUploads(r), NO_UPLOADS, POLL.uploads, opts,
   );
-  return { ...data, loading, refresh };
+  const { mutate } = useSWRConfig();
+  const recheck = useCallback(() => recheckUploads(room, mutate), [room, mutate]);
+  return { ...data, loading, refresh, recheck };
+}
+
+type SWRMutate = ReturnType<typeof useSWRConfig>["mutate"];
+
+/** Per room, the read of its uploads in flight, and at most one queued behind
+ *  it for everyone who asked after it began. */
+const uploadChecks = new Map<string, { running: Promise<boolean>; queued?: Promise<boolean> }>();
+
+/** Read a room's uploads again, into the shared cache. True once the new list
+ *  is in; false when the hub couldn't be read, so nothing is concluded from it.
+ *  A read that began before the caller asked may predate its file, so a caller
+ *  joins the read queued after it, never the one already under way. */
+function recheckUploads(room: string, mutate: SWRMutate): Promise<boolean> {
+  const slot = uploadChecks.get(room);
+  if (!slot) return startUploadsRead(room, mutate);
+  slot.queued ??= slot.running.then(() => startUploadsRead(room, mutate));
+  return slot.queued;
+}
+
+function startUploadsRead(room: string, mutate: SWRMutate): Promise<boolean> {
+  const running: Promise<boolean> = fetchUploads(room)
+    .then(async (list) => {
+      await mutate(roomKey(room, "uploads"), list, { revalidate: false });
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      if (uploadChecks.get(room)?.running === running) uploadChecks.delete(room);
+    });
+  uploadChecks.set(room, { running });
+  return running;
 }
 
 /** The flows the room's conductor can run. Pass `""` as the room to read nothing,

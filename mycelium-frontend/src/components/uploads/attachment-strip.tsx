@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FileX, ImageOff } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Upload } from "@/lib/api";
@@ -28,18 +28,20 @@ export function AttachmentStrip({
   keys: string[];
   onOpen: (upload: Upload) => void;
 }) {
-  const { uploads, loading } = useRoomUploads(roomName);
-  if (!keys.length) return null;
+  const { uploads, loading, recheck } = useRoomUploads(roomName);
   const byKey = new Map(uploads.map((u) => [u.key, u]));
+  const gone = useConfirmedGone(keys, byKey, loading, recheck);
+  if (!keys.length) return null;
 
   return (
     <div className="mt-1.5 flex flex-wrap gap-2">
       {keys.map((key) => {
         const upload = byKey.get(key);
         if (!upload) {
-          // The room's file list hasn't arrived yet: hold the space the file
-          // will take, guessed from its name, so the message doesn't jump.
-          if (loading) {
+          // The room's file list hasn't arrived yet, or was read before this
+          // file was added: hold the space the file will take, guessed from
+          // its name, so the message doesn't jump.
+          if (!gone.has(key)) {
             return LIKELY_IMAGE.test(key) ? (
               <Skeleton key={key} className="h-32 w-48 rounded-lg" />
             ) : (
@@ -80,6 +82,43 @@ export function AttachmentStrip({
     </div>
   );
 }
+
+/**
+ * The linked files a fresh read of the room's file list still doesn't have.
+ * The list is cached and polled, so a message linking a file added a moment
+ * ago usually arrives before the list knows of it; a missing file reads as
+ * removed only once the list has been fetched again after it was missed.
+ * A read that fails proves nothing, so it's tried again a little later.
+ */
+function useConfirmedGone(
+  keys: string[],
+  byKey: Map<string, Upload>,
+  loading: boolean,
+  recheck: () => Promise<boolean>,
+): Set<string> {
+  const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
+  const [attempt, setAttempt] = useState(0);
+  const unchecked = loading ? [] : keys.filter((k) => !byKey.has(k) && !checked.has(k));
+  const asking = unchecked.join("\n");
+  useEffect(() => {
+    if (!asking) return;
+    let live = true;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    void recheck().then((read) => {
+      if (!live) return;
+      if (read) setChecked((prev) => new Set([...prev, ...asking.split("\n")]));
+      else retry = setTimeout(() => setAttempt((n) => n + 1), RECHECK_AFTER_MS);
+    });
+    return () => {
+      live = false;
+      clearTimeout(retry);
+    };
+  }, [asking, recheck, attempt]);
+  return new Set(keys.filter((k) => !byKey.has(k) && checked.has(k)));
+}
+
+/** How long after a failed read of the room's files it's read again. */
+const RECHECK_AFTER_MS = 5_000;
 
 /** An upload key that names an image, for sizing its placeholder before the
  *  room's file list says what kind it is. */

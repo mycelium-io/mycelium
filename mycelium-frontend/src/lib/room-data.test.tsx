@@ -17,12 +17,61 @@ vi.mock("@/lib/api", () => ({
   fetchRoom: vi.fn(),
   fetchRooms: vi.fn(),
   fetchNetworkStatus: vi.fn(),
+  fetchUploads: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 
-import { fetchMessages, fetchRoomAgents, fetchRoomMembers, fetchRoomPeople } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { fetchMessages, fetchRoomAgents, fetchRoomMembers, fetchRoomPeople, fetchUploads } from "@/lib/api";
 import { CurrentUserProvider } from "@/components/current-user";
-import { useRoomMessages, useRoomRevalidate, useRoomRoster, useThreadMessages } from "@/lib/room-data";
+import { useRoomMessages, useRoomRevalidate, useRoomRoster, useRoomUploads, useThreadMessages } from "@/lib/room-data";
+
+/** A message's attachments asking for the room's files to be read again once mounted. */
+function Recheck({ room, testId }: { room: string; testId: string }) {
+  const { uploads, recheck } = useRoomUploads(room);
+  const [read, setRead] = useState<string>("asking");
+  useEffect(() => {
+    void recheck().then((ok) => setRead(ok ? "read" : "failed"));
+  }, [recheck]);
+  return <p data-testid={testId}>{`${read}:${uploads.map((u) => u.key).join(",")}`}</p>;
+}
+
+describe("useRoomUploads' recheck", () => {
+  const list = (...keys: string[]) => ({ uploads: keys.map((key) => ({ key })) }) as never;
+
+  it("gives a message that asks during a read the read after it, shared by everyone who asked meanwhile", async () => {
+    const answers: ((v: unknown) => void)[] = [];
+    vi.mocked(fetchUploads)
+      .mockReset()
+      .mockImplementation(() => new Promise((done) => answers.push(done)) as never);
+    // The list's own load, then the first message's read; the other two arrive while it's under way.
+    renderWithSWR(
+      <>
+        <Recheck room="demo" testId="a" />
+        <Recheck room="demo" testId="b" />
+        <Recheck room="demo" testId="c" />
+      </>,
+    );
+    await waitFor(() => expect(fetchUploads).toHaveBeenCalledTimes(2));
+    await act(async () => answers[0](list()));
+    // The first message's read began before the second image was added.
+    await act(async () => answers[1](list("uploads/one.png")));
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("read:uploads/one.png"));
+    expect(screen.getByTestId("b")).toHaveTextContent("asking");
+    // One more read, after it, for both later messages.
+    await waitFor(() => expect(fetchUploads).toHaveBeenCalledTimes(3));
+    await act(async () => answers[2](list("uploads/one.png", "uploads/two.png")));
+    await waitFor(() => expect(screen.getByTestId("c")).toHaveTextContent("read:uploads/one.png,uploads/two.png"));
+    expect(screen.getByTestId("b")).toHaveTextContent("read:uploads/one.png,uploads/two.png");
+    expect(fetchUploads).toHaveBeenCalledTimes(3);
+  });
+
+  it("says when the read failed, so nothing is concluded from it", async () => {
+    vi.mocked(fetchUploads).mockReset().mockResolvedValueOnce(list()).mockRejectedValue(new Error("down"));
+    renderWithSWR(<Recheck room="demo" testId="a" />);
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("failed"));
+  });
+});
 
 const agent = (handle: string, extra: Record<string, unknown> = {}) => ({
   handle,
