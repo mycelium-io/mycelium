@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Lock, SquareTerminal } from "lucide-react";
+import { Info, SquareTerminal } from "lucide-react";
 import { parseAnsi, readable, type AnsiRun, type AnsiStyle } from "@/lib/ansi";
 import { placeOf } from "@/lib/agent-place";
 import { terminalLink, useAgentScreen, useIsDesktop, useThisMachine } from "@/lib/desktop";
@@ -25,9 +25,13 @@ import type { Runner } from "@/lib/api";
 import { readEarlier, useAgentSession } from "@/lib/agent-session";
 import { AgentSessionView, SessionUnavailable } from "@/components/agent-session-view";
 import { buttonVariants } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 
-/** The footer's promise, which the code keeps: the runner sends the hub no screen. */
-export const STREAMED_LOCALLY = "Streamed from this machine. Nothing is sent to the hub.";
+/** The footer's promise, which the code keeps: the app reads the screen and
+ *  the session on this computer, and neither is sent to the hub. */
+export const STREAMED_LOCALLY = "Private stream";
+export const STREAMED_LOCALLY_WHY =
+  "The app reads this agent straight from this computer. It never goes to the hub. Nobody else in the room can see it.";
 
 export interface AgentScreenProps {
   room: string;
@@ -124,8 +128,18 @@ export function AgentScreen({
       {/* One quiet line, padded like the header: where the screen comes from,
           how fresh it is, and the way to type to it. */}
       <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-2 text-micro text-faint">
-        <Lock className="size-3 shrink-0" strokeWidth={2} aria-hidden />
-        <span>{STREAMED_LOCALLY}</span>
+        <span className="flex items-center gap-1">
+          {STREAMED_LOCALLY}
+          <Tooltip content={STREAMED_LOCALLY_WHY}>
+            <button
+              type="button"
+              aria-label={STREAMED_LOCALLY_WHY}
+              className="rounded text-faint transition-colors hover:text-muted-foreground focus-visible:ring-1 focus-visible:ring-accent focus-visible:outline-none"
+            >
+              <Info className="size-3" strokeWidth={2} aria-hidden />
+            </button>
+          </Tooltip>
+        </span>
         <Updated at={screen.at} />
         {openLink && (
           <a

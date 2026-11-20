@@ -133,6 +133,8 @@ describe("an agent's terminal", () => {
 
     expect(await screen.findByText("● Reading src/payments.ts")).toBeInTheDocument();
     expect(screen.getByText(STREAMED_LOCALLY)).toBeInTheDocument();
+    // Its info icon says what private means.
+    expect(screen.getByRole("button", { name: /never goes to the hub/ })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open its terminal/ })).toHaveAttribute(
       "href",
       "mycelium://terminal?pane=w3%3Ap1",
