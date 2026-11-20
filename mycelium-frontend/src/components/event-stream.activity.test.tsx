@@ -15,9 +15,10 @@ import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
-import { fetchWireHistory, fetchMessages, fetchMemorySummaries } from "@/lib/api";
+import { fetchWireHistory, fetchMessages, fetchMemorySummaries, fetchRoomMembers } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),
@@ -383,15 +384,30 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(rows[0]).toHaveAccessibleName(new RegExp(OTHER_TITLE));
   });
 
-  it("pins who is responding outside the scrolling messages, by the composer", async () => {
+  it("pins who is working outside the scrolling messages, by the composer", async () => {
     await stream([
       said("can someone look at the flag rollout?"),
       { type: "agent_activity", handle: "conductor", state: "responding", episode: LIVE },
     ]);
 
     const line = await screen.findByTestId("responding-line");
-    expect(line).toHaveTextContent("conductor is responding…");
+    expect(line).toHaveTextContent("conductor is working…");
     // Inside the viewport it would scroll away under whatever is sent next.
     expect(line.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
+  });
+
+  it("shows an agent as working while herdr says so, as the agent panel does, with no frame from the hub", async () => {
+    vi.mocked(fetchRoomMembers).mockResolvedValueOnce({
+      members: [
+        { handle: "builder", kind: "herdr", last_seen: null, status: "working" },
+        { handle: "reviewer", kind: "herdr", last_seen: null, status: "idle" },
+      ],
+      floors: [],
+    } as never);
+    await stream([said("can someone look at the flag rollout?")]);
+
+    const line = await screen.findByTestId("responding-line");
+    expect(line).toHaveTextContent("builder is working…");
+    expect(line).not.toHaveTextContent("reviewer");
   });
 });

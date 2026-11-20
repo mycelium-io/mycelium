@@ -22,6 +22,7 @@ import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
 vi.mock("@/lib/api", () => ({
+  fetchRoomMembers: vi.fn().mockResolvedValue({ members: [], floors: [] }),
   fetchMessages: vi.fn(),
   fetchUsers: vi.fn().mockResolvedValue([]),
   fetchWireHistory: vi.fn().mockResolvedValue([]),

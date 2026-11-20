@@ -13,9 +13,12 @@ import {
   applyActivity,
   expireActivity,
   isActivityFrame,
+  noteTurnEpisode,
   settleActivity,
+  withHerdrState,
   type Responding,
 } from "@/lib/activity";
+import { useHerdrState } from "@/lib/use-herdr-state";
 import { useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf } from "@/lib/threads";
@@ -116,6 +119,14 @@ export function TaskConversation({
   // Who is mid-turn in this thread. The same signal the channel folds, scoped
   // to this episode: a turn going elsewhere is not this conversation's news.
   const [responding, setResponding] = useState<Responding[]>([]);
+  // herdr decides for an agent on a machine (`withHerdrState`); one it says is
+  // working shows here when its latest turn was in this thread.
+  const [turnEpisodes, setTurnEpisodes] = useState<ReadonlyMap<string, string | null>>(() => new Map());
+  const herdr = useHerdrState(roomName);
+  const shownResponding = useMemo(
+    () => withHerdrState(responding, herdr, turnEpisodes).filter(r => r.episode === episode),
+    [responding, herdr, turnEpisodes, episode],
+  );
   useEffect(() => {
     if (responding.length === 0) return;
     const tick = setInterval(() => setResponding(prev => expireActivity(prev, Date.now())), 1_000);
@@ -132,6 +143,7 @@ export function TaskConversation({
     const message = frame as Record<string, unknown>;
     if (isActivityFrame(message)) {
       if (message.episode === episode) setResponding(prev => applyActivity(prev, message, Date.now()));
+      setTurnEpisodes(prev => noteTurnEpisode(prev, message));
       return;
     }
     if (message.episode === episode) {
@@ -248,7 +260,7 @@ export function TaskConversation({
           </div>
         </NowProvider>
       )}
-      {responding.length > 0 && (
+      {shownResponding.length > 0 && (
         <div
           role="status"
           aria-live="polite"
@@ -262,7 +274,7 @@ export function TaskConversation({
         >
           <SporeMark />
           <Shimmer className="truncate">
-            <RespondingNames group={responding} /> {responding.length === 1 ? "is" : "are"} responding…
+            <RespondingNames group={shownResponding} /> {shownResponding.length === 1 ? "is" : "are"} working…
           </Shimmer>
         </div>
       )}

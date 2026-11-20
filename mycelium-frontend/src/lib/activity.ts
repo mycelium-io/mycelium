@@ -74,6 +74,72 @@ export function expireActivity(current: Responding[], now: number): Responding[]
   return current.some((r) => r.until <= now) ? current.filter((r) => r.until > now) : current;
 }
 
+/** What herdr last said an agent on a machine is doing, and when that changed
+ *  (ms since epoch). `at` moves only when the status does, so a poll that
+ *  reads the same state again says nothing new. */
+export interface HerdrState {
+  status: string;
+  at: number;
+}
+
+/** Fold one read of the room's members into what herdr says, keeping each
+ *  unchanged handle's time. Returns the same map when nothing changed. */
+export function noteHerdr(
+  prev: ReadonlyMap<string, HerdrState>,
+  members: Iterable<{ handle: string; status?: string | null }>,
+  now: number,
+): ReadonlyMap<string, HerdrState> {
+  const next = new Map<string, HerdrState>();
+  let changed = false;
+  for (const m of members) {
+    if (!m.status) continue;
+    const handle = norm(m.handle);
+    const was = prev.get(handle);
+    if (was?.status === m.status) next.set(handle, was);
+    else {
+      next.set(handle, { status: m.status, at: now });
+      changed = true;
+    }
+  }
+  return changed || next.size !== prev.size ? next : prev;
+}
+
+/** Remember which thread each handle's latest turn went to, so an agent herdr
+ *  says is working is shown where it was last asked, after its frame expired. */
+export function noteTurnEpisode(
+  prev: ReadonlyMap<string, string | null>,
+  frame: ActivityFrame,
+): ReadonlyMap<string, string | null> {
+  if (frame.state !== "responding") return prev;
+  const handle = norm(frame.handle);
+  const episode = frame.episode ?? null;
+  return prev.has(handle) && prev.get(handle) === episode ? prev : new Map(prev).set(handle, episode);
+}
+
+/**
+ * Who is responding, with herdr deciding for the agents it runs. An agent herdr
+ * says is working is responding however long its turn takes; one it says is
+ * idle, blocked or done is not, even if it finished without a message. The
+ * hub's frames still decide for every member herdr doesn't run (engines, an
+ * agent looping `await` itself), and for a turn that started after herdr's
+ * last change, since herdr's reading arrives on a poll and may not have
+ * caught up with it yet.
+ */
+export function withHerdrState(
+  entries: Responding[],
+  herdr: ReadonlyMap<string, HerdrState>,
+  turnEpisodes: ReadonlyMap<string, string | null>,
+): Responding[] {
+  const shown = entries.filter((r) => {
+    const h = herdr.get(r.handle);
+    return !h || h.status === "working" || r.since > h.at;
+  });
+  for (const [handle, h] of herdr) {
+    if (h.status !== "working" || shown.some((r) => r.handle === handle)) continue;
+    shown.push({ handle, episode: turnEpisodes.get(handle) ?? null, since: h.at, until: Infinity });
+  }
+  return shown;
+}
 
 /** The entries whose turn lands on this surface, and those landing in a thread
  *  it does not show. `isHere` says whether an episode is this surface's own. */

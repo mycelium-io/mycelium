@@ -34,10 +34,13 @@ import {
   applyActivity,
   expireActivity,
   isActivityFrame,
+  noteTurnEpisode,
   settleActivity,
   splitActivity,
+  withHerdrState,
   type Responding,
 } from "@/lib/activity";
+import { useHerdrState } from "@/lib/use-herdr-state";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { reportToApp } from "@/lib/report-to-app";
 import { usePendingMessages, type Landed } from "@/lib/pending-messages";
@@ -116,10 +119,10 @@ function RespondingRow({ children, offset = 0 }: { children: React.ReactNode; of
   );
 }
 
-/** "@conductor is responding…" pinned over the composer, gone the moment the
- *  reply lands. A turn going into a task's thread does not land here — the channel
+/** "@conductor is working…" pinned over the composer, gone the moment the
+ *  turn ends. A turn going into a task's thread does not land here — the channel
  *  never shows a thread's prose — so that line says where instead, and opens
- *  it, the way the ping for the reply will: "@conductor is responding in <task>". */
+ *  it, the way the ping for the reply will: "@conductor is working in <task>". */
 function RespondingLine({
   entries,
   room,
@@ -149,7 +152,7 @@ function RespondingLine({
       {here.length > 0 && (
         <RespondingRow>
           <Shimmer className="truncate">
-            <RespondingNames group={here} /> {verb(here)} responding…
+            <RespondingNames group={here} /> {verb(here)} working…
           </Shimmer>
         </RespondingRow>
       )}
@@ -159,7 +162,7 @@ function RespondingLine({
         return (
           <RespondingRow key={thread} offset={(i + 1) * 4}>
             <Shimmer className="truncate">
-              <RespondingNames group={group} /> {verb(group)} responding in
+              <RespondingNames group={group} /> {verb(group)} working in
             </Shimmer>
             <button
               type="button"
@@ -648,6 +651,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
   // handle's next message ends it too, whether or not the ending frame arrived;
   // and an entry nobody has heard from within its TTL expires on the tick below.
   const [responding, setResponding] = useState<Responding[]>([]);
+  // For an agent on a machine, herdr's state decides instead (`withHerdrState`),
+  // the same state the agent panel shows.
+  const [turnEpisodes, setTurnEpisodes] = useState<ReadonlyMap<string, string | null>>(() => new Map());
+  const herdr = useHerdrState(roomName);
+  const shownResponding = useMemo(
+    () => withHerdrState(responding, herdr, turnEpisodes),
+    [responding, herdr, turnEpisodes],
+  );
   // Interrupts made with sent messages since the history was read, by message id.
   const [liveInterrupts, setLiveInterrupts] = useState<ReadonlyMap<string, Interrupted[]>>(() => new Map());
   useEffect(() => {
@@ -723,6 +734,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     const msg = data as Record<string, unknown>;
     if (isActivityFrame(msg)) {
       setResponding((prev) => applyActivity(prev, msg, Date.now()));
+      setTurnEpisodes((prev) => noteTurnEpisode(prev, msg));
       return;
     }
     // A schedule ran or changed: the Schedules tab's business, never a line here.
@@ -1309,9 +1321,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
       </div>
       {/* Outside the scroll, so it stays over the composer wherever the
           channel is scrolled to, and sending a message can't push it away. */}
-      {responding.length > 0 && (
+      {shownResponding.length > 0 && (
         <RespondingLine
-          entries={responding}
+          entries={shownResponding}
           room={roomName}
           threads={threads}
           onOpenThread={onOpenThread}
