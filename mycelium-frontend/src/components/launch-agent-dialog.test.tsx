@@ -70,13 +70,45 @@ describe("LaunchAgentForm", () => {
     draftMemberNotes.mockReset();
   });
 
-  it("starts on the machine the app runs on, never offering another", () => {
+  it("starts on the machine the app runs on, and offers the others connected", async () => {
     connected = [runner(), runner({ id: "studio", label: "studio" })];
     thisMachine = "studio";
     renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
-    // Named before the folder, as where the path is.
-    expect(screen.getByTitle("On studio, this machine")).toHaveTextContent("studio");
-    expect(screen.queryByLabelText("Machine")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Machine: studio" }));
+    expect((await screen.findAllByRole("menuitem")).map((o) => o.textContent)).toEqual([
+      "studioThis computer",
+      "julias-mbp",
+      "Add a machine",
+    ]);
+  });
+
+  it("starts on the machine picked, from its own folder", async () => {
+    connected = [
+      runner(),
+      runner({ id: "ovh", label: "ovh-box", roots: ["/home/julia/src"] }),
+    ];
+    thisMachine = "julias-mbp";
+    launchRunnerAgent.mockResolvedValue(job({ runner: "ovh" }));
+    fetchRunnerJob.mockResolvedValue(job({ runner: "ovh" }));
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText("Handle"), { target: { value: "builder" } });
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "~/code/atlas/web" } });
+    fireEvent.click(screen.getByRole("button", { name: "Machine: julias-mbp" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /ovh-box/ }));
+    // A folder typed for one machine isn't a path on the next.
+    expect(screen.getByLabelText("Folder")).toHaveValue("~/src");
+    fireEvent.click(screen.getByRole("button", { name: "Add to room" }));
+    await waitFor(() => expect(launchRunnerAgent).toHaveBeenCalled());
+    expect(launchRunnerAgent.mock.calls[0][0]).toBe("ovh");
+  });
+
+  it("adds a machine from the machine menu", async () => {
+    connected = [runner()];
+    thisMachine = "julias-mbp";
+    renderWithSWR(<LaunchAgentForm roomName="atlas" onLaunched={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Machine: julias-mbp" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add a machine" }));
+    expect(await screen.findByRole("dialog", { name: "Add a machine" })).toBeInTheDocument();
   });
 
   it("says how to connect a machine when none is", () => {

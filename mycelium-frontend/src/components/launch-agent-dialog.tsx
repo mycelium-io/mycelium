@@ -12,10 +12,13 @@ import {
   CircleAlert,
   ExternalLink,
   FolderOpen,
+  Laptop,
   Loader2,
+  Plus,
   RefreshCw,
   RotateCcw,
   Sparkles,
+  Server,
   SquareTerminal,
   Undo2,
   X,
@@ -62,6 +65,7 @@ import { Monogram } from "@/components/ui/monogram";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AgentScreen } from "@/components/agent-screen";
 import { FolderPicker } from "@/components/folder-picker";
+import { AddMachineDialog } from "@/components/add-machine-dialog";
 import { HarnessIcon } from "@/components/harness-icon";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
@@ -113,9 +117,10 @@ export function LaunchAgentForm({
   const revalidateRoom = useRoomRevalidate(roomName);
   const revalidateRunners = useRunnersRevalidate();
 
-  // The app starts agents on the machine it runs on; outside the app, the one
-  // machine connected (or the first, when there are several).
+  // It starts on the machine the app runs on unless another is picked; outside
+  // the app, on the first one connected.
   const here = useThisMachine();
+  const [machinePick, setMachinePick] = useState<string | null>(null);
   const [frameworkPick, setFrameworkPick] = useState<string | null>(null);
   const [folderTyped, setFolderTyped] = useState<string | null>(null);
   const [worktreePick, setWorktreePick] = useState(false);
@@ -128,7 +133,16 @@ export function LaunchAgentForm({
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
 
-  const runner = connected.find((r) => r.id === here) ?? connected[0];
+  const runner =
+    connected.find((r) => r.id === machinePick) ?? connected.find((r) => r.id === here) ?? connected[0];
+  // Each machine has its own agent CLIs and folders, so a new one starts from its own.
+  const pickMachine = (id: string) => {
+    if (id === runner?.id) return;
+    setMachinePick(id);
+    setFrameworkPick(null);
+    setFolderTyped(null);
+    setWorktreePick(false);
+  };
   // The agent CLI last started from here leads the list and is picked first.
   const [last] = useState(lastFramework);
   const startable = useMemo(() => (runner ? lastUsedFirst(launchable(runner), last) : []), [runner, last]);
@@ -273,6 +287,9 @@ export function LaunchAgentForm({
 
       <RunsOn
         runner={runner}
+        machines={connected}
+        here={here}
+        onMachine={pickMachine}
         startable={startable}
         frameworkId={framework?.id ?? null}
         folder={folderShown}
@@ -600,12 +617,15 @@ const fieldClass =
   "rounded-md border border-border bg-bg px-2 py-1 text-label text-text outline-none hover:border-border2 focus:border-accent";
 
 /**
- * Where the agent runs, as a few labeled rows above the button: the machine
- * (when there's more than one), the agent CLI, and the folder, with whether it
+ * Where the agent runs, as a few labeled rows above the button: the machine,
+ * the agent CLI, and the folder, with whether it
  * gets a branch of its own under it. One row each, so nothing is squeezed.
  */
 function RunsOn({
   runner,
+  machines,
+  here,
+  onMachine,
   startable,
   frameworkId,
   folder,
@@ -616,6 +636,9 @@ function RunsOn({
   children,
 }: {
   runner: Runner;
+  machines: Runner[];
+  here: string | null;
+  onMachine: (id: string) => void;
   startable: Runner["frameworks"];
   frameworkId: string | null;
   folder: string;
@@ -640,11 +663,10 @@ function RunsOn({
         </div>
       ) : null}
       <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-3">
-        {/* The machine the app runs on, or the one connected. Never a choice here. */}
         <span className={label}>Machine</span>
-        <span className="truncate text-label text-text" title={`On ${runnerName(runner)}, this machine`}>
-          {runnerName(runner)}
-        </span>
+        <div className="min-w-0">
+          <MachineSelect machines={machines} here={here} value={runner} onChange={onMachine} />
+        </div>
         {startable.length > 0 && (
           <>
             <span className={label}>Agent CLI</span>
@@ -698,6 +720,68 @@ function RunsOn({
       </div>
       <div className="mt-4 flex justify-end">{children}</div>
     </div>
+  );
+}
+
+/**
+ * Which connected machine the agent starts on, this computer first. Its foot
+ * adds another machine, in the same dialog as the Machines page.
+ */
+function MachineSelect({
+  machines,
+  here,
+  value,
+  onChange,
+}: {
+  machines: Runner[];
+  here: string | null;
+  value: Runner;
+  onChange: (id: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const sorted = [...machines].sort(
+    (a, b) => Number(b.id === here) - Number(a.id === here) || runnerName(a).localeCompare(runnerName(b)),
+  );
+  const line = (m: Runner, active = true) => {
+    const Icon = m.id === here ? Laptop : Server;
+    return (
+      <>
+        <Icon className="size-4 flex-shrink-0 text-faint" aria-hidden />
+        <span className={cn("truncate text-label", active ? "text-text" : "text-muted-foreground")}>
+          {runnerName(m)}
+        </span>
+        {m.id === here && <span className="flex-shrink-0 text-micro text-faint">This computer</span>}
+      </>
+    );
+  };
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`Machine: ${runnerName(value)}`}
+          className="flex h-10 max-w-full min-w-0 items-center gap-2 rounded-md border border-border px-2.5 transition-colors hover:border-border2 hover:bg-hairline data-[popup-open]:border-accent"
+        >
+          {line(value)}
+          <ChevronDown className="ml-1 size-3.5 flex-shrink-0 text-faint" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-64">
+          {sorted.map((m) => (
+            <DropdownMenuItem key={m.id} onClick={() => onChange(m.id)} className="gap-2 py-1.5">
+              {line(m, m.id === value.id)}
+              {m.id === value.id && <Check className="ml-auto size-3.5 text-accent" aria-label="chosen" />}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuItem
+            onClick={() => setAdding(true)}
+            className="mt-1 gap-2 border-t border-border pt-1.5 text-muted-foreground"
+          >
+            <Plus className="size-3.5" aria-hidden />
+            Add a machine
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AddMachineDialog open={adding} onClose={() => setAdding(false)} />
+    </>
   );
 }
 
