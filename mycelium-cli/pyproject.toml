@@ -44,6 +44,7 @@ dependencies = [
     # mints/holds its own signing key locally, mirroring the backend module.
     "cryptography>=50.0.2,<51",
     "keyring>=25.7.0",
+    "ifaddr>=0.2.0",
 ]
 
 [project.optional-dependencies]

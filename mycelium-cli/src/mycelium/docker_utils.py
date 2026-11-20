@@ -64,6 +64,7 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     "metrics.collector_url": "spoke-side: which collector `mycelium metrics show` reads",
     # ── Desktop app only: run on this computer, never by the hub ────────────
     "statusline.widget": "the desktop app's own widgets, run on this computer only",
+    "hub.paired_machines": "the desktop app's hub reads it from this computer's config.toml",
     # ── CLI-side only: never leaves the host ────────────────────────────────
     "identity.name": "the operator's local display name",
     "identity.machine_id": "local machine affinity UUID",

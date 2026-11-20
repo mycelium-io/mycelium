@@ -887,6 +887,7 @@ class Runner:
 
     def hello(self) -> bool:
         """Say hello (or heartbeat). ``False`` when the hub could not be reached."""
+        self._follow_paired_hub()
         self.refresh()
         body = RunnerHello.from_dict(self.hello_body())
         try:
@@ -914,6 +915,22 @@ class Runner:
         self.connected = True
         self.last_hello_at = _now()
         return True
+
+    def _follow_paired_hub(self) -> None:
+        """Use the hub this machine paired with, once ``mycelium runner pair
+        --hub`` has paired it while this runner runs. Which hub that is is
+        ``caller.paired_hub``'s answer, the one every command here gets; this
+        only notices it changed. Agents it starts from then on go there too."""
+        from mycelium import caller
+        from mycelium.client import same_origin
+
+        paired = caller.paired_hub()
+        if paired is None or same_origin(paired, self.config.server.api_url):
+            return
+        log.info("paired with %s: connecting there", paired)
+        self.log.print(f"[green]paired[/green] with {paired}: connecting there")
+        self.config.server.api_url = paired
+        self.connected = False
 
     def goodbye(self) -> None:
         try:

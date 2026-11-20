@@ -1025,6 +1025,41 @@ class StatuslineConfig(BaseModel):
     )
 
 
+def _keep_hub_as_on_disk(config_dict: dict[str, Any], path: Path) -> None:
+    """Write ``[hub]`` as the file holds it now, never from what was loaded.
+
+    The desktop app's hub owns its paired machines: it adds and removes them
+    in this file while CLI commands run. Writing back an older read would put
+    back a machine since unpaired, and with it, its token. An empty list isn't
+    written at all, so a table the hub appends later stays valid TOML."""
+    config_dict.pop("hub", None)
+    try:
+        hub = toml.loads(path.read_text(encoding="utf-8")).get("hub")
+    except (OSError, ValueError, TypeError):
+        hub = None
+    if isinstance(hub, dict):
+        hub = {k: v for k, v in hub.items() if v not in ([], {}, None)}
+        if hub:
+            config_dict["hub"] = hub
+
+
+class HubSection(BaseModel):
+    """The desktop app's hub, as other machines reach it."""
+
+    # ``Any``, as with the widgets: the hub reads and writes it, and a CLI
+    # command never stops over its shape.
+    paired_machines: Any = Field(
+        default=[],
+        description=(
+            "Machines paired with the desktop app's hub, as [[hub.paired_machines]] "
+            "tables: name, id, and optionally address (the machine's own: only from "
+            "here) and listen (this computer's address the hub answers it on). "
+            "Written by pairing (`mycelium runner pair --hub` on that machine, and the "
+            "code typed in the app). Remove an entry to shut that machine out."
+        ),
+    )
+
+
 class StatuslineSection(BaseModel):
     """The desktop app's Widgets card, read and run on this computer only."""
 
@@ -1083,6 +1118,7 @@ class MyceliumConfig(BaseModel):
     a2a: A2aConfig = Field(default_factory=A2aConfig)
     patterns: PatternsConfig = Field(default_factory=PatternsConfig)
     statusline: StatuslineSection = Field(default_factory=StatuslineSection)
+    hub: HubSection = Field(default_factory=HubSection)
 
     model_config = {"arbitrary_types_allowed": True}
     _global_config_path: Path | None = None
@@ -1204,8 +1240,21 @@ class MyceliumConfig(BaseModel):
             }
             config_dict = cls._deep_merge(config_dict, overlay)
 
+        files_hub = config_dict.get("server", {}).get("api_url")
         env_overrides = cls._load_from_env()
         config_dict = cls._deep_merge(config_dict, env_overrides)
+
+        # A machine that paired with a hub uses it in place of this machine's
+        # config, unless the environment names one (``caller.paired_hub``);
+        # ``save`` writes back what the files said.
+        if config_path is None:
+            from mycelium import caller
+
+            if (paired := caller.paired_hub()) is not None:
+                server = config_dict.setdefault("server", {})
+                from_files = replaced.get(("server", "api_url"), (files_hub,))[0]
+                replaced[("server", "api_url")] = (from_files, paired)
+                server["api_url"] = paired
 
         instance = cls(**config_dict)
         instance._global_config_path = global_path
@@ -1342,6 +1391,7 @@ class MyceliumConfig(BaseModel):
 
         if config_path is not None:
             config_path.parent.mkdir(parents=True, exist_ok=True)
+            _keep_hub_as_on_disk(config_dict, config_path)
             with open(config_path, "w") as f:
                 toml.dump(config_dict, f)
             # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.
@@ -1375,6 +1425,7 @@ class MyceliumConfig(BaseModel):
         else:
             global_dict = config_dict
 
+        _keep_hub_as_on_disk(global_dict, global_path)
         with open(global_path, "w") as f:
             toml.dump(global_dict, f)
         # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.

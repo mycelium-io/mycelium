@@ -49,6 +49,7 @@ from app.routes.members import router as members_router
 from app.routes.memory import router as memory_router
 from app.routes.mention_groups import router as mention_groups_router
 from app.routes.messages import router as messages_router
+from app.routes.pairing import router as pairing_router
 from app.routes.participate import router as participate_router
 from app.routes.patterns import router as patterns_router
 from app.routes.protocols import router as protocols_router
@@ -389,6 +390,17 @@ async def _unsafe_path_handler(_request: Request, _exc: UnsafePathError):
     return JSONResponse(status_code=400, content={"detail": "Invalid room name or key"})
 
 
+from app.services.runners import RunnerRefused  # noqa: E402
+
+
+@app.exception_handler(RunnerRefused)
+async def _runner_refused_handler(_request: Request, exc: RunnerRefused):
+    """A paired machine asking for another machine's runner, wherever it asked."""
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+
 # FastAPI HTTP instrumentation — must be applied at app-creation time, before
 # Starlette freezes the middleware stack, so spans are created for every request.
 # instrument_app() is a no-op when the OTel SDK is disabled.
@@ -409,6 +421,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Outermost: another machine reaches the desktop app's hub only once paired
+# with it, and a request from one that isn't is refused before anything else,
+# CORS included, sees it (services/machine_gate.py).
+from app.services.machine_gate import MachineGate  # noqa: E402
+
+app.add_middleware(MachineGate)  # ty: ignore[invalid-argument-type]
 
 
 # Core routes. Health endpoints stay top-level for orchestrator probes. Every
@@ -433,6 +452,7 @@ app.include_router(knowledge_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(board_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(runners_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(joins_router, prefix="/api")
+app.include_router(pairing_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(participate_router, prefix="/api", responses=GATE_REFUSALS)
 app.include_router(approvals_router, prefix="/api", responses=GATE_REFUSALS)

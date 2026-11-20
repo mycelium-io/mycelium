@@ -4,10 +4,33 @@ import { renderWithSWR } from "@/test/swr";
 
 const pairRunner = vi.fn();
 const fetchRunnerJob = vi.fn();
+const expectPairing = vi.fn();
 vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   pairRunner: (...args: unknown[]) => pairRunner(...args),
   fetchRunnerJob: (...args: unknown[]) => fetchRunnerJob(...args),
+  expectPairing: (...args: unknown[]) => expectPairing(...args),
+}));
+const desktop = { on: false, mode: "hub", existing: null as unknown };
+vi.mock("@/lib/desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/desktop")>()),
+  useIsDesktop: () => desktop.on,
+}));
+// What the app itself says it runs, over its own bridge.
+const appState = () => ({
+  settings: { mode: desktop.mode },
+  status: {
+    existing_hub: desktop.existing,
+    join_addresses: [
+      { interface: "utun8", address: "10.8.0.2", url: "http://10.8.0.2:3718" },
+      { interface: "en0", address: "192.168.68.52", url: "http://192.168.68.52:3718" },
+    ],
+  },
+});
+vi.mock("@/lib/desktop-app", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/desktop-app")>()),
+  appCall: async (command: string) => (command === "get_state" ? appState() : null),
+  useApp: (command: string) => ({ data: command === "get_state" && desktop.on ? appState() : undefined }),
 }));
 const pairRequest = vi.fn();
 vi.mock("@/lib/device-key", async (importOriginal) => ({
@@ -15,7 +38,7 @@ vi.mock("@/lib/device-key", async (importOriginal) => ({
   pairRequest: (...args: unknown[]) => pairRequest(...args),
 }));
 
-import type { RunnerJob } from "@/lib/api";
+import { ApiError, type RunnerJob } from "@/lib/api";
 import { AddMachineDialog } from "./add-machine-dialog";
 
 function job(over: Partial<RunnerJob> = {}): RunnerJob {
@@ -43,9 +66,58 @@ function fill(code: string, name = "work laptop") {
 
 describe("AddMachineDialog", () => {
   beforeEach(() => {
+    desktop.on = false;
     pairRunner.mockReset();
     fetchRunnerJob.mockReset();
+    desktop.mode = "hub";
+    desktop.existing = null;
+    expectPairing.mockReset().mockResolvedValue({ offer: "K7QM", until: "2026-10-01T12:10:00Z" });
     pairRequest.mockReset().mockResolvedValue({ body, keyId: "59802479f5b1936d" });
+  });
+
+  it("in the app, lets a machine that isn't connected yet join with the code, then pairs", async () => {
+    desktop.on = true;
+    const nobody = new ApiError("No machine is waiting to pair with that code.", 404);
+    pairRunner.mockRejectedValueOnce(nobody).mockResolvedValue(job());
+    fetchRunnerJob.mockResolvedValue(
+      job({ status: "done", result: { label: "box", name: "work laptop", key: "59802479f5b1936d" } }),
+    );
+    renderWithSWR(<AddMachineDialog open onClose={() => {}} />);
+    // The whole command for each network this computer is on, ready to copy.
+    expect(screen.getByDisplayValue("mycelium runner pair --hub http://10.8.0.2:3718")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("mycelium runner pair --hub http://192.168.68.52:3718")).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("K7QM-4XHD-9RWA"), { target: { value: "K7QM-4XHD-9RWA" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pair" }));
+
+    await waitFor(() => expect(expectPairing).toHaveBeenCalledWith("K7QM4XHD9RWA"));
+    expect(await screen.findByText("Waiting for the machine to connect…")).toBeInTheDocument();
+    expect(await screen.findByText(/Paired with box/, {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(pairRunner).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["client mode", { mode: "client", existing: null }],
+    ["a hub on its port it didn't start", { mode: "hub", existing: { owner: "docker" } }],
+  ])("never sends the code to a hub that isn't the app's own: %s", async (_, how) => {
+    desktop.on = true;
+    desktop.mode = how.mode;
+    desktop.existing = how.existing;
+    pairRunner.mockRejectedValue(new ApiError("No machine is waiting to pair with that code.", 404));
+    renderWithSWR(<AddMachineDialog open onClose={() => {}} />);
+    expect(screen.queryByDisplayValue(/--hub/)).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText("K7QM-4XHD-9RWA"), { target: { value: "K7QM-4XHD-9RWA" } });
+    fireEvent.click(screen.getByRole("button", { name: "Pair" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No machine is waiting");
+    expect(expectPairing).not.toHaveBeenCalled();
+  });
+
+  it("outside the app, a code no machine is waiting on is just refused", async () => {
+    pairRunner.mockRejectedValue(new ApiError("No machine is waiting to pair with that code.", 404));
+    renderWithSWR(<AddMachineDialog open onClose={() => {}} />);
+    fill("K7QM-4XHD-9RWA");
+    fireEvent.click(screen.getByRole("button", { name: "Pair" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No machine is waiting");
+    expect(expectPairing).not.toHaveBeenCalled();
   });
 
   it("pairs with the code the machine printed and shows the key to compare", async () => {

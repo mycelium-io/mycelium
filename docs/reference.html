@@ -220,6 +220,7 @@
           <a href="#config-a2a" class="nav-link sub">a2a</a>
           <a href="#config-patterns" class="nav-link sub">patterns</a>
           <a href="#config-statusline" class="nav-link sub">statusline</a>
+          <a href="#config-hub" class="nav-link sub">hub</a>
         </div>
       </div>
       <div class="nav-group" data-nav-group="reference:dependencies">
@@ -1505,7 +1506,13 @@
 <span class="cmd" id="config-statusline">[statusline]</span>
 
 <span class="comment"># The rows of the Widgets card, in order, as [[statusline.widget]] tables: label, then command (with every, timeout) or text, and optionally icon (a Lucide icon name like memory-stick, or one emoji), color (accent, green, yellow, red, muted), state (ok, warn, bad, off), meter (0 to 100) and tooltip. Text and tooltip are inline markdown: **bold**, *italic*, `code`. A command can print one JSON object instead of a line to set any of these for that run, e.g. {&quot;text&quot;: &quot;**38%** free&quot;, &quot;icon&quot;: &quot;memory-stick&quot;, &quot;state&quot;: &quot;warn&quot;, &quot;meter&quot;: 38, &quot;tooltip&quot;: &quot;Swap is *2.1G*&quot;}. Checked by the desktop app, which notes any field it ignored in Settings &gt; Widgets. every = &quot;always&quot; keeps a command running while the app is open, and its row shows whether it&#x27;s running. Every command gets the port of the hub the app runs as $MYCELIUM_HUB_PORT.</span>
-<span class="arg">widget</span> = []</code></pre>
+<span class="arg">widget</span> = []
+
+<span class="comment"># The desktop app&#x27;s hub, as other machines reach it.</span>
+<span class="cmd" id="config-hub">[hub]</span>
+
+<span class="comment"># Machines paired with the desktop app&#x27;s hub, as [[hub.paired_machines]] tables: name, id, and optionally address (the machine&#x27;s own: only from here) and listen (this computer&#x27;s address the hub answers it on). Written by pairing (`mycelium runner pair --hub` on that machine, and the code typed in the app). Remove an entry to shut that machine out.</span>
+<span class="arg">paired_machines</span> = []</code></pre>
     </section>
     <nav class="doc-pager" data-pager-for="configuration" aria-label="Previous and next sections">
       <a class="doc-pager-link prev" href="#cli-reference">

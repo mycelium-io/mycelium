@@ -6993,6 +6993,267 @@
         }
       }
     },
+    "/api/pairing/expect": {
+      "post": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "Expect",
+        "description": "Wait ten minutes for the machine that printed ``code`` to knock.",
+        "operationId": "expect_api_pairing_expect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingExpect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingExpectRead"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pairing/connect": {
+      "post": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "Connect",
+        "description": "A machine's knock: its token when its proof matches a code typed in the app.",
+        "operationId": "connect_api_pairing_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingConnect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingConnectRead"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pairing/machines": {
+      "get": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "List Machines",
+        "description": "The machines paired with this hub.",
+        "operationId": "list_machines_api_pairing_machines_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PairedMachineRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Machines Api Pairing Machines Get"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pairing/machines/{name}": {
+      "delete": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "Unpair Machine",
+        "description": "Shut a paired machine out: its entry goes, and its token with it.",
+        "operationId": "unpair_machine_api_pairing_machines__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pairing/self": {
+      "delete": {
+        "tags": [
+          "pairing"
+        ],
+        "summary": "Leave",
+        "description": "A paired machine leaving, with its own token.",
+        "operationId": "leave_api_pairing_self_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -22104,6 +22365,144 @@
         ],
         "title": "OwnedAgentRead",
         "description": "One agent bound to a principal, with its room."
+      },
+      "PairedMachineRead": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address",
+            "description": "The machine's address: only from here."
+          },
+          "listen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listen",
+            "description": "This computer's address it reaches the hub on."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "id"
+        ],
+        "title": "PairedMachineRead"
+      },
+      "PairingConnect": {
+        "properties": {
+          "offer": {
+            "type": "string",
+            "maxLength": 4,
+            "minLength": 4,
+            "title": "Offer"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "description": "The machine's name."
+          },
+          "at": {
+            "type": "integer",
+            "title": "At",
+            "description": "When the knock was made, in epoch seconds."
+          },
+          "nonce": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Nonce"
+          },
+          "proof": {
+            "type": "string",
+            "maxLength": 128,
+            "title": "Proof",
+            "description": "HMAC of the knock, keyed by the code."
+          }
+        },
+        "type": "object",
+        "required": [
+          "offer",
+          "name",
+          "at",
+          "nonce",
+          "proof"
+        ],
+        "title": "PairingConnect"
+      },
+      "PairingConnectRead": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Sent as X-Mycelium-Machine on every request."
+          },
+          "machine": {
+            "$ref": "#/components/schemas/PairedMachineRead"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "machine"
+        ],
+        "title": "PairingConnectRead"
+      },
+      "PairingExpect": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "The code the machine printed, as typed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "PairingExpect"
+      },
+      "PairingExpectRead": {
+        "properties": {
+          "offer": {
+            "type": "string",
+            "title": "Offer",
+            "description": "The code's public first four characters."
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Until",
+            "description": "When the code stops being waited for."
+          }
+        },
+        "type": "object",
+        "required": [
+          "offer",
+          "until"
+        ],
+        "title": "PairingExpectRead"
       },
       "PairingOutcome": {
         "properties": {
