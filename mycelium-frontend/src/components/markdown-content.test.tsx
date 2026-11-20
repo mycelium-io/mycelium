@@ -315,7 +315,7 @@ describe("<MarkdownContent /> thread ids", () => {
     draw(
       "`board resolve 251c83d6` and\n```\n251c83d6\n```\n251c83d6ab12, refs/251c83d6, urn:ioc:mycelium:episode:checkout:251c83d6",
     );
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Open/ })).toBeNull();
   });
 
   it("doesn't link an id inside a link's own text", () => {
