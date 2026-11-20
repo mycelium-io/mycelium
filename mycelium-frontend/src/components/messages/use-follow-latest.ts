@@ -31,6 +31,16 @@ function rowsIn(node: Node): Element[] {
   return node.matches(ROWS) ? [node, ...found] : found;
 }
 
+/** The height a row has while it's skipped and has never been drawn: its
+ *  `contain-intrinsic-block-size` (globals.css), plus its padding and border. */
+function standIn(row: Element): number {
+  const style = getComputedStyle(row);
+  const intrinsic = Number.parseFloat(style.containIntrinsicBlockSize.split(" ").pop() ?? "");
+  if (!Number.isFinite(intrinsic)) return Number.NaN;
+  const edges = [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth];
+  return edges.reduce((sum, value) => sum + (Number.parseFloat(value) || 0), intrinsic);
+}
+
 export interface FollowOptions {
   /** Every row the list draws, oldest first, by a stable id; `null` until the
    *  first page has loaded, so loading never reads as messages arriving. */
@@ -191,40 +201,48 @@ export function useFollowLatest(
     const swapped = typeof MutationObserver === "undefined" ? null : new MutationObserver(watch);
     swapped?.observe(el, { childList: true });
 
-    // Scrolled up, rows changing height before what the reader is looking at
-    // move the view by as much, so it stays put. Rows off screen are skipped
-    // until they come near (`content-visibility` in globals.css) and get their
-    // real height then: scrolling up brings them in at the top of the view,
-    // where they grow and push down what was there. What the reader is looking
-    // at is the first row on screen that kept its height, or, when the list
-    // changed width and every row drawn changed with it, the first row on
-    // screen. Done here rather than left to the browser: Safari, and so the
-    // desktop app on a Mac, lets the view jump. The browser's own is turned off
-    // so the two don't both move it.
-    el.style.setProperty("overflow-anchor", "none");
+    // Scrolled up, rows changing height before the one the reader is on move
+    // the view by as much, so it stays put. Rows off screen are skipped until
+    // they come near (`content-visibility` in globals.css), at a stand-in
+    // height: scrolling up brings them in at the top of the view, where they
+    // take their real height and push down what was there. So the reader's row
+    // is the first row on screen that isn't coming in. A row already drawn
+    // that grows there (a prompt opened, an image loaded) is the reader's row,
+    // and keeps its top in place. When the list changed width and every row
+    // drawn changed with it, it's the first row on screen. Done here rather
+    // than left to the browser: Safari, and so the desktop app on a Mac, lets
+    // the view jump. Rows are kept out of the browser's own anchoring (also in
+    // globals.css) so the two don't both move the view; what isn't a row, like
+    // a task's body above its thread, is still the browser's to hold.
     const sizes = new WeakMap<Element, { width: number; height: number }>();
+    const drawn = new WeakSet<Element>();
     const rows = new ResizeObserver((entries: ResizeObserverEntry[] = []) => {
       const following = atBottomRef.current && !holdingRef.current;
       const changed = new Map<Element, number>();
+      const comingIn = new Set<Element>();
       let widened = false;
       for (const entry of entries) {
+        const row = entry.target;
         const size = entry.borderBoxSize?.[0];
-        const rect = size ? null : entry.target.getBoundingClientRect();
+        const rect = size ? null : row.getBoundingClientRect();
         const now = { width: size?.inlineSize ?? rect?.width ?? 0, height: size?.blockSize ?? rect?.height ?? 0 };
-        const was = sizes.get(entry.target);
-        sizes.set(entry.target, now);
+        const was = sizes.get(row);
+        sizes.set(row, now);
         if (!was) continue;
         if (was.width !== now.width) widened = true;
-        if (was.height !== now.height) changed.set(entry.target, now.height - was.height);
+        if (was.height === now.height) continue;
+        changed.set(row, now.height - was.height);
+        if (!drawn.has(row) && Math.abs(was.height - standIn(row)) < 0.5) comingIn.add(row);
+        drawn.add(row);
       }
       if (following || changed.size === 0) return;
-      // Rows that grew at the top can fill the view, pushing the row the reader
-      // was on below the bottom, so the search goes on past it.
+      // Rows coming in at the top can fill the view, pushing the reader's row
+      // below the bottom, so the search goes on past it.
       const viewTop = el.getBoundingClientRect().top;
       const all = el.querySelectorAll(ROWS);
       let i = 0;
       while (i < all.length && all[i].getBoundingClientRect().bottom <= viewTop) i++;
-      if (!widened) while (i < all.length && changed.has(all[i])) i++;
+      if (!widened) while (i < all.length && comingIn.has(all[i])) i++;
       const reading = all[i] ?? null;
       let shift = 0;
       for (const [row, grew] of changed) {
@@ -239,7 +257,11 @@ export function useFollowLatest(
     const added = typeof MutationObserver === "undefined"
       ? null
       : new MutationObserver((records) => {
-          for (const record of records) for (const node of record.addedNodes) for (const row of rowsIn(node)) rows.observe(row);
+          for (const record of records) {
+            for (const node of record.addedNodes) for (const row of rowsIn(node)) rows.observe(row);
+            // A row the list let go of isn't held in memory by being watched.
+            for (const node of record.removedNodes) for (const row of rowsIn(node)) rows.unobserve(row);
+          }
         });
     added?.observe(el, { childList: true, subtree: true });
 

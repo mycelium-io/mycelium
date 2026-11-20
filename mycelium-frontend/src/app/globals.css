@@ -849,8 +849,15 @@ body {
  * every step of the drag. A message keeps the height it last had while it's
  * skipped (48px until it has been drawn once). The row showing its actions bar
  * is never skipped: the bar sits above the row, where a skipped row would clip
- * it. Browsers that don't keep the scroll steady when a skipped row gets its
- * real height are held by `useFollowLatest`. */
+ * it. `useFollowLatest` keeps the view steady when a skipped row gets its real
+ * height, since Safari doesn't, so rows and what's in them are kept out of the
+ * browser's own scroll anchoring and the two don't both move the view. */
+[data-event-id],
+[data-event-id] *,
+[data-line],
+[data-line] * {
+  overflow-anchor: none;
+}
 [data-event-id]:not(:has([role="toolbar"])) {
   content-visibility: auto;
   contain-intrinsic-block-size: auto 48px;

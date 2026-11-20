@@ -242,15 +242,29 @@ describe("useFollowLatest, rows getting their real height", () => {
       row.getBoundingClientRect = () => ({ top, bottom: top + height, height }) as DOMRect;
     };
     let report: ((entries: ResizeObserverEntry[]) => void) | null = null;
+    const watched = new Set<Element>();
     vi.stubGlobal(
       "ResizeObserver",
       class {
         constructor(private cb: (entries: ResizeObserverEntry[]) => void) {}
         observe(target: Element) {
-          if (target instanceof HTMLElement && target.dataset.eventId) report = this.cb;
+          if (target instanceof HTMLElement && target.dataset.eventId) {
+            report = this.cb;
+            watched.add(target);
+          }
+        }
+        unobserve(target: Element) {
+          watched.delete(target);
         }
         disconnect() {}
       },
+    );
+    // jsdom has no layout: a row's stand-in height (globals.css) is 48px.
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((node: Element) =>
+      node instanceof HTMLElement && node.dataset.eventId
+        ? ({ containIntrinsicBlockSize: "auto 48px", paddingTop: "0px", paddingBottom: "0px", borderTopWidth: "0px", borderBottomWidth: "0px" } as CSSStyleDeclaration)
+        : real(node),
     );
     const sized = (sizes: [HTMLElement, number][], width = 600) =>
       act(() =>
@@ -260,8 +274,36 @@ describe("useFollowLatest, rows getting their real height", () => {
           ),
         ),
       );
-    return { el, box, rows, at, sized };
+    return { el, box, rows, at, sized, watched };
   }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the top of a row on screen in place when it grows, the way opening its prompt does", () => {
+    const { el, rows, at, sized } = rowsRegion();
+    const [r1, r2, r3, r4] = rows;
+    follow(el, { rows: ids(4) });
+    sized([[r1, 100], [r2, 100], [r3, 100], [r4, 100]]);
+    scrollTo(el, 1000);
+    // r1 is the first row on screen, already drawn, and grows by 300px.
+    at(r1, 0, 400);
+    at(r2, 400, 100);
+    at(r3, 500, 100);
+    at(r4, 600, 100);
+    sized([[r1, 400]]);
+    expect(el.scrollTop).toBe(1000);
+  });
+
+  it("stops watching a row the list lets go of", async () => {
+    const { el, rows, watched } = rowsRegion();
+    follow(el, { rows: ids(4) });
+    expect(watched.has(rows[0])).toBe(true);
+    rows[0].remove();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(watched.has(rows[0])).toBe(false);
+  });
 
   it("keeps the reader's row in place when rows above it grow, even past the bottom of the view", () => {
     const { el, rows, at, sized } = rowsRegion();
