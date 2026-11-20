@@ -225,3 +225,98 @@ describe("useFollowLatest", () => {
     expect(el.scrollTop).toBe(0);
   });
 });
+
+describe("useFollowLatest, rows getting their real height", () => {
+  /** Four message rows in a region whose view runs from 0 to 400, each with a
+   *  box the test sets, and the ResizeObserver watching them. */
+  function rowsRegion() {
+    const { el, box } = region(0, 3000);
+    el.getBoundingClientRect = () => ({ top: 0, bottom: 400 }) as DOMRect;
+    const rows = ["r1", "r2", "r3", "r4"].map((id) => {
+      const row = document.createElement("div");
+      row.dataset.eventId = id;
+      el.appendChild(row);
+      return row;
+    });
+    const at = (row: HTMLElement, top: number, height: number) => {
+      row.getBoundingClientRect = () => ({ top, bottom: top + height, height }) as DOMRect;
+    };
+    let report: ((entries: ResizeObserverEntry[]) => void) | null = null;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private cb: (entries: ResizeObserverEntry[]) => void) {}
+        observe(target: Element) {
+          if (target instanceof HTMLElement && target.dataset.eventId) report = this.cb;
+        }
+        disconnect() {}
+      },
+    );
+    const sized = (sizes: [HTMLElement, number][], width = 600) =>
+      act(() =>
+        report?.(
+          sizes.map(
+            ([target, h]) => ({ target, borderBoxSize: [{ blockSize: h, inlineSize: width }] }) as unknown as ResizeObserverEntry,
+          ),
+        ),
+      );
+    return { el, box, rows, at, sized };
+  }
+
+  it("keeps the reader's row in place when rows above it grow, even past the bottom of the view", () => {
+    const { el, rows, at, sized } = rowsRegion();
+    const [r1, r2, r3, r4] = rows;
+    follow(el, { rows: ids(4) });
+    sized([[r1, 48], [r2, 48], [r3, 100], [r4, 48]]);
+    scrollTo(el, 1000);
+    // Scrolling up brought r1 and r2 in at the top of the view, and they grew
+    // from their 48px stand-in, pushing r3, the row the reader was on, below it.
+    at(r1, 0, 250);
+    at(r2, 250, 250);
+    at(r3, 500, 100);
+    at(r4, 600, 48);
+    sized([[r1, 250], [r2, 250]]);
+    expect(el.scrollTop).toBe(1000 + 202 + 202);
+  });
+
+  it("leaves the view alone when rows below the reader's grow", () => {
+    const { el, rows, at, sized } = rowsRegion();
+    const [r1, r2, r3, r4] = rows;
+    follow(el, { rows: ids(4) });
+    sized([[r1, 100], [r2, 100], [r3, 48], [r4, 48]]);
+    scrollTo(el, 1000);
+    at(r1, 0, 100);
+    at(r2, 100, 100);
+    at(r3, 200, 250);
+    at(r4, 450, 250);
+    sized([[r3, 250], [r4, 250]]);
+    expect(el.scrollTop).toBe(1000);
+  });
+
+  it("keeps the first row on screen in place when the list changes width", () => {
+    const { el, rows, at, sized } = rowsRegion();
+    const [r1, r2, r3, r4] = rows;
+    follow(el, { rows: ids(4) });
+    sized([[r1, 100], [r2, 100], [r3, 100], [r4, 100]]);
+    scrollTo(el, 1000);
+    // Narrower: every row drawn wraps taller. r1 is above the view, r2 the
+    // first row on it.
+    at(r1, -150, 150);
+    at(r2, 0, 150);
+    at(r3, 150, 150);
+    at(r4, 300, 150);
+    sized([[r1, 150], [r2, 150], [r3, 150], [r4, 150]], 500);
+    expect(el.scrollTop).toBe(1050);
+  });
+
+  it("leaves following the newest row to the bottom", () => {
+    const { el, rows, at, sized } = rowsRegion();
+    const [r1, r2, r3, r4] = rows;
+    follow(el, { rows: ids(4) });
+    expect(el.scrollTop).toBe(2600);
+    sized([[r1, 48], [r2, 48], [r3, 100], [r4, 48]]);
+    at(r1, 0, 250);
+    sized([[r1, 250]]);
+    expect(el.scrollTop).toBe(2600);
+  });
+});

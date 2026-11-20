@@ -21,6 +21,16 @@ function toBottom(node: HTMLElement) {
   node.scrollTo({ top: node.scrollHeight, behavior: "instant" });
 }
 
+/** A list's rows: a message, or a line of the Stream. */
+const ROWS = "[data-event-id], [data-line]";
+
+/** Every row in or under `node`, `node` included. */
+function rowsIn(node: Node): Element[] {
+  if (!(node instanceof Element)) return [];
+  const found = [...node.querySelectorAll(ROWS)];
+  return node.matches(ROWS) ? [node, ...found] : found;
+}
+
 export interface FollowOptions {
   /** Every row the list draws, oldest first, by a stable id; `null` until the
    *  first page has loaded, so loading never reads as messages arriving. */
@@ -180,10 +190,65 @@ export function useFollowLatest(
     watch();
     const swapped = typeof MutationObserver === "undefined" ? null : new MutationObserver(watch);
     swapped?.observe(el, { childList: true });
+
+    // Scrolled up, rows changing height before what the reader is looking at
+    // move the view by as much, so it stays put. Rows off screen are skipped
+    // until they come near (`content-visibility` in globals.css) and get their
+    // real height then: scrolling up brings them in at the top of the view,
+    // where they grow and push down what was there. What the reader is looking
+    // at is the first row on screen that kept its height, or, when the list
+    // changed width and every row drawn changed with it, the first row on
+    // screen. Done here rather than left to the browser: Safari, and so the
+    // desktop app on a Mac, lets the view jump. The browser's own is turned off
+    // so the two don't both move it.
+    el.style.setProperty("overflow-anchor", "none");
+    const sizes = new WeakMap<Element, { width: number; height: number }>();
+    const rows = new ResizeObserver((entries: ResizeObserverEntry[] = []) => {
+      const following = atBottomRef.current && !holdingRef.current;
+      const changed = new Map<Element, number>();
+      let widened = false;
+      for (const entry of entries) {
+        const size = entry.borderBoxSize?.[0];
+        const rect = size ? null : entry.target.getBoundingClientRect();
+        const now = { width: size?.inlineSize ?? rect?.width ?? 0, height: size?.blockSize ?? rect?.height ?? 0 };
+        const was = sizes.get(entry.target);
+        sizes.set(entry.target, now);
+        if (!was) continue;
+        if (was.width !== now.width) widened = true;
+        if (was.height !== now.height) changed.set(entry.target, now.height - was.height);
+      }
+      if (following || changed.size === 0) return;
+      // Rows that grew at the top can fill the view, pushing the row the reader
+      // was on below the bottom, so the search goes on past it.
+      const viewTop = el.getBoundingClientRect().top;
+      const all = el.querySelectorAll(ROWS);
+      let i = 0;
+      while (i < all.length && all[i].getBoundingClientRect().bottom <= viewTop) i++;
+      if (!widened) while (i < all.length && changed.has(all[i])) i++;
+      const reading = all[i] ?? null;
+      let shift = 0;
+      for (const [row, grew] of changed) {
+        if (!reading || row.compareDocumentPosition(reading) & Node.DOCUMENT_POSITION_FOLLOWING) shift += grew;
+      }
+      if (shift !== 0) {
+        el.scrollTop = el.scrollTop + shift;
+        fromBottom.current = el.scrollHeight - el.scrollTop;
+      }
+    });
+    for (const row of rowsIn(el)) rows.observe(row);
+    const added = typeof MutationObserver === "undefined"
+      ? null
+      : new MutationObserver((records) => {
+          for (const record of records) for (const node of record.addedNodes) for (const row of rowsIn(node)) rows.observe(row);
+        });
+    added?.observe(el, { childList: true, subtree: true });
+
     return () => {
       el.removeEventListener("scroll", measure);
       observer.disconnect();
       swapped?.disconnect();
+      rows.disconnect();
+      added?.disconnect();
     };
   }, [el, setBottom]);
 
