@@ -10,6 +10,7 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MarkdownTable } from "@/components/markdown-table";
+import { CodeBlock, InlineCode } from "@/components/code-copy";
 import { useHighlighter, type Highlight } from "@/components/ui/highlight-text";
 import { HANDLE_PATTERN, INTERRUPT_MENTION_SIGIL, SILENT_MENTION_SIGIL } from "@/lib/mentions";
 import { typeset } from "@/lib/typeset";
@@ -380,6 +381,9 @@ export function MarkdownContent({
           const target = typeof text === "string" && THREAD_ID.test(text) ? threads?.get(text) : undefined;
           if (target) return <ThreadIdLink id={text as string} target={target} onOpen={onOpenThread} code />;
         }
+        // A code span copies on a click, except in a link's text or a one-line preview.
+        if (node.type === "code" && linkThreads && !inline)
+          return <InlineCode>{(node.props as { children?: React.ReactNode }).children}</InlineCode>;
         if (node.type === "code" || node.type === "pre") return node;
         const props = node.props as { children?: React.ReactNode; href?: string };
         return React.cloneElement(
@@ -391,7 +395,7 @@ export function MarkdownContent({
       }
       return node;
     },
-    [renderText, threads, onOpenThread],
+    [renderText, threads, onOpenThread, inline],
   );
 
   // `[label](myc://key)` is an ordinary markdown link whose scheme no browser
@@ -445,6 +449,7 @@ export function MarkdownContent({
           li: ({ children }) => <li>{processNode(children)}</li>,
           strong: ({ children }) => <strong>{processNode(children)}</strong>,
           em: ({ children }) => <em>{processNode(children)}</em>,
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
           // The table's own Markdown, sliced from the source by its position,
           // so Copy keeps links, code and emphasis in the cells as written.
           table: ({ children: rows, node }) => {

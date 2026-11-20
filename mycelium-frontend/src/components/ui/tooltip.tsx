@@ -21,6 +21,8 @@ interface Props {
   align?: Align;
   sideOffset?: number;
   className?: string;
+  /** Stay open when the trigger is clicked, for a tooltip that answers the click. */
+  openOnClick?: boolean;
 }
 
 /** Hover/focus tooltip in the app's own idiom — an elevated card on the
@@ -40,6 +42,7 @@ export function Tooltip({
   align = "center",
   sideOffset = 6,
   className,
+  openOnClick = false,
 }: Props) {
   const popupId = useId();
   const [open, setOpen] = useState(false);
@@ -51,6 +54,7 @@ export function Tooltip({
       {/* Only while the popup is mounted — a dangling id describes nothing. */}
       <TooltipPrimitive.Trigger
         render={children}
+        closeOnClick={!openOnClick}
         aria-describedby={open ? popupId : undefined}
       />
       <TooltipPrimitive.Portal>
