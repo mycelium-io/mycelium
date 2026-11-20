@@ -74,7 +74,7 @@ The window shows the agent's terminal, read-only. For a Claude Code agent it
 can also show **What it's doing**: what it was asked, what it said and each
 tool it called, which you can open to see the result.
 
-The window says "Private stream". The app reads the agent from herdr and its session files on this computer, so a
+The window says "Only you can see this". The app reads the agent from herdr and its session files on this computer, so a
 key or private code on screen never leaves it. For an agent on another
 computer, the window says where it runs instead.
 

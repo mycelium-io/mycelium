@@ -29,9 +29,8 @@ import { Tooltip } from "@/components/ui/tooltip";
 
 /** The footer's promise, which the code keeps: the app reads the screen and
  *  the session on this computer, and neither is sent to the hub. */
-export const STREAMED_LOCALLY = "Private stream";
-export const STREAMED_LOCALLY_WHY =
-  "The app reads this agent straight from this computer. It never goes to the hub. Nobody else in the room can see it.";
+export const STREAMED_LOCALLY = "Only you can see this";
+export const STREAMED_LOCALLY_WHY = "The app reads this agent straight from this computer. It never goes to the hub.";
 
 export interface AgentScreenProps {
   room: string;

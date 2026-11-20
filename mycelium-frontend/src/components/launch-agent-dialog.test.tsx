@@ -501,7 +501,7 @@ describe("LaunchAgentForm", () => {
 
     const panel = await screen.findByRole("region", { name: "Its terminal" });
     expect(await within(panel).findByText(/claude --permission-mode auto/)).toBeInTheDocument();
-    expect(panel).toHaveTextContent("Private stream");
+    expect(panel).toHaveTextContent("Only you can see this");
     const open = within(panel).getByText("Open in terminal").closest("a")!;
     expect(open).toHaveAttribute("href", "mycelium://terminal?pane=w5%3Ap1");
     expect(open).not.toHaveAttribute("aria-disabled", "true");
