@@ -274,7 +274,7 @@ export function TaskConversation({
         >
           <SporeMark />
           <Shimmer className="truncate">
-            <RespondingNames group={shownResponding} /> {shownResponding.length === 1 ? "is" : "are"} responding…
+            <RespondingNames group={shownResponding} /> {shownResponding.length === 1 ? "is" : "are"} working…
           </Shimmer>
         </div>
       )}

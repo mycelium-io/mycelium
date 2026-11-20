@@ -384,19 +384,19 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     expect(rows[0]).toHaveAccessibleName(new RegExp(OTHER_TITLE));
   });
 
-  it("pins who is responding outside the scrolling messages, by the composer", async () => {
+  it("pins who is working outside the scrolling messages, by the composer", async () => {
     await stream([
       said("can someone look at the flag rollout?"),
       { type: "agent_activity", handle: "conductor", state: "responding", episode: LIVE },
     ]);
 
     const line = await screen.findByTestId("responding-line");
-    expect(line).toHaveTextContent("conductor is responding…");
+    expect(line).toHaveTextContent("conductor is working…");
     // Inside the viewport it would scroll away under whatever is sent next.
     expect(line.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
   });
 
-  it("says an agent herdr has working is responding, as the agent panel does, with no frame from the hub", async () => {
+  it("shows an agent as working while herdr says so, as the agent panel does, with no frame from the hub", async () => {
     vi.mocked(fetchRoomMembers).mockResolvedValueOnce({
       members: [
         { handle: "builder", kind: "herdr", last_seen: null, status: "working" },
@@ -407,7 +407,7 @@ describe("<EventStream /> and the room's own bookkeeping", () => {
     await stream([said("can someone look at the flag rollout?")]);
 
     const line = await screen.findByTestId("responding-line");
-    expect(line).toHaveTextContent("builder is responding…");
+    expect(line).toHaveTextContent("builder is working…");
     expect(line).not.toHaveTextContent("reviewer");
   });
 });

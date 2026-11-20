@@ -119,10 +119,10 @@ function RespondingRow({ children, offset = 0 }: { children: React.ReactNode; of
   );
 }
 
-/** "@conductor is responding…" pinned over the composer, gone the moment the
- *  reply lands. A turn going into a task's thread does not land here — the channel
+/** "@conductor is working…" pinned over the composer, gone the moment the
+ *  turn ends. A turn going into a task's thread does not land here — the channel
  *  never shows a thread's prose — so that line says where instead, and opens
- *  it, the way the ping for the reply will: "@conductor is responding in <task>". */
+ *  it, the way the ping for the reply will: "@conductor is working in <task>". */
 function RespondingLine({
   entries,
   room,
@@ -152,7 +152,7 @@ function RespondingLine({
       {here.length > 0 && (
         <RespondingRow>
           <Shimmer className="truncate">
-            <RespondingNames group={here} /> {verb(here)} responding…
+            <RespondingNames group={here} /> {verb(here)} working…
           </Shimmer>
         </RespondingRow>
       )}
@@ -162,7 +162,7 @@ function RespondingLine({
         return (
           <RespondingRow key={thread} offset={(i + 1) * 4}>
             <Shimmer className="truncate">
-              <RespondingNames group={group} /> {verb(group)} responding in
+              <RespondingNames group={group} /> {verb(group)} working in
             </Shimmer>
             <button
               type="button"
