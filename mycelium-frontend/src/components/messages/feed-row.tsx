@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { AtSign, Braces, Copy, Link2, MessageSquare, Reply, TextQuote } from "lucide-react";
 import type { Subagent, VerifierFlag } from "@/lib/api";
 import type { Event } from "@/lib/room-events";
@@ -146,9 +146,6 @@ export interface FeedContext {
   threadIds?: ReadonlyMap<string, ThreadTarget>;
   /** Threads started from a message, by that message's id; drawn under it. */
   messageThreads?: ReadonlyMap<string, MessageThread>;
-  /** Who each message's sender interrupted with it, by message id; marked on
-   *  the message, never a line of its own. */
-  interruptedByMessage?: ReadonlyMap<string, Interrupted[]>;
   /** The room's subagents by handle (lowercased), ended ones too, from the
    *  hub's record: a message from one wears its parent's face. */
   subagents?: ReadonlyMap<string, Subagent>;
@@ -371,10 +368,32 @@ interface FeedRowProps {
   /** In the channel, a run in this event's thread and where it stands: its
    *  start and its end draw as lines about the run. */
   run?: RunProgress | null;
+  /** Who the message's sender interrupted with it, marked on the message. */
+  interrupted?: Interrupted[];
 }
 
-/** One event as a row: a notice, a conductor line or a chat message. */
-export function FeedRow({
+/** Whether a row would draw the same: every prop the same, a reply's context by
+ *  what it holds, since a thread passes a new one each time it draws. */
+function sameRow(a: FeedRowProps, b: FeedRowProps): boolean {
+  for (const key of Object.keys({ ...a, ...b }) as (keyof FeedRowProps)[]) {
+    if (key === "replyContext") {
+      if (a.replyContext?.rated !== b.replyContext?.rated) return false;
+    } else if (key === "hit") {
+      if (a.hit?.active !== b.hit?.active || a.hit?.query !== b.hit?.query) return false;
+    } else if (!Object.is(a[key], b[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** One event as a row: a notice, a conductor line or a chat message. A row
+ *  draws again only when something it shows changed, not every time its list
+ *  does: a list draws again on every message, poll and scroll, and drawing
+ *  hundreds of rows each time is what made a long channel slow. */
+export const FeedRow = memo(FeedRowView, sameRow);
+
+function FeedRowView({
   ev,
   prev,
   ctx,
@@ -385,6 +404,7 @@ export function FeedRow({
   turnMembers,
   replyContext,
   run,
+  interrupted,
 }: FeedRowProps) {
   const { threads, rowNames, onOpenThread, onOpenMemory } = ctx;
 
@@ -681,6 +701,7 @@ export function FeedRow({
       rowRef={rowRef}
       hit={hit}
       replyContext={replyContext}
+      interrupted={interrupted}
     />
   );
 }
@@ -698,6 +719,7 @@ export function MessageRow({
   rowRef,
   hit,
   replyContext,
+  interrupted,
 }: {
   ev: Event;
   grouped: boolean;
@@ -706,6 +728,7 @@ export function MessageRow({
   rowRef?: React.Ref<HTMLDivElement>;
   hit?: { query: string[]; active: boolean };
   replyContext?: ReplyContext;
+  interrupted?: Interrupted[];
 }) {
   const { roomName, agentHandles, engineHandles, agentTags, agentOwners, flagsByMessage, refreshFlags } = ctx;
   const drawsValues = Boolean(replyContext?.rated);
@@ -754,7 +777,7 @@ export function MessageRow({
               beside, so its ⚡ sits where the name's avatar would. */}
           {grouped && ev.messageId && (
             <span className="flex h-5 items-center justify-center">
-              <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />
+              <InterruptMark marks={interrupted} />
             </span>
           )}
         </div>
@@ -781,7 +804,7 @@ export function MessageRow({
                 </span>
               )}
               <Ago at={ev.at} className="flex-shrink-0 whitespace-nowrap text-micro tabular text-faint" />
-              {ev.messageId && <InterruptMark marks={ctx.interruptedByMessage?.get(ev.messageId)} />}
+              {ev.messageId && <InterruptMark marks={interrupted} />}
             </div>
           )}
           {/* A rating reply leads with its ratings as bars; its prose says the

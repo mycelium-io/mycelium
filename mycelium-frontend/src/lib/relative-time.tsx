@@ -4,6 +4,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { formatDate } from "@/lib/date-format";
 
 /** "now", "2m ago", "3h ago", "yesterday", "4d ago", then the date. */
 export function relativeTime(at: number, now: number): string {
@@ -16,13 +17,13 @@ export function relativeTime(at: number, now: number): string {
   const d = Math.floor(h / 24);
   if (d === 1) return "yesterday";
   if (d < 7) return `${d}d ago`;
-  return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatDate(new Date(at), { month: "short", day: "numeric" });
 }
 
 /** The exact time, for a hover: "Oct 4, 17:22". */
 export function exactTime(at: number): string {
   if (!at) return "";
-  return new Date(at).toLocaleString(undefined, {
+  return formatDate(new Date(at), {
     month: "short",
     day: "numeric",
     hour: "2-digit",

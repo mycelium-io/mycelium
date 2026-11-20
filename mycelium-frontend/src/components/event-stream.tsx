@@ -831,7 +831,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
     for (const [id, marks] of liveInterrupts) for (const m of marks) add(id, m);
     return out;
   }, [events, liveInterrupts]);
-  const feedCtx = useMemo(() => ({ ...feed, interruptedByMessage }), [feed, interruptedByMessage]);
 
   const candidates = useMemo(
     () => inChannel.filter(e => !isActivity(e) || isAlsoInChat(e, boardMoves)),
@@ -1280,7 +1279,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onO
                   key={ev.id}
                   ev={ev}
                   prev={visible[skipped + idx - 1]}
-                  ctx={feedCtx}
+                  ctx={feed}
+                  interrupted={ev.messageId ? interruptedByMessage.get(ev.messageId) : undefined}
                   pingLine={pingLines.get(ev.id)}
                   run={runs.get(runEpisode(ev) ?? "")}
                   marked={marked}
