@@ -135,7 +135,7 @@ function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName, foldTo,
     <>
       <div
         ref={ref}
-        className="overflow-hidden"
+        className="relative overflow-hidden"
         style={
           clamped
             ? {
@@ -155,6 +155,17 @@ function MessageBodyImpl({ content, hit, claims, onOpenMemory, roomName, foldTo,
         >
           {prose}
         </MarkdownContent>
+        {/* The faded lines belong to Show more. A link half under the fade
+            would otherwise open its tooltip over the button, or open the
+            memory when the reader meant to unfold. */}
+        {clamped && (
+          <div
+            aria-hidden
+            data-testid="fold-cover"
+            onClick={() => setExpanded(true)}
+            className={`absolute inset-x-0 bottom-0 cursor-pointer ${foldTo === undefined ? "h-14" : "h-5"}`}
+          />
+        )}
       </div>
       {/* With the prose it opens, above any files the message carries. */}
       {overflows && !forceOpen && (
