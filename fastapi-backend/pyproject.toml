@@ -30,8 +30,8 @@ dependencies = [
     # transcribing real speech with both models (fast and accurate) rather than
     # taken blindly. The core package carries the native libraries and must be
     # the same version; it is listed itself so the two move together.
-    "sherpa-onnx==2.0.1",
-    "sherpa-onnx-core==2.0.1",
+    "sherpa-onnx==2.0.2",
+    "sherpa-onnx-core==2.0.2",
 ]
 
 [dependency-groups]
