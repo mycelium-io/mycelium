@@ -29,7 +29,7 @@
     "cmdk": "^1.1.1",
     "d3-force": "^3.0.0",
     "dockview-react": "^8.4.1",
-    "driver.js": "^1.8.0",
+    "driver.js": "^1.14.0",
     "gemoji": "8.1.0",
     "jose": "^6.2.11",
     "lucide-react": "^1.66.0",
