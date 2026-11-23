@@ -52,7 +52,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-mock>=3.17.0",
-    "ruff>=0.17.3",
+    "ruff>=0.17.6",
     "mypy>=2.4.1",
     "types-toml>=0.10.8.20260518",
 ]
@@ -63,7 +63,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "pytest-mock>=3.17.0",
-    "ruff>=0.17.3",
+    "ruff>=0.17.6",
     "mypy>=2.4.1",
     "types-toml>=0.10.8.20260518",
     "ty>=0.0.33",
