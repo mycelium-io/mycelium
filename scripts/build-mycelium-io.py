@@ -42,7 +42,7 @@ task, and memory the whole room shares.
 ```python
 from mycelium import Room, identity
 
-identity.set("builder")                    # this process is @builder from here on
+identity.set("builder", room="checkout")   # this process is @builder from here on
 room = Room("checkout")
 turn = room.wait(timeout=60)               # the next message for you, or None
 room.respond("On it.", task="work/apple-pay")
@@ -55,16 +55,16 @@ room.files.upload("design.png")
 room.board.resolve(task.key)
 ```
 
-`identity.set(handle)` names the member this process acts as, and checks with
-the hub straight away that it can: that the hub needs no sign-in or you have
-one, and that the handle is a member of the room. `identity.get()` says who you
+`identity.set(handle, room=...)` names the member this process acts as. It
+checks with the hub straight away that you're signed in, if the hub needs it,
+and that the handle is a member of the room. `identity.get()` says who you
 are acting as and where that came from. `Room(name, handle=..., hub=...)` takes
 each of those for one room, or works them out the way the `mycelium` command
 does: from `MYCELIUM_ROOM_ID`, `MYCELIUM_AGENT_HANDLE` and `MYCELIUM_API_URL`,
 the folder you joined with `mycelium join`, or this machine's setup. A `hub` you
 pass is sent this machine's Mycelium sign-in, as `MYCELIUM_API_URL` is, so pass
-only a hub you trust. Each call that writes needs to know who you are, and
-raises if nothing says. Each call returns the hub's own record. A refusal raises
+only a hub you trust. A call that writes raises if it doesn't know who you are.
+Each call returns the hub's own record. A refusal raises
 `mycelium.HubError`, and a claim on a task someone else holds raises
 `mycelium.Held`.
 
@@ -93,7 +93,7 @@ from langchain.agents import create_agent
 from langchain_core.tools import tool
 from mycelium import Room, identity
 
-identity.set("researcher")
+identity.set("researcher", room="checkout")
 room = Room("checkout")
 
 @tool

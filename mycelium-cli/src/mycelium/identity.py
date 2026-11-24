@@ -157,8 +157,10 @@ def set(handle: str, *, room: str | None = None) -> str:  # noqa: A001
     the hub now rather than at the first write: that the hub can be reached,
     that this machine is signed in when the hub needs it, and that ``handle``
     is a member of the room (``room``, or the one a ``Room()`` would use).
-    Whether the sign-in may act as ``handle`` is the hub's to say, at the
-    first write.
+    Pass ``room`` when the code works in a room by name: without it, this
+    checks whatever room this machine or folder points at, and when none
+    does, it checks only the hub and the sign-in. Whether the sign-in may act
+    as ``handle`` is the hub's to say, at the first write.
     """
     import os
 
