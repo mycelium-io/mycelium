@@ -67,6 +67,7 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.protocol import RETIRED_ENGINE_KINDS
 from mycelium.text_input import takes_text
+from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
     from mycelium_backend_client.types import Response
@@ -925,58 +926,30 @@ def _thread_label(room: str, thread: str) -> str:
 
 def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
     """Write an assignment change through the hub, and say what it did."""
-    from mycelium_backend_client.api.assignments import (
-        claim_assignment_api_rooms_room_name_assignments_claim_post as claim_api,
-    )
-    from mycelium_backend_client.api.assignments import (
-        release_assignment_api_rooms_room_name_assignments_release_post as release_api,
-    )
-    from mycelium_backend_client.api.assignments import (
-        resolve_assignment_api_rooms_room_name_assignments_resolve_post as resolve_api,
-    )
-    from mycelium_backend_client.models import AssignmentRead, ClaimBody, ReleaseBody, ResolveBody
+    from mycelium.board.tasks import Held, Waiting, change_assignment
 
-    payload = {k: v for k, v in body.items() if v is not None}
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            if action == "claim":
-                resp = claim_api.sync_detailed(
-                    room, client=client, body=ClaimBody.from_dict(payload)
-                )
-            elif action == "release":
-                resp = release_api.sync_detailed(
-                    room, client=client, body=ReleaseBody.from_dict(payload)
-                )
-            else:
-                resp = resolve_api.sync_detailed(
-                    room, client=client, body=ResolveBody.from_dict(payload)
-                )
+            held = change_assignment(client, room, action, **body)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code == 409:  # noqa: PLR2004
-        detail = json.loads(resp.content).get("detail", {})
-        waiting = detail.get(WAITING_FIELD) if isinstance(detail, dict) else None
-        if waiting:
-            console.print(
-                f"[yellow]·[/yellow] {payload.get('key')} still waits on {', '.join(waiting)}. "
-                "[dim]Resolve those first, or pass --force to take it anyway.[/dim]"
-            )
-            raise typer.Exit(1)
-        held_by = detail.get("owner") if isinstance(detail, dict) else None
+    except Waiting as e:
         console.print(
-            f"[yellow]·[/yellow] {payload.get('key')} is already held by @{held_by}. "
-            f"[dim]They hand it back, or someone moves it with "
-            f"`mycelium board assign {payload.get('key')} @<handle> --reassign`.[/dim]"
+            f"[yellow]·[/yellow] {e.key} still waits on {', '.join(e.waiting_on)}. "
+            "[dim]Resolve those first, or pass --force to take it anyway.[/dim]"
         )
-        raise typer.Exit(1)
-    if resp.status_code >= 400:  # noqa: PLR2004
-        console.print(f"[red]✗[/red] {action} failed: {resp.content.decode(errors='replace')}")
-        raise typer.Exit(1)
-    held = resp.parsed
-    if not isinstance(held, AssignmentRead):
-        console.print(f"[red]✗[/red] {action} failed: {resp.content.decode(errors='replace')}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
+    except Held as e:
+        console.print(
+            f"[yellow]·[/yellow] {e.key} is already held by @{e.owner}. "
+            f"[dim]They hand it back, or someone moves it with "
+            f"`mycelium board assign {e.key} @<handle> --reassign`.[/dim]"
+        )
+        raise typer.Exit(1) from e
+    except UnexpectedStatus as e:
+        console.print(f"[red]✗[/red] {action} failed: {e.content.decode(errors='replace')}")
+        raise typer.Exit(1) from e
     if action == "claim":
         until = (
             f"for {held.ttl_minutes}m, renewed by your loop, or it drains back to the pool."
@@ -1111,34 +1084,32 @@ def board_new(
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    body: dict[str, Any] = {"title": title, "handle": actor}
-    if content and content.strip():
-        body["content"] = content
-    if assign:
-        body["assignee"] = assign.lstrip("@")
-    if parent:
-        # Resolved here so ``--parent t3`` works like every other row id, and so
-        # a typo is refused against the board the reader is looking at rather
-        # than by the hub against a key they never typed. A ``part-of`` edge
-        # points at a memory, so a row projected from anything else has nothing
-        # to be the parent *of*.
-        body["parent"] = _parent_key(name, parent)
-    from mycelium_backend_client.api.tasks import create_task_api_rooms_room_name_tasks_post
-    from mycelium_backend_client.models import MemoryRead, TaskCreate
+    # Resolved here so ``--parent t3`` works like every other row id, and so a
+    # typo is refused against the board the reader is looking at rather than by
+    # the hub against a key they never typed. A ``part-of`` edge points at a
+    # memory, so a row projected from anything else has nothing to be the
+    # parent *of*.
+    parent_key = _parent_key(name, parent) if parent else None
+    from mycelium.board.tasks import create_task
 
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            resp = create_task_api_rooms_room_name_tasks_post.sync_detailed(
-                name, client=client, body=TaskCreate.from_dict(body)
+            task = create_task(
+                client,
+                name,
+                title=title,
+                handle=actor,
+                body=content,
+                assign=assign,
+                parent=parent_key,
             )
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    task = resp.parsed
-    if not isinstance(task, MemoryRead):
-        text = resp.content.decode(errors="replace")
+    except UnexpectedStatus as e:
+        text = e.content.decode(errors="replace")
         console.print(f"[red]✗[/red] could not create the task: {text}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     if _json_wanted(ctx):
         typer.echo(json.dumps(task.to_dict(), indent=2, default=str))
         return

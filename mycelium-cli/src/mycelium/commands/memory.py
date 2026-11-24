@@ -11,7 +11,6 @@ Reads and writes resolve against the hub over HTTP; the hub owns the one store
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -21,7 +20,6 @@ from rich.markup import escape
 from rich.table import Table
 
 from mycelium import identity
-from mycelium.board.model import LIVE_NAMESPACES
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged, room_or_exit
 from mycelium.client import answered, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
@@ -31,7 +29,14 @@ from mycelium.filesystem import (
     serialize_memory,
     write_hub_memories,
 )
-from mycelium.protocol import MEMORY_CATEGORIES
+from mycelium.memory import (
+    check_key,
+    learned,
+    memory_item,
+    read_memory,
+    save_memory,
+    search_memories,
+)
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 from mycelium_backend_client.models import (
@@ -216,70 +221,14 @@ def memory_set(
         mycelium memory set payments/retries-reuse-key "Retries reuse the key" \\
             --kind finding --derived-from payments/stripe-dedupes --task work/apple-pay
     """
-    from mycelium_backend_client.api.memory import (
-        create_memories_api_rooms_room_name_memory_post as create_api,
-    )
-    from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
-
-    if not key.strip() or "\\" in key or key.endswith("/"):
-        console.print(
-            f"[red]Error:[/red] {key!r} isn't a memory key. Use `/` between its parts, like context/goal."
-        )
-        raise typer.Exit(1)
+    try:
+        check_key(key)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {escape(str(e))}")
+        raise typer.Exit(1) from e
 
     room_name = _get_active_room(room)
     handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
-
-    # The hub's path safety is the one rule on a key, and a key is stored as
-    # typed. The exception: every key under a board namespace is a row, so a
-    # nested one there would file a row nobody asked for.
-    category, _, name = key.partition("/")
-    if category in LIVE_NAMESPACES and "/" in name:
-        joined = "-".join(p for p in name.split("/") if p)
-        console.print(
-            f"[red]Error:[/red] {escape(key)} can't have folders: every {category}/ key is a "
-            f"row on the board, so it takes one name. Try {category}/{escape(joined)}."
-            + (
-                " For a part of a task, use `mycelium board new <title> --parent <row>`."
-                if category == "work"
-                else ""
-            )
-        )
-        raise typer.Exit(1)
-
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
-
-    if name and category in MEMORY_CATEGORIES:
-        # Structured category key: auto-timestamp and structured value
-        from mycelium_backend_client.models import MemoryCreateValueType0
-
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        structured_value = MemoryCreateValueType0()
-        structured_value["text"] = value
-        structured_value["logged_at"] = timestamp
-        structured_value["category"] = category
-        item = MemoryCreate(
-            key=key,
-            value=structured_value,
-            created_by=handle,
-            embed=not no_embed,
-            content_text=f"[{timestamp}] {value}",
-            tags=tag_list,
-        )
-    else:
-        # Freeform key: pass value through as-is
-        try:
-            parsed_value = json.loads(value)
-        except json.JSONDecodeError:
-            parsed_value = value
-
-        item = MemoryCreate(
-            key=key,
-            value=parsed_value,
-            created_by=handle,
-            embed=not no_embed,
-            tags=tag_list,
-        )
 
     # Extra frontmatter rides as an additional property; the generated client
     # passes unknown fields through, so no client regen is needed.
@@ -287,29 +236,30 @@ def memory_set(
     if expandable:
         frontmatter["expandable"] = True
     # What the team learned (the hub checks these, and refuses a bad one).
-    if kind:
-        frontmatter["kind"] = kind
-    if task:
-        frontmatter["task"] = task
-    if derived_from:
-        frontmatter["derived-from"] = [k.strip() for k in derived_from.split(",") if k.strip()]
-    if still_open:
-        frontmatter["open"] = True
-    if frontmatter:
-        item["meta"] = frontmatter
-
-    batch = MemoryBatchCreate(items=[item])
+    derived = [k.strip() for k in derived_from.split(",") if k.strip()] if derived_from else None
+    frontmatter |= learned(kind, task, derived, still_open=still_open)
+    item = memory_item(
+        key,
+        value,
+        handle=handle,
+        embed=not no_embed,
+        tags=[t.strip() for t in tags.split(",")] if tags else None,
+        meta=frontmatter,
+    )
 
     # Write to hub (single store; spoke has no local copy)
     with _hub_session() as client:
-        resp = create_api.sync_detailed(room_name=room_name, client=client, body=batch)
-        # A validation refusal is said here; any other refusal is the session's to report.
-        saved: list[MemoryRead] = [] if resp.status_code == 422 else answered(resp, list)  # noqa: PLR2004
-        if not saved:
-            said = hub_error_detail(resp.content) or "it gave no reason"
+        try:
+            saved = save_memory(client, room_name, item)
+        except UnexpectedStatus as e:
+            # A validation refusal, or nothing saved, is said here; any other
+            # refusal is the session's to report.
+            if e.status_code != 422 and e.status_code >= 400:  # noqa: PLR2004
+                raise
+            said = hub_error_detail(e.content) or "it gave no reason"
             console.print(f"[red]Error:[/red] the hub didn't save {room_name}/{key}: {said}")
-            raise typer.Exit(1)
-        console.print(f"[green]Memory set:[/green] {room_name}/{key} (v{saved[0].version})")
+            raise typer.Exit(1) from e
+        console.print(f"[green]Memory set:[/green] {room_name}/{key} (v{saved.version})")
     if kind:
         _say_learned(room_name, key)
 
@@ -436,10 +386,6 @@ def memory_get(
     as_json: bool = False,
 ) -> None:
     """Read a memory by key (from the hub)."""
-    from mycelium_backend_client.api.memory import (
-        get_memory_api_rooms_room_name_memory_key_get as get_api,
-    )
-
     room_name = _get_active_room(room)
 
     if expand:
@@ -451,9 +397,7 @@ def memory_get(
 
     with _hub_session() as client:
         try:
-            mem = answered(
-                get_api.sync_detailed(room_name=room_name, key=key, client=client), MemoryRead
-            )
+            mem = read_memory(client, room_name, key)
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(f"[red]Not found:[/red] {key}")
@@ -585,31 +529,20 @@ def memory_search(
     as_json: bool = False,
 ) -> None:
     """Semantic search over memories (via the backend API)."""
-    from mycelium_backend_client.api.memory import (
-        search_memories_api_rooms_room_name_memory_search_post as search_api,
-    )
-    from mycelium_backend_client.models import MemorySearchRequest
-
     room_name = _get_active_room(room)
 
     with _hub_session() as client:
-        body = MemorySearchRequest(query=query, limit=limit)
-        from mycelium_backend_client.models import MemorySearchResponse
-
-        result = answered(
-            search_api.sync_detailed(room_name=room_name, client=client, body=body),
-            MemorySearchResponse,
-        )
+        results = search_memories(client, room_name, query, limit)
 
         if as_json:
-            _echo_json([r.to_dict() for r in result.results])
+            _echo_json([r.to_dict() for r in results])
             return
 
-        if not result.results:
+        if not results:
             console.print("[dim]No matching memories found[/dim]")
             return
 
-        for r in result.results:
+        for r in results:
             mem = r.memory
             sim = r.similarity
             console.print(

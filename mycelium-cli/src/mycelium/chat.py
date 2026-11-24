@@ -29,6 +29,8 @@ from mycelium.names import who
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
+    from mycelium_backend_client import Client
+    from mycelium_backend_client.models import ReplyRead
 
 
 def post(
@@ -71,6 +73,23 @@ def post(
 
     preview = content[:80] + ("…" if len(content) > 80 else "")
     typer.echo(f"  ↑  {sender_handle} → {destination or room_name}: {preview}")
+
+
+def reply(
+    client: Client, room: str, handle: str, text: str, episode: str | None = None
+) -> ReplyRead:
+    """Post ``text`` as ``handle``'s reply: into the thread ``episode``, or the room.
+
+    ``mycelium respond`` and :meth:`mycelium.Room.respond` send this.
+    """
+    from mycelium_backend_client.api.participate import (
+        post_reply_api_rooms_room_name_reply_post as reply_api,
+    )
+    from mycelium_backend_client.models import ReplyBody, ReplyRead
+    from mycelium_backend_client.types import UNSET
+
+    body = ReplyBody(handle=handle, text=text, episode=episode or UNSET)
+    return answered(reply_api.sync_detailed(room, client=client, body=body), ReplyRead)
 
 
 _RELATIVE = re.compile(r"^(\d+)\s*([smhd])$")

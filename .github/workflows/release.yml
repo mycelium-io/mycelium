@@ -387,3 +387,45 @@ jobs:
     uses: ./.github/workflows/pages.yml
     with:
       ref: ${{ github.ref_name }}
+
+  # The Python library, `pip install mycelium-io` (`from mycelium import Room`):
+  # the CLI's package without the `mycelium` command. It publishes through
+  # PyPI's trusted publishing (no token is stored), which needs the project's
+  # publisher on pypi.org naming this workflow and the `pypi` environment.
+  # Until the repository variable PUBLISH_PYPI is "true", the job is skipped.
+  # A prerelease tag publishes a PyPI prerelease, which pip installs only
+  # when asked for (`pip install --pre mycelium-io`).
+  publish-pypi:
+    needs: [detect-release-type, build-and-release]
+    if: vars.PUBLISH_PYPI == 'true'
+    name: Publish mycelium-io to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: ./.github/actions/setup-uv
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Bump version to match tag
+        working-directory: mycelium-cli
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
+
+      - name: Build the mycelium-io wheel
+        run: uv run --no-project python scripts/build-mycelium-io.py --out dist-pypi
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          packages-dir: dist-pypi
