@@ -137,3 +137,100 @@ def resolve_actor(
             "`mycelium iam <handle>`, or pass `--as <handle>` explicitly."
         )
     return fallback
+
+
+# ── for code: identity.set / identity.get ─────────────────────────────────────
+
+#: Where :func:`get` says a handle came from when :func:`set` named it.
+SET_IN_CODE = "identity.set"
+
+#: The handle :func:`set` named for this process, if it did.
+_set_handle: str | None = None
+
+
+def set(handle: str, *, room: str | None = None) -> str:  # noqa: A001
+    """Act as ``handle`` for the rest of this process, as ``MYCELIUM_AGENT_HANDLE`` does.
+
+    Every :class:`mycelium.Room` made after it acts as ``handle``, unless it is
+    given a ``handle=`` of its own. Child processes inherit it, so a
+    ``mycelium`` command the code runs acts as ``handle`` too. It checks with
+    the hub now rather than at the first write: that the hub can be reached,
+    that this machine is signed in when the hub needs it, and that ``handle``
+    is a member of the room (``room``, or the one a ``Room()`` would use).
+    Whether the sign-in may act as ``handle`` is the hub's to say, at the
+    first write.
+    """
+    import os
+
+    from mycelium import caller
+    from mycelium.agent_credentials import normalize_handle
+    from mycelium.cli_options import resolve_room
+    from mycelium.config import MyceliumConfig
+    from mycelium.exceptions import MyceliumError
+
+    global _set_handle  # noqa: PLW0603
+    name = normalize_handle(handle)
+    if not name:
+        msg = "identity.set needs a handle, such as identity.set('builder')."
+        raise ValueError(msg)
+    config = MyceliumConfig.load()
+    who = _hub_whoami(config)
+    if who is None:
+        msg = f"Can't reach the hub at {config.server.api_url}."
+        raise MyceliumError(msg)
+    if who.gated and not who.handle:
+        msg = (
+            "This hub needs a sign-in. Run `mycelium login` on this machine, or give "
+            "the process its own with MYCELIUM_AGENT_AUTH_CLIENT_ID and "
+            "MYCELIUM_AGENT_AUTH_CLIENT_SECRET."
+        )
+        raise MyceliumError(msg)
+    try:
+        room_name = resolve_room(config, room)
+    except MyceliumError:
+        room_name = None
+    if room_name and name != who.handle and not _is_member(config, room_name, name):
+        msg = f"@{name} isn't a member of {room_name}."
+        raise MyceliumError(
+            msg, suggestion=f"Add it with: mycelium agent create {name} --room {room_name}"
+        )
+    os.environ[caller.HANDLE_ENV] = name
+    _set_handle = name
+    return name
+
+
+def get() -> "tuple[str | None, str]":
+    """Who this process acts as, and where that answer came from.
+
+    The same answer, from the same sources in the same order, as
+    ``mycelium whoami --sources``: ``identity.set``, the environment, the herdr
+    pane, this folder's membership, this machine's sign-in or ``mycelium iam``.
+    ``(None, "default")`` when nothing says.
+    """
+    import os
+
+    from mycelium import caller
+    from mycelium.config import MyceliumConfig
+
+    answer = caller.handle(MyceliumConfig.load())
+    if (
+        _set_handle
+        and answer.value == _set_handle
+        and os.environ.get(caller.HANDLE_ENV, "").strip() == _set_handle
+    ):
+        return answer.value, SET_IN_CODE
+    return answer.value, answer.source
+
+
+def _is_member(config: "MyceliumConfig", room: str, handle: str) -> bool:
+    """Whether ``handle`` is an agent in ``room``, or a person the hub knows."""
+    from mycelium import client
+    from mycelium_backend_client.api.agents import list_agents_api_rooms_room_name_agents_get
+    from mycelium_backend_client.api.users import get_user_api_users_handle_get
+
+    with client.typed_client(config, timeout=10.0, raise_on_unexpected_status=False) as http:
+        agents = list_agents_api_rooms_room_name_agents_get.sync(room, client=http)
+        if isinstance(agents, list) and any(getattr(a, "handle", None) == handle for a in agents):
+            return True
+        found = get_user_api_users_handle_get.sync_detailed(handle, client=http)
+    return found.status_code == 200  # noqa: PLR2004

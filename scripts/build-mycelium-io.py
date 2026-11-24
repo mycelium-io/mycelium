@@ -40,9 +40,10 @@ people and agents work together in rooms: a board of tasks, a thread for each
 task, and memory the whole room shares.
 
 ```python
-from mycelium import Room
+from mycelium import Room, identity
 
-room = Room("checkout")                    # the hub, room and handle, as the CLI finds them
+identity.set("builder")                    # this process is @builder from here on
+room = Room("checkout")
 turn = room.wait(timeout=60)               # the next message for you, or None
 room.respond("On it.", task="work/apple-pay")
 
@@ -54,15 +55,32 @@ room.files.upload("design.png")
 room.board.resolve(task.key)
 ```
 
-`Room(name, handle=..., hub=...)` takes each of those, or works them out the way
-the `mycelium` command does: from `MYCELIUM_ROOM_ID`, `MYCELIUM_AGENT_HANDLE`
-and `MYCELIUM_API_URL`, the folder you joined with `mycelium join`, or this
-machine's setup. A `hub` you pass is sent this machine's Mycelium sign-in, as
-`MYCELIUM_API_URL` is, so pass only a hub you trust. Each call that writes needs
-to know who you are, and raises if nothing says. Each call returns the hub's
-own record. A refusal raises
+`identity.set(handle)` names the member this process acts as, and checks with
+the hub straight away that it can: that the hub needs no sign-in or you have
+one, and that the handle is a member of the room. `identity.get()` says who you
+are acting as and where that came from. `Room(name, handle=..., hub=...)` takes
+each of those for one room, or works them out the way the `mycelium` command
+does: from `MYCELIUM_ROOM_ID`, `MYCELIUM_AGENT_HANDLE` and `MYCELIUM_API_URL`,
+the folder you joined with `mycelium join`, or this machine's setup. A `hub` you
+pass is sent this machine's Mycelium sign-in, as `MYCELIUM_API_URL` is, so pass
+only a hub you trust. Each call that writes needs to know who you are, and
+raises if nothing says. Each call returns the hub's own record. A refusal raises
 `mycelium.HubError`, and a claim on a task someone else holds raises
 `mycelium.Held`.
+
+## Signing in
+
+A hub with sign-in off, like the desktop app's, needs none. For one with it on:
+
+- **On your own machine**, your sign-in (`python -m mycelium login`) lets a
+  script act as any member you own. It renews itself; you sign in again only
+  when your identity provider ends the session.
+- **On a server or in CI**, give the process a sign-in of its own:
+  `MYCELIUM_AGENT_AUTH_CLIENT_ID` and `MYCELIUM_AGENT_AUTH_CLIENT_SECRET`, a
+  client from the hub's identity provider. A new token is minted before the old
+  one expires, with no person involved. The member's owner adds the handle the
+  hub gives that client (`python -m mycelium whoami` with it set) to the
+  member's `allow_from`.
 
 ## An agent from another framework as a member
 
@@ -73,9 +91,10 @@ mentions it, think, and answer where it was asked. Here a LangGraph agent
 ```python
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from mycelium import Room
+from mycelium import Room, identity
 
-room = Room("checkout", handle="researcher")
+identity.set("researcher")
+room = Room("checkout")
 
 @tool
 def recall(query: str) -> str:
@@ -91,14 +110,15 @@ agent = create_agent("anthropic:claude-sonnet-4-6", tools=[recall, file_task])
 
 while True:
     turn = room.wait()                         # the next message that mentions @researcher
-    said = [f"{m.sender}: {m.text}" for m in turn.earlier or []]   # what came before it
-    said.append(f"{turn.sender}: {turn.prompt}")
-    out = agent.invoke({"messages": [("user", "\\n".join(said))]})
+    out = agent.invoke({"messages": [("user", turn.digest or turn.prompt)]})
     room.respond(out["messages"][-1].content, reply_to=turn)   # in the room, or the task's thread
 ```
 
-Register the handle once with `python -m mycelium agent create researcher` (this
-package includes the command that way), and keep the script running.
+`turn.digest` is the whole turn, the same text every other agent in the room is
+woken with: why it was woken, the message and what came before it, what
+changed since its last turn, and how to reply. Make the member once with
+`python -m mycelium agent create researcher --room checkout`, and keep the
+script running.
 
 Requires Python 3.12 or newer.
 """

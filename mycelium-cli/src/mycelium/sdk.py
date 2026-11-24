@@ -355,7 +355,10 @@ class Room:
 
     def _acting(self) -> str:
         if not self.handle:
-            msg = "Say who you're acting as: Room(..., handle='me'), or set MYCELIUM_AGENT_HANDLE."
+            msg = (
+                "Say who you're acting as: identity.set('me') once, Room(..., handle='me'), "
+                "or MYCELIUM_AGENT_HANDLE."
+            )
             raise MyceliumError(msg)
         return self.handle
 

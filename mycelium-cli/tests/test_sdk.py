@@ -19,7 +19,7 @@ from typing import Any
 import httpx
 import pytest
 
-from mycelium import Held, HubError, Room, Waiting
+from mycelium import Held, HubError, Room, Waiting, identity
 from mycelium.exceptions import MyceliumError
 from tests.conftest import StandInHub, install_stand_in_hub, memory_read
 
@@ -99,6 +99,50 @@ def test_it_waits_and_responds_in_a_task_s_thread(hub: StandInHub) -> None:
         "text": "On it.",
         "episode": THREAD,
     }
+
+
+@pytest.fixture
+def fresh_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No handle from the environment, and nothing remembered from another test."""
+    monkeypatch.delenv("MYCELIUM_AGENT_HANDLE")
+    monkeypatch.setattr(identity, "_WHOAMI_CACHE", {})
+    monkeypatch.setattr(identity, "_set_handle", None)
+
+
+def _members(request: httpx.Request) -> Any:
+    if request.url.path == "/api/whoami":
+        return {"gated": False}
+    if request.url.path == "/api/rooms/demo/agents":
+        return [{"handle": "scout", "adapter": "claude_code"}]
+    if request.url.path.startswith("/api/users/"):
+        return 404, {"detail": "no such user"}
+    return _answers(request)
+
+
+def test_identity_set_names_who_every_room_acts_as(hub: StandInHub, fresh_identity: None) -> None:
+    hub.answer = _members
+    assert identity.get() == (None, "default")
+    assert identity.set("@Scout") == "scout"
+    assert identity.get() == ("scout", "identity.set")
+    assert Room().handle == "scout"
+    assert Room(handle="lead").handle == "lead"
+
+
+def test_identity_set_refuses_a_handle_the_room_doesnt_have(
+    hub: StandInHub, fresh_identity: None
+) -> None:
+    hub.answer = _members
+    with pytest.raises(MyceliumError, match="isn't a member of demo"):
+        identity.set("scuot")
+    assert identity.get() == (None, "default")
+
+
+def test_identity_set_says_to_sign_in_on_a_hub_that_needs_it(
+    hub: StandInHub, fresh_identity: None
+) -> None:
+    hub.answer = lambda _r: (401, {"detail": "sign in"})
+    with pytest.raises(MyceliumError, match="needs a sign-in"):
+        identity.set("scout")
 
 
 def test_a_reply_lands_where_the_question_was_asked(hub: StandInHub) -> None:
