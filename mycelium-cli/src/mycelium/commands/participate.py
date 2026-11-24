@@ -36,7 +36,7 @@ import typer
 
 from mycelium import chat
 from mycelium.cli_options import ACT_FLAGS, ACT_HELP, acts_as, emits_json, in_room, resolve_handle
-from mycelium.client import answered, sent_unparsed, typed_client
+from mycelium.client import typed_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -47,15 +47,11 @@ from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 from mycelium_backend_client.models import (
     AskAnswer,
-    AssignmentsRenewed,
     AssignmentWatchRead,
     AwaitAskRead,
     AwaitDeliveredRead,
     AwaitTurn,
-    ConfirmBody,
-    RenewBody,
 )
-from mycelium_backend_client.types import UNSET
 
 #: Statuses a resident loop stops on: the hub rejected the caller's identity
 #: (401) or refused it this handle (403). Everything else is treated as a blip.
@@ -137,10 +133,6 @@ def _await_request(
     config: MyceliumConfig, room_name: str, handle: str, wait: int, episode: str | None
 ) -> AwaitTurn | None:
     """One long-poll of up to ``wait`` seconds: the turn, or ``None``."""
-    from mycelium_backend_client.api.participate import (
-        await_message_api_rooms_room_name_await_get as await_api,
-    )
-
     key = _pending_key(config, room_name, handle, episode)
     owed = _pending().get(key)
     timeout = float(wait) + 15.0
@@ -148,26 +140,16 @@ def _await_request(
         config, timeout=timeout, handle=handle, raise_on_unexpected_status=False
     ) as client:
         try:
-            resp = await_api.sync_detailed(
-                room_name,
-                client=client,
-                handle=handle,
-                timeout=wait,
-                confirm=True,
-                episode=episode or UNSET,
-                confirmed=owed if owed is not None else UNSET,
-            )
+            turn = chat.await_turn(client, room_name, handle, wait, episode=episode, confirmed=owed)
         except json_module.JSONDecodeError as e:
             raise _NotTheHub from e
         except _UNREADABLE as e:
             # The hub's own JSON, in a shape this CLI doesn't know: waiting again
             # would be handed the same turn, unconfirmed, for as long as it runs.
             raise MyceliumError(_mismatch(config)) from e
-    if resp.status_code >= 400:  # noqa: PLR2004
-        raise UnexpectedStatus(resp.status_code, resp.content)
     if owed is not None:
         _set_pending(key, None)
-    return resp.parsed if isinstance(resp.parsed, AwaitTurn) else None
+    return turn
 
 
 def _mismatch(config: MyceliumConfig) -> str:
@@ -186,23 +168,14 @@ def _confirm(config: MyceliumConfig, room_name: str, handle: str, turn: AwaitTur
     """Tell the hub ``turn`` arrived, so it marks it read. If that fails, the
     position is kept on this machine and sent with the next ``await``, which
     confirms it there: the turn may be shown twice, never over and over."""
-    from mycelium_backend_client.api.participate import (
-        confirm_delivery_api_rooms_room_name_await_confirm_post as confirm_api,
-    )
-
     delivered = turn.delivered
     if not isinstance(delivered, AwaitDeliveredRead):
         return
-    body = ConfirmBody(handle=handle, position=delivered.position, episode=delivered.episode)
     try:
         with typed_client(
             config, timeout=15, handle=handle, raise_on_unexpected_status=False
         ) as client:
-            # Confirmed once the hub takes it; what it answers with isn't read,
-            # so a hub a version apart doesn't make a landed confirm look lost.
-            resp = sent_unparsed(confirm_api, client, room_name, body=body)
-        if resp.status_code >= 400:  # noqa: PLR2004
-            raise UnexpectedStatus(resp.status_code, resp.content)
+            chat.confirm_turn(client, room_name, handle, delivered.position, delivered.episode)
     except (httpx.HTTPError, UnexpectedStatus):
         key = _pending_key(config, room_name, handle, delivered.episode or None)
         _set_pending(key, delivered.position)
@@ -264,33 +237,21 @@ def _renew_assignments(config: MyceliumConfig, room_name: str, handle: str) -> l
     lease still in its first half is left alone, and the writes it does make
     broadcast nothing.
     """
-    from mycelium_backend_client.api.assignments import (
-        renew_assignments_api_rooms_room_name_assignments_renew_post as renew_api,
-    )
+    from mycelium.board.tasks import renew_leases
 
     with typed_client(config, timeout=15, handle=handle, raise_on_unexpected_status=False) as c:
-        resp = renew_api.sync_detailed(room_name, client=c, body=RenewBody(handle=handle))
-    return [row.key for row in answered(resp, AssignmentsRenewed).renewed]
+        return renew_leases(c, room_name, handle)
 
 
 def _await_lease(
     config: MyceliumConfig, room_name: str, key: str, since: str | None, timeout: int
 ) -> AssignmentWatchRead:
     """One long-poll on a lease's transitions."""
-    from mycelium_backend_client.api.assignments import (
-        await_assignment_api_rooms_room_name_assignments_await_get as watch_api,
-    )
+    from mycelium.board.tasks import watch_lease
 
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
     with typed_client(config, timeout=client_timeout, raise_on_unexpected_status=False) as c:
-        resp = watch_api.sync_detailed(
-            room_name,
-            client=c,
-            key=key,
-            timeout=timeout,
-            since=since if since is not None else UNSET,
-        )
-    return answered(resp, AssignmentWatchRead)
+        return watch_lease(c, room_name, key, timeout, since)
 
 
 def _print_lease(state: AssignmentWatchRead) -> None:

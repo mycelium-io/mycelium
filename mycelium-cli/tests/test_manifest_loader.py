@@ -42,14 +42,14 @@ def _write_manifest_file(room: str, handle: str, content: str) -> Path:
 
 
 def test_missing_manifest_returns_none_silently(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.WARNING, logger="mycelium.commands.agent"):
+    with caplog.at_level(logging.WARNING, logger="mycelium.agents"):
         assert _load_manifest("room", "ghost") is None
     assert caplog.records == [], "missing manifest must NOT log — only corrupt ones should"
 
 
 def test_corrupt_yaml_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
     path = _write_manifest_file("room", "broken", "---\n: not: valid: yaml: [\n")
-    with caplog.at_level(logging.WARNING, logger="mycelium.commands.agent"):
+    with caplog.at_level(logging.WARNING, logger="mycelium.agents"):
         assert _load_manifest("room", "broken") is None
     assert any("invalid YAML" in r.message and str(path) in r.message for r in caplog.records), (
         "corrupt YAML must surface as a WARNING with the file path"
@@ -59,7 +59,7 @@ def test_corrupt_yaml_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
 def test_schema_violation_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
     # Valid YAML, wrong shape: `adapter` must be one of the known Literal values.
     path = _write_manifest_file("room", "schema-bad", "adapter: not-a-real-adapter\n")
-    with caplog.at_level(logging.WARNING, logger="mycelium.commands.agent"):
+    with caplog.at_level(logging.WARNING, logger="mycelium.agents"):
         assert _load_manifest("room", "schema-bad") is None
     assert any(
         "schema validation failed" in r.message and str(path) in r.message for r in caplog.records

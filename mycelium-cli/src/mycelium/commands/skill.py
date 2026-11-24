@@ -23,9 +23,9 @@ import httpx
 import typer
 from rich.console import Console
 
-from mycelium import identity
+from mycelium import identity, skills
 from mycelium.cli_options import acts_as, emits_json, in_room, room_or_exit
-from mycelium.client import answered, hub_error_detail, typed_client
+from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.text_input import takes_text
@@ -100,26 +100,19 @@ def skill_set(
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ) -> None:
     """Create or upsert a skill in a room's skills/ namespace. Always upserts; version bumps."""
-    from mycelium_backend_client.api.skills import (
-        create_skill_api_rooms_room_name_skills_post as create_api,
-    )
-    from mycelium_backend_client.models import SkillCreate, SkillRead
-
-    body_text = body
     room_name = _get_active_room(room)
     handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
-    item = SkillCreate(
-        name=name,
-        body=body_text,
-        description=description,
-        created_by=handle,
-        tags=tag_list,
-    )
     with _hub_session() as client:
-        skill = answered(
-            create_api.sync_detailed(room_name=room_name, client=client, body=item), SkillRead
+        skill = skills.save_skill(
+            client,
+            room_name,
+            name=name,
+            body=body,
+            description=description,
+            created_by=handle,
+            tags=tag_list,
         )
         console.print(f"[green]Skill set:[/green] {room_name}/{name} (v{skill.version})")
 
@@ -134,27 +127,19 @@ def skill_set(
 @emits_json("as_json")
 def skill_ls(room: str | None = None, as_json: bool = False) -> None:
     """List a room's skills from the hub."""
-    from mycelium_backend_client.api.skills import (
-        list_skills_api_rooms_room_name_skills_get as list_api,
-    )
-    from mycelium_backend_client.models import SkillListResponse
-
     room_name = _get_active_room(room)
     with _hub_session() as client:
-        resp = answered(
-            list_api.sync_detailed(room_name=room_name, client=client), SkillListResponse
-        )
+        found = skills.list_skills(client, room_name).skills
 
-    skills = resp.skills
     if as_json:
-        _echo_json([s.to_dict() for s in skills])
+        _echo_json([s.to_dict() for s in found])
         return
-    if not skills:
+    if not found:
         console.print("[dim]No skills found[/dim]")
         return
 
-    console.print(f"[bold]Skills[/bold] ({len(skills)})\n")
-    for skill in skills:
+    console.print(f"[bold]Skills[/bold] ({len(found)})\n")
+    for skill in found:
         desc = getattr(skill, "description", "") or ""
         console.print(
             f"[cyan]/{skill.name}[/cyan]  [dim]v{skill.version}  {skill.created_by}[/dim]"
@@ -177,17 +162,10 @@ def skill_get(
     as_json: bool = False,
 ) -> None:
     """Read a skill by name (from the hub)."""
-    from mycelium_backend_client.api.skills import (
-        get_skill_api_rooms_room_name_skills_name_get as get_api,
-    )
-    from mycelium_backend_client.models import SkillRead
-
     room_name = _get_active_room(room)
     with _hub_session() as client:
         try:
-            skill = answered(
-                get_api.sync_detailed(room_name=room_name, name=name, client=client), SkillRead
-            )
+            skill = skills.get_skill(client, room_name, name)
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(f"[red]Not found:[/red] {name}")
@@ -219,18 +197,11 @@ def skill_rm(
     room: str | None = None,
 ) -> None:
     """Delete a skill by name."""
-    from mycelium_backend_client.api.skills import (
-        delete_skill_api_rooms_room_name_skills_name_delete as delete_api,
-    )
-
     room_name = _get_active_room(room)
     with _hub_session() as client:
-        resp = delete_api.sync_detailed(room_name=room_name, name=name, client=client)
-        if resp.status_code == 404:
+        if not skills.remove_skill(client, room_name, name):
             console.print(f"[red]Not found:[/red] {name}")
             raise typer.Exit(1)
-        if resp.status_code >= 400:  # noqa: PLR2004
-            raise UnexpectedStatus(resp.status_code, resp.content)
     console.print(f"[green]Skill removed:[/green] {room_name}/{name}")
 
 

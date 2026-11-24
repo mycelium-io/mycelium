@@ -209,6 +209,39 @@ def runner(
         console.print("\n[dim]Disconnected. Agents already started keep running in herdr.[/dim]")
 
 
+def _say_hub_refused(e: Exception, state: dict, local: dict | None, *, as_json: bool) -> None:
+    """Say what the hub answered when asked about this runner, instead of a reading."""
+    status = getattr(e, "status_code", None)
+    if status == 404:  # noqa: PLR2004
+        # The hub answers 404 for a runner it never heard from, and for one
+        # the caller doesn't own (it shows a runner only to its owner).
+        said = "The hub has no runner by that id that this terminal's credential can see."
+        if local is None:
+            said = "The hub hasn't heard from it."
+        if as_json:
+            state["hub_note"] = said
+            typer.echo(json.dumps(state, indent=2, default=str))
+            return
+        console.print(f"[dim]{escape(said)}[/dim]")
+        return
+    # What the hub answered, not a reading of it: a refusal or a proxy's
+    # error page says nothing about whether the runner is connected.
+    # Asked from an agent's pane, a 401 is the pane's credential, not the
+    # runner's, so it points at whoami rather than at signing in.
+    said = f"The hub answered {status}, so this can't say whether the runner is connected."
+    if status == 401:  # noqa: PLR2004
+        said += (
+            " It refused the credential this terminal uses."
+            " Run `mycelium whoami --sources` to see which credential that is."
+        )
+    if as_json:
+        state["hub_error"] = said
+        typer.echo(json.dumps(state, indent=2, default=str))
+    else:
+        console.print(f"[yellow]{escape(said)}[/yellow]")
+    raise typer.Exit(1)
+
+
 @doc_ref(
     usage="mycelium runner status [--hub]",
     desc="Show whether this machine's runner is running and connected to the hub.",
@@ -229,10 +262,10 @@ def runner_status(
     """
     import httpx
 
+    from mycelium import runners
     from mycelium.client import typed_client
+    from mycelium.exceptions import HubError
     from mycelium.runner.daemon import read_sync, runner_id
-    from mycelium_backend_client.api.runners import get_runner_api_runners_runner_id_get
-    from mycelium_backend_client.models import RunnerRead
 
     pid = running_pid()
     rid = runner_id()
@@ -258,7 +291,10 @@ def runner_status(
         with typed_client(
             MyceliumConfig.load(), timeout=5, raise_on_unexpected_status=False
         ) as client:
-            resp = get_runner_api_runners_runner_id_get.sync_detailed(rid, client=client)
+            seen = runners.read(client, rid)
+    except HubError as e:
+        _say_hub_refused(e, state, local, as_json=as_json)
+        return
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:
         # Not reached, or reached something that didn't answer as the hub does
         # (a proxy's page on a status the route declares).
@@ -270,36 +306,6 @@ def runner_status(
         else:
             console.print(f"[yellow]{escape(said)}[/yellow]")
         raise typer.Exit(1) from None
-    if resp.status_code == 404:  # noqa: PLR2004
-        # The hub answers 404 for a runner it never heard from, and for one
-        # the caller doesn't own (it shows a runner only to its owner).
-        said = "The hub has no runner by that id that this terminal's credential can see."
-        if local is None:
-            said = "The hub hasn't heard from it."
-        if as_json:
-            state["hub_note"] = said
-            typer.echo(json.dumps(state, indent=2, default=str))
-            return
-        console.print(f"[dim]{escape(said)}[/dim]")
-        return
-    seen = resp.parsed
-    if not isinstance(seen, RunnerRead):
-        # What the hub answered, not a reading of it: a refusal or a proxy's
-        # error page says nothing about whether the runner is connected.
-        # Asked from an agent's pane, a 401 is the pane's credential, not the
-        # runner's, so it points at whoami rather than at signing in.
-        said = f"The hub answered {resp.status_code}, so this can't say whether the runner is connected."
-        if resp.status_code == 401:
-            said += (
-                " It refused the credential this terminal uses."
-                " Run `mycelium whoami --sources` to see which credential that is."
-            )
-        if as_json:
-            state["hub_error"] = said
-            typer.echo(json.dumps(state, indent=2, default=str))
-        else:
-            console.print(f"[yellow]{escape(said)}[/yellow]")
-        raise typer.Exit(1)
     if as_json:
         state["hub"] = seen.to_dict()
         typer.echo(json.dumps(state, indent=2, default=str))

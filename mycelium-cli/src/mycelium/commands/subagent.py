@@ -22,10 +22,12 @@ import httpx
 import typer
 from rich.console import Console
 
+from mycelium import subagents
 from mycelium.cli_options import acts_as, emits_json, in_room
 from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.exceptions import HubError
 
 app = typer.Typer(
     help="Give a subagent a handle of its own, so it posts as itself, and end it.",
@@ -34,21 +36,20 @@ app = typer.Typer(
 console = Console()
 
 
-def _call(fn: Callable[..., Any], *, acting: str | None = None, **kwargs: Any) -> Any:
-    """Call a typed-client endpoint as ``acting``; say the hub's reason and exit
-    on a refusal."""
-    with typed_client(handle=acting) as client:
-        try:
-            resp = fn(client=client, **kwargs)
-        except httpx.HTTPError as exc:
-            url = MyceliumConfig.load().server.api_url
-            console.print(f"[red]Error:[/red] can't reach the hub at {url}: {exc}")
-            raise typer.Exit(1) from exc
-    if resp.status_code >= 400:
-        detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
+def _call(fn: Callable[..., Any], *args: Any, acting: str | None = None) -> Any:
+    """Call one of ``mycelium.subagents`` as ``acting``; say the hub's reason and
+    exit on a refusal."""
+    try:
+        with typed_client(handle=acting) as client:
+            return fn(client, *args)
+    except httpx.HTTPError as exc:
+        url = MyceliumConfig.load().server.api_url
+        console.print(f"[red]Error:[/red] can't reach the hub at {url}: {exc}")
+        raise typer.Exit(1) from exc
+    except HubError as exc:
+        detail = hub_error_detail(exc.content) or f"HTTP {exc.status_code}"
         console.print(f"[red]Error:[/red] {detail}")
-        raise typer.Exit(1)
-    return json.loads(resp.content) if resp.content else None
+        raise typer.Exit(1) from None
 
 
 def brief(room: str, handle: str, parent: str) -> list[str]:
@@ -91,14 +92,8 @@ def subagent_start(
     as_json: bool = False,
 ) -> None:
     """Start a subagent of yours with a handle of its own."""
-    from mycelium_backend_client.api.subagents import (
-        start_subagent_api_rooms_room_name_subagents_post as start_api,
-    )
-    from mycelium_backend_client.models import SubagentCreate
-
     assert room is not None
-    body = SubagentCreate(name=name, parent=(parent or "").lstrip("@") or None)
-    data = _call(start_api.sync_detailed, acting=parent, room_name=room, body=body)
+    data = _call(subagents.start, room, name, parent, acting=parent)
     lines = brief(room, data["handle"], data["parent"])
     optional = check_in(room, data["handle"])
     if as_json:
@@ -135,12 +130,8 @@ def subagent_end(
 ) -> None:
     """End a subagent: the subagent itself (its brief says to add ``--as`` to
     every command) or its parent."""
-    from mycelium_backend_client.api.subagents import (
-        end_subagent_api_rooms_room_name_subagents_handle_delete as end_api,
-    )
-
     assert room is not None
-    data = _call(end_api.sync_detailed, acting=actor, room_name=room, handle=handle.lstrip("@"))
+    data = _call(subagents.end, room, handle, acting=actor)
     if as_json:
         typer.echo(json.dumps(data, indent=2))
         return

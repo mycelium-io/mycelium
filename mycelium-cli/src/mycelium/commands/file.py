@@ -18,18 +18,17 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import quote
 
 import httpx
 import typer
 from rich.console import Console
 from rich.markup import escape
 
+from mycelium import files
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged
-from mycelium.client import answered, hub_client, hub_error_detail, typed_client
+from mycelium.client import hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
-from mycelium.files import upload_file
 from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
@@ -122,10 +121,6 @@ def human_size(size: int) -> str:
     return f"{size} bytes"
 
 
-def _segment(text: str) -> str:
-    return quote(text, safe="")
-
-
 @doc_ref(
     usage="mycelium file upload <path>... [--room <room>] [--as <handle>]",
     desc="Add files to a room. Prints the <code>[[uploads/&lt;name&gt;]]</code> link for each, to put in a message. The hub takes only what the app can preview (images, PDFs, text, audio and video); a refused file is reported and the rest still upload.",
@@ -152,7 +147,7 @@ def file_upload(
                 failed += 1
                 continue
             try:
-                record = upload_file(client, room, path, handle)
+                record = files.upload_file(client, room, path, handle)
             except UnexpectedStatus as e:
                 detail = hub_error_detail(e.content) or f"HTTP {e.status_code}"
                 err_console.print(f"[red]Refused:[/red] {detail}")
@@ -171,14 +166,21 @@ def file_upload(
         raise typer.Exit(1)
 
 
-def _record(room: str, name: str) -> "UploadRead":
-    from mycelium_backend_client.api.uploads import (
-        get_upload_api_rooms_room_name_uploads_name_get as get_api,
-    )
-    from mycelium_backend_client.models import UploadRead
+@contextmanager
+def _downloading(client: httpx.Client, room: str, name: str) -> Iterator[httpx.Response]:
+    """The file's bytes, saying what the hub answered when it won't send them."""
+    try:
+        with files.download(client, room, name) as resp:
+            yield resp
+    except UnexpectedStatus as e:
+        detail = hub_error_detail(e.content) or f"HTTP {e.status_code}"
+        err_console.print(f"[red]Error:[/red] {detail}")
+        raise typer.Exit(1) from None
 
+
+def _record(room: str, name: str) -> "UploadRead":
     with _hub_session() as client:
-        return answered(get_api.sync_detailed(room_name=room, name=name, client=client), UploadRead)
+        return files.record(client, room, name)
 
 
 @doc_ref(
@@ -210,16 +212,7 @@ def file_download(
         err_console.print(f"[red]Already exists:[/red] {target}  [dim](--force replaces it)[/dim]")
         raise typer.Exit(1)
 
-    url = f"/api/rooms/{_segment(room)}/uploads/{_segment(name)}/raw"
-    with (
-        _hub_session(_raw_client) as client,
-        client.stream("GET", url, params={"download": "1"}) as resp,
-    ):
-        if resp.status_code != 200:
-            resp.read()
-            detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
-            err_console.print(f"[red]Error:[/red] {detail}")
-            raise typer.Exit(1)
+    with _hub_session(_raw_client) as client, _downloading(client, room, name) as resp:
         if to_stdout:
             for chunk in resp.iter_bytes():
                 sys.stdout.buffer.write(chunk)
@@ -249,14 +242,9 @@ def file_ls(
     limit: int = 50,
 ) -> None:
     """List the room's files from the hub."""
-    from mycelium_backend_client.api.uploads import (
-        list_room_uploads_api_rooms_room_name_uploads_get as list_api,
-    )
-    from mycelium_backend_client.models import UploadListResponse
-
     assert room is not None
     with _hub_session() as client:
-        resp = answered(list_api.sync_detailed(room_name=room, client=client), UploadListResponse)
+        resp = files.list_files(client, room)
     items = resp.uploads[: max(limit, 0)]
     if as_json:
         _echo_json([u.to_dict() for u in items])
@@ -314,19 +302,13 @@ def file_rm(
     yes: bool = False,
 ) -> None:
     """Remove a file from the room."""
-    from mycelium_backend_client.api.uploads import (
-        delete_upload_api_rooms_room_name_uploads_name_delete as delete_api,
-    )
-
     assert room is not None
     name = upload_name(ref)
     if not yes and not typer.confirm(f"Remove {name} from room '{room}'?"):
         raise typer.Exit(0)
     with _hub_session() as client:
-        resp = delete_api.sync_detailed(room_name=room, name=name, client=client)
-        if resp.status_code != 404 and resp.status_code >= 400:  # noqa: PLR2004
-            raise UnexpectedStatus(resp.status_code, resp.content)
-    if resp.status_code == 404:
+        removed = files.remove_file(client, room, name)
+    if not removed:
         err_console.print(f"[red]Not found:[/red] {name}")
         raise typer.Exit(1)
     console.print(f"[green]Removed:[/green] {name}")

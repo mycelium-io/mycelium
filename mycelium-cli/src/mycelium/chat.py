@@ -28,9 +28,21 @@ from mycelium.client import typed_client as _typed_client
 from mycelium.names import who
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from mycelium.config import MyceliumConfig
     from mycelium_backend_client import Client
-    from mycelium_backend_client.models import ReplyRead
+    from mycelium_backend_client.models import (
+        AskCreate,
+        AskPosted,
+        AwaitTurn,
+        MessageAmended,
+        MessageInterrupted,
+        MessageListResponse,
+        MessageRead,
+        ReplyRead,
+    )
+    from mycelium_backend_client.types import Unset
 
 
 def post(
@@ -90,6 +102,174 @@ def reply(
 
     body = ReplyBody(handle=handle, text=text, episode=episode or UNSET)
     return answered(reply_api.sync_detailed(room, client=client, body=body), ReplyRead)
+
+
+def await_turn(
+    client: Client,
+    room: str,
+    handle: str,
+    wait: int,
+    *,
+    episode: str | None = None,
+    confirmed: int | None = None,
+) -> AwaitTurn | None:
+    """One long-poll of up to ``wait`` seconds for ``handle``'s next turn, or ``None``.
+
+    The hub keeps what it hands over unread until :func:`confirm_turn` says it
+    arrived; ``confirmed`` is a position owed from a confirmation that didn't
+    land, which this request confirms instead. A refusal raises; an answer
+    that isn't the hub's JSON raises what the generated client raises reading it.
+    """
+    from mycelium_backend_client.api.participate import (
+        await_message_api_rooms_room_name_await_get as await_api,
+    )
+    from mycelium_backend_client.errors import UnexpectedStatus
+    from mycelium_backend_client.models import AwaitTurn
+    from mycelium_backend_client.types import UNSET
+
+    resp = await_api.sync_detailed(
+        room,
+        client=client,
+        handle=handle,
+        timeout=wait,
+        confirm=True,
+        episode=episode or UNSET,
+        confirmed=confirmed if confirmed is not None else UNSET,
+    )
+    if resp.status_code >= 400:  # noqa: PLR2004
+        raise UnexpectedStatus(resp.status_code, resp.content)
+    return resp.parsed if isinstance(resp.parsed, AwaitTurn) else None
+
+
+def confirm_turn(
+    client: Client, room: str, handle: str, position: int, episode: str | None | Unset
+) -> None:
+    """Tell the hub a turn arrived, so it marks it read."""
+    from mycelium.client import sent_unparsed
+    from mycelium_backend_client.api.participate import (
+        confirm_delivery_api_rooms_room_name_await_confirm_post as confirm_api,
+    )
+    from mycelium_backend_client.errors import UnexpectedStatus
+    from mycelium_backend_client.models import ConfirmBody
+
+    body = ConfirmBody(handle=handle, position=position, episode=episode)
+    # Confirmed once the hub takes it; what it answers with isn't read, so a
+    # hub a version apart doesn't make a landed confirm look lost.
+    resp = sent_unparsed(confirm_api, client, room, body=body)
+    if resp.status_code >= 400:  # noqa: PLR2004
+        raise UnexpectedStatus(resp.status_code, resp.content)
+
+
+def send(
+    client: Client,
+    room: str,
+    sender: str,
+    content: str,
+    *,
+    kind: str = "broadcast",
+    to: str | None = None,
+    episode: str | None = None,
+) -> MessageRead:
+    """Post one message into the room, or into the thread ``episode``.
+
+    ``kind`` is the message type (``broadcast``, ``delegate``, ...), and ``to``
+    the one member it is for, when it is for one.
+    """
+    from mycelium_backend_client.api.messages import (
+        send_message_api_rooms_room_name_messages_post as send_api,
+    )
+    from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType, MessageRead
+    from mycelium_backend_client.types import UNSET
+
+    body = MessageCreate(
+        sender_handle=sender,
+        message_type=MessageCreateMessageType(kind),
+        content=content,
+        recipient_handle=to if to is not None else UNSET,
+        episode=episode or UNSET,
+    )
+    return answered(send_api.sync_detailed(room_name=room, client=client, body=body), MessageRead)
+
+
+def history(client: Client, room: str, limit: int = 50) -> MessageListResponse:
+    """The room's newest messages, every thread's included."""
+    from mycelium_backend_client.api.messages import (
+        list_messages_api_rooms_room_name_messages_get as messages_api,
+    )
+    from mycelium_backend_client.models import MessageListResponse
+
+    return answered(
+        messages_api.sync_detailed(room, client=client, limit=limit), MessageListResponse
+    )
+
+
+def stream(http: Any, room: str) -> Iterator[dict[str, Any] | None]:
+    """The room's messages as they arrive, through a raw ``httpx`` client.
+
+    Each item is one message, or ``None`` for a line that carried none (a
+    keep-alive), so a caller can check a deadline between messages.
+    """
+    from urllib.parse import quote
+
+    with http.stream("GET", f"/api/rooms/{quote(room, safe='')}/messages/stream") as response:
+        for raw in response.iter_lines():
+            line = raw.strip()
+            if not line.startswith("data:"):
+                yield None
+                continue
+            try:
+                yield json_module.loads(line[5:].strip())
+            except json_module.JSONDecodeError:
+                yield None
+
+
+def amend(
+    client: Client, room: str, message_id: str, content: str, sender: str
+) -> MessageAmended | None:
+    """Correct one of ``sender``'s messages in place.
+
+    ``None`` when there is no such message, it isn't ``sender``'s, or the hub
+    won't take the new text.
+    """
+    from mycelium_backend_client.api.messages import (
+        amend_message_api_rooms_room_name_messages_message_id_amend_post as amend_api,
+    )
+    from mycelium_backend_client.models import MessageAmend, MessageAmended
+
+    body = MessageAmend(content=content, sender_handle=sender)
+    resp = amend_api.sync_detailed(room_name=room, message_id=message_id, client=client, body=body)
+    if resp.status_code in (403, 404, 422):
+        return resp.parsed if isinstance(resp.parsed, MessageAmended) else None
+    return answered(resp, MessageAmended)
+
+
+def interrupt(
+    client: Client, room: str, message_id: str, member: str, by: str
+) -> MessageInterrupted:
+    """Interrupt ``member`` with an existing message: it stops, reads it, and carries on."""
+    from mycelium_backend_client.api.messages import (
+        interrupt_with_message_api_rooms_room_name_messages_message_id_interrupt_post as interrupt_api,
+    )
+    from mycelium_backend_client.models import MessageInterrupt, MessageInterrupted
+
+    resp = interrupt_api.sync_detailed(
+        room_name=room,
+        message_id=message_id,
+        client=client,
+        body=MessageInterrupt(handle=member, by=by),
+    )
+    return answered(resp, MessageInterrupted)
+
+
+def ask(client: Client, room: str, body: AskCreate) -> AskPosted:
+    """Put a question to one member, answered with a choice or a value."""
+    from mycelium_backend_client.api.asks import create_ask_api_rooms_room_name_asks_post
+    from mycelium_backend_client.models import AskPosted
+
+    return answered(
+        create_ask_api_rooms_room_name_asks_post.sync_detailed(room, client=client, body=body),
+        AskPosted,
+    )
 
 
 _RELATIVE = re.compile(r"^(\d+)\s*([smhd])$")

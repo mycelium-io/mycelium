@@ -23,13 +23,11 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from mycelium import identity
+from mycelium import agents, chat, identity
 from mycelium.cli_options import acts_as, emits_json, in_room
 from mycelium.commands.agent import (
-    _load_manifest_remote,
     _persist_and_describe,
     _resolve_room,
-    _room_manifests,
     _typed_client,
 )
 from mycelium.config import MyceliumConfig
@@ -124,7 +122,7 @@ def engine_ls(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
-        engines = [m for m in _room_manifests(room_name) if m.adapter == "engine"]
+        engines = [m for m in agents.room_manifests(room_name) if m.adapter == "engine"]
 
         if ctx.obj and ctx.obj.get("json"):
             typer.echo(json_module.dumps([m.model_dump() for m in engines], indent=2, default=str))
@@ -174,18 +172,8 @@ def engine_invoke(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
-        from mycelium.client import answered
-        from mycelium_backend_client.api.messages import (
-            send_message_api_rooms_room_name_messages_post as send_api,
-        )
-        from mycelium_backend_client.models import (
-            MessageCreate,
-            MessageCreateMessageType,
-            MessageRead,
-        )
-
         with _typed_client(config) as client:
-            manifest = _load_manifest_remote(client, room_name, handle)
+            manifest = agents.load_manifest(client, room_name, handle)
             if manifest is None:
                 console.print(
                     f"[red]Not found:[/red] no engine named '{handle}' in room '{room_name}'.\n"
@@ -204,14 +192,7 @@ def engine_invoke(
                 raise typer.Exit(1)
 
             sender_handle = handle_flag or config.get_current_identity()
-            body = MessageCreate(
-                sender_handle=sender_handle,
-                message_type=MessageCreateMessageType.BROADCAST,
-                content=f"@{manifest.handle} {message}",
-            )
-            answered(
-                send_api.sync_detailed(room_name=room_name, client=client, body=body), MessageRead
-            )
+            chat.send(client, room_name, sender_handle, f"@{manifest.handle} {message}")
 
         console.print(
             f"[green]Summoned[/green] [dim]({sender_handle} → [/dim]"

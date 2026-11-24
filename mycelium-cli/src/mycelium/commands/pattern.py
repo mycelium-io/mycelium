@@ -37,15 +37,14 @@ from rich.table import Table
 
 from mycelium import identity
 from mycelium.cli_options import acts_as, emits_json
-from mycelium.client import answered, hub_error_detail, typed_client
+from mycelium.client import typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+from mycelium.patterns import PatternError, hub_patterns, load_on_hub
 
 if TYPE_CHECKING:
-    from mycelium_backend_client import Client
-    from mycelium_backend_client.models import PatternList, PatternLoaded
-    from mycelium_backend_client.types import Response
+    from mycelium_backend_client.models import PatternLoaded
 
 app = typer.Typer(
     help="Load a multi-agent design pattern as a room, ready to run.", no_args_is_help=True
@@ -59,10 +58,6 @@ SOURCE_HELP = (
     "A pattern pack of your own: a git URL (cloned with your git credentials) or a folder. "
     "Without it, the pack the hub provides."
 )
-
-
-class PatternError(Exception):
-    """A pack or scenario that cannot be found or read, or a hub that refused it."""
 
 
 # ── a pack of your own ───────────────────────────────────────────────────────
@@ -155,50 +150,6 @@ def _git(args: list[str], source: str) -> None:
             f"could not fetch {source}: {proc.stderr.strip() or 'git failed'}\n"
             "For a private pack, make sure git can reach it with your own credentials."
         )
-
-
-# ── the hub ──────────────────────────────────────────────────────────────────
-
-
-def _checked[T](resp: Response[Any], expected: type[T], what: str) -> T:
-    """The hub's answer, or the hub's reason it refused."""
-    if resp.status_code >= 400:  # noqa: PLR2004
-        said = resp.content.decode(errors="replace").strip()
-        detail = hub_error_detail(resp.content) or said or f"HTTP {resp.status_code}"
-        raise PatternError(f"could not {what}: {detail}")
-    return answered(resp, expected)
-
-
-def hub_patterns(client: Client) -> PatternList:
-    from mycelium_backend_client.api.patterns import list_patterns_api_patterns_get
-    from mycelium_backend_client.models import PatternList
-
-    resp = list_patterns_api_patterns_get.sync_detailed(client=client)
-    return _checked(resp, PatternList, "list the hub's patterns")
-
-
-def load_on_hub(
-    client: Client,
-    name: str,
-    options: dict[str, Any],
-    pack: Pack | None,
-) -> PatternLoaded:
-    """Ask the hub to load ``name``: from its own pack, or with a scenario of yours."""
-    from mycelium_backend_client.api.patterns import (
-        load_inline_api_patterns_load_post as load_inline_api,
-    )
-    from mycelium_backend_client.api.patterns import (
-        load_pattern_api_patterns_name_load_post as load_api,
-    )
-    from mycelium_backend_client.models import PatternLoad, PatternLoaded, PatternLoadInline
-
-    if pack is None:
-        resp = load_api.sync_detailed(name, client=client, body=PatternLoad.from_dict(options))
-        return _checked(resp, PatternLoaded, f"load {name}")
-    scenario, flow = pack.read(name)
-    body = PatternLoadInline.from_dict({**options, "scenario": scenario, "flow": flow})
-    resp = load_inline_api.sync_detailed(client=client, body=body)
-    return _checked(resp, PatternLoaded, f"load {name}")
 
 
 # ── commands ─────────────────────────────────────────────────────────────────
@@ -313,10 +264,11 @@ def pattern_use(
             "dry_run": dry_run,
             "created_by": me,
         }
+        scenario, flow = pack.read(pattern) if pack is not None else (None, None)
         with typed_client(
             config, timeout=30, handle=me, raise_on_unexpected_status=False
         ) as client:
-            loaded = load_on_hub(client, pattern, options, pack)
+            loaded = load_on_hub(client, pattern, options, scenario, flow)
 
         if ctx.obj and ctx.obj.get("json"):
             typer.echo(json_module.dumps(loaded.to_dict(), indent=2))

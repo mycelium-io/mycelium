@@ -23,10 +23,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import schedules
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room
 from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.exceptions import HubError
 from mycelium.text_input import takes_text
 
 app = typer.Typer(
@@ -45,20 +47,19 @@ _RESULT = {
 }
 
 
-def _call(fn: Callable[..., Any], **kwargs: Any) -> Any:
-    """Call a typed-client endpoint; say the hub's reason and exit on a refusal."""
-    with typed_client() as client:
-        try:
-            resp = fn(client=client, **kwargs)
-        except httpx.HTTPError as exc:
-            url = MyceliumConfig.load().server.api_url
-            console.print(f"[red]Error:[/red] can't reach the hub at {url}: {exc}")
-            raise typer.Exit(1) from exc
-    if resp.status_code >= 400:
-        detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
+def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """Call one of ``mycelium.schedules``; say the hub's reason and exit on a refusal."""
+    try:
+        with typed_client() as client:
+            return fn(client, *args, **kwargs)
+    except httpx.HTTPError as exc:
+        url = MyceliumConfig.load().server.api_url
+        console.print(f"[red]Error:[/red] can't reach the hub at {url}: {exc}")
+        raise typer.Exit(1) from exc
+    except HubError as exc:
+        detail = hub_error_detail(exc.content) or f"HTTP {exc.status_code}"
         console.print(f"[red]Error:[/red] {detail}")
-        raise typer.Exit(1)
-    return json.loads(resp.content) if resp.content else None
+        raise typer.Exit(1) from None
 
 
 def _echo_json(data: Any) -> None:
@@ -135,24 +136,19 @@ def schedule_add(
     as_json: bool = False,
 ) -> None:
     """Give an agent a recurring check-in the hub fires."""
-    from mycelium_backend_client.api.schedules import (
-        create_schedule_api_rooms_room_name_schedules_post as create_api,
-    )
-    from mycelium_backend_client.models import ScheduleCreate
-
     assert room is not None
-    body = ScheduleCreate(
-        name=name,
-        owner=(owner or handle or "").lstrip("@"),
-        every=every,
-        cron=cron,
-        prompt=prompt,
-        check=check,
-        task=task,
-        expires_in_days=days,
-        created_by=handle,
-    )
-    data = _call(create_api.sync_detailed, room_name=room, body=body)
+    fields = {
+        "name": name,
+        "owner": (owner or handle or "").lstrip("@"),
+        "every": every,
+        "cron": cron,
+        "prompt": prompt,
+        "check": check,
+        "task": task,
+        "expires_in_days": days,
+        "created_by": handle,
+    }
+    data = _call(schedules.create, room, fields)
     if as_json:
         _echo_json(data)
         return
@@ -178,12 +174,8 @@ def schedule_ls(
     as_json: bool = False,
 ) -> None:
     """List a room's schedules."""
-    from mycelium_backend_client.api.schedules import (
-        list_schedules_api_rooms_room_name_schedules_get as list_api,
-    )
-
     assert room is not None
-    data = _call(list_api.sync_detailed, room_name=room, owner=owner.lstrip("@") if owner else None)
+    data = _call(schedules.list_schedules, room, owner.lstrip("@") if owner else None)
     items = data.get("schedules", [])
     if as_json:
         _echo_json(items)
@@ -226,12 +218,8 @@ def schedule_show(
     as_json: bool = False,
 ) -> None:
     """Show one schedule and its run history."""
-    from mycelium_backend_client.api.schedules import (
-        get_schedule_api_rooms_room_name_schedules_name_get as get_api,
-    )
-
     assert room is not None
-    s = _call(get_api.sync_detailed, room_name=room, name=name)
+    s = _call(schedules.get, room, name)
     if as_json:
         _echo_json(s)
         return
@@ -273,13 +261,7 @@ def schedule_show(
 
 
 def _patch(room: str, name: str, **fields: Any) -> dict[str, Any]:
-    from mycelium_backend_client.api.schedules import (
-        update_schedule_api_rooms_room_name_schedules_name_patch as update_api,
-    )
-    from mycelium_backend_client.models import ScheduleUpdate
-
-    body = ScheduleUpdate.from_dict({k: v for k, v in fields.items() if v is not None})
-    return _call(update_api.sync_detailed, room_name=room, name=name, body=body)
+    return _call(schedules.update, room, name, fields)
 
 
 @doc_ref(
@@ -414,15 +396,8 @@ def schedule_run(
     as_json: bool = False,
 ) -> None:
     """Run a schedule now."""
-    from mycelium_backend_client.api.schedules import (
-        run_schedule_api_rooms_room_name_schedules_name_run_post as run_api,
-    )
-    from mycelium_backend_client.models import ScheduleRunRequest
-
     assert room is not None
-    run = _call(
-        run_api.sync_detailed, room_name=room, name=name, body=ScheduleRunRequest(wake=wake)
-    )
+    run = _call(schedules.run, room, name, wake=wake)
     if as_json:
         _echo_json(run)
         return
@@ -443,12 +418,8 @@ def schedule_rm(
     yes: bool = False,
 ) -> None:
     """Delete a schedule."""
-    from mycelium_backend_client.api.schedules import (
-        delete_schedule_api_rooms_room_name_schedules_name_delete as delete_api,
-    )
-
     assert room is not None
     if not yes and not typer.confirm(f"Delete schedule {name} in {room}?"):
         raise typer.Exit(0)
-    _call(delete_api.sync_detailed, room_name=room, name=name)
+    _call(schedules.delete, room, name)
     console.print(f"[green]Deleted[/green] {name}")

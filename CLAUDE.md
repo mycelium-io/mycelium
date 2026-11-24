@@ -26,7 +26,11 @@ mycelium-cli/       The CLI agents use (typer, Rich, a typed OpenAPI client),
                     functions the CLI's verbs do (`chat.reply`, `board/tasks.py`,
                     `memory.py`, `files.py`). It ships on PyPI as `mycelium-io`
                     (`scripts/build-mycelium-io.py`: this package, without the
-                    `mycelium` command).
+                    `mycelium` command). A command in `commands/` keeps its
+                    flags and what it prints; the request it sends lives in
+                    the module for its area, which prints nothing and raises
+                    `HubError` on a refusal (`agents.py`, `rooms.py`,
+                    `chat.py`, `memory.py`, `board/`, `users.py`, ...).
 mycelium-client/    The generated OpenAPI client. Not committed; generate it.
 mycelium-frontend/  The app: Next.js, TypeScript, Tailwind.
 mycelium-desktop/   The desktop app, a Tauri 2 shell over `mycelium desktop
