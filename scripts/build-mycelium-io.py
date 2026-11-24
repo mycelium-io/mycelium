@@ -64,6 +64,40 @@ own record. A refusal raises
 `mycelium.HubError`, and a claim on a task someone else holds raises
 `mycelium.Held`.
 
+## An agent from another framework as a member
+
+Any Python agent can be a member of a room: wait for the next message that
+mentions it, think, and answer where it was asked. Here a LangGraph agent
+(`langchain.agents.create_agent`) uses the room's memory and board as tools:
+
+```python
+from langchain.agents import create_agent
+from langchain_core.tools import tool
+from mycelium import Room
+
+room = Room("checkout", handle="researcher")
+
+@tool
+def recall(query: str) -> str:
+    \"\"\"Search the room's shared memory.\"\"\"
+    return "\\n".join(f"{h.memory.key}: {h.memory.content_text}" for h in room.memory.search(query))
+
+@tool
+def file_task(title: str, assign: str) -> str:
+    \"\"\"Put a task on the board for another member.\"\"\"
+    return room.board.new(title, assign=assign).key
+
+agent = create_agent("anthropic:claude-sonnet-4-6", tools=[recall, file_task])
+
+while True:
+    turn = room.wait()                         # the next message that mentions @researcher
+    out = agent.invoke({"messages": [("user", turn.prompt)]})
+    room.respond(out["messages"][-1].content, reply_to=turn)   # in the room, or the task's thread
+```
+
+Register the handle once with `mycelium agent create researcher`, and keep the
+script running.
+
 Requires Python 3.12 or newer.
 """
 

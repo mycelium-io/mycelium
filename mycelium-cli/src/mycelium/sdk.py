@@ -383,9 +383,21 @@ class Room:
         episode = self.thread(task) if task else None
         return _await_once(self.config, self.name, self._acting(), timeout, episode)
 
-    def respond(self, text: str, *, task: str | None = None) -> ReplyRead:
-        """Post ``text``, in the room or in ``task``'s thread."""
-        episode = self.thread(task) if task else None
+    def respond(
+        self, text: str, *, task: str | None = None, reply_to: AwaitTurn | None = None
+    ) -> ReplyRead:
+        """Post ``text``: in the room, in ``task``'s thread, or where ``reply_to`` was said.
+
+        ``reply_to`` is a turn :meth:`wait` returned, so an answer lands in the
+        thread the question came from.
+        """
+        if task and reply_to:
+            msg = "Pass task or reply_to, not both."
+            raise ValueError(msg)
+        if reply_to:
+            episode = reply_to.episode
+        else:
+            episode = self.thread(task) if task else None
         with self._client() as client:
             return reply(client, self.name, self._acting(), text, episode)
 

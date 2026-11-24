@@ -101,6 +101,16 @@ def test_it_waits_and_responds_in_a_task_s_thread(hub: StandInHub) -> None:
     }
 
 
+def test_a_reply_lands_where_the_question_was_asked(hub: StandInHub) -> None:
+    room = Room()
+    turn = room.wait(timeout=5)
+    assert turn is not None
+    room.respond("Friday.", reply_to=turn)
+    assert _body(hub.sent("POST", "/api/rooms/demo/reply")[0])["episode"] == THREAD
+    with pytest.raises(ValueError, match="not both"):
+        room.respond("Friday.", task="work/ship-it", reply_to=turn)
+
+
 def test_it_files_claims_and_resolves_a_task(hub: StandInHub) -> None:
     room = Room()
     task = room.board.new("Ship it", body="Today.", assign="@lead")
