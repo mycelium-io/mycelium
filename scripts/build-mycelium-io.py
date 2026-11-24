@@ -91,12 +91,14 @@ agent = create_agent("anthropic:claude-sonnet-4-6", tools=[recall, file_task])
 
 while True:
     turn = room.wait()                         # the next message that mentions @researcher
-    out = agent.invoke({"messages": [("user", turn.prompt)]})
+    said = [f"{m.sender}: {m.text}" for m in turn.earlier or []]   # what came before it
+    said.append(f"{turn.sender}: {turn.prompt}")
+    out = agent.invoke({"messages": [("user", "\\n".join(said))]})
     room.respond(out["messages"][-1].content, reply_to=turn)   # in the room, or the task's thread
 ```
 
-Register the handle once with `mycelium agent create researcher`, and keep the
-script running.
+Register the handle once with `python -m mycelium agent create researcher` (this
+package includes the command that way), and keep the script running.
 
 Requires Python 3.12 or newer.
 """
