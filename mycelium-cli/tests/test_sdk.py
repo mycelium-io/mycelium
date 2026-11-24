@@ -20,6 +20,7 @@ import httpx
 import pytest
 
 from mycelium import Held, HubError, Room, Waiting
+from mycelium.exceptions import MyceliumError
 from tests.conftest import StandInHub, install_stand_in_hub, memory_read
 
 OPENAPI = Path(__file__).resolve().parents[2] / "openapi.json"
@@ -161,6 +162,29 @@ def test_it_refuses_a_key_before_asking_the_hub(hub: StandInHub) -> None:
     with pytest.raises(ValueError, match="can't have folders"):
         Room().memory.set("work/a/b", "x")
     assert hub.requests == []
+
+
+def test_nothing_is_written_when_it_doesnt_know_who_you_are(
+    hub: StandInHub, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("MYCELIUM_AGENT_HANDLE")
+    notes = tmp_path / "notes.txt"
+    notes.write_text("hello")
+    room = Room()
+    assert room.handle is None
+    writes = [
+        lambda: room.respond("hi"),
+        lambda: room.wait(timeout=1),
+        lambda: room.board.new("Ship it"),
+        lambda: room.board.claim("work/ship-it"),
+        lambda: room.board.resolve("work/ship-it"),
+        lambda: room.memory.set("context/goal", "Friday"),
+        lambda: room.files.upload(notes),
+    ]
+    for write in writes:
+        with pytest.raises(MyceliumError, match="Say who you're acting as"):
+            write()
+    assert [r for r in hub.requests if r.method != "GET"] == []
 
 
 def test_a_refusal_is_a_hub_error_with_what_the_hub_said(hub: StandInHub) -> None:

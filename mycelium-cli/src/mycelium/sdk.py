@@ -411,7 +411,7 @@ class Board:
                 client,
                 r.name,
                 title=title,
-                handle=r.handle or "unknown",
+                handle=r._acting(),  # noqa: SLF001
                 body=body,
                 assign=assign,
                 parent=parent,
@@ -440,7 +440,11 @@ class Board:
         r = self._room
         with r._client() as client:  # noqa: SLF001
             return change_assignment(
-                client, r.name, "resolve", key=key, handle=r.handle or "unknown"
+                client,
+                r.name,
+                "resolve",
+                key=key,
+                handle=r._acting(),  # noqa: SLF001
             )
 
 
@@ -478,7 +482,7 @@ class Memory:
         item = memory_item(
             key,
             value,
-            handle=r.handle or "cli-user",
+            handle=r._acting(),  # noqa: SLF001
             tags=tags,
             meta={**(meta or {}), **learned(kind, task, derived_from, still_open=still_open)},
         )
@@ -507,5 +511,6 @@ class Files:
         if not file.is_file():
             msg = f"Not a file: {file}"
             raise MyceliumError(msg)
-        with hub_client(r.config, timeout=_UPLOAD_TIMEOUT_S, handle=r.handle) as http:
-            return upload_file(http, r.name, file, r.handle)
+        handle = r._acting()  # noqa: SLF001
+        with hub_client(r.config, timeout=_UPLOAD_TIMEOUT_S, handle=handle) as http:
+            return upload_file(http, r.name, file, handle)

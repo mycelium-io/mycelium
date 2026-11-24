@@ -57,7 +57,10 @@ room.board.resolve(task.key)
 `Room(name, handle=..., hub=...)` takes each of those, or works them out the way
 the `mycelium` command does: from `MYCELIUM_ROOM_ID`, `MYCELIUM_AGENT_HANDLE`
 and `MYCELIUM_API_URL`, the folder you joined with `mycelium join`, or this
-machine's setup. Each call returns the hub's own record. A refusal raises
+machine's setup. A `hub` you pass is sent this machine's Mycelium sign-in, as
+`MYCELIUM_API_URL` is, so pass only a hub you trust. Each call that writes needs
+to know who you are, and raises if nothing says. Each call returns the hub's
+own record. A refusal raises
 `mycelium.HubError`, and a claim on a task someone else holds raises
 `mycelium.Held`.
 
@@ -79,7 +82,7 @@ def as_library(pyproject: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description="Build the mycelium-io wheel for PyPI.")
     parser.add_argument("--out", type=Path, default=CLI / "dist", help="where the wheel goes")
     out = parser.parse_args().out.resolve()
 
