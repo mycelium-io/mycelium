@@ -25,6 +25,7 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
+from mycelium import sdk
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged
 from mycelium.client import answered, hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
@@ -150,18 +151,13 @@ def file_upload(
                 err_console.print(f"[red]Not a file:[/red] {path}")
                 failed += 1
                 continue
-            with path.open("rb") as fh:
-                resp = client.post(
-                    f"/api/rooms/{_segment(room)}/uploads",
-                    files={"file": (path.name, fh, "application/octet-stream")},
-                    data={"created_by": handle or ""},
-                )
-            if resp.status_code != 201:
-                detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
+            try:
+                record = sdk.upload_file(client, room, path, handle)
+            except UnexpectedStatus as e:
+                detail = hub_error_detail(e.content) or f"HTTP {e.status_code}"
                 err_console.print(f"[red]Refused:[/red] {detail}")
                 failed += 1
                 continue
-            record = resp.json()
             added.append(record)
             if not as_json:
                 console.print(

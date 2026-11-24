@@ -34,7 +34,7 @@ from typing import Any
 import httpx
 import typer
 
-from mycelium import chat
+from mycelium import chat, sdk
 from mycelium.cli_options import ACT_FLAGS, ACT_HELP, acts_as, emits_json, in_room, resolve_handle
 from mycelium.client import answered, sent_unparsed, typed_client
 from mycelium.commands.room import _resolve_room
@@ -54,8 +54,6 @@ from mycelium_backend_client.models import (
     AwaitTurn,
     ConfirmBody,
     RenewBody,
-    ReplyBody,
-    ReplyRead,
 )
 from mycelium_backend_client.types import UNSET
 
@@ -743,21 +741,11 @@ def respond(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        from mycelium_backend_client.api.participate import (
-            post_reply_api_rooms_room_name_reply_post as reply_api,
-        )
-
-        body = ReplyBody(
-            handle=handle or "",
-            text=text,
-            episode=_task_episode(room_name, task) if task else UNSET,
-        )
+        episode = _task_episode(room_name, task) if task else None
         with typed_client(
             config, timeout=30.0, handle=handle, raise_on_unexpected_status=False
         ) as client:
-            replied = answered(
-                reply_api.sync_detailed(room_name, client=client, body=body), ReplyRead
-            )
+            replied = sdk.reply(client, room_name, handle or "", text, episode)
         if json_output:
             typer.echo(json_module.dumps(replied.to_dict()))
         else:
