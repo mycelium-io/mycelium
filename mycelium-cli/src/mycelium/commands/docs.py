@@ -38,7 +38,6 @@ SECTIONS: list[tuple[str, str]] = [
     ("memory", "Memory"),
     ("episodes", "Episodes"),
     ("principals", "Users & Identity"),
-    ("slim", "SLIM"),
     ("engines", "Engines"),
     ("conductor", "The Conductor"),
     ("synthesizer", "The Synthesizer"),

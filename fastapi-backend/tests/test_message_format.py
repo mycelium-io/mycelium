@@ -13,15 +13,14 @@ from app.services.message_models import Kind
 
 
 def test_episode_and_topic_urns():
-    assert (
-        message_format.episode_urn("sprint", "abc123") == "urn:ioc:mycelium:episode:sprint:abc123"
-    )
-    assert message_format.topic_urn("sprint") == "urn:concept:mycelium:sprint"
+    assert message_format.episode_urn("sprint", "abc123") == "urn:mycelium:episode:sprint:abc123"
+    assert message_format.topic_urn("sprint") == "urn:mycelium:topic:sprint"
 
 
 def test_build_minimal_envelope_defaults():
-    env = message_format.build_envelope(kind=Kind.exchange, episode="urn:ioc:mycelium:episode:r:s")
-    assert env.header.protocol == "SSTP"
+    env = message_format.build_envelope(kind=Kind.exchange, episode="urn:mycelium:episode:r:s")
+    assert env.header.protocol == "MYCP"
+    assert env.header.version == "1.0.0"
     assert env.header.subprotocol == "mycelium"
     assert env.header.kind is Kind.exchange
     assert env.header.subkind is None
@@ -38,10 +37,10 @@ def test_build_envelope_full():
     env = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
-        episode="urn:ioc:mycelium:episode:r:s",
+        episode="urn:mycelium:episode:r:s",
         parents=["p1", "p2"],
         recipients=["agent-a", "agent-b"],
-        topic="urn:concept:mycelium:r",
+        topic="urn:mycelium:topic:r",
         workspace_id="ws-1",
         mas_id="mas-1",
         payload_type="consensus",
@@ -56,11 +55,11 @@ def test_build_envelope_full():
     assert env.header.participants.groups == {"workspace_id": "ws-1", "mas_id": "mas-1"}
     assert env.header.message is not None and env.header.context is not None
     assert env.header.message.parents == ["p1", "p2"]
-    assert env.header.context.topic == "urn:concept:mycelium:r"
+    assert env.header.context.topic == "urn:mycelium:topic:r"
     assert env.payload.data["assignments"] == {"budget": "high"}
 
 
-# The SLIM-native table. A failed negotiation is commit:rejected;
+# The subkind table. A failed negotiation is commit:rejected;
 # the Go CFN's "abort" is retired with the CFN, and "ready" was never valid.
 @pytest.mark.parametrize(
     ("kind", "subkind", "ok"),
@@ -101,8 +100,8 @@ def test_envelope_roundtrip_via_dict():
     env = message_format.build_envelope(
         kind=Kind.knowledge,
         subkind="query",
-        episode="urn:ioc:mycelium:episode:r:s",
-        topic="urn:concept:mycelium:r",
+        episode="urn:mycelium:episode:r:s",
+        topic="urn:mycelium:topic:r",
         workspace_id="ws",
         mas_id="mas",
         payload_data={"intent": "prior agreements on this topic"},

@@ -206,15 +206,3 @@ async def test_only_knowledge_can_be_settled(room):
     assert resp.status_code == 422
     missing = await room.post(f"/api/rooms/{ROOM}/knowledge/settle", json={"key": "context/none"})
     assert missing.status_code == 404
-
-
-async def test_a_conductor_decision_is_knowledge_in_its_task(room):
-    write_memory_file(
-        room_path(ROOM),
-        "context/decision/apple-pay-for-everyone",
-        "Refund under $50 on its own",
-        created_by="conductor",
-        extra_meta={"relates-to": TASK},
-    )
-    decision = by_key(await graph(room))["context/decision/apple-pay-for-everyone"]
-    assert (decision["kind"], decision["task"], decision["by"]) == ("decision", TASK, "conductor")

@@ -43,8 +43,7 @@ follow several agents without reading everything they say.
 
 When agents need structure, the **conductor** can run a **flow** inside a
 task's thread. A flow is a set sequence of turns, such as "one agent does the
-work and another reviews it". When agents disagree, its `concord` flow runs a
-**negotiation** that gets them to one option.
+work and another reviews it".
 
 Each run is recorded as an **episode** in the room's memory under
 `log/episodes/`. A run never resolves the task or takes it from whoever holds
@@ -126,8 +125,7 @@ See [Authentication](#auth).
 | task | A row on the board, stored as a memory under `work/`. |
 | thread | A task's own conversation. |
 | flow | A set sequence of turns the conductor runs in a thread. A room's own flows are saved under `protocols/`. |
-| negotiation | A `concord` flow helping agents agree on one option, inside a thread. |
-| episode | The record of one flow or negotiation, under `log/episodes/`. |
+| episode | The record of one flow, under `log/episodes/`. |
 | role | A part in a flow, such as `author` or `reviewer`. |
 | resolved | A task that's finished. |
 | runner | The program on your machine that starts your agents and wakes them. |

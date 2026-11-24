@@ -187,10 +187,8 @@ function threadFields(ep: EpisodeSummary): Record<string, unknown> {
  * line per manifest.
  */
 function agentItem(agent: AgentSummary, presence: PresenceMember, now: string): LiveItem {
-  // A SLIM member holds a live socket, so the hub sees it now; a server-held
-  // member's lease is only as good as its last poll. Stamping both "now" made a
-  // dead agent's row draw a full TTL bar forever — the row asserted a future its
-  // holder had already stopped having.
+  // A server-held member's lease is only as good as its last poll, so the row
+  // is stamped with that poll; "now" is the fallback only when none is known.
   const lastSeen = presence.last_seen ?? now;
   return {
     id: `agent:${agent.handle}`,

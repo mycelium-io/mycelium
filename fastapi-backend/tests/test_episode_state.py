@@ -51,7 +51,7 @@ def _body(tmp_path: Path) -> str:
 def test_write_episode_record(tmp_path):
     episode_state.write_episode_record(_episode(), outcome="converged", metrics=None)
     body = _body(tmp_path)
-    assert "urn:ioc:mycelium:episode:sprint:abc123" in body
+    assert "urn:mycelium:episode:sprint:abc123" in body
     assert "- outcome: **converged**" in body
     assert "- participants: a1, a2" in body
     # One JSONL line per envelope: the intent and the reply.
@@ -76,9 +76,9 @@ def test_episode_record_renders_satisfaction(tmp_path):
 
 def test_episode_record_says_where_it_sits_and_what_it_saved(tmp_path):
     ep = _episode()
-    ep.within = "urn:ioc:mycelium:episode:sprint:t3"
+    ep.within = "urn:mycelium:episode:sprint:t3"
     ep.memory = "context/decision/ship"
     episode_state.write_episode_record(ep, outcome="converged", metrics=None)
     body = _body(tmp_path)
-    assert "- within: `urn:ioc:mycelium:episode:sprint:t3`" in body
+    assert "- within: `urn:mycelium:episode:sprint:t3`" in body
     assert "- memory: `context/decision/ship`" in body

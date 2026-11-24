@@ -172,7 +172,7 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
     """Synthesize a summary for the episode currently *in progress*, if any.
 
     A closed episode lands as a ``log/episodes/*`` record; an open one exists only
-    in the moderator's in-memory lifecycle until it converges/rejects. Surfacing it
+    in the room channel's in-memory lifecycle until it ends. Surfacing it
     lets a caller show "in progress" (``outcome: "open"``) before the record is
     written, so a negotiation is visible while it runs, not only after it ends.
     """

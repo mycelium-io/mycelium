@@ -206,7 +206,7 @@ function room(name: string, task: string, minsAgo: number): MockRoom {
 }
 
 function thread(room: string): string {
-  return `urn:ioc:mycelium:episode:${room}:t0001`;
+  return `urn:mycelium:episode:${room}:t0001`;
 }
 
 function said(room: string) {
@@ -256,7 +256,7 @@ const advMessages: MockMessage[] = [
 const advRun: EpisodeSummary = {
   short_id: "ar01",
   episode: thread(ADV),
-  topic: `urn:concept:mycelium:${ADV}`,
+  topic: `urn:mycelium:topic:${ADV}`,
   outcome: "open",
   subkind: null,
   participants: ["proposer", "critic", "conductor"],
@@ -296,7 +296,7 @@ const gateMessages: MockMessage[] = [
 const gateRun: EpisodeSummary = {
   short_id: "ag01",
   episode: thread(GATE),
-  topic: `urn:concept:mycelium:${GATE}`,
+  topic: `urn:mycelium:topic:${GATE}`,
   outcome: "open",
   subkind: null,
   participants: ["ops", VIEWER, "conductor"],

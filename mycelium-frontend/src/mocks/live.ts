@@ -57,7 +57,7 @@ export function publish(room: string, frame: Record<string, unknown>): void {
 }
 
 /** The room's live channel URN, where room-level notices ride. */
-export const liveEpisode = (room: string): string => `urn:ioc:mycelium:episode:${room}:live`;
+export const liveEpisode = (room: string): string => `urn:mycelium:episode:${room}:live`;
 
 /** A board notice frame, shaped the way the persister puts one on the bus. */
 export function noticeFrame(

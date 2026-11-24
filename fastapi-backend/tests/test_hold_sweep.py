@@ -46,7 +46,7 @@ def _row(**meta: Any) -> None:
         KEY,
         "# Turn on Apple Pay",
         created_by="lead",
-        extra_meta={"assignee": "coder", "episode": "urn:ioc:mycelium:episode:holds:t1", **meta},
+        extra_meta={"assignee": "coder", "episode": "urn:mycelium:episode:holds:t1", **meta},
     )
 
 
@@ -99,7 +99,7 @@ def test_an_agent_holding_two_rows_gets_the_same_grace(monkeypatch, notices):
         other,
         "# Turn on Google Pay",
         created_by="lead",
-        extra_meta={"assignee": "coder", "episode": "urn:ioc:mycelium:episode:holds:t2"},
+        extra_meta={"assignee": "coder", "episode": "urn:mycelium:episode:holds:t2"},
     )
     monkeypatch.setattr(hold_sweep, "signal_of", lambda _r, _h: "closed")
     assert _sweep(0) == []

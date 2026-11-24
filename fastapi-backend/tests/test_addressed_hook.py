@@ -13,8 +13,8 @@ notice) or a commit tells nobody anything.
 from __future__ import annotations
 
 from app.services import message_format, persister
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 ROOM = "addressed-room"
 
@@ -22,8 +22,6 @@ ROOM = "addressed-room"
 def _persister(asked: list, summoned: list) -> persister.RoomPersister:
     return persister.RoomPersister(
         ROOM,
-        channel=None,  # ty: ignore[invalid-argument-type]  # _ingest is called directly
-        members_provider=lambda: set(),
         on_summon=lambda handle, env, co, msg="": summoned.append(handle),
         on_asked=lambda handle, why, env, msg: asked.append((handle, why, msg)),
         feed_bus=False,
@@ -47,7 +45,7 @@ def _ingest(
         topic=message_format.topic_urn(ROOM),
         payload_type=payload_type,
     )
-    p._ingest(env, serialize_content(env, extra={"content": text}), list_write=False)
+    p.record(env, serialize_content(env, extra={"content": text}))
 
 
 def test_a_recipient_of_a_turn_is_told_once():
@@ -104,10 +102,5 @@ def test_a_reply_asks_only_whoever_it_mentions():
 
 
 def test_no_hook_is_silent():
-    p = persister.RoomPersister(
-        ROOM,
-        channel=None,  # ty: ignore[invalid-argument-type]
-        members_provider=lambda: set(),
-        feed_bus=False,
-    )
+    p = persister.RoomPersister(ROOM, feed_bus=False)
     _ingest(p, recipients=["sec"], text="hello")  # must not raise

@@ -15,8 +15,8 @@ from httpx import AsyncClient
 
 from app.services import facet_query, message_format, message_search, persister, tasks
 from app.services.filesystem import get_room_dir
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 NOW = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
 ROOM = "checkout"
@@ -156,7 +156,7 @@ def _say(
         episode=episode or message_format.live_episode_urn(ROOM),
         sender=sender,
         recipients=recipients or [message_format.SYSTEM_ACTOR_ID],
-        topic=f"urn:concept:mycelium:{ROOM}",
+        topic=f"urn:mycelium:topic:{ROOM}",
         message_id=message_id,
         payload_type="reply",
         payload_data={"action": stance} if stance else None,

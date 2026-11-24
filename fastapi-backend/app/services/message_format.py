@@ -32,9 +32,24 @@ from app.services.message_models import (
     ParticipantSet,
 )
 
-PROTOCOL = "SSTP"
-VERSION = "0.0.6"
+#: The key a message's envelope sits under inside its content JSON.
+CONTENT_ENVELOPE_KEY = "l9"
+
+#: What a message's header names its format and version as.
+PROTOCOL = "MYCP"
+VERSION = "1.0.0"
 SUBPROTOCOL_MYCELIUM = "mycelium"
+
+#: How an episode's URN starts: ``urn:mycelium:episode:{room}:{id}``.
+EPISODE_URN_PREFIX = "urn:mycelium:episode:"
+#: How a room's topic URN starts: ``urn:mycelium:topic:{room}``.
+TOPIC_URN_PREFIX = "urn:mycelium:topic:"
+#: The prefixes rooms recorded before these, rewritten to the ones above by
+#: the ``mycelium-urns`` migration and when a client still sends one.
+LEGACY_URN_PREFIXES = {
+    "urn:ioc:mycelium:episode:": EPISODE_URN_PREFIX,
+    "urn:concept:mycelium:": TOPIC_URN_PREFIX,
+}
 
 # The handle mycelium's *backend itself* speaks as inside envelopes — genuine
 # system messages (plan-updated events, joins, knowledge distillation, aborts),
@@ -101,7 +116,7 @@ PING_PAYLOAD_TYPE = "ping"
 NOTICE_PAYLOAD_TYPE = "notice"
 
 #: What a notice can be about, as a closed set frozen in
-#: ``contracts/slim-wire.json``. ``filed`` also carries the row's board
+#: ``contracts/message-wire.json``. ``filed`` also carries the row's board
 #: ``kind`` (so the line reads "New decision", not always "New task") and who it
 #: is ``for``; the custody and lifecycle subkinds carry ``by`` (who moved it).
 #: ``expired`` is the one nobody writes: a held lease drained by the clock, and
@@ -151,7 +166,16 @@ class MessageValidationError(ValueError):
 
 def episode_urn(parent_room: str, session_id: str) -> str:
     """Mint the episode URN scoping all messages of one coordination session."""
-    return f"urn:ioc:mycelium:episode:{parent_room}:{session_id}"
+    return f"{EPISODE_URN_PREFIX}{parent_room}:{session_id}"
+
+
+def canonical_urn(urn: str) -> str:
+    """``urn`` with a legacy prefix (:data:`LEGACY_URN_PREFIXES`) replaced by
+    the current one; any other string as it is."""
+    for old, new in LEGACY_URN_PREFIXES.items():
+        if urn.startswith(old):
+            return new + urn[len(old) :]
+    return urn
 
 
 def live_episode_urn(parent_room: str) -> str:
@@ -164,12 +188,12 @@ def is_live_episode(parent_room: str, episode: str | None) -> bool:
 
     ``None`` is the room: a caller that names no thread is talking to the room.
     """
-    return episode is None or episode == live_episode_urn(parent_room)
+    return episode is None or canonical_urn(episode) == live_episode_urn(parent_room)
 
 
 def topic_urn(parent_room: str) -> str:
-    """The concept URI a room's negotiations are about."""
-    return f"urn:concept:mycelium:{parent_room}"
+    """The URN of what a room's messages are about: the room."""
+    return f"{TOPIC_URN_PREFIX}{parent_room}"
 
 
 def validate_subkind(kind: Kind, subkind: str | None) -> None:
@@ -183,8 +207,7 @@ def validate_subkind(kind: Kind, subkind: str | None) -> None:
         )
 
 
-# The v0.0.6 binding has no participant_type field on Actor; by convention
-# (matching the hcpanel reference implementation's bus) the first actor in the
+# An Actor carries no participant type; by convention the first actor in the
 # list is the sender and the rest are recipients.
 
 
@@ -207,10 +230,7 @@ def build_envelope(
 ) -> MyceliumMessage:
     """Build a validated message.
 
-    ``workspace_id``/``mas_id`` land in ``participants.groups``: the Go CFN's
-    content-based routing extracts them from there, so both are required for
-    envelopes that will be POSTed to the CFN (optional for envelopes that only
-    annotate mycelium's own coordination messages).
+    ``workspace_id``/``mas_id``, when given, land in ``participants.groups``.
     """
     validate_subkind(kind, subkind)
 
@@ -251,6 +271,16 @@ def envelope_to_dict(envelope: MyceliumMessage) -> dict[str, Any]:
     # would drop it and break re-validation, so restore an explicit null.
     data["header"]["participants"].setdefault("groups", None)
     return data
+
+
+def serialize_content(
+    envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """The content a message is recorded as: ``extra`` (its text and any
+    payload fields) with the envelope under :data:`CONTENT_ENVELOPE_KEY`."""
+    content: dict[str, Any] = dict(extra or {})
+    content[CONTENT_ENVELOPE_KEY] = envelope_to_dict(envelope)
+    return content
 
 
 def parse_envelope(raw: dict[str, Any] | str) -> MyceliumMessage:

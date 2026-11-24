@@ -39,9 +39,7 @@ dependencies = [
     "protobuf>=7.36.2",
     "rapidfuzz>=3.14.5",
     "questionary>=2.1.1",
-    "slim-bindings>=2.1,<2.2",
-    # ES256 keypair + JWK for the SignerJwt-floor SLIM identity (#476). A member
-    # mints/holds its own signing key locally, mirroring the backend module.
+    # Verifies the ES256 signatures of a paired device (runner/pairing.py).
     "cryptography>=50.0.2,<51",
     "keyring>=25.7.0",
 ]

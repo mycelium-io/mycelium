@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 from typing import Any
 from unittest import mock
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from starlette.requests import Request
@@ -25,8 +24,8 @@ from app.routes import participate
 from app.services import message_format, persister, room_channels, tasks
 from app.services.asks import asks
 from app.services.filesystem import get_room_dir
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 ROOM = "threaded"
 THREAD = message_format.episode_urn(ROOM, "t3")
@@ -193,8 +192,8 @@ class TestBareAwaitSeesThreads:
     A negotiation always runs inside its own freshly-minted thread — never the
     room's live episode — so excluding thread records from the unscoped path
     (as a prior fix briefly did) left every such tick permanently undeliverable
-    to a caller with no live SLIM socket (the plain HTTP long-poll participant
-    this endpoint exists for): it has no way to learn the thread's URN ahead of
+    to a plain HTTP long-poll participant (the caller this endpoint exists
+    for): it has no way to learn the thread's URN ahead of
     time to scope to it.
     """
 
@@ -319,42 +318,36 @@ class TestThreadWriteAuthorization:
 
 
 class _RecordingPersister:
-    """Records what the moderator ingests locally, and nothing else."""
+    """Records what the room records, and nothing else."""
 
     def __init__(self) -> None:
-        self.ingested: list[tuple[Any, dict, bool]] = []
+        self.recorded: list[tuple[Any, dict, bool]] = []
         # The write guard reads the transcript to recognize a thread already
         # spoken in; empty here, so every test resolves its thread off the row
         # it is bound to — the first-write path, which is the one that matters.
         self.log = persister.DeliveryLog()
 
-    def ingest_local(self, envelope, content, *, list_write=False):
-        self.ingested.append((envelope, content, list_write))
+    def record(self, envelope, content, *, list_write=False):
+        self.recorded.append((envelope, content, list_write))
 
     @property
     def pings(self) -> list[tuple[Any, dict]]:
         return [
             (env, content)
-            for env, content, _ in self.ingested
+            for env, content, _ in self.recorded
             if env.payload.type == message_format.PING_PAYLOAD_TYPE
         ]
 
 
-def _live_room(members: set[str] | None = None):
-    """A manager holding one live room whose sends and ingests are observable."""
+def _live_room():
+    """A manager holding one room whose recorded messages are observable."""
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
-    manager = RoomChannelManager(endpoint="http://127.0.0.1:46357", default_workspace="mycelium")
-    channel = MagicMock()
-    channel.send = AsyncMock()
+    manager = RoomChannelManager()
     managed = ManagedRoomChannel(
         room=ROOM,
-        workspace="mycelium",
-        client=MagicMock(),
-        channel=channel,
-        members=set(members or set()),
+        persister=_RecordingPersister(),  # ty: ignore[invalid-argument-type]
     )
-    managed.persister = _RecordingPersister()  # type: ignore[assignment]
     manager._channels[ROOM] = managed
     return manager, managed
 
@@ -375,7 +368,7 @@ class TestPing:
 
     @pytest.fixture
     def live(self):
-        """A live channel for ROOM whose sends and local ingests are observable."""
+        """ROOM's channel, whose recorded messages are observable."""
         manager, managed = _live_room()
         with mock.patch.object(room_channels, "manager", manager):
             yield managed
@@ -425,16 +418,21 @@ class TestPing:
         assert ping.payload.data["message"]  # enough to open the thread on
 
     @pytest.mark.asyncio
-    async def test_the_ping_never_goes_out_on_the_wire(self, client, room, live):
-        """Record locally, don't broadcast — the aligner's seam. The channel
-        already carried the real message; the ping is for the transcript and GUI."""
+    async def test_the_message_itself_is_recorded_in_its_thread(self, client, room, live):
+        """The thread is a tag: the message is recorded once, in the room's one
+        log, carrying the thread; only the ping is recorded in the room itself."""
         thread = await _unit_thread(room, "pick a token store")
         await self._post(client, episode=thread)
 
-        sent = [call.args[0] for call in live.channel.send.call_args_list]
-        assert [e for e in sent if e.payload.type == message_format.PING_PAYLOAD_TYPE] == []
-        assert len(sent) == 1  # the thread message itself, and only that
-        assert sent[0].header.message.episode == thread  # a tag, not a second channel
+        said = [
+            env
+            for env, _c, _lw in live.persister.recorded
+            if env.payload.type != message_format.PING_PAYLOAD_TYPE
+            and env.header.kind == Kind.exchange
+            and env.payload.type != message_format.NOTICE_PAYLOAD_TYPE
+        ]
+        assert len(said) == 1
+        assert said[0].header.message.episode == thread
 
     @pytest.mark.asyncio
     async def test_the_ping_wakes_nobody(self, client, room, live):
@@ -470,7 +468,7 @@ class TestPing:
     async def test_an_amendment_in_a_thread_pings_too(self, client, room, live):
         thread = await _unit_thread(room, "pick a token store")
         posted = await self._post(client, episode=thread, text="in memory")
-        live.persister.ingested.clear()
+        live.persister.recorded.clear()
 
         await client.post(
             f"/api/rooms/{ROOM}/messages/{posted.json()['id']}/amend",
@@ -479,17 +477,17 @@ class TestPing:
         assert len(live.persister.pings) == 1
 
     @pytest.mark.asyncio
-    async def test_a_thread_write_with_no_channel_still_reaches_the_bus(self, monkeypatch):
-        """A room whose channel is down has no transcript to raise into — so the
-        ping matches the reach of the message it announces (bus only) instead of
-        vanishing, in the frame a client already decodes."""
+    async def test_a_ping_reaches_the_bus_in_the_frame_a_client_decodes(self, monkeypatch):
+        """A ping is recorded in the room's log, which feeds the app's live
+        stream, in the frame a client already decodes."""
         from app.bus import bus, room_channel
         from app.services.room_channels import RoomChannelManager
 
         published: list[tuple[str, dict]] = []
         monkeypatch.setattr(bus, "publish", lambda ch, frame: published.append((ch, frame)))
 
-        manager = RoomChannelManager(endpoint="http://127.0.0.1:46357", default_workspace="m")
+        get_room_dir(ROOM)
+        manager = RoomChannelManager()
         mid = await manager.raise_ping(ROOM, episode=THREAD, sender="api", message_id="m1")
 
         assert mid is not None
@@ -511,7 +509,7 @@ class TestReplyTargeting:
 
     @pytest.fixture
     async def replying(self, client, monkeypatch):
-        """A registered agent, a live channel, and a tick already served to it."""
+        """A registered agent, the room's channel, and a tick already served to it."""
         assert (await client.post("/api/rooms", json={"name": ROOM})).status_code in (200, 201)
         monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
         monkeypatch.setattr(participate.principals, "post_rejection_reason", lambda *a, **k: None)
@@ -522,7 +520,6 @@ class TestReplyTargeting:
             return managed
 
         monkeypatch.setattr(manager, "provision", _provision)
-        monkeypatch.setattr(manager, "send_as_custodian", AsyncMock(return_value=False))
         monkeypatch.setattr(participate.room_channels, "manager", manager)
         monkeypatch.setattr(room_channels, "manager", manager)
         participate._last_tick.clear()
@@ -548,11 +545,11 @@ class TestReplyTargeting:
     def _replied(managed) -> Any:
         """The reply envelope the route recorded.
 
-        Selected by payload type: the moderator also ingests the ping, and a
-        ``create_task`` in the test's own setup broadcasts a ``knowledge`` write.
+        Selected by payload type: the room also records the ping, and a
+        ``create_task`` in the test's own setup records a ``knowledge`` write.
         """
         replies = [
-            env for env, _c, _lw in managed.persister.ingested if env.payload.type == "reply"
+            env for env, _c, _lw in managed.persister.recorded if env.payload.type == "reply"
         ]
         assert len(replies) == 1, "the route records exactly one reply"
         return replies[0]
@@ -650,7 +647,7 @@ class TestReplyTargeting:
         resp = await self._reply(client, episode=THREAD)
         assert resp.status_code == 404
         # Refused before anything was recorded — no reply, and no ping either.
-        assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
+        assert [e for e, _c, _lw in replying.persister.recorded if e.payload.type == "reply"] == []
         assert replying.persister.pings == []
 
     @pytest.mark.asyncio
@@ -667,11 +664,8 @@ class TestReplyTargeting:
         resp = await self._reply(client, episode=thread)
         assert resp.status_code == 403
         assert "api" in resp.json()["detail"]
-        assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
+        assert [e for e, _c, _lw in replying.persister.recorded if e.payload.type == "reply"] == []
         assert replying.persister.pings == []
-        # Nothing went out on the wire either, so no SLIM-connected member saw it.
-        sent = [c.args[0] for c in replying.channel.send.call_args_list]
-        assert [e for e in sent if e.payload.type == "reply"] == []
 
     @pytest.mark.asyncio
     async def test_a_member_of_the_roster_replies_as_before(self, client, replying):
@@ -696,7 +690,7 @@ class TestReplyTargeting:
         resp = await self._reply(client, episode=thread)
         assert resp.status_code == 409
         assert "@conductor holds the floor; @sec may speak" in resp.json()["detail"]
-        assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
+        assert [e for e, _c, _lw in replying.persister.recorded if e.payload.type == "reply"] == []
         assert replying.persister.pings == []
 
     @pytest.mark.asyncio

@@ -35,8 +35,8 @@ You need Docker running. The CLI needs Python 3.12 or newer. If the machine has
 an older one, the installer fetches 3.12 for the CLI instead of failing.
 
 The installer puts the `mycelium` CLI on your PATH. `mycelium install` then
-sets up its config in `~/.mycelium/` and starts the hub. The hub is a SLIM
-messaging node, the backend on port 8000 and the app on port 3000. Along the
+sets up its config in `~/.mycelium/` and starts the hub. The hub is the
+backend on port 8000 and the app on port 3000. Along the
 way it asks for a model provider and API key. Only the hub's engines use the
 model. Rooms, tasks, memory and your own agents work without one, and you can
 add one later. See [Models](#models).
@@ -45,7 +45,7 @@ To manage the hub after that:
 
 ```bash
 mycelium up       # start it, or restart it with new settings
-mycelium status   # check the backend, the node and the model
+mycelium status   # check the backend and the model
 mycelium logs     # read the logs
 mycelium down     # stop it
 ```

@@ -43,9 +43,8 @@ import { SenderName } from "@/components/sender-name";
 import { VerifierLines } from "@/components/verifier-line";
 import { ConductorRow } from "@/components/task/conductor-row";
 import { AgentCardHover } from "@/components/agent-card";
-import { ReplyValues, type ReplyContext } from "@/components/task/reply-values";
-import { conductorLineOf, type PickRecord, type RunProgress } from "@/lib/conductor-line";
-import { RunDoneLine, RunStartLine } from "@/components/messages/run-line";
+import type { RunProgress } from "@/lib/conductor-line";
+import { RunStartLine } from "@/components/messages/run-line";
 import { InterruptMark, type Interrupted } from "@/components/messages/mention-wakes";
 import { ThreadReplies } from "@/components/messages/thread-replies";
 import { EpisodeTag } from "@/components/episode-tag";
@@ -363,22 +362,18 @@ interface FeedRowProps {
   /** A conductor turn put to several members at once (`turnRuns`): everyone it
    *  went to, on the run's first turn, and `null` on the turns it folds in. */
   turnMembers?: string[] | null;
-  /** In a conductor run's thread, what a member's reply is drawn against. */
-  replyContext?: ReplyContext;
   /** In the channel, a run in this event's thread and where it stands: its
-   *  start and its end draw as lines about the run. */
+   *  start draws as a line about the run. */
   run?: RunProgress | null;
   /** Who the message's sender interrupted with it, marked on the message. */
   interrupted?: Interrupted[];
 }
 
-/** Whether a row would draw the same: every prop the same, a reply's context by
- *  what it holds, since a thread passes a new one each time it draws. */
+/** Whether a row would draw the same: every prop the same, a find's hit by
+ *  what it holds. */
 function sameRow(a: FeedRowProps, b: FeedRowProps): boolean {
   for (const key of Object.keys({ ...a, ...b }) as (keyof FeedRowProps)[]) {
-    if (key === "replyContext") {
-      if (a.replyContext?.rated !== b.replyContext?.rated) return false;
-    } else if (key === "hit") {
+    if (key === "hit") {
       if (a.hit?.active !== b.hit?.active || a.hit?.query !== b.hit?.query) return false;
     } else if (!Object.is(a[key], b[key])) {
       return false;
@@ -402,39 +397,23 @@ function FeedRowView({
   rowRef,
   hit,
   turnMembers,
-  replyContext,
   run,
   interrupted,
 }: FeedRowProps) {
   const { threads, rowNames, onOpenThread, onOpenMemory } = ctx;
 
-  // A run seen from the channel: its start and its end, each one line named by
-  // its task, opening the thread.
+  // A run seen from the channel: its start, one line named by its task,
+  // opening the thread. Its end is the plain Done line below.
   const runThread = (ev.raw.episode as string | undefined) ?? ev.episode;
-  if (run !== undefined && runThread) {
+  if (run !== undefined && runThread && ev.conductor?.event === "open") {
     const episode = runThread;
     const title = threads.get(episode)?.title ?? threadShortId(episode) ?? "thread";
     const onOpen = onOpenThread ? () => onOpenThread(episode) : undefined;
-    if (ev.conductor?.event === "open") {
-      return (
-        <div data-event-id={ev.id}>
-          <RunStartLine time={ev.time} at={ev.at} open={ev.conductor} progress={run} title={title} onOpen={onOpen} />
-        </div>
-      );
-    }
-    const close = conductorLineOf({ metadata: { conductor: ev.raw.conductor } });
-    if (ev.type === "coordination_consensus" && close?.event === "close") {
-      const pick = (ev.raw.select as PickRecord | undefined) ?? null;
-      // A run that picked or saved a summary says what; any other falls
-      // through to the plain Done line below.
-      if (close.pick || run?.lock?.outcome === "locked") {
-        return (
-          <div data-event-id={ev.id}>
-            <RunDoneLine time={ev.time} at={ev.at} close={close} pick={pick} progress={run} title={title} onOpen={onOpen} />
-          </div>
-        );
-      }
-    }
+    return (
+      <div data-event-id={ev.id}>
+        <RunStartLine time={ev.time} at={ev.at} open={ev.conductor} progress={run} title={title} onOpen={onOpen} />
+      </div>
+    );
   }
 
   if (ev.type === PING_TYPE) {
@@ -578,21 +557,17 @@ function FeedRowView({
     ) : (
       <span className="px-1 font-mono">episode</span>
     );
-    // A conductor run ends `resolved`, or `converged` when a pick certified an
-    // agreement: a flow walked to its end, so it says which flow and how far
-    // (and what it agreed on).
-    const flowDone = ev.raw.outcome === "resolved" || ev.raw.outcome === "converged";
-    const flow = flowDone ? (ev.raw.protocol as string | undefined) : undefined;
+    // A conductor run that ends `resolved` walked its flow to the end, so it
+    // says which flow and how far.
+    const flow = ev.raw.outcome === "resolved" ? (ev.raw.protocol as string | undefined) : undefined;
     if (flow) {
       const steps = typeof ev.raw.steps === "number" ? ev.raw.steps : undefined;
-      const agreed =
-        ev.raw.outcome === "converged" ? ((ev.raw.select as { pick?: string } | undefined)?.pick ?? null) : null;
       return (
         <SystemNotice
           time={ev.time}
           at={ev.at}
-          icon={agreed ? AGREED_ICON : DONE_ICON}
-          label={agreed ? "Agreed" : "Done"}
+          icon={DONE_ICON}
+          label="Done"
           labelColor={tone}
           strong
           task={where}
@@ -600,7 +575,6 @@ function FeedRowView({
           <span className="truncate">
             {flow} flow
             {steps !== undefined ? `, ${steps} step${steps === 1 ? "" : "s"}` : ""}
-            {agreed ? `, going with ${agreed}` : ""}
           </span>
         </SystemNotice>
       );
@@ -700,14 +674,10 @@ function FeedRowView({
       marked={marked}
       rowRef={rowRef}
       hit={hit}
-      replyContext={replyContext}
       interrupted={interrupted}
     />
   );
 }
-
-/** How far a reply drawn as values folds its prose: about two lines. */
-const REPLY_FOLD_PX = 44;
 
 /** A chat message: who said it (once per run), what they said, the verifier's
  *  lines under it, its hover actions and its right-click menu. */
@@ -718,7 +688,6 @@ export function MessageRow({
   marked = false,
   rowRef,
   hit,
-  replyContext,
   interrupted,
 }: {
   ev: Event;
@@ -727,11 +696,9 @@ export function MessageRow({
   marked?: boolean;
   rowRef?: React.Ref<HTMLDivElement>;
   hit?: { query: string[]; active: boolean };
-  replyContext?: ReplyContext;
   interrupted?: Interrupted[];
 }) {
   const { roomName, agentHandles, engineHandles, agentTags, agentOwners, flagsByMessage, refreshFlags } = ctx;
-  const drawsValues = Boolean(replyContext?.rated);
   // A message from an agent's subagent wears its parent's face, by its own
   // name, from the hub's record, which outlasts the subagent.
   const subagent = ctx.subagents?.get(ev.sender.toLowerCase());
@@ -807,9 +774,6 @@ export function MessageRow({
               {ev.messageId && <InterruptMark marks={interrupted} />}
             </div>
           )}
-          {/* A rating reply leads with its ratings as bars; its prose says the
-              same, so it folds to a couple of lines under them. */}
-          {drawsValues && <ReplyValues context={replyContext} />}
           {/* An ask's text is its question, which the card leads with. */}
           {ev.ask ? (
             <AskCard roomName={roomName} ask={ev.ask} onOpenMemory={ctx.onOpenMemory} />
@@ -822,7 +786,6 @@ export function MessageRow({
             roomName={roomName}
             threads={ctx.threadIds}
             onOpenThread={ctx.onOpenThread}
-            foldTo={drawsValues ? REPLY_FOLD_PX : undefined}
           />
           )}
           {ev.edited && (

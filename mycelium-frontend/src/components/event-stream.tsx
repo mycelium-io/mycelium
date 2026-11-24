@@ -279,7 +279,7 @@ function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | nu
   if (event.type === "l9_knowledge") {
     const key = (event.raw.key as string) || null;
     // Only a task's own memory is a row here. Everything else written (an
-    // agent's manifest, a run's shared summary or decision) is the Memory
+    // agent's manifest, a synthesis) is the Memory
     // rail's news, and as a row it reads as a task standing open.
     return key?.startsWith("work/") ? key : null;
   }

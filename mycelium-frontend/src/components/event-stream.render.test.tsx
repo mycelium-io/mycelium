@@ -222,7 +222,7 @@ describe("<EventStream /> live message rendering", () => {
             header: {
               kind: "commit",
               subkind: "converged",
-              message: { episode: "urn:ioc:mycelium:episode:sprint:s1" },
+              message: { episode: "urn:mycelium:episode:sprint:s1" },
             },
             payload: { type: "consensus", data: { assignments: { stack: "next" }, metrics: { gar: 0.8 } } },
           },
@@ -308,7 +308,7 @@ describe("<EventStream /> live message rendering", () => {
             header: {
               kind: "commit",
               subkind: "converged",
-              message: { episode: "urn:ioc:mycelium:episode:sprint:e4f1a2" },
+              message: { episode: "urn:mycelium:episode:sprint:e4f1a2" },
             },
             payload: { type: "consensus", data: { assignments: { stack: "next" } } },
           },
@@ -318,7 +318,7 @@ describe("<EventStream /> live message rendering", () => {
 
     // The notice names the episode by its short id; the name is the way in.
     await userEvent.click(await screen.findByRole("button", { name: /Open episode e4f1a2/ }));
-    expect(onOpenThread).toHaveBeenCalledWith("urn:ioc:mycelium:episode:sprint:e4f1a2");
+    expect(onOpenThread).toHaveBeenCalledWith("urn:mycelium:episode:sprint:e4f1a2");
   });
 
   it("leaves the episode tag inert when nothing is listening for it", async () => {
@@ -334,7 +334,7 @@ describe("<EventStream /> live message rendering", () => {
         created_at: CREATED,
         content: JSON.stringify({
           handle: "alice",
-          episode: "urn:ioc:mycelium:episode:sprint:e4f1a2",
+          episode: "urn:mycelium:episode:sprint:e4f1a2",
         }),
       });
     });

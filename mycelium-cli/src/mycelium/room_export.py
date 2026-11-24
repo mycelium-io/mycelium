@@ -220,7 +220,7 @@ def read_roster(hub: Client, room: str) -> dict[str, str]:
 
 
 def short_id(urn: str | None) -> str | None:
-    """``urn:ioc:mycelium:episode:<room>:<id>`` → ``<id>``."""
+    """``urn:mycelium:episode:<room>:<id>`` → ``<id>``."""
     return urn.rsplit(":", 1)[-1] if urn else None
 
 

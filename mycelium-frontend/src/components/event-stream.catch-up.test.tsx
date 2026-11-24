@@ -39,7 +39,7 @@ vi.mock("@/lib/report-to-app", () => ({ reportToApp: (line: string) => reported(
 import { fetchMessages, sendRoomMessage } from "@/lib/api";
 import { EventStream } from "@/components/event-stream";
 
-const LIVE = "urn:ioc:mycelium:episode:sprint:live";
+const LIVE = "urn:mycelium:episode:sprint:live";
 
 function at(minute: number): string {
   return new Date(Date.UTC(2026, 7, 20, 9, minute)).toISOString();

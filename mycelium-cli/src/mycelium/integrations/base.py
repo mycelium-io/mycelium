@@ -58,8 +58,8 @@ class AddOptions:
 class Integration(ABC):
     """Lifecycle for one agent runtime family. Stateless, safe to instantiate."""
 
-    #: Canonical family id: must match the ``AgentManifest.adapter`` literals,
-    #: ``sstp.AGENT_ADAPTERS``, and the ``integrations.INTEGRATIONS`` registry
+    #: Canonical family id: must match the ``AgentManifest.adapter`` literals
+    #: and the ``integrations.INTEGRATIONS`` registry
     #: key. Always the underscore spelling (``claude_code``), since that is the
     #: value persisted in ``agents/<handle>`` manifests.
     name: str

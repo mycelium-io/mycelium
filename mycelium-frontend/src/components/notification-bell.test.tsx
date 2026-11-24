@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
-const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
-const NOTE_THREAD = "urn:ioc:mycelium:episode:sprint:n1";
+const THREAD = "urn:mycelium:episode:sprint:t1";
+const NOTE_THREAD = "urn:mycelium:episode:sprint:n1";
 
 /** What the hub's speech server was asked to say, with which voice and speed,
  *  and whether it has one. */

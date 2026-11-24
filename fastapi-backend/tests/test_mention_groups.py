@@ -12,8 +12,8 @@ from app.services import groups, message_format, principals, room_people, tasks
 from app.services.asks import asked, asks
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.in_memory_store import StoredMessage, add_message
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 from app.services.persister import (
     parse_interrupt_mentions,
     parse_mentions,

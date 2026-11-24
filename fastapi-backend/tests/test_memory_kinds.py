@@ -20,7 +20,7 @@ from httpx import AsyncClient
 
 from app.routes.memory import upsert_memories
 from app.schemas import MemoryBatchCreate, MemoryCreate
-from app.services import memory_kinds, memory_sync
+from app.services import memory_kinds
 from app.services.filesystem import get_room_dir, read_memory_file
 
 ROOM = "kinds"
@@ -70,7 +70,6 @@ def test_the_table_is_the_contract():
             "id": k.id,
             "patterns": list(k.patterns),
             "edit": k.edit,
-            **({"source": k.source} if k.source else {}),
             **({"fixed": list(k.fixed)} if k.fixed else {}),
             **({"checks": list(k.checks)} if k.checks else {}),
             **({"says": k.says} if k.says else {}),
@@ -91,7 +90,7 @@ def test_the_table_is_the_contract():
         ("protocols/review", "protocol"),
         ("work/ship-it", "task"),
         ("work/ship-it/part", "task"),
-        ("context/summary/ship-it", "summary"),
+        ("context/summary/ship-it", "memory"),
         ("context/synthesis", "synthesis"),
         ("context/standing", "standing"),
         ("log/episodes/ab12cd34", "episode_record"),
@@ -196,50 +195,16 @@ async def test_the_synthesis_cursor_is_fixed(room):
     )
 
 
-SUMMARY = {
-    "title": "Checkout",
-    "cast": ["operator", "builder"],
-    "points": [
-        {
-            "id": "p1",
-            "type": "constraint",
-            "text": "Cards only",
-            "authors": ["operator"],
-            "support": 1,
-        }
-    ],
-    "flags": [],
-}
-
-
-async def test_a_summary_s_text_follows_its_contract(room):
-    await hub_writes("context/summary/ship-it", "the drawn text", contract=SUMMARY)
-    refused(await write(room, "context/summary/ship-it", "my own words"), "memory.rendered_body")
-
-    changed = {**SUMMARY, "title": "Checkout v2"}
-    resp = await write(room, "context/summary/ship-it", "ignored", meta={"contract": changed})
-    assert resp.status_code == 201, resp.text
-    meta, body = stored("context/summary/ship-it")
-    assert meta["contract"]["title"] == "Checkout v2"
-    assert body.startswith("# Shared summary: Checkout v2")
-
-    refused(
-        await write(room, "context/summary/ship-it", "x", meta={"contract": {"points": "no"}}),
-        "memory.schema_invalid",
+async def test_a_flow_with_a_step_kind_there_is_not_is_refused_and_says_which(room):
+    body = (
+        "steps:\n"
+        "  - {id: rate, to: all, prompt: rate, next: pick}\n"
+        "  - {id: pick, kind: select, next: {feasible: done}}\n"
+        "  - {id: done, end: resolved}\n"
     )
-
-
-async def test_a_decision_s_text_follows_its_field(room):
-    await hub_writes("context/decision/ship-it", "drawn", decision={"pick": "A", "text": "Cards"})
-    resp = await write(
-        room, "context/decision/ship-it", "x", meta={"decision": {"pick": "B", "text": "Cash"}}
-    )
-    assert resp.status_code == 201, resp.text
-    assert "Going with B: Cash" in stored("context/decision/ship-it")[1]
-    refused(
-        await write(room, "context/decision/ship-it", "x", meta={"decision": "B"}),
-        "memory.schema_invalid",
-    )
+    detail = refused(await write(room, "protocols/settle", body), "memory.schema_invalid")
+    assert "has kind 'select', which is not a step kind" in detail["message"]
+    assert absent("protocols/settle")
 
 
 async def test_a_refused_item_saves_nothing_from_its_batch(room):
@@ -303,55 +268,3 @@ async def test_the_synthesizer_leaves_an_edit_made_while_it_ran(room):
     wrote = await engine._write_summary(ROOM, "the model's briefing", "synth", None, read_version)
     assert wrote is False
     assert stored(SYNTHESIS_KEY)[1].strip() == "a person's edit"
-
-
-def test_a_copy_from_another_hub_carries_tags_and_frontmatter(tmp_path):
-    write = memory_sync.KnowledgeWrite(
-        key="context/summary/ship-it",
-        content="text",
-        version=2,
-        created_by="operator",
-        updated_by="operator",
-        updated_at="2026-11-13T10:00:00+00:00",
-        tags=["shared-summary"],
-        meta={"contract": SUMMARY, "episode": "urn:other"},
-    )
-    again = memory_sync.KnowledgeWrite.from_payload(write.to_payload())
-    assert again is not None
-    memory_sync.apply_knowledge_to_dir(tmp_path, again)
-    copied = read_memory_file(tmp_path, "context/summary/ship-it")
-    assert copied is not None
-    meta, _ = copied
-    assert meta["tags"] == ["shared-summary"]
-    assert meta["contract"]["title"] == "Checkout"
-    assert "episode" not in meta, "a copy never names this store's thread"
-
-
-def test_a_field_the_original_cleared_is_cleared_on_the_copy(tmp_path):
-    def copy(**kw: Any) -> None:
-        sent = memory_sync.KnowledgeWrite(
-            key="context/plan",
-            content="text",
-            created_by="operator",
-            updated_by="operator",
-            updated_at="2026-11-13T10:00:00+00:00",
-            **kw,
-        )
-        received = memory_sync.KnowledgeWrite.from_payload(sent.to_payload())
-        assert received is not None
-        memory_sync.apply_knowledge_to_dir(tmp_path, received)
-
-    copy(version=1, tags=["plan"], meta={"relates-to": "work/ship-it"})
-    copy(version=2, tags=[], meta={})
-    copied = read_memory_file(tmp_path, "context/plan")
-    assert copied is not None
-    assert "relates-to" not in copied[0]
-    assert not copied[0].get("tags")
-
-
-def test_a_plain_copy_reads_as_it_did():
-    plain = memory_sync.KnowledgeWrite(
-        key="k", content="c", version=1, created_by="a", updated_by="a", updated_at="t"
-    )
-    assert "tags" not in plain.to_payload()
-    assert "meta" not in plain.to_payload()

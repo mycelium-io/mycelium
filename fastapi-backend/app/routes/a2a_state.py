@@ -3,10 +3,9 @@
 
 """GET /rooms/{room_name}/a2a/state — the bridge as the Network views see it.
 
-The SLIM telemetry in ``/health`` cannot see the A2A bridge: an outbound call to
-a remote agent and an inbound message to the room's own Agent Card both happen
-off-channel. This route is the read that makes them legible next to SLIM traffic
-— who is bridged (from the room's manifests), whether the room is discoverable
+An outbound call to a remote agent and an inbound message to the room's own
+Agent Card both happen off the room's channel. This route is the read that
+makes them legible: who is bridged (from the room's manifests), whether the room is discoverable
 as an A2A agent (from the card it serves), and the recent exchanges either way
 (from the in-process activity log).
 

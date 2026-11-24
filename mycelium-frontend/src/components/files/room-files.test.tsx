@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Upload } from "@/lib/api";
 
-const THREAD = "urn:ioc:mycelium:episode:r:t1";
+const THREAD = "urn:mycelium:episode:r:t1";
 // Hours before noon today, local time, so "today" holds whatever the clock says.
 const noon = new Date();
 noon.setHours(12, 0, 0, 0);

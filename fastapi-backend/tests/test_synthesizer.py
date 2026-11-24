@@ -19,11 +19,11 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import memory_sync, message_format, persister, synthesizer
+from app.services import message_format, persister, synthesizer
 from app.services.filesystem import get_room_dir, read_memory_file, write_memory_file
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
-from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
+from tests.fakes import FakeManaged, FakeManager
 
 _ROOM = "synth-room"
 _EPISODE = message_format.episode_urn(_ROOM, "live")
@@ -32,7 +32,7 @@ _T0 = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
 
 
 def _engine() -> synthesizer.SynthesizerEngine:
-    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    managed = FakeManaged(_ROOM)
     return synthesizer.SynthesizerEngine(FakeManager(managed, []))  # type: ignore[arg-type]
 
 
@@ -66,21 +66,22 @@ def _chat(room: str, message_id: str, *, sender: str, text: str, at: datetime) -
 
 
 def _knowledge(room: str, message_id: str, *, at: datetime) -> None:
-    """Append a ``knowledge`` memory-push record — a promoted message frame whose
-    projected content is a serialized envelope, not prose."""
-    write = memory_sync.KnowledgeWrite(
-        key="decisions/db",
-        content="PostgreSQL chosen.",
-        version=1,
-        created_by="agent-a",
-        updated_by="agent-a",
-        updated_at=at.isoformat(),
-    )
-    env = memory_sync.build_knowledge_envelope(
-        room=room,
-        write=write,
+    """Append a memory write's ``knowledge`` record: a promoted message frame
+    whose projected content is a serialized envelope, not prose."""
+    env = message_format.build_envelope(
+        kind=Kind.knowledge,
+        subkind="extraction",
+        episode=message_format.episode_urn(room, "knowledge"),
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
+        topic=message_format.topic_urn(room),
+        payload_type="extraction",
+        payload_data={
+            "key": "decisions/db",
+            "content": "PostgreSQL chosen.",
+            "version": 1,
+            "created_by": "agent-a",
+            "updated_at": at.isoformat(),
+        },
     )
     record = persister.record_from(
         env, serialize_content(env, extra={"content": "memory updated → decisions/db"})

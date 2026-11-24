@@ -23,7 +23,7 @@ interface StreamStep {
 // each natural-language reply is followed by the conductor's interpreted move
 // as a coordination_tick, so
 // the Channel narrates and Stream fills in live.
-const PRICING_EPISODE = "urn:ioc:mycelium:episode:subscription-pricing:b2d0";
+const PRICING_EPISODE = "urn:mycelium:episode:subscription-pricing:b2d0";
 const tick = (id: string, round: number, who: string, action: string, offer: Record<string, string>): StreamStep["message"] => ({
   id,
   sender_handle: "conductor",

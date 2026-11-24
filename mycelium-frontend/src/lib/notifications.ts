@@ -159,8 +159,8 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
 
   const content = unwrapContent(raw);
 
-  // The persister's frames are `l9_exchange`; a message the hub couldn't hand
-  // to SLIM is published as its plain chat type, and reads the same.
+  // The persister's frames are `l9_exchange`; a message published as its plain
+  // chat type reads the same.
   switch (CHAT_TYPES.has(mtype) ? "l9_exchange" : mtype) {
     case "l9_exchange": {
       const text = (content.content as string) || (content.text as string) || "";

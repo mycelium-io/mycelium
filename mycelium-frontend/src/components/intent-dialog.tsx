@@ -10,7 +10,6 @@ import {
   ChevronDown,
   History,
   Loader2,
-  Scale,
   SquarePlus,
   X,
   type LucideIcon,
@@ -30,7 +29,6 @@ const FIELD =
 const ICONS: Record<IntentId, LucideIcon> = {
   task: SquarePlus,
   review: CheckCheck,
-  settle: Scale,
   "catch-up": History,
 };
 
@@ -182,7 +180,7 @@ export function IntentDialog({
         )}
         <label className="block">
           <span className="mb-1 block text-micro text-muted-foreground">
-            {intent.id === "settle" ? "What they disagree about" : "Details"}{" "}
+            Details{" "}
             <span className="text-faint">(optional)</span>
           </span>
           <GrowTextarea

@@ -1,7 +1,7 @@
 # Fake-backend mode (`src/mocks`)
 
 Render the **real UI** in every state — populated, in-progress, empty — with **no
-SLIM node, no LLM, and no backend server**. This is the frontend analogue of the
+LLM and no backend server**. This is the frontend analogue of the
 backend/CLI fake stacks: one command to reach any state, for design and
 visual-regression work.
 

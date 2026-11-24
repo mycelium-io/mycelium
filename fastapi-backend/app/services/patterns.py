@@ -98,8 +98,8 @@ class Member(_Strict):
     def _not_retired(cls, kind: object) -> object:
         if kind == "aligner":
             msg = (
-                "kind 'aligner' was retired; leave it out and summon the conductor's "
-                "'concord' flow with the members who should agree"
+                "kind 'aligner' was retired; leave it out and summon a conductor flow "
+                "with the members who should take part"
             )
             raise ValueError(msg)
         return kind

@@ -11,7 +11,7 @@
  * memories by what came from what.
  */
 
-import { Ban, Info, Lightbulb, Network, Vote, type LucideIcon } from "lucide-react";
+import { Ban, Info, Lightbulb, Network, type LucideIcon } from "lucide-react";
 import { openCount, type Knowledge, type KnowledgeKind } from "@/lib/knowledge";
 import { relativeTime, useNow } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,6 @@ const ICON: Record<KnowledgeKind, { icon: LucideIcon; tone: string }> = {
   fact: { icon: Info, tone: "text-muted-foreground" },
   finding: { icon: Lightbulb, tone: "text-accent" },
   "dead-end": { icon: Ban, tone: "text-red" },
-  decision: { icon: Vote, tone: "text-green" },
 };
 
 export function TaskMemories({

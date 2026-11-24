@@ -80,7 +80,7 @@ echo "adding the hub, mycelium and the programs…"
 (cd "$tmp" && "$here/$built" --appimage-extract >/dev/null)
 cp -R src-tauri/resources/hub "$tmp/squashfs-root/usr/lib/Mycelium/hub"
 cp -R src-tauri/resources/cli "$tmp/squashfs-root/usr/lib/Mycelium/cli"
-for program in herdr slimctl node; do
+for program in herdr node; do
   cp "src-tauri/binaries/$program-$(rustc --print host-tuple)" "$tmp/squashfs-root/usr/bin/$program"
 done
 fetch "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" appimagetool

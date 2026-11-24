@@ -202,10 +202,6 @@ the `client_credentials` grant. See "Signing in agents" under
 `[[auth.issuers]]` block for each, one with `role = "user"` and one with
 `role = "agent"`. A token only passes against the issuer it came from.
 
-To also give each agent its own identity on the SLIM channel, see
-[Running a Shared Hub](https://mycelium-io.github.io/mycelium/guides.html#security-planes-per-member-slim-identity). That's
-separate from the API auth this guide sets up.
-
 ## Not for production
 
 This Keycloak setup is for development. It runs in `start-dev` mode with an

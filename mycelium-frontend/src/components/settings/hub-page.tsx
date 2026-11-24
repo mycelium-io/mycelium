@@ -14,17 +14,10 @@ import { fetchHubSettings, fetchVoiceStatus, restartHub, type HubEditing } from 
 import { settingHref } from "@/lib/client-settings";
 import { desktopMachine, useIsDesktop } from "@/lib/desktop";
 import { DOCS_URL } from "@/lib/install";
-import { useNetworkStatus } from "@/lib/room-data";
 import { useHubHealth } from "@/lib/use-status";
 import { HubSettingRow, useHubSettingControl } from "./hub-setting-control";
 import { Note, Row, Section, SettingsPage, Value } from "./settings-ui";
 import { VerifierSection } from "./verifier-section";
-
-/** What each channel identity tier means, in a line. */
-const IDENTITY: Record<string, string> = {
-  psk: "one shared key for every room",
-  signerjwt: "each member signs as itself",
-};
 
 /** How often to ask whether a restarting hub is back, and for how long. */
 const RESTART_POLL_MS = 1_000;
@@ -61,9 +54,6 @@ export function HubPage() {
   const summary = hubSummary(health);
   const ownHub = desktop && label === `This ${desktopMachine()}`;
   const store = health?.storage?.host_path || health?.storage?.path || null;
-  const identity = health?.identity?.mode ?? null;
-  const { network } = useNetworkStatus();
-  const node = network?.coordination ?? null;
   const editing = hub?.editing;
   const mayEdit = editing?.may_edit ?? false;
   const reload = () => void mutate();
@@ -151,33 +141,6 @@ export function HubPage() {
         </Section>
       )}
 
-      {node && (
-        <Section
-          title="Messaging node"
-          note="The SLIM node carries every room's encrypted channel. A room's own channel is on its Room settings page."
-        >
-          <Row id="hub.node" label="Node" help={node.slim_enabled ? "Connected." : "This hub runs without it, so rooms have no channel."}>
-            <Value mono risk={!node.slim_enabled}>{node.endpoint || "none"}</Value>
-          </Row>
-          <Row label="Rooms with a live channel">
-            <Value>{node.channels_live}</Value>
-          </Row>
-          <Row
-            label="Channels set up"
-            help={node.provisions_failed > 0 ? "Some rooms' channels failed to set up. The hub's log says why." : undefined}
-          >
-            <Value risk={node.provisions_failed > 0}>
-              {node.provisions_ok} ok{node.provisions_failed > 0 ? `, ${node.provisions_failed} failed` : ""}
-            </Value>
-          </Row>
-          {node.invite_failures > 0 && (
-            <Row label="Invites that failed" help="Members the node couldn't add to a room's channel.">
-              <Value risk>{node.invite_failures}</Value>
-            </Row>
-          )}
-        </Section>
-      )}
-
       {hub && (
         <>
           <Section title="Engines' model">
@@ -260,11 +223,6 @@ export function HubPage() {
             <Row id="hub.sign-in" label="Sign-in required" help={help("Off, anyone who can reach the hub can use it.", "auth.enabled")}>
               <Value risk={!hub.sign_in}>{hub.sign_in ? "on" : "off"}</Value>
             </Row>
-            {identity && (
-              <Row label="Channel identity" help={IDENTITY[identity]}>
-                <Value mono>{identity}</Value>
-              </Row>
-            )}
             <Row
               id="hub.personas-only"
               label="Patterns may only cast personas"
@@ -363,7 +321,7 @@ export function HubPage() {
         </>
       )}
 
-      <Note>Secrets in the hub&apos;s config (keys, the channel secret, sign-in client secrets) never reach this page.</Note>
+      <Note>Secrets in the hub&apos;s config (keys, sign-in client secrets) never reach this page.</Note>
     </SettingsPage>
   );
 }

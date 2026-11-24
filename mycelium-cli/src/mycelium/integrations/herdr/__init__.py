@@ -4,7 +4,7 @@
 """herdr bridge — an *optional* persistent-runtime wake target for mycelium.
 
 herdr (https://herdr.dev) keeps coding-agent sessions alive, addressable, and
-wakeable across detach. mycelium coordinates agents via rooms + the SLIM channel
+wakeable across detach. mycelium coordinates agents via rooms and their channels
 but has no persistent runtime of its own: a non-resident ``agent invoke`` message
 queues on the durable cursor with nothing to wake it.
 

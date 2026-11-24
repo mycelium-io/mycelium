@@ -12,9 +12,9 @@ lives entirely in files.
 
 ## 1. Stop the stack
 
-The current stack is the SLIM node (`mycelium-slim`) plus the backend
-(`mycelium-backend`), with the frontend (`mycelium-frontend`) and OTLP collector
-(`mycelium-collector`) as opt-in profiles. Tear it all down with the CLI: no `--profile
+The current stack is the backend (`mycelium-backend`) and the frontend
+(`mycelium-frontend`), with the OTLP collector (`mycelium-collector`) as an
+opt-in profile. Tear it all down with the CLI: no `--profile
 cfn`, no separate DB container:
 
 ```bash
@@ -46,12 +46,11 @@ That removes **`rooms/`** (all room markdown, memory, and plans), **`config.toml
 
 ## 3. Start again (short checklist)
 
-1. Run **`mycelium install`** to bring the SLIM node, backend and room UI back up.
+1. Run **`mycelium install`** to bring the backend and room UI back up.
 2. Register agents with **`mycelium agent create`**. The `claude_code` adapter is the
    proven path; `cursor` is present but unverified.
-3. For multi-machine wiring, run **`mycelium hub host`** on the hub and **`mycelium
-   connect http://<hub-ip>:46357`** on each spoke. See
-   [Cross-machine coordination](cross-machine.md).
+3. For multi-machine wiring, run **`mycelium init --api-url http://<hub-ip>:8000`**
+   on each spoke. See the Hub & Spoke guide.
 
 ---
 

@@ -101,18 +101,6 @@ const manifestText = (m: MockMemory): string => (typeof m.value === "string" ? m
 
 /** The backend's built-in flows (`protocols.BUILTIN_PROTOCOLS`), as its route lists them. */
 const MOCK_PROTOCOLS: Protocol[] = [
-  {
-    name: "accord",
-    description:
-      "Get on the same page. Everyone says what the task is, what's out of scope, what done means and what the key words mean; it's merged into one shared summary, with anything that doesn't line up flagged, and saved.",
-    roles: [],
-  },
-  {
-    name: "concord",
-    description:
-      "Help them agree. Everyone suggests, everyone rates, the least happy agent suggests a fix, until one option clears the bar for all.",
-    roles: [],
-  },
   { name: "fan-out", description: "A lead asks every worker at once, then combines what came back.", roles: ["lead"] },
   {
     name: "gated",
@@ -545,45 +533,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
       status: "ok",
       mock: true,
       version: "3.0.13",
-      coordination: {
-        endpoint: "http://mycelium-slim:46357",
-        slim_enabled: true,
-        channels_live: 2,
-        provisions_ok: 2,
-        provisions_failed: 0,
-        invite_failures: 0,
-        rooms: [
-          {
-            room: "checkout",
-            provisioned: true,
-            persister_alive: true,
-            members: ["builder", "reviewer"],
-            deferred_invites: 1,
-            episode_active: true,
-            reserves: 3,
-            reserve_failures: 0,
-            reserve_skipped: 0,
-            receive_errors: 0,
-            transient_errors: 0,
-          },
-          {
-            room: "subscription-pricing",
-            provisioned: true,
-            persister_alive: true,
-            members: [],
-            deferred_invites: 0,
-            episode_active: false,
-            reserves: 0,
-            reserve_failures: 0,
-            reserve_skipped: 0,
-            receive_errors: 0,
-            transient_errors: 0,
-          },
-        ],
-      },
-      // The default posture a fresh install runs on: PSK channel identity, HTTP
-      // API gate off.
-      identity: { status: "ok", mode: "psk", message: "psk" },
+      // The default posture a fresh install runs on: HTTP API gate off.
       auth: { enabled: false, issuers: [], localhost_bypass: true, audience: null },
       storage: { status: "ok", message: "Local store", path: "/data", host_path: "~/.mycelium/data" },
       embedding: { status: "ok", model: "BAAI/bge-small-en-v1.5", message: "Model loaded" },
@@ -761,7 +711,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
                   key: item.key,
                   created_by: "user",
                   version: 0,
-                  episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${item.key}/${now}`).replace(/-/g, "").slice(0, 8)}`,
+                  episode: `urn:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${item.key}/${now}`).replace(/-/g, "").slice(0, 8)}`,
                 }),
             value: text,
             content_text: item.content_text ?? text,
@@ -1151,7 +1101,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         updated_by: by,
         version: 1,
         updated_at: new Date().toISOString(),
-        episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${key}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+        episode: `urn:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${key}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
       };
       fx.memories.push(row);
       publish(roomName, memoryChangedFrame(key, 1, by));
@@ -1190,7 +1140,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
           updated_by: by,
           version: 1,
           updated_at: new Date().toISOString(),
-          episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/work/${title}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+          episode: `urn:mycelium:episode:${roomName}:${stableUuid(`${roomName}/work/${title}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
         };
         fx.memories.push(row);
         publish(roomName, memoryChangedFrame(row.key, 1, by));
@@ -1218,7 +1168,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         updated_by: by,
         version: 1,
         updated_at: new Date().toISOString(),
-        episode: `urn:ioc:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${key}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
+        episode: `urn:mycelium:episode:${roomName}:${stableUuid(`${roomName}/${key}/${Date.now()}`).replace(/-/g, "").slice(0, 8)}`,
       };
       fx.memories.push(row);
       publish(roomName, memoryChangedFrame(key, 1, by));
@@ -1294,8 +1244,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
         return json(
           {
             detail:
-              "The aligner was retired, so nothing started. To negotiate, run `mycelium board coordinate <row> conductor \"concord …\"` " +
-              "to help members agree, or `\"accord …\"` to get them on the same page.",
+              "The aligner was retired, so nothing started. To work it out in a task, run a conductor flow there, " +
+              "like `mycelium board coordinate <row> conductor \"review …\"`.",
           },
           422,
         );
@@ -1731,8 +1681,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "sessions": {
-      // Presence: a room's fixture may name resident members (there is no SLIM
-      // node here to report them), which the board projects into resident rows.
+      // Presence: a room's fixture may name resident members (no agents run
+      // here to report them), which the board projects into resident rows.
       if (sub[1] === "members" && method === "GET") {
         return json({
           members: fx.presence ?? [],

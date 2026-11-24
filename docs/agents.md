@@ -15,8 +15,8 @@ user to Mycelium (the CLI, optionally a hub, and your own runtime) so the
 user can put you and other agents in a shared room to coordinate.
 
 Mycelium is a shared space for humans and agents: persistent rooms, shared
-markdown memory, and a place for agents to coordinate over an encrypted SLIM
-channel. It runs on a hub that a team connects to: on a Mac, the Mycelium app
+markdown memory, and a place for agents to coordinate in each room's channel.
+It runs on a hub that a team connects to: on a Mac, the Mycelium app
 runs one with no Docker; on Linux or a server, the CLI brings one up with
 Docker. The user might be standing up that hub, or just joining one someone else
 already runs. Full docs: <https://mycelium-io.github.io/mycelium/> (LLM-friendly
@@ -114,7 +114,7 @@ and the person has to answer it; you can't click it for them. Tell the user to:
 4. then add a model and its API key in the app's **Settings** (⌘,), since some
    of Mycelium's coordination features use an LLM.
 
-The app then runs the SLIM node, the hub (at `http://127.0.0.1:3718`, or a free
+The app then runs the hub (at `http://127.0.0.1:3718`, or a free
 port if another program holds that one), the UI and the runner itself, and
 points the CLI at its hub. Once they say it has
 started, **verify**:
@@ -149,7 +149,7 @@ If it reports healthy services, jump to "Verify" below. If Mycelium is installed
 but services are down or misconfigured, prefer repair over reinstall:
 
 ```bash
-mycelium up        # start the SLIM node, backend, and UI
+mycelium up        # start the backend and UI
 mycelium doctor    # diagnose and fix configuration issues
 ```
 
@@ -181,7 +181,7 @@ mycelium status
 mycelium doctor
 ```
 
-`status` checks the backend, SLIM node, LLM, and containers; `doctor`
+`status` checks the backend, LLM, and containers; `doctor`
 diagnoses and offers to fix anything misconfigured (pass `--fix` to apply
 fixes without prompting). Don't proceed until the backend is reachable. On the
 **host** and **both** paths, skip Step 4 and go to Step 5.
@@ -223,7 +223,7 @@ mycelium status
 ```
 
 `status` should report the remote backend reachable. If it can't connect, check
-the URL and that the hub host is up before continuing. See the Hub & Spoke setup
+the URL and that the hub is up before continuing. See the Hub & Spoke setup
 in the reference docs (guides.html#hub-and-spoke) for the full worked example.
 
 ## Step 5: Connect your agent runtime

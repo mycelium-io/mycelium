@@ -4,10 +4,10 @@
 """
 Messages API — POST + list + event-status PATCH.
 
-Backed by an in-memory store; publishes to the
-in-process bus so the SSE stream sees writes live. The SLIM channel's durable
-transcript is owned by the persister (``services/persister.py``); this
-HTTP path stays the UI's post/list surface until SSE/``stream.py`` retires.
+Backed by an in-memory store; publishes to the in-process bus so the SSE
+stream sees writes live. The room's durable transcript is owned by the
+persister (``services/persister.py``); this HTTP path is the UI's post/list
+surface.
 """
 
 import logging
@@ -102,6 +102,9 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     sender_handle = actor.bind_delegated_actor(
         request, base_room, payload.sender_handle, field="sender_handle"
     )
+    # A client from before 3.1 may still name a thread by its old id.
+    if payload.episode:
+        payload.episode = message_format.canonical_urn(payload.episode)
 
     # Prevent impersonation: only engines post as engine handles.
     reason = principals.post_rejection_reason(base_room, sender_handle, allow_unregistered=True)
@@ -160,36 +163,35 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     if msg.episode:
         notify_payload["episode"] = msg.episode
 
-    # Human-in-the-room: backend publishes onto the channel as proxy for live SLIM
-    # rooms, parsing ``@`` recipients and inviting absent agents they name. The
-    # persister records to the durable transcript (source of truth), so don't also
-    # write in_memory_store/bus here (would duplicate). Non-SLIM paths use direct write.
+    # A person in the room: the backend records the message as their proxy,
+    # parsing ``@`` recipients. The persister records it to the durable
+    # transcript (source of truth) and owns its bus push. Other message types
+    # are written directly.
     published = False
     if (
         coord is None
         and msg.message_type == MessageType.BROADCAST
-        and room_channels.manager.is_live(channel)
+        and room_channels.manager.get(channel) is not None
     ):
         result = await room_channels.manager.publish_human(
             channel, sender=msg.sender_handle, text=msg.content, episode=payload.episode
         )
-        published = result is not None
-        if result is not None:
-            # Correlation key: the same envelope the persister records to the
-            # transcript, so a cold read dedups this row against its transcript copy.
-            msg.message_id = result.message_id
-            # One id for the message wherever it's read: the one its live frame
-            # and the history read give it, so a client holding the copy it sent,
-            # the live copy and a re-read page can tell they're one message.
-            if result.message_id:
-                msg.id = persister.read_id_of(result.message_id)
-            if result.unrecognized:
-                logger.warning(
-                    "send_message: @-mentioned handles not present and not registered "
-                    "in room %s — no delivery: %s",
-                    channel,
-                    result.unrecognized,
-                )
+        published = True
+        # Correlation key: the same envelope the persister records to the
+        # transcript, so a cold read dedups this row against its transcript copy.
+        msg.message_id = result.message_id
+        # One id for the message wherever it's read: the one its live frame
+        # and the history read give it, so a client holding the copy it sent,
+        # the live copy and a re-read page can tell they're one message.
+        if result.message_id:
+            msg.id = persister.read_id_of(result.message_id)
+        if result.unrecognized:
+            logger.warning(
+                "send_message: @-mentioned handles not present and not registered "
+                "in room %s, no delivery: %s",
+                channel,
+                result.unrecognized,
+            )
     # The human's message always lands in ``in_memory_store`` — its id backs PATCH /
     # event semantics and it's the live view. The persister records the same
     # message to the durable transcript (the read path's source of truth); the two
@@ -199,22 +201,16 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     if not published:
         bus.publish(room_channel(channel), notify_payload)
 
-    # Exactly one ping per threaded write, whatever the message type and whether
-    # or not the channel is up. Raised here rather than inside ``publish_human``
-    # because that only sees broadcasts over a live channel: an ``event`` into a
-    # thread, or any write while the channel is down, would move a task in
-    # silence, and the ping is the only thing that surfaces a thread into the room.
+    # Exactly one ping per threaded write, whatever the message type. Raised
+    # here rather than inside ``publish_human`` because that only sees
+    # broadcasts: an ``event`` into a thread would move a task in silence, and
+    # the ping is the only thing that surfaces a thread into the room.
     await room_channels.manager.raise_ping(
         base_room, episode=msg.episode, sender=msg.sender_handle, message_id=msg.message_id
     )
     # A mention rings its herdr doorbell where every message's does: as the room
-    # records it (``room_channels.ring_asked``), not here. Unpublished, it isn't
-    # recorded, so nothing rings; the wake log says why.
+    # records it (``room_channels.ring_asked``), not here.
     if coord is None and msg.message_type == MessageType.BROADCAST:
-        if not published:
-            room_channels.manager.note_unrecorded_asks(
-                base_room, sender=msg.sender_handle, text=msg.content or "", episode=msg.episode
-            )
         # A person who posts in a room has joined it; an agent or an unknown
         # handle hasn't (``room_people``).
         room_people.joined_by_message(base_room, msg.sender_handle)
@@ -265,6 +261,7 @@ async def list_messages(
     ),
 ):
     """List messages in a room (or coordination session), newest first."""
+    episode = message_format.canonical_urn(episode) if episode else episode
     channel, coord = _resolve_channel(room_name)
     now = datetime.now(UTC)
 
@@ -549,7 +546,7 @@ async def react_to_message(
         reaction=emoji,
         reaction_on=payload.on,
     )
-    if room_channels.manager.is_live(channel):
+    if room_channels.manager.get(channel) is not None:
         result = await room_channels.manager.publish_human(
             channel,
             sender=sender_handle,
@@ -559,8 +556,7 @@ async def react_to_message(
             episode=target.episode,
             data={"reaction": reaction},
         )
-        if result is not None:
-            msg.message_id = result.message_id
+        msg.message_id = result.message_id
     in_memory_store.add_message(channel, msg)
     if msg.message_id is None:
         bus.publish(
@@ -635,9 +631,9 @@ async def amend_message(
     if refusal is not None:
         raise HTTPException(status_code=refusal.status, detail=refusal.detail)
 
-    # The envelope id when the target rode the channel; its row id otherwise (a
-    # message posted while the channel was down never got one). Either way the
-    # amendment names something the read path can resolve.
+    # The envelope id when the target has one; its row id otherwise (an event,
+    # or a message from an older hub). Either way the amendment names
+    # something the read path can resolve.
     amends = target.message_id or str(target.id)
 
     msg = in_memory_store.StoredMessage(
@@ -652,7 +648,7 @@ async def amend_message(
     )
 
     published = False
-    if coord is None and room_channels.manager.is_live(channel):
+    if coord is None and room_channels.manager.get(channel) is not None:
         result = await room_channels.manager.publish_human(
             channel,
             sender=sender_handle,
@@ -661,9 +657,8 @@ async def amend_message(
             parents=[amends],
             episode=target.episode,
         )
-        published = result is not None
-        if result is not None:
-            msg.message_id = result.message_id
+        published = True
+        msg.message_id = result.message_id
 
     in_memory_store.add_message(channel, msg)
     if not published:
@@ -682,11 +677,7 @@ async def amend_message(
             },
         )
 
-    # Exactly one ping per threaded write, whatever the message type and whether
-    # or not the channel is up. Raised here rather than inside ``publish_human``
-    # because that only sees broadcasts over a live channel: an ``event`` into a
-    # thread, or any write while the channel is down, would move a task in
-    # silence, and the ping is the only thing that surfaces a thread into the room.
+    # Exactly one ping per threaded write, as for any message.
     await room_channels.manager.raise_ping(
         base_room, episode=msg.episode, sender=sender_handle, message_id=msg.message_id
     )

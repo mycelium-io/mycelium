@@ -1,6 +1,6 @@
 # Pattern B: A2A outbound, a remote agent joins the room as a member
-# The remote is registered as a room member but is NEVER in the MLS group.
-# The backend seat proxies it: reads plaintext, calls out over HTTPS, posts the reply to SLIM.
+# The remote is registered as a room member and proxied by the hub:
+# the hub calls it out over HTTPS and records the reply in the room.
 
 vars: {
   d2-config: {
@@ -13,16 +13,14 @@ direction: right
 
 title: |md
   # Pattern B · A2A outbound (remote agent as room member)
-  ### `adapter: a2a`: summon over SLIM, call over HTTPS, reply back onto SLIM
+  ### `adapter: a2a`: mention in the room, call over HTTPS, reply back into the room
 | {near: top-center; style.font-size: 22}
 
 classes: {
   actor:   { style: { font-size: 20; fill: "#eef2ff"; stroke: "#4f46e5"; stroke-width: 2; border-radius: 8 } }
   comp:    { style: { font-size: 20; fill: "#ffffff"; stroke: "#334155"; stroke-width: 1; border-radius: 6 } }
-  fabric:  { style: { font-size: 20; fill: "#f5f3ff"; stroke: "#7c3aed"; stroke-width: 2; border-radius: 10 } }
   external:{ style: { font-size: 20; fill: "#fff7ed"; stroke: "#ea580c"; stroke-width: 2; border-radius: 8 } }
   http:    { style: { font-size: 20; stroke: "#2563eb"; stroke-width: 2 } }
-  slim:    { style: { font-size: 20; stroke: "#7c3aed"; stroke-width: 3 } }
   a2a:     { style: { font-size: 20; stroke: "#ea580c"; stroke-width: 2; stroke-dash: 4 } }
   note:    { style: { fill: "#fefce8"; stroke: "#ca8a04"; font-size: 16; border-radius: 6 } }
 }
@@ -31,27 +29,22 @@ summoner: Room member\n(@-mentions @researcher) {class: actor}
 
 hub: Mycelium backend {
   class: comp
-  persist: persister\non_summon seam {class: comp}
+  persist: room log\non_summon seam {class: comp}
   responder: A2aResponder {class: comp}
-  mod: moderator\nchannel.send {class: comp}
 }
 
-slim: SLIM node {class: fabric}
-remote: Remote A2A agent\n(NOT an MLS member) {class: external}
+remote: Remote A2A agent {class: external}
 
-# --- Summon arrives over SLIM ---
-summoner -> slim: "1. @researcher tick" {class: slim}
-slim -> hub.mod: "2. moderator receives" {class: slim}
-hub.mod -> hub.persist: "3. transcript + fire on_summon" {class: http}
-hub.persist -> hub.responder: "4. handle_summon(room, researcher, text)" {class: http}
+# --- The mention is recorded ---
+summoner -> hub.persist: "1. @researcher message (HTTP)" {class: http}
+hub.persist -> hub.responder: "2. handle_summon(room, researcher, text)" {class: http}
 
-# --- Call the remote out-of-band (bypasses the SLIM node entirely) ---
-hub.responder -> remote: "5. send_to_a2a(card, text, Bearer)\nHTTPS JSON-RPC" {class: a2a}
-remote -> hub.responder: "6. Message / Task (+ context_id)" {class: a2a}
+# --- Call the remote ---
+hub.responder -> remote: "3. send_to_a2a(card, text, Bearer)\nHTTPS JSON-RPC" {class: a2a}
+remote -> hub.responder: "4. Message / Task (+ context_id)" {class: a2a}
 
-# --- Post the reply back onto SLIM as @researcher ---
-hub.responder -> hub.mod: "7. build reply message -> channel.send" {class: http}
-hub.mod -> slim: "8. publish as @researcher (MLS)" {class: slim}
-slim -> summoner: "9. reply delivered" {class: slim}
+# --- Record the reply as @researcher ---
+hub.responder -> hub.persist: "5. append reply as @researcher" {class: http}
+hub.persist -> summoner: "6. reply delivered (event stream / await)" {class: http}
 
-boundary: "What this hop is\n\nThe remote never holds a group key: it is not in the MLS group,\nit just gets called. The backend seat reads room plaintext (as moderator or custodian)\nand calls the remote over plain HTTPS, out of band from SLIM entirely.\nAuth is a Bearer token whose env-var name lives in the manifest; the secret stays in\nbackend env. The card URL is SSRF-guarded." {class: note; near: bottom-center}
+boundary: "What this hop is\n\nThe remote just gets called. The hub reads the room's text\nand calls the remote over HTTPS.\nAuth is a Bearer token whose env-var name lives in the manifest; the secret stays in\nbackend env. The card URL is SSRF-guarded." {class: note; near: bottom-center}

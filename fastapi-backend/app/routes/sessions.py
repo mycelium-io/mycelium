@@ -4,17 +4,14 @@
 """
 Sessions API — tracks agent presence in rooms.
 
-Presence is handled by SLIM: joining a room invites the agent into the
-room's SLIM group channel (backend = moderator), and — when a channel is live —
-membership on that channel is authoritative for who is present. ``in_memory_store``
-remains the metadata store (intent, context files) that SLIM membership doesn't
-carry; it is also the sole fallback when no fabric is up (task suite, no-node
-dev), so these endpoints keep answering without a node.
+Who is present is the room channel's (``room_channels``: ``await`` leases and
+herdr); ``in_memory_store`` holds the metadata a join carries (intent, context
+files).
 
-POST   /rooms/{room}/sessions       — join a room (record presence + SLIM invite)
+POST   /rooms/{room}/sessions       — join a room (record presence)
 POST   /rooms/{room}/sessions/spawn — return the room's presence session
 GET    /rooms/{room}/sessions       — list who is in a room
-DELETE /rooms/{room}/sessions/{id}  — leave a room (SLIM remove)
+DELETE /rooms/{room}/sessions/{id}  — leave a room
 """
 
 import logging
@@ -55,7 +52,6 @@ from app.services import (
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
-    read_room_meta,
     room_exists,
 )
 from app.services.floor import Floor
@@ -122,7 +118,7 @@ async def spawn_session(room_name: str):
 async def join_room(room_name: str, payload: ParticipantCreate, request: Request):
     """Join a room — record the agent's presence. Idempotent per handle."""
     # Presence is a claim on a handle, same as draining its queue: registering as
-    # someone else would put their name on the roster and pull their SLIM invite.
+    # someone else would put their name on the roster.
     # Authorized before the room is created, so a claim can't leave a room behind.
     actor.authorize_handle(request, room_name, payload.agent_handle, field="agent_handle")
     _ensure_room(room_name)
@@ -143,24 +139,14 @@ async def join_room(room_name: str, payload: ParticipantCreate, request: Request
         )
         in_memory_store.add_participant(coord.id, participant)
     else:
-        logger.info("Re-join for handle=%s room=%s (re-inviting)", payload.agent_handle, room_name)
+        logger.info("Re-join for handle=%s room=%s", payload.agent_handle, room_name)
         participant = existing
 
-    # Room = SLIM channel: make sure the channel exists, then invite the
-    # agent onto it. Runs on EVERY join, not just the first: a connector announces
-    # itself on each (re)connect, so a member dropped while its host slept (or on
-    # any session close) is re-invited here and the durable inbox re-serves its
-    # missed tail — no fresh @mention needed. The invite is idempotent (set-add +
-    # an empty re-serve when already caught up) and fire-and-forget so its SLIM
-    # handshake never blocks the join. Best-effort — no fabric = no live channel.
-    meta = read_room_meta(room_name)
-    workspace = meta.get("workspace_id") if meta else None
-    await room_channels.manager.provision(room_name, workspace=workspace)
-    room_channels.manager.invite_in_background(room_name, payload.agent_handle)
+    await room_channels.manager.provision(room_name)
 
     # Emit a coordination_join notice on the first join. Delegated to the manager
-    # so all join paths (HTTP session, SLIM invite, await lease) share the same
-    # dedup logic and the channel feed shows arrivals consistently.
+    # so all join paths (HTTP session, await lease) share the same dedup logic
+    # and the channel feed shows arrivals consistently.
     if is_new:
         room_channels.manager.announce_join(
             room_name, payload.agent_handle, intent=payload.intent or ""
@@ -190,12 +176,9 @@ async def list_sessions(room_name: str):
         return ParticipantListResponse(participants=[], total=0)
 
     participants = in_memory_store.list_participants(coord.id)
-    # When a SLIM channel is live *and has members*, its membership is
-    # authoritative for presence: surface only participants still on the channel.
-    # in_memory_store supplies the metadata (intent, context files) SLIM membership
-    # doesn't carry. Without agent-side SLIM connectors, the moderator
-    # can't invite HTTP joiners onto the channel, so SLIM membership is empty —
-    # then (and when no channel is live at all) in_memory_store is the source of truth.
+    # When anyone holds an ``await`` lease, the leases say who is present:
+    # surface only participants still holding one. With none at all,
+    # in_memory_store is the source of truth.
     present = set(room_channels.manager.members(room_name))
     if present:
         participants = [p for p in participants if p.agent_handle in present]
@@ -207,13 +190,11 @@ async def list_sessions(room_name: str):
 
 @router.get("/members", response_model=RoomPresenceRead, responses=refusals(404))
 async def list_members(room_name: str):
-    """Live presence: SLIM-socket members and server-held lease members.
+    """Live presence: every handle present in the room and how.
 
-    Returns every handle currently present in the room and how it's connected —
-    ``"slim"`` for an active SLIM socket subscription, ``"lease"`` for a
-    turn-based agent using ``await``/``reply`` (no persistent socket). Both
-    kinds are first-class room members; the distinction surfaces liveness in the
-    UI so you can tell a live connector from a polling agent at a glance.
+    ``"lease"`` for a turn-based agent using ``await``/``reply``, ``"herdr"``
+    for one alive in a herdr pane that hasn't joined since, with herdr's state
+    for either when a pane reports it.
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
@@ -228,8 +209,7 @@ async def list_members(room_name: str):
                 # or refused; None when no runner checking in has a verdict on it.
                 "can_reply": replies[h][0] if h in replies else None,
                 "cant_reply_why": replies[h][1] if h in replies else None,
-                # Wall-clock ISO of the lease member's last poll; None for SLIM
-                # members (a live socket is continuously present).
+                # Wall-clock ISO of the member's last poll or sync.
                 "last_seen": (
                     datetime.fromtimestamp(info.last_seen, UTC).isoformat()
                     if info.last_seen is not None
@@ -491,11 +471,11 @@ async def list_wakes(room_name: str, agent: str | None = None, limit: int = 50):
 
 @router.delete("/{session_id}", status_code=204, responses=refusals(404))
 async def leave_room(room_name: str, session_id: UUID):
-    """Remove a participant (agent leaves the room + the SLIM channel)."""
+    """Remove a participant (the agent leaves the room)."""
     coord = in_memory_store.get_session(room_name)
     if coord is None:
         raise HTTPException(status_code=404, detail="Participant not found")
-    # Resolve the handle before dropping the row, so we can remove it from SLIM.
+    # Resolve the handle before dropping the row, so it can leave the room too.
     handle = next(
         (p.agent_handle for p in in_memory_store.list_participants(coord.id) if p.id == session_id),
         None,

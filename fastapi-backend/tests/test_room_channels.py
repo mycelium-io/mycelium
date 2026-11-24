@@ -1,113 +1,74 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for backend-as-moderator channel provisioning (room_channels.py).
+"""Unit tests for the room channel manager (room_channels.py).
 
-Node-free: the SLIM transport is the shared :class:`FakeSlimClient` and the
-persister start is stubbed to a no-op, so provisioning, member tracking, the
-server-held presence lease, and the episode lifecycle are exercised as pure async
-logic. The live-node slices stay in ``test_slim_roundtrip.py`` (guarded on a node).
+A room's channel is its log on the hub, opened on first use; these exercise
+opening it, the server-held presence lease, herdr presence and wakes, and the
+episode lifecycle as pure async logic over a temp data dir.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import cast
 
 import pytest
 
-from app.config import settings
 from app.services import room_channels
-from tests.fakes import FakeSession, FakeSlimClient
+from app.services.filesystem import get_room_dir
 
 
 @pytest.fixture
-def manager(monkeypatch: pytest.MonkeyPatch) -> room_channels.RoomChannelManager:
-    """A manager wired to the fake transport, with the persister loop stubbed out."""
-    monkeypatch.setattr(settings, "SLIM_ENABLED", True)
-    monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: True)
-    monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
-    # The durable-inbox persister owns a background loop we don't want in a task
-    # test — provisioning/membership is the surface under test here.
-    monkeypatch.setattr(room_channels.RoomChannelManager, "_start_persister", lambda self, m: None)
-    return room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
+def manager() -> room_channels.RoomChannelManager:
+    """A fresh manager; ``room-a`` exists on disk, as a real room does."""
+    get_room_dir("room-a")
+    return room_channels.RoomChannelManager()
 
 
-@pytest.mark.asyncio
-async def test_provision_creates_channel_and_counts_ok(
+def test_get_opens_a_rooms_channel_once(manager: room_channels.RoomChannelManager) -> None:
+    managed = manager.get("room-a")
+    assert managed is not None
+    assert managed.room == "room-a"
+    assert manager.get("room-a") is managed  # the same channel, not a second one
+
+
+def test_get_opens_nothing_for_a_room_with_no_folder(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    managed = await manager.provision("room-a")
-
-    assert managed is not None
-    assert manager.is_live("room-a")
-    assert managed.workspace == "ws"
-    assert isinstance(managed.client, FakeSlimClient)
-    assert manager.status()["provisions_ok"] == 1
+    assert manager.get("no-such-room") is None
 
 
 @pytest.mark.asyncio
-async def test_provision_is_idempotent(manager: room_channels.RoomChannelManager) -> None:
+async def test_provision_always_returns_the_rooms_channel(
+    manager: room_channels.RoomChannelManager,
+) -> None:
     first = await manager.provision("room-a")
     second = await manager.provision("room-a")
-    assert first is second  # same managed channel, not a second provision
-    assert manager.status()["provisions_ok"] == 1
+    assert first is second
+    assert manager.get("room-a") is first
 
 
 @pytest.mark.asyncio
-async def test_provision_skips_when_slim_disabled(
-    manager: room_channels.RoomChannelManager, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(settings, "SLIM_ENABLED", False)
-    assert await manager.provision("room-a") is None
-    assert not manager.is_live("room-a")
-
-
-@pytest.mark.asyncio
-async def test_provision_skips_when_node_unreachable(
-    manager: room_channels.RoomChannelManager, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: False)
-    assert await manager.provision("room-a") is None
-
-
-@pytest.mark.asyncio
-async def test_invite_tracks_membership_and_routes_to_session(
+async def test_remove_drops_the_lease_and_forgets_the_arrival(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    managed = await manager.provision("room-a")
-    assert managed is not None
-
-    assert await manager.invite("room-a", "agent-a") is True
-    assert "agent-a" in managed.members
-    # The invite was routed onto the moderated session (fake records it).
-    session = cast("FakeSession", managed.channel.session)
-    assert len(session.invited) == 1
-    # The moderator's own id is never invited.
-    assert await manager.invite("room-a", room_channels.BACKEND_AGENT) is False
-
-
-@pytest.mark.asyncio
-async def test_remove_drops_membership(manager: room_channels.RoomChannelManager) -> None:
-    managed = await manager.provision("room-a")
-    assert managed is not None
-    await manager.invite("room-a", "agent-a")
+    manager.open("room-a")
+    manager.refresh_lease("room-a", "agent-a")
 
     assert await manager.remove("room-a", "agent-a") is True
-    assert "agent-a" not in managed.members
+    assert "agent-a" not in manager.members("room-a")
     # Removing an absent member is a no-op failure, not a crash.
     assert await manager.remove("room-a", "ghost") is False
 
 
-@pytest.mark.asyncio
-async def test_members_union_slim_presence_and_lease(
+def test_members_are_the_lease_holders(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    await manager.provision("room-a")
-    await manager.invite("room-a", "agent-slim")  # client-connected → SLIM presence
-    manager.refresh_lease("room-a", "agent-http")  # server-held → presence lease
+    manager.refresh_lease("room-a", "agent-http")
+    manager.refresh_lease("room-a", "agent-cli")
 
-    assert manager.members("room-a") == ["agent-http", "agent-slim"]
+    assert manager.members("room-a") == ["agent-cli", "agent-http"]
+    assert {p.kind for p in manager.presence("room-a").values()} == {"lease"}
 
 
 def test_expired_lease_drops_from_membership(
@@ -388,14 +349,13 @@ async def test_open_and_close_episode_lifecycle(
     manager: room_channels.RoomChannelManager,
 ) -> None:
     managed = await manager.provision("room-a")
-    assert managed is not None
 
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
+    assert manager.open_episode("room-a", "urn:mycelium:episode:room-a:e1") is True
     assert managed.lifecycle.active
     assert await manager.close_episode("room-a") is True
     assert not managed.lifecycle.active
 
-    # No channel → lifecycle ops are safe no-ops.
+    # A room with no folder → lifecycle ops are safe no-ops.
     assert manager.open_episode("ghost", "e") is False
     assert await manager.close_episode("ghost") is False
 
@@ -407,11 +367,10 @@ async def test_open_episode_freezes_the_parties_it_was_given(
     """A negotiation freezes who it brokers between, not everyone present: in a
     busy room that's how members nobody named were pulled in."""
     managed = await manager.provision("room-a")
-    assert managed is not None
-    await manager.invite("room-a", "reviewer")
+    manager.refresh_lease("room-a", "reviewer")
     manager.refresh_lease("room-a", "bystander")
 
-    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    episode = "urn:mycelium:episode:room-a:e1"
     assert manager.open_episode("room-a", episode, parties=["@Agent-A", "agent-b"]) is True
     assert managed.lifecycle.members == frozenset({"agent-a", "agent-b"})
 
@@ -427,14 +386,12 @@ async def test_joins_mid_negotiation_never_abort_it(
     manager: room_channels.RoomChannelManager,
 ) -> None:
     """Presence coming and going isn't a reason to stop a run (what #932 meant
-    to fix): a SLIM join, a brand-new headless caller and a party's own lease
-    starting all leave it running."""
+    to fix): a brand-new caller and a party's own lease starting both leave it
+    running."""
     managed = await manager.provision("room-a")
-    assert managed is not None
-    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    episode = "urn:mycelium:episode:room-a:e1"
     assert manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"]) is True
 
-    await manager.invite("room-a", "agent-slim")
     manager.refresh_lease("room-a", "agent-new")
     manager.refresh_lease("room-a", "agent-a")
     await _settle(manager)
@@ -446,13 +403,12 @@ async def test_joins_mid_negotiation_never_abort_it(
 async def test_removing_a_party_from_the_room_ends_the_negotiation(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    """Only a party actually leaving ends it; what it posts is checked in
-    ``test_mentions_and_invites``, whose channel records."""
+    """Only a party actually leaving ends it; what it records is checked in
+    ``test_publish_human``."""
     managed = await manager.provision("room-a")
-    assert managed is not None
-    await manager.invite("room-a", "agent-a")
-    await manager.invite("room-a", "reviewer")
-    episode = "urn:ioc:mycelium:episode:room-a:e1"
+    manager.refresh_lease("room-a", "agent-a")
+    manager.refresh_lease("room-a", "reviewer")
+    episode = "urn:mycelium:episode:room-a:e1"
     assert manager.open_episode("room-a", episode, parties=["agent-a", "agent-b"]) is True
 
     # Someone who isn't a party leaving changes nothing.
@@ -471,9 +427,8 @@ async def test_a_frozen_participant_refreshing_its_lease_is_not_a_join(
     edge is a join. A participant holding its lease through the negotiation must
     not abort it."""
     managed = await manager.provision("room-a")
-    assert managed is not None
     manager.refresh_lease("room-a", "agent-http")
-    assert manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:e1") is True
+    assert manager.open_episode("room-a", "urn:mycelium:episode:room-a:e1") is True
 
     manager.refresh_lease("room-a", "agent-http")
     manager.refresh_lease("room-a", "agent-http")
@@ -488,13 +443,11 @@ async def test_a_lease_only_join_leaves_a_task_thread_running(
     manager: room_channels.RoomChannelManager,
 ) -> None:
     """A task's thread is a container, not a negotiation: someone arriving must
-    not end it, from the lease side any more than from the SLIM side."""
+    not end it."""
     managed = await manager.provision("room-a")
-    assert managed is not None
     manager.refresh_lease("room-a", "agent-http")
     assert (
-        manager.open_episode("room-a", "urn:ioc:mycelium:episode:room-a:t1", negotiation=False)
-        is True
+        manager.open_episode("room-a", "urn:mycelium:episode:room-a:t1", negotiation=False) is True
     )
 
     manager.refresh_lease("room-a", "agent-new")
@@ -504,57 +457,32 @@ async def test_a_lease_only_join_leaves_a_task_thread_running(
 
 
 @pytest.mark.asyncio
-async def test_status_reports_per_room_snapshot(
+async def test_a_mention_of_a_lease_holder_waits_for_its_own_await(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    await manager.provision("room-a")
-    await manager.invite("room-a", "agent-a")
+    """Holding a lease is polling, not being pushed to: a message that mentions
+    a lease holder stays in its undelivered tail until its own ``await`` reads
+    it, so a mention is never marked delivered before it was read."""
+    from app.services import message_format
+    from app.services.message_format import serialize_content
+    from app.services.message_models import Kind
 
-    status = manager.status()
-    assert status["channels_live"] == 1
-    room = next(r for r in status["rooms"] if r["room"] == "room-a")
-    assert room["provisioned"] is True
-    assert room["members"] == ["agent-a"]
-
-
-@pytest.mark.asyncio
-async def test_persister_members_provider_excludes_lease_only_handles(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The persister's ``delivered_to`` source must be real SLIM members only.
-
-    A server-held ``await`` lease is polling, not pushed-to: DeliveryLog.record
-    marks anyone in ``delivered_to`` as caught up to the message just recorded,
-    so if a lease-only handle were counted, a mention addressed to it would be
-    marked delivered before its own poll ever read it — silently un-deliverable.
-    ``manager.members(room)`` unions SLIM members with lease holders (correct for
-    the roster/mention gate uses), so the persister must be wired to the
-    channel's own live SLIM set instead, not that union.
-    """
-    monkeypatch.setattr(settings, "SLIM_ENABLED", True)
-    monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: True)
-    monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
-
-    class _FakeRoomPersister:
-        def __init__(self, room, channel, *, members_provider, **_kw):
-            self.members_provider = members_provider
-
-        async def run(self):
-            return None
-
-    monkeypatch.setattr(room_channels, "RoomPersister", _FakeRoomPersister)
-
-    manager = room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
     managed = await manager.provision("room-a")
-    assert managed is not None
-    managed.members.add("slim-agent")
-    manager.refresh_lease("room-a", "lease-only-agent")
+    manager.refresh_lease("room-a", "agent-x")
+    managed.persister.log.track("agent-x")
+    env = message_format.build_envelope(
+        kind=Kind.exchange,
+        episode=message_format.live_episode_urn("room-a"),
+        sender="julia",
+        sender_role="human",
+        recipients=["agent-x"],
+        topic=message_format.topic_urn("room-a"),
+        payload_type="message",
+        message_id="m-1",
+    )
+    managed.persister.record(env, serialize_content(env, extra={"content": "@agent-x hi"}))
 
-    # The union (roster/mention gate use) legitimately includes both.
-    assert set(manager.members("room-a")) == {"slim-agent", "lease-only-agent"}
-    # The persister's delivery source must not.
-    fake_persister = cast(_FakeRoomPersister, managed.persister)
-    assert fake_persister.members_provider() == {"slim-agent"}
+    assert [r.message_id for r in managed.persister.log.undelivered("agent-x")] == ["m-1"]
 
 
 # ── joins are announced once per member ──────────────────────────────────────
@@ -587,34 +515,18 @@ async def test_a_member_is_announced_once_not_on_every_return(
     assert _joins("room-j") == ["claude"]
 
     # A restart forgets nothing: a fresh manager reads who was announced.
-    restarted = room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
+    restarted = room_channels.RoomChannelManager()
     restarted.refresh_lease("room-j", "claude")
     assert _joins("room-j") == ["claude"]
-
-
-@pytest.mark.asyncio
-async def test_a_dropped_connection_is_not_a_new_arrival(
-    manager: room_channels.RoomChannelManager,
-) -> None:
-    from app.services.filesystem import get_room_dir
-
-    get_room_dir("room-k")
-    await manager.provision("room-k")
-    await manager.invite("room-k", "codex")
-    manager._drop_member("room-k", "codex")
-    await manager.invite("room-k", "codex")
-    assert _joins("room-k") == ["codex"]
 
 
 @pytest.mark.asyncio
 async def test_a_member_removed_and_added_again_is_announced_again(
     manager: room_channels.RoomChannelManager,
 ) -> None:
-    from app.services.filesystem import get_room_dir
-
     get_room_dir("room-r")
     await manager.provision("room-r")
-    await manager.invite("room-r", "codex")
+    manager.refresh_lease("room-r", "codex")
     assert await manager.remove("room-r", "codex")
-    await manager.invite("room-r", "codex")
+    manager.refresh_lease("room-r", "codex")
     assert _joins("room-r") == ["codex", "codex"]

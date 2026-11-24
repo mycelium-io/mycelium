@@ -18,7 +18,7 @@ const hubUrl = flag("--hub-url");
 const ui = mode === "hub" ? (process.env.FAKE_UI_URL ?? "http://localhost:3100") : hubUrl;
 const api = mode === "hub" ? "http://127.0.0.1:3718" : hubUrl;
 
-const names = ["slim", "hub", "ui", "runner"];
+const names = ["hub", "ui", "runner"];
 const components = Object.fromEntries(
   names.map((n) => [n, { state: mode === "client" && n !== "runner" ? "disabled" : "starting", detail: null }]),
 );

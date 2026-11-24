@@ -22,7 +22,7 @@ from app.services import message_format, persona_engine
 from app.services.asks import MENTION_ETIQUETTE
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.message_models import Kind
-from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
+from tests.fakes import FakeManaged, FakeManager
 
 _ROOM = "persona-room"
 _LIVE = message_format.live_episode_urn(_ROOM)
@@ -30,7 +30,7 @@ _THREAD = message_format.episode_urn(_ROOM, "t1")
 
 
 def _engine() -> tuple[persona_engine.PersonaEngine, FakeManaged]:
-    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    managed = FakeManaged(_ROOM)
     return persona_engine.PersonaEngine(FakeManager(managed, [])), managed  # type: ignore[arg-type]
 
 
@@ -59,7 +59,7 @@ def _env(sender: str, *, episode: str = _LIVE, recipients: list[str] | None = No
 
 
 def _posted(managed: FakeManaged) -> list[tuple[Any, str]]:
-    return [(env, (extra or {}).get("content", "")) for env, extra in managed.channel.sent]
+    return [(env, content.get("content", "")) for env, content in managed.persister.recorded]
 
 
 @pytest.fixture(autouse=True)
@@ -135,34 +135,6 @@ async def test_it_answers_in_character_where_it_was_asked(monkeypatch: pytest.Mo
     # The stance rides the payload, the way the reply route lifts it, so the
     # conductor and the aligner read it off the same place.
     assert env.payload.data == {"action": "reject"}
-
-
-@pytest.mark.asyncio
-async def test_in_a_task_it_is_told_what_the_team_agreed(monkeypatch: pytest.MonkeyPatch):
-    _register("sec", "persona")
-    room_dir = get_room_dir(_ROOM)
-    write_memory_file(
-        room_dir,
-        "work/rotate",
-        "# Rotate the key",
-        created_by="julia",
-        extra_meta={"episode": _THREAD},
-    )
-    write_memory_file(
-        room_dir,
-        "context/summary/rotate",
-        "# Shared summary: Rotate the key\n\nNo downtime.",
-        created_by="conductor",
-    )
-    seen = _patch_pi(monkeypatch, "Fine.")
-    engine, _managed = _engine()
-
-    await engine.answer(_ROOM, engine_handle="sec", episode=_THREAD, sender="a", text="ok?")
-    await engine.answer(_ROOM, engine_handle="sec", episode=_LIVE, sender="a", text="ok?")
-
-    assert "What the team already agreed for this task" in seen[0]["prompt"]
-    assert "No downtime." in seen[0]["prompt"]
-    assert "already agreed" not in seen[1]["prompt"], "the room is no task"
 
 
 @pytest.mark.asyncio

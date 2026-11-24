@@ -3,7 +3,7 @@
 
 """``await`` delivers off the durable per-handle cursor (#649).
 
-Node-free: the SLIM channel is faked so the test exercises only the delivery
+The room's persister is faked so the test exercises only the delivery
 logic — that a first ``await`` replays a message already sitting in the
 transcript addressed to the handle (the reported bug), consumes it, and that the
 cursor is the durable inbox's, not a process-local one.
@@ -17,8 +17,8 @@ from starlette.requests import Request
 from app.routes import participate
 from app.services import message_format, persister
 from app.services.asks import asks
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 # A bare ASGI request — ``authorize_handle`` is stubbed out, so the route never
 # reads it; it exists only to satisfy the ``Request`` parameter type.

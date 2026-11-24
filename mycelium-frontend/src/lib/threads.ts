@@ -13,9 +13,9 @@
  * who wrote, and the message's id. Deliberately no prose — a thread exists so
  * an argument inside a task does not become the room's problem, and echoing it
  * here would undo that. The backend produces the ping
- * (`room_channels.raise_ping`) and the CLI reads it (`slim.message_format.ping_of`); this
+ * (`room_channels.raise_ping`) and the CLI reads it (`message_format.ping_of`); this
  * is the third reader, so the constants below are frozen in
- * `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`.
+ * `contracts/message-wire.json` and asserted by `threads.contract.test.ts`.
  */
 
 /** The session literal naming a room's own channel among its episodes. */
@@ -36,9 +36,22 @@ export const PING_PAYLOAD_FIELDS = ["episode", "sender", "message"] as const;
  */
 export const PING_TYPE = "thread_ping";
 
+/** How an episode's URN starts. */
+export const EPISODE_URN_PREFIX = "urn:mycelium:episode:";
+
+/** The prefix a hub before 3.1 gave episodes, read as {@link EPISODE_URN_PREFIX}. */
+export const LEGACY_EPISODE_URN_PREFIX = "urn:ioc:mycelium:episode:";
+
 /** The URN of a room episode, from the room and the session (short id) it tags. */
 export function episodeUrn(room: string, session: string): string {
-  return `urn:ioc:mycelium:episode:${room}:${session}`;
+  return `${EPISODE_URN_PREFIX}${room}:${session}`;
+}
+
+/** `urn` with the legacy prefix replaced by the current one; anything else as it is. */
+export function canonicalUrn(urn: string): string {
+  return urn.startsWith(LEGACY_EPISODE_URN_PREFIX)
+    ? EPISODE_URN_PREFIX + urn.slice(LEGACY_EPISODE_URN_PREFIX.length)
+    : urn;
 }
 
 /** The URN of a room's own channel — where a message with no thread lands. */
@@ -53,7 +66,7 @@ export function liveEpisodeUrn(room: string): string {
  * reading them as a thread would empty the channel of its own history.
  */
 export function isLiveEpisode(room: string, episode: string | null | undefined): boolean {
-  return !episode || episode === liveEpisodeUrn(room);
+  return !episode || canonicalUrn(episode) === liveEpisodeUrn(room);
 }
 
 /** The short id a thread is named by — the tail of its URN. */
@@ -98,7 +111,7 @@ export const NOTICE_PAYLOAD_TYPE = "notice";
 export const NOTICE_TYPE = "notice";
 
 /** What a board event did to a task — the closed set the backend raises, frozen
- *  in `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`. */
+ *  in `contracts/message-wire.json` and asserted by `threads.contract.test.ts`. */
 export const NOTICE_SUBKINDS = [
   "filed",
   "claimed",

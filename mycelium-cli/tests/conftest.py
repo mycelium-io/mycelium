@@ -3,10 +3,9 @@
 
 """Shared fixtures + in-process fakes for the CLI test suite.
 
-One import gets you a fake backend/transport stack — no SLIM node, no running
-backend server, no live HTTP. Single home for ``_FakeResp``/``_FakeClient``
-and ``_FakeSlimClient``, shared across the connector, daemon, and membership
-tests.
+One import gets you a fake backend/transport stack: no running backend server,
+no live HTTP. Single home for ``_FakeResp``/``_FakeClient``, shared across the
+connector, daemon, and membership tests.
 
 What stands in for what:
 
@@ -14,8 +13,6 @@ What stands in for what:
   fixture) — the hub, answering at httpx's transport, so the typed client and
   ``hub_client`` both reach it. No real request gets out: every test runs with
   a guard that fails one.
-* :class:`FakeSlimClient` — ``mycelium.slim.client.SlimClient`` with a scripted
-  inbox, for the member/daemon message-stream tests.
 * :class:`FakeResp` + the :func:`fake_httpx` fixture (sync + async clients) —
   ``httpx.AsyncClient`` / ``httpx.Client``, so the connector/daemon HTTP calls run
   without a backend.
@@ -31,7 +28,6 @@ See ``tests/README.md`` for the "test a command without a live stack" recipe.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import tempfile
 from collections.abc import Iterator
@@ -44,7 +40,7 @@ from unittest.mock import MagicMock, Mock
 # Set before anything from mycelium is imported. ``MyceliumConfig.save()`` with
 # no path writes ``~/.mycelium/config.toml``, so a test that saves without
 # ``isolated_home`` would replace the developer's own config (their LLM key,
-# server and SLIM secret) with a test's defaults. Every test runs with HOME in
+# server) with a test's defaults. Every test runs with HOME in
 # a temp folder; ``isolated_home`` still gives a test one of its own.
 _REAL_HOME = Path.home()
 _REAL_CONFIG = _REAL_HOME / ".mycelium" / "config.toml"
@@ -54,8 +50,6 @@ os.environ["USERPROFILE"] = _TEST_HOME  # what Path.home() reads on Windows
 
 import httpx  # noqa: E402
 import pytest  # noqa: E402
-
-from mycelium.slim.client import SlimReceiveTimeout  # noqa: E402
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -158,68 +152,6 @@ def _never_the_real_herdr_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium.integrations.herdr import HerdrBridge
 
     monkeypatch.setattr(HerdrBridge, "api", lambda _self, _method, _params=None: None)
-
-
-# ── SLIM transport ────────────────────────────────────────────────────────────
-
-
-class FakeSlimClient:
-    """A minimal stand-in for ``SlimClient`` that replays a scripted inbox.
-
-    ``inbox`` / ``published`` are class-level so a test can preload messages
-    before the client is constructed (the member core builds its own client). An
-    empty inbox blocks briefly then raises :class:`SlimReceiveTimeout`, which the
-    reconnecting stream reads as "quiet, still connected". Reset per test with
-    :meth:`reset`.
-    """
-
-    inbox: list[bytes] = []  # noqa: RUF012 — intentionally class-level scripted queue
-    published: list[bytes] = []  # noqa: RUF012
-
-    def __init__(self, _identity: Any, *, secret: str | None = None) -> None:
-        pass
-
-    @classmethod
-    def reset(cls) -> None:
-        cls.inbox = []
-        cls.published = []
-
-    async def connect(self, _endpoint: str) -> FakeSlimClient:
-        return self
-
-    async def listen_for_session(self) -> str:
-        return "session-1"
-
-    async def close(self) -> None:
-        pass
-
-    @staticmethod
-    async def publish(_session: Any, data: bytes) -> None:
-        FakeSlimClient.published.append(data)
-
-    @staticmethod
-    async def receive_message(_session: Any, *, timeout_s: float = 30.0):  # noqa: ARG004
-        if not FakeSlimClient.inbox:
-            await asyncio.sleep(0.02)
-            raise SlimReceiveTimeout("receive timeout")
-        payload = FakeSlimClient.inbox.pop(0)
-
-        class _Msg:
-            def __init__(self, p: bytes) -> None:
-                self.payload = p
-
-        return _Msg(payload)
-
-
-@pytest.fixture
-def fake_slim_client() -> type[FakeSlimClient]:
-    """The :class:`FakeSlimClient` class, reset to a clean inbox/outbox.
-
-    Monkeypatch it in where the code under test imports ``SlimClient``, e.g.
-    ``monkeypatch.setattr(member, "SlimClient", fake_slim_client)``.
-    """
-    FakeSlimClient.reset()
-    return FakeSlimClient
 
 
 # ── HTTP transport (httpx) ────────────────────────────────────────────────────

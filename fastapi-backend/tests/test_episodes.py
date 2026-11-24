@@ -75,7 +75,7 @@ async def test_list_episodes_returns_summary(client):
     assert len(episodes) == 1
     summary = episodes[0]
     assert summary["short_id"] == "abc123"
-    assert summary["episode"] == "urn:ioc:mycelium:episode:sprint:abc123"
+    assert summary["episode"] == "urn:mycelium:episode:sprint:abc123"
     assert summary["outcome"] == "converged"
     assert summary["subkind"] == "converged"
     assert summary["participants"] == ["alice", "bob"]
@@ -88,14 +88,13 @@ async def test_list_episodes_returns_summary(client):
 
 @pytest.mark.asyncio
 async def test_list_episodes_surfaces_an_in_progress_episode(client):
-    from app.services.room_channels import ManagedRoomChannel, manager
+    from app.services.room_channels import manager
 
     room = "live-room"
     await client.post("/api/rooms", json={"name": room})
-    urn = "urn:ioc:mycelium:episode:live-room:aa11bb22"
-    managed = ManagedRoomChannel(room=room, workspace="ws-1", client=None, channel=None)  # type: ignore[arg-type]
+    urn = "urn:mycelium:episode:live-room:aa11bb22"
+    managed = manager.open(room)
     managed.lifecycle.open(urn, {"alice", "bob", "backend"})
-    manager._channels[room] = managed
     try:
         resp = await client.get("/api/rooms/live-room/episodes")
         assert resp.status_code == 200
@@ -183,8 +182,8 @@ def _flow_record(outcome: str, trace: list[dict], *, within: str | None = None) 
     from app.services import episode_state
 
     ep = episode_state.EpisodeState(
-        episode="urn:ioc:mycelium:episode:r:e1",
-        topic="urn:concept:mycelium:r",
+        episode="urn:mycelium:episode:r:e1",
+        topic="urn:mycelium:topic:r",
         parent_room="r",
         short_id="e1",
         workspace_id="ws",
@@ -240,13 +239,13 @@ def test_a_flow_record_reads_back_its_graph_trace_and_parent(tmp_path, monkeypat
             "next": "review",
         }
     ]
-    key = _flow_record("open", trace, within="urn:ioc:mycelium:episode:r:t3")
+    key = _flow_record("open", trace, within="urn:mycelium:episode:r:t3")
 
     found = read_memory_file(get_room_dir("r"), key)
     assert found is not None
     summary = episode_summary(key, *found)
     assert summary["outcome"] == "open"
-    assert summary["within"] == "urn:ioc:mycelium:episode:r:t3"
+    assert summary["within"] == "urn:mycelium:episode:r:t3"
     assert summary["flow"]["name"] == "gated"
     assert summary["flow"]["bound"] == {"proposer": "api", "guardian": "sec"}
     assert summary["trace"] == trace

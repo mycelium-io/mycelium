@@ -14,8 +14,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.services import message_format, persister, threads, wake_digest
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 ROOM = "checkout"
 START = datetime(2026, 11, 4, 9, 0, tzinfo=UTC)
@@ -29,7 +29,7 @@ def _say(n: int, sender: str, text: str, episode: str | None = None):
         episode=episode or message_format.live_episode_urn(ROOM),
         sender=sender,
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        topic=f"urn:concept:mycelium:{ROOM}",
+        topic=f"urn:mycelium:topic:{ROOM}",
         message_id=f"m-{n:03d}",
         payload_type="reply",
     )

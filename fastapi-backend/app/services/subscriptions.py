@@ -57,7 +57,7 @@ KEEP_ENDED = timedelta(days=1)
 Kind = Literal["task", "notice", "member", "search"]
 
 #: Notices an agent can subscribe to by kind: the wire's closed set
-#: (``contracts/slim-wire.json``), less turn-taking, hub bookkeeping and the
+#: (``contracts/message-wire.json``), less turn-taking, hub bookkeeping and the
 #: verifier's word on one message, which are nobody's news, and ``upstream``,
 #: which is named by its change.
 UNTOLD = frozenset({"floor", "quiet", "check"})

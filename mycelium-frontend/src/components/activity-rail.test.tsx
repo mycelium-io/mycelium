@@ -52,7 +52,7 @@ describe("<ActivityRail />", () => {
       ...item("which alert threshold", null, [update("Reply", "@risk")]),
       subject: "threads/which-alert-threshold",
       memoryKey: null,
-      episode: "urn:ioc:mycelium:episode:atlas:t3aa11bb",
+      episode: "urn:mycelium:episode:atlas:t3aa11bb",
       thread: true,
     };
     render(<ActivityRail items={[item("claimed one", "claimed", [update("Claimed", "@ana", "claimed")]), thread]} />);

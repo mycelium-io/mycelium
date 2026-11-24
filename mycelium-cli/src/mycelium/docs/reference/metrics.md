@@ -4,7 +4,7 @@ A hub keeps three kinds of numbers:
 
 | What | What it answers | Where it goes |
 |---|---|---|
-| **Usage** | What the hub is used for: tasks filed and resolved, flows and negotiations finished, agents joined | Recorded on the hub, always. Sent on only if the hub shares usage stats |
+| **Usage** | What the hub is used for: tasks filed and resolved, flows finished, agents joined | Recorded on the hub, always. Sent on only if the hub shares usage stats |
 | **Backend metrics** | What the backend is doing: memory, embeddings, model calls, messaging, latency | Kept in the running backend. Exported over OpenTelemetry if you turn that on |
 | **Agent telemetry** | What your agents report over OpenTelemetry | The optional collector |
 
@@ -23,11 +23,10 @@ The hub records an event each time one of these happens:
 | `mycelium.task_filed` | A row is added to a board | its kind, who filed it (`person`, `agent`, `engine`), whether it was for someone |
 | `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
 | `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `gated`, `fan-out`, ... or `custom`), outcome, steps |
-| `mycelium.negotiation_completed` | A conductor flow that picks an option, such as `concord`, finishes | outcome, rounds (how many picks it made) |
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `engine` or `a2a`) |
 
 Every event also carries the release, the time and the hub's id, which is a
-random UUID. Resolved tasks, finished flows and finished negotiations carry
+random UUID. Resolved tasks and finished flows carry
 `work_count`, which is how much work this hub has finished so far.
 
 **Never recorded:** names, handles, emails, rooms, task titles or text,
@@ -60,7 +59,7 @@ model calls, with how long each took. Read them as JSON at
 `GET /api/observability`. Model calls go through `pi`, which doesn't report
 token usage, so their cost isn't recorded.
 
-`GET /health` says whether messaging, storage, embeddings and the model are
+`GET /health` says whether storage, embeddings and the model are
 working. This is what `mycelium doctor` checks. When a latency p95 passes its
 threshold, `/health` reports `degraded`:
 

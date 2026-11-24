@@ -44,7 +44,7 @@ the usual ones:
 | `procedures/` | Steps to repeat later | No |
 | `agents/` | Each member's instructions | No |
 | `protocols/` | The room's own [flows](#flows) | No |
-| `log/` | Records of flows and negotiations | No |
+| `log/` | Records of flows | No |
 
 ```bash
 mycelium memory set "failed/single-writer" "Serializing all writes stalled under load"

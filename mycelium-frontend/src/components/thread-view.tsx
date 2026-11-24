@@ -341,7 +341,7 @@ export function ThreadView({ roomName, target, onClose, showClose = true, onOpen
           contentClassName="relative flex flex-col"
         >
           <ScrollArea className="min-h-0 flex-1" viewportRef={setScroller}>
-            <RunResult roomName={roomName} episode={target.episode} onOpenMemory={onOpenMemory} />
+            <RunResult roomName={roomName} episode={target.episode} />
             {run && (
               <div className="border-b border-border">
                 <FlowPanel episode={run} floor={floor} earlier={runs.slice(1)} onOpenMemory={onOpenMemory} />

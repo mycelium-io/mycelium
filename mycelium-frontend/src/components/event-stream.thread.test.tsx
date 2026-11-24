@@ -30,8 +30,8 @@ vi.mock("@/lib/api", () => ({
 import { EventStream } from "@/components/event-stream";
 
 const ROOM = "atlas";
-const LIVE = "urn:ioc:mycelium:episode:atlas:live";
-const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
+const LIVE = "urn:mycelium:episode:atlas:live";
+const THREAD = "urn:mycelium:episode:atlas:t3aa11bb";
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
 /** A message as the live stream carries it: prose inside an exchange envelope. */

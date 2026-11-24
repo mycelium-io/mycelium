@@ -4,11 +4,11 @@
 """What ``mycelium doctor --mode desktop`` checks: the pieces the desktop app runs.
 
 The app runs no containers, so the Docker-shaped checks don't apply. These
-look at what it does run, in the order a problem would show: the SLIM node,
-the hub (and any other hub on this Mac), the UI, the runner and herdr under it, the agent CLIs herdr can
-start, and whether ``mycelium`` and ``herdr`` are on PATH for the agents that
-call them. Which of them apply depends on the app's own setting: a Mac that
-joins a hub elsewhere runs no SLIM node, hub or UI.
+look at what it does run, in the order a problem would show: the hub (and any
+other hub on this Mac), the UI, the runner and herdr under it, the agent CLIs
+herdr can start, and whether ``mycelium`` and ``herdr`` are on PATH for the
+agents that call them. Which of them apply depends on the app's own setting: a
+Mac that joins a hub elsewhere runs no hub of its own.
 """
 
 from __future__ import annotations
@@ -25,11 +25,9 @@ from mycelium.desktop.supervisor import (
     DOCKER_HUB_PORT,
     HOST,
     HUB_PORT,
-    SLIM_PORT,
     UI_PORT,
     Locator,
     is_hub,
-    port_open,
     started_file,
     started_port,
     started_ui_port,
@@ -73,19 +71,6 @@ def app_setting() -> CheckResult:
     if s.get("mode") == "client":
         return CheckResult(name="Desktop app", status="ok", message=f"joins {s.get('hubUrl')}")
     return CheckResult(name="Desktop app", status="ok", message="runs a hub on this computer")
-
-
-def slim_node() -> CheckResult:
-    if port_open(SLIM_PORT):
-        return CheckResult(
-            name="SLIM node", status="ok", message=f"listening on {HOST}:{SLIM_PORT}"
-        )
-    return CheckResult(
-        name="SLIM node",
-        status="error",
-        message=f"nothing on {HOST}:{SLIM_PORT}",
-        details=["Rooms can't carry messages without it. Quit Mycelium and open it again."],
-    )
 
 
 def _get(url: str, timeout: float = 3.0) -> httpx.Response | None:
@@ -395,8 +380,6 @@ def desktop_checks() -> list[tuple[str, list[CheckResult]]]:
     )
     api_url = str(s.get("hubUrl") or "") if client else f"http://{HOST}:{port}"
     services: list[CheckResult] = [app_setting()]
-    if not client:
-        services.append(slim_node())
     services.append(hub(api_url) if api_url else app_setting())
     services.append(hubs_here(client=client))
     # The app's own UI runs in both modes; a joined hub is reached through it.

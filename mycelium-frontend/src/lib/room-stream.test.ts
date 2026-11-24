@@ -16,9 +16,9 @@ import {
 } from "@/lib/room-stream";
 
 const ROOM = "mycelium-general";
-const T1 = `urn:ioc:mycelium:episode:${ROOM}:t1`;
-const T2 = `urn:ioc:mycelium:episode:${ROOM}:t2`;
-const LIVE = `urn:ioc:mycelium:episode:${ROOM}:live`;
+const T1 = `urn:mycelium:episode:${ROOM}:t1`;
+const T2 = `urn:mycelium:episode:${ROOM}:t2`;
+const LIVE = `urn:mycelium:episode:${ROOM}:live`;
 let n = 0;
 
 function frame(content: Record<string, unknown>, extra: Record<string, unknown> = {}) {
@@ -87,7 +87,7 @@ describe("streamEventOf", () => {
     expect(streamEventOf(frame({ l9: { payload: { type: "ping", data: { episode: T1 } } } }), ROOM)).toBeNull();
     expect(streamEventOf(notice({ subkind: "floor", key: "work/a" }), ROOM)).toBeNull();
     const save = (key: string) =>
-      frame({ content: `memory updated → ${key}`, l9: { header: { message: { episode: `urn:ioc:mycelium:episode:${ROOM}:knowledge` } } } }, { message_type: "l9_knowledge" });
+      frame({ content: `memory updated → ${key}`, l9: { header: { message: { episode: `urn:mycelium:episode:${ROOM}:knowledge` } } } }, { message_type: "l9_knowledge" });
     expect(streamEventOf(save("work/a"), ROOM)).toBeNull();
     expect(streamEventOf(save("uploads/shot.png"), ROOM)).toMatchObject({ kind: "saved", text: "uploads/shot.png", episode: null });
   });

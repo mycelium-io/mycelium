@@ -280,10 +280,9 @@ export function parseEvent(msg: Record<string, unknown>): Event {
         assignments: data.assignments,
         metrics: data.metrics,
         episode: message?.episode,
-        // A conductor run's close line and its last pick, for the channel's
-        // line about how the run ended.
+        // A conductor run's close line, for the channel's line about how the
+        // run ended.
         conductor: data.conductor,
-        select: data.select,
       };
       mtype = "coordination_consensus";
       break;

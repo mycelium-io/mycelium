@@ -62,7 +62,7 @@ class EpisodeState:
     # The thread this episode was opened from, when it was opened inside a
     # task: the link back to the row a nested episode belongs to.
     within: str | None = None
-    # The memory a run saved its result to (a shared summary, a decision).
+    # The memory a run saved its result to, when it saved one.
     memory: str | None = None
 
 

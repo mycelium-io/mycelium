@@ -66,30 +66,6 @@ function backend(overrides: Partial<BackendMetrics> = {}): BackendMetrics {
 
 function network(): NetworkStatus {
   return {
-    coordination: {
-      endpoint: "http://mycelium-slim:46357",
-      slim_enabled: true,
-      channels_live: 1,
-      provisions_ok: 1,
-      provisions_failed: 0,
-      invite_failures: 0,
-      rooms: [
-        {
-          room: "atlas-migration",
-          provisioned: true,
-          persister_alive: true,
-          members: ["planner", "avery"],
-          deferred_invites: 0,
-          episode_active: true,
-          reserves: 3,
-          reserve_failures: 0,
-          reserve_skipped: 0,
-          receive_errors: 0,
-          transient_errors: 0,
-        },
-      ],
-    },
-    identity: { status: "ok", mode: "psk", message: "psk" },
     auth: { enabled: false, issuers: [], localhost_bypass: true, audience: null },
   };
 }
@@ -97,7 +73,7 @@ function network(): NetworkStatus {
 function episode(overrides: Partial<EpisodeSummary> = {}): EpisodeSummary {
   return {
     short_id: "ep-1",
-    episode: "urn:ioc:episode:ep-1",
+    episode: "urn:mycelium:episode:demo:ep-1",
     topic: "cutover window",
     outcome: "converged",
     subkind: "converged",
@@ -180,18 +156,6 @@ describe("<MetricsScreen />", () => {
     expect(within(cognition).getByText(/does not\s+report per-turn token usage/)).toBeInTheDocument();
   });
 
-  it("reports the coordination fabric room by room", async () => {
-    renderWithSWR(<MetricsScreen />);
-
-    await screen.findByText("Coordination fabric");
-    const fabric = panel("Coordination fabric");
-    expect(within(fabric).getByText("http://mycelium-slim:46357")).toBeInTheDocument();
-    expect(within(fabric).getByText("psk")).toBeInTheDocument();
-    expect(within(fabric).getByText("atlas-migration")).toBeInTheDocument();
-    expect(within(fabric).getByText("planner, avery")).toBeInTheDocument();
-    expect(within(fabric).getByText("active")).toBeInTheDocument();
-  });
-
   it("rolls every room's episodes up into how the negotiations ended", async () => {
     roomsRead.mockResolvedValue([room("atlas-migration"), room("pricing")]);
     episodesRead.mockImplementation(async (name: string) =>
@@ -238,6 +202,6 @@ describe("<MetricsScreen />", () => {
     renderWithSWR(<MetricsScreen />);
 
     expect(await screen.findByText("Backend unreachable")).toBeInTheDocument();
-    expect(screen.queryByText("Coordination fabric")).toBeNull();
+    expect(screen.queryByText("Memory & retrieval")).toBeNull();
   });
 });

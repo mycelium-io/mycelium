@@ -9,7 +9,7 @@ import type { MessageThread } from "@/lib/room-data";
 
 const thread = (over: Partial<MessageThread> = {}): MessageThread => ({
   key: "threads/when-should-the-payment-alert-fire",
-  episode: "urn:ioc:mycelium:episode:checkout:e7a1c3",
+  episode: "urn:mycelium:episode:checkout:e7a1c3",
   title: "When should the payment alert fire?",
   from: "h6",
   replies: { replies: 0, repliers: [] },
@@ -42,7 +42,7 @@ describe("<ThreadReplies />", () => {
     expect(line).toHaveTextContent("3 replies");
     expect(line).toHaveTextContent("send it to the room and to my phone");
     await userEvent.click(line);
-    expect(onOpen).toHaveBeenCalledWith("urn:ioc:mycelium:episode:checkout:e7a1c3");
+    expect(onOpen).toHaveBeenCalledWith("urn:mycelium:episode:checkout:e7a1c3");
   });
 
   it("links the task made from it", async () => {

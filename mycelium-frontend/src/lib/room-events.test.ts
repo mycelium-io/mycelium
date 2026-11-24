@@ -133,12 +133,12 @@ describe("parseEvent", () => {
       message_type: "l9_exchange",
       sender_handle: "system",
       content: JSON.stringify({
-        l9: { payload: { type: "ping", data: { episode: "urn:ioc:mycelium:episode:atlas:abc123", sender: "growth", message: "m9" } } },
+        l9: { payload: { type: "ping", data: { episode: "urn:mycelium:episode:atlas:abc123", sender: "growth", message: "m9" } } },
       }),
       created_at: CREATED,
     });
     expect(ev.type).toBe(PING_TYPE);
-    expect(ev.thread).toBe("urn:ioc:mycelium:episode:atlas:abc123");
+    expect(ev.thread).toBe("urn:mycelium:episode:atlas:abc123");
     expect(ev.pingSenders).toEqual(["growth"]);
   });
 
@@ -154,7 +154,7 @@ describe("parseEvent", () => {
               key: "work/cache-sweep",
               subkind: "resolved",
               title: "cache sweep",
-              episode: "urn:ioc:mycelium:episode:atlas:t1",
+              episode: "urn:mycelium:episode:atlas:t1",
               by: "growth",
             },
           },
@@ -164,7 +164,7 @@ describe("parseEvent", () => {
     });
     expect(ev.type).toBe(NOTICE_TYPE);
     expect(ev.content).toBe("cache sweep");
-    expect(ev.thread).toBe("urn:ioc:mycelium:episode:atlas:t1");
+    expect(ev.thread).toBe("urn:mycelium:episode:atlas:t1");
     expect(ev.raw.taskKey).toBe("work/cache-sweep");
     expect(ev.raw.by).toBe("growth");
   });

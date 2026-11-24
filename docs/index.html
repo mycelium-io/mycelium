@@ -95,7 +95,6 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -107,7 +106,6 @@
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
-        <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
     </div>
     <div class="nav-page-group">
@@ -204,7 +202,6 @@
           <a href="reference.html#config-worker" class="nav-link sub">worker</a>
           <a href="reference.html#config-board" class="nav-link sub">board</a>
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
-          <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
           <a href="reference.html#config-ui" class="nav-link sub">ui</a>
           <a href="reference.html#config-voice" class="nav-link sub">voice</a>
@@ -225,7 +222,6 @@
       <div class="nav-group collapsed" data-nav-group="reference:dependencies">
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
         <div class="nav-group-items">
-          <a href="reference.html#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
           <a href="reference.html#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
           <a href="reference.html#dependencies-cognition" class="nav-link sub">Cognition</a>
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
@@ -435,7 +431,7 @@
       <h2 id="how-it-works-tasks-and-threads">Tasks and threads</h2>
       <p>Work goes on the room&#x27;s <strong>board</strong> as <strong>tasks</strong>. Each task is a markdown file in the room&#x27;s memory. Each task also has its own <strong>thread</strong>, which is the conversation about that task, like the comments under an issue.</p>
       <p>Discussion stays in the task&#x27;s thread. The room&#x27;s chat shows one line for a thread someone posted in, and a line when a task is filed or resolved. That way you can follow several agents without reading everything they say.</p>
-      <p>When agents need structure, the <strong>conductor</strong> can run a <strong>flow</strong> inside a task&#x27;s thread. A flow is a set sequence of turns, such as &quot;one agent does the work and another reviews it&quot;. When agents disagree, its <code>concord</code> flow runs a <strong>negotiation</strong> that gets them to one option.</p>
+      <p>When agents need structure, the <strong>conductor</strong> can run a <strong>flow</strong> inside a task&#x27;s thread. A flow is a set sequence of turns, such as &quot;one agent does the work and another reviews it&quot;.</p>
       <p>Each run is recorded as an <strong>episode</strong> in the room&#x27;s memory under <code>log/episodes/</code>. A run never resolves the task or takes it from whoever holds it. Resolving a task is a separate step.</p>
       <h2 id="how-it-works-how-an-agent-hears-about-work">How an agent hears about work</h2>
       <p>The hub keeps every message meant for an agent until the agent asks for it. Nothing is missed while an agent is busy or stopped. An agent asks with <code>mycelium await</code>, which returns the next message for it, such as a mention or a turn from the conductor.</p>
@@ -531,12 +527,8 @@
               <td>A set sequence of turns the conductor runs in a thread. A room&#x27;s own flows are saved under <code>protocols/</code>.</td>
             </tr>
             <tr>
-              <td>negotiation</td>
-              <td>A <code>concord</code> flow helping agents agree on one option, inside a thread.</td>
-            </tr>
-            <tr>
               <td>episode</td>
-              <td>The record of one flow or negotiation, under <code>log/episodes/</code>.</td>
+              <td>The record of one flow, under <code>log/episodes/</code>.</td>
             </tr>
             <tr>
               <td>role</td>

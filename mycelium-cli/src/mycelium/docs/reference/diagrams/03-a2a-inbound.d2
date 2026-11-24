@@ -1,6 +1,6 @@
 # Pattern C: A2A inbound, the room is exposed AS an A2A agent
 # An external client discovers the room's Agent Card, calls its JSON-RPC endpoint,
-# and the backend injects the message onto the room's SLIM channel.
+# and the backend records the message in the room's log.
 
 vars: {
   d2-config: {
@@ -13,16 +13,14 @@ direction: right
 
 title: |md
   # Pattern C · A2A inbound (room exposed as an A2A agent)
-  ### Card discovery + JSON-RPC -> injected onto the room's SLIM channel
+  ### Card discovery + JSON-RPC -> posted in the room
 | {near: top-center; style.font-size: 22}
 
 classes: {
   comp:    { style: { font-size: 20; fill: "#ffffff"; stroke: "#334155"; stroke-width: 1; border-radius: 6 } }
-  fabric:  { style: { font-size: 20; fill: "#f5f3ff"; stroke: "#7c3aed"; stroke-width: 2; border-radius: 10 } }
   external:{ style: { font-size: 20; fill: "#fff7ed"; stroke: "#ea580c"; stroke-width: 2; border-radius: 8 } }
   actor:   { style: { font-size: 20; fill: "#eef2ff"; stroke: "#4f46e5"; stroke-width: 2; border-radius: 8 } }
   http:    { style: { font-size: 20; stroke: "#2563eb"; stroke-width: 2 } }
-  slim:    { style: { font-size: 20; stroke: "#7c3aed"; stroke-width: 3 } }
   a2a:     { style: { font-size: 20; stroke: "#ea580c"; stroke-width: 2; stroke-dash: 4 } }
   note:    { style: { fill: "#fefce8"; stroke: "#ca8a04"; font-size: 16; border-radius: 6 } }
 }
@@ -34,10 +32,9 @@ hub: Mycelium backend {
   card: GET /.well-known/agent-card.json\nstreaming = false {class: comp}
   rpc: POST /api/rooms/<room>/a2a\nJSON-RPC {class: comp}
   inject: inject into the room {class: comp}
-  mod: moderator\nchannel.send {class: comp}
+  log: room log {class: comp}
 }
 
-slim: SLIM node {class: fabric}
 room_members: Room members\n(agents, engines, humans) {class: actor}
 
 # --- Discovery ---
@@ -48,10 +45,9 @@ hub.card -> ext: "2. card advertises rpc url\n<base>/api/rooms/<room>/a2a  (JSON
 ext -> hub.rpc: "3. POST message/send  (JSON-RPC)" {class: a2a}
 hub.rpc -> hub.inject: "4. execute() -> inject" {class: http}
 
-# --- Onto the channel ---
-hub.inject -> hub.mod: "5. build message -> channel.send" {class: http}
-hub.mod -> slim: "6. publish (MLS ciphertext)" {class: slim}
-slim -> room_members: "7. delivered as a normal room message" {class: slim}
-hub.rpc -> ext: "8. ack: Delivered to room" {class: a2a}
+# --- Into the room ---
+hub.inject -> hub.log: "5. append to the transcript" {class: http}
+hub.log -> room_members: "6. delivered as a normal room message" {class: http}
+hub.rpc -> ext: "7. ack: Delivered to room" {class: a2a}
 
-boundary: What this call is\n\nInbound A2A is fire-and-ack (card advertises streaming=false). The external client\ngets an acknowledgment, not the room's eventual reply. As in the outbound direction,\nthe hub terminates the HTTPS JSON-RPC in plaintext, then republishes it onto MLS itself. {class: note; near: bottom-center}
+boundary: What this call is\n\nInbound A2A is fire-and-ack (card advertises streaming=false). The external client\ngets an acknowledgment, not the room's eventual reply. As in the outbound direction,\nthe hub terminates the HTTPS JSON-RPC and records the message in the room itself. {class: note; near: bottom-center}

@@ -58,17 +58,17 @@ describe("initials", () => {
 
 describe("<Monogram />", () => {
   it("names the presence tier for a screen reader, not just in color", () => {
-    render(<Monogram handle="growth" presence="slim" />);
-    expect(screen.getByLabelText("SLIM connected")).toBeInTheDocument();
+    render(<Monogram handle="growth" presence="lease" />);
+    expect(screen.getByLabelText("server-held lease (awaiting)")).toBeInTheDocument();
   });
 
-  it("breathes the halo for a poll in flight and holds it steady for a socket", () => {
+  it("breathes the halo for a poll in flight and holds it steady when done", () => {
     const { container: lease } = render(<Monogram handle="growth" presence="lease" />);
     expect(lease.querySelector(".avatar-halo.pulse")).toBeTruthy();
 
-    const { container: slim } = render(<Monogram handle="growth" presence="slim" />);
-    expect(slim.querySelector(".avatar-halo")).toBeTruthy();
-    expect(slim.querySelector(".avatar-halo.pulse")).toBeNull();
+    const { container: done } = render(<Monogram handle="growth" presence="herdr" status="done" />);
+    expect(done.querySelector(".avatar-halo")).toBeTruthy();
+    expect(done.querySelector(".avatar-halo.pulse")).toBeNull();
   });
 
   it("draws no halo at all for a handle that is not present", () => {

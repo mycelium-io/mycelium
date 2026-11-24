@@ -23,7 +23,7 @@ OTHER = "work/unrelated"
 
 
 def _thread(key: str) -> str:
-    return f"urn:ioc:mycelium:episode:{ROOM}:{key.rsplit('/', 1)[-1]}"
+    return f"urn:mycelium:episode:{ROOM}:{key.rsplit('/', 1)[-1]}"
 
 
 def _row(key: str, **meta: str) -> None:

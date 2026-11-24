@@ -131,7 +131,7 @@ describe("<FindBar /> hints", () => {
     const input = screen.getByLabelText("Find in the channel");
 
     await userEvent.type(input, "has:");
-    for (const v of ["mention", "link", "memory", "code", "scores"]) {
+    for (const v of ["mention", "link", "memory", "code"]) {
       expect(screen.getByRole("button", { name: new RegExp(`^${v}`) })).toBeInTheDocument();
     }
     await userEvent.clear(input);

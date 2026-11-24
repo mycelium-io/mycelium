@@ -414,7 +414,7 @@ def test_reconcile_note_stale_lease() -> None:
 def test_reconcile_note_in_sync() -> None:
     from mycelium.commands.herdr import _reconcile_note
 
-    text, _ = _reconcile_note("slim", "idle")
+    text, _ = _reconcile_note("lease", "idle")
     assert "sync" in text.lower()
 
 

@@ -1,29 +1,27 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the daemon-side lean message helpers (``mycelium.slim.message_format``).
+"""Unit tests for the CLI's lean message helpers (``mycelium.message_format``).
 
-These pin the wire contract the connector shares with the backend moderator: an
-``exchange`` envelope under the additive ``l9`` key, sender first / recipients
-after, parents threading causality. The *shape parity* with the backend's
-``message_format.envelope_to_dict`` is proven cross-package in the live integration slice;
-here we pin the accessors and the round trip.
+These pin the envelope shape the CLI shares with the backend: an ``exchange``
+envelope under the additive ``l9`` key, sender first / recipients after,
+parents threading causality.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from mycelium.slim import message_format
+from mycelium import message_format
 
 
 def _inbound(**kw):
     return message_format.build_reply_content(
         sender=kw.get("sender", "human"),
         recipients=kw.get("recipients", ["agent-a"]),
-        episode=kw.get("episode", "urn:ioc:mycelium:episode:r:live"),
+        episode=kw.get("episode", "urn:mycelium:episode:r:live"),
         parents=kw.get("parents", []),
-        topic=kw.get("topic", "urn:concept:mycelium:r"),
+        topic=kw.get("topic", "urn:mycelium:topic:r"),
         text=kw.get("text", "hello"),
         message_id=kw.get("message_id", "m-1"),
     )
@@ -51,17 +49,6 @@ def test_accessors_read_id_episode_topic() -> None:
     assert message_format.message_id_of(content) == "m-9"
     assert message_format.episode_of(content) == "ep-9"
     assert message_format.topic_of(content) == "topic-9"
-
-
-def test_serialize_parse_round_trip() -> None:
-    content = _inbound(text="ping")
-    restored = message_format.parse(message_format.serialize(content))
-    assert restored == content
-
-
-def test_parse_rejects_non_json_and_non_object() -> None:
-    assert message_format.parse(b"\xff\xfe not json") is None
-    assert message_format.parse(b"[1, 2, 3]") is None
 
 
 def test_human_text_prefers_content_field() -> None:

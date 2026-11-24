@@ -1,10 +1,4 @@
 {
-  "agree-accord": {
-    "seconds": 73.9
-  },
-  "agree-concord": {
-    "seconds": 76.5
-  },
   "github": {
     "seconds": 38.8
   },
@@ -16,9 +10,6 @@
   },
   "pair-setup": {
     "seconds": 87.4
-  },
-  "pairing-disagree": {
-    "seconds": 49.9
   },
   "pairing-work": {
     "seconds": 42.2

@@ -27,9 +27,9 @@ from app.services.filesystem import (
     read_memory_file,
     write_memory_file,
 )
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
-from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
+from tests.fakes import FakeManaged, FakeManager
 
 _ROOM = "worker-room"
 
@@ -49,7 +49,7 @@ class _Manager(FakeManager):
 
 
 def _engine(**kwargs: Any) -> tuple[worker_engine.WorkerEngine, FakeManaged, _Manager]:
-    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    managed = FakeManaged(_ROOM)
     manager = _Manager(managed)
     return worker_engine.WorkerEngine(manager, **kwargs), managed, manager  # type: ignore[arg-type]
 
@@ -64,7 +64,7 @@ def _register(handle: str, kind: str | None = "worker", adapter: str = "engine")
 
 
 def _posted(managed: FakeManaged) -> list[tuple[Any, str]]:
-    return [(env, (extra or {}).get("content", "")) for env, extra in managed.channel.sent]
+    return [(env, content.get("content", "")) for env, content in managed.persister.recorded]
 
 
 def _patch_pi(monkeypatch: pytest.MonkeyPatch, *replies: str) -> list[dict[str, Any]]:
@@ -148,21 +148,6 @@ def test_the_prompt_names_the_team_the_task_and_the_thread():
     assert "work/fix-flake: Fix the flaky test" in prompt
     assert "- agent-1: I'll split it." in prompt
     assert prompt.endswith("Check in.")
-    assert "already agreed" not in prompt
-
-
-def test_the_prompt_carries_what_the_team_agreed_for_the_task():
-    prompt = worker_engine.build_prompt(
-        _ROOM,
-        "agent-2",
-        team=["agent-1", "agent-2"],
-        task=("work/fix-flake", "Fix the flaky test"),
-        thread="(nothing yet)",
-        ask="Do it.",
-        agreed="What the team already agreed for this task:\n\nFrom context/summary/x:\nNo retries.\n\n",
-    )
-    assert "From context/summary/x:\nNo retries." in prompt
-    assert prompt.index("No retries.") < prompt.index("The thread so far")
 
 
 # ── a turn ─────────────────────────────────────────────────────────────────────
@@ -685,7 +670,7 @@ async def test_work_that_asks_its_reviewer_is_left_to_the_mention(monkeypatch: p
     )
     await _settle(engine)
 
-    # The fake channel fires no summons, so only the work turn itself ran.
+    # The fake room fires no summons, so only the work turn itself ran.
     assert [s["handle"] for s in seen] == ["agent-2"]
 
 

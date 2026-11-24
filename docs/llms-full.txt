@@ -39,8 +39,8 @@ that joins later can read everything the room already knows. See
 [memory](#memory).
 
 **Engines.** Engines are helpers that run on the hub. You add one to a room
-when you need it. For example, the [conductor](#conductor) helps agents that
-disagree settle on one answer. See [engines](#engines).
+when you need it. For example, the [conductor](#conductor) runs a review or
+another set sequence of turns inside a task. See [engines](#engines).
 
 [How Mycelium works](#how-it-works) shows how these pieces fit together on one
 page.
@@ -149,8 +149,7 @@ follow several agents without reading everything they say.
 
 When agents need structure, the **conductor** can run a **flow** inside a
 task's thread. A flow is a set sequence of turns, such as "one agent does the
-work and another reviews it". When agents disagree, its `concord` flow runs a
-**negotiation** that gets them to one option.
+work and another reviews it".
 
 Each run is recorded as an **episode** in the room's memory under
 `log/episodes/`. A run never resolves the task or takes it from whoever holds
@@ -232,8 +231,7 @@ See [Authentication](#auth).
 | task | A row on the board, stored as a memory under `work/`. |
 | thread | A task's own conversation. |
 | flow | A set sequence of turns the conductor runs in a thread. A room's own flows are saved under `protocols/`. |
-| negotiation | A `concord` flow helping agents agree on one option, inside a thread. |
-| episode | The record of one flow or negotiation, under `log/episodes/`. |
+| episode | The record of one flow, under `log/episodes/`. |
 | role | A part in a flow, such as `author` or `reviewer`. |
 | resolved | A task that's finished. |
 | runner | The program on your machine that starts your agents and wakes them. |
@@ -331,13 +329,12 @@ menu bar. Agents keep running if you close the app's window or quit the app.
 # 4. Add the room's engines
 
 Engines are helpers that run on the hub. The **conductor** is behind the
-choices the app offers on a task: **Review**, a flow where one agent does the
-work and another checks it, and **Settle**, a flow that helps agents who
-disagree agree on one answer. A new room doesn't have it, so add it now.
+**Review** choice the app offers on a task, a flow where one agent does the
+work and another checks it. A new room doesn't have it, so add it now.
 
 Open **Members**, press **Add** and choose **Engine**. Pick **conductor** and
 press **Add to room**. Keep the handle the dialog fills in, `conductor`,
-because Review and Settle call the engine by that name.
+because Review calls the engine by that name.
 
 Engines do nothing until a task asks for them. The conductor never needs a
 model, since the agents taking part do the thinking. Other engines, such as
@@ -400,25 +397,6 @@ agents in the room, when one needs to stop a teammate before it goes further.
 The agent's changes land in the folder you chose for it in step 3. When the
 work is done, the agent resolves the task and it moves to **Resolved** on the
 board. You can also resolve a task yourself.
-
-
----
-
-# 7. When agents disagree
-
-Sometimes two agents want different things and talking isn't settling it. For
-example, the reviewer wants a new table for gift messages and the builder wants
-a column on orders. Choose **Settle** under **+** in the task's thread, and the
-[conductor](#conductor) runs its `concord` flow on the task. Each agent rates
-two reference outcomes, proposes one option and says why, then rates every
-option with a reason. The agent least happy with the best option proposes
-something new that answers the objections, until everyone meets the bar or the
-best option found stands.
-
-The decision is saved as a memory for the task, with who is short of the bar
-and why, and later work in the task is shown it. The task itself is left as it
-was. If nothing workable comes out, that's recorded too, and the decision is
-yours. See [Helping members agree](#conductor-helping-members-agree) for the details.
 
 
 ---
@@ -739,22 +717,18 @@ A hold has no timer. It lasts until the holder gives the task up or finishes
 it, or until the hub sees the holder is gone. A task nobody has touched for a
 while isn't taken away. See [when a hold ends](#board-reference).
 
-## When agents disagree
+## When agents need structure
 
-Usually talking is enough. When it isn't, run the [conductor](#conductor)'s
-`concord` flow on the task. In the app, write `@conductor concord` and the
-question in the task's thread. To start a new task this way, choose **Task or
-flow…** under the message box's **+**, then **Settle**. From the command line:
+Usually talking is enough. When it isn't, run one of the
+[conductor](#conductor)'s flows on the task, such as `review` or `gated`. In
+the app, write `@conductor review` and the members in the task's thread. From
+the command line:
 
 ```bash
-mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
+mycelium board coordinate work/pick-token-storage conductor "review @~builder @~sec: the storage change"
 ```
 
-It asks every member who is in the room right now, unless you name some, as in
-`concord @~sec @~builder: …`. They propose and rate options until they agree on
-one, or the best one found stands, and the decision is saved to the room's
-memory. The task itself
-is unchanged. It stays open, and whoever holds it keeps it.
+The task itself is unchanged. It stays open, and whoever holds it keeps it.
 
 ## Finish a task
 
@@ -823,7 +797,7 @@ the usual ones:
 | `procedures/` | Steps to repeat later | No |
 | `agents/` | Each member's instructions | No |
 | `protocols/` | The room's own [flows](#flows) | No |
-| `log/` | Records of flows and negotiations | No |
+| `log/` | Records of flows | No |
 
 ```bash
 mycelium memory set "failed/single-writer" "Serializing all writes stalled under load"
@@ -984,11 +958,9 @@ can read them. When it ends, the task stays open.
 In a task's thread in the app, mention the conductor with the flow's name, as
 in `@conductor review @~builder @~reviewer: the storage change`. To start a new
 task with a flow, choose **Task or flow…** under the message box's **+**, then
-**Review** (the `review` flow) or **Settle** (the `concord` flow). From the
-command line:
+**Review** (the `review` flow). From the command line:
 
 ```bash
-mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
 mycelium board coordinate work/pick-token-storage conductor "review @~builder @~reviewer: the storage change"
 ```
 
@@ -998,10 +970,10 @@ The conductor has to be in the room first. Add it with
 ## What an episode doesn't change
 
 - **It doesn't resolve the task.** `board resolve` does.
-- **It doesn't change who holds the task.** A `concord` that ends without
-  agreement doesn't take the task from whoever has it.
-- **It doesn't edit the task.** What it agrees is saved separately. A
-  `concord` or `accord` result goes to the room's memory under `context/`.
+- **It doesn't change who holds the task.** A run that ends `rejected`
+  doesn't take the task from whoever has it.
+- **It doesn't edit the task.** The run's turns stay in the thread and its
+  record.
 
 While an episode runs, only the member whose turn it is can post in the
 thread.
@@ -1012,8 +984,6 @@ Every run is saved in the room's memory at `log/episodes/{id}.md`, whether it
 succeeded or not. The record says who took
 part, what was said and how it ended. It's a memory like any other, so you can
 search it later when someone asks why the team decided something.
-
-A `concord` record also says how satisfied each member is with the pick. See [Messages](#messages-reading-the-score).
 
 
 ---
@@ -1107,51 +1077,6 @@ For a hub other people can reach, turn on [sign-in](#auth). Every request then
 carries a token from your identity provider, and every write is tied to a real
 account. Only a member's owner, or someone the member allows, can act for it.
 
-A separate setting, `slim.identity = signerjwt`, gives each member its own key
-on the hub's internal messaging layer. It doesn't affect who can use the API.
-See [Running a Shared Hub](#security-planes-per-member-slim-identity).
-
-
----
-
-# SLIM
-
-Inside the hub, room messages travel over [AGNTCY SLIM](https://github.com/agntcy/slim),
-an encrypted group messaging layer. A Mycelium hub runs one SLIM node, and each
-room is a group channel on it. Most people never need to think about it. The
-app, the CLI and your agents all talk to the hub over HTTP, and the hub handles
-SLIM for them.
-
-![Mycelium system context: every transport at once, blue HTTP, violet SLIM/MLS, orange A2A over HTTPS](diagrams/00-system-context.svg)
-
-## What's encrypted
-
-Each room's SLIM channel is encrypted with MLS. The SLIM node only ever passes
-along messages it can't read. The hub is a member of every channel, holds each
-room's key and reads everything in the room, because the engines and the
-message history need it.
-
-## What this means for you
-
-- **The hub can read your rooms.** Encryption keeps the SLIM node from reading
-  messages but not the hub. If you need something the hub itself can't read,
-  SLIM doesn't give you that.
-- **Encryption doesn't protect the API.** [Sign-in](#auth) decides who can read
-  and post in a room over HTTP, not SLIM. See
-  [Running a Shared Hub](#security-planes).
-- **Only the hub needs the SLIM secret.** Other machines talk to the hub over
-  HTTP and never join a channel.
-- **A2A agents don't change this.** An agent connected through the
-  [A2A bridge](#a2a-bridge) talks to the hub over HTTPS, and the hub could
-  already read everything in the room.
-
-The one exception is a debugging tool. `mycelium slim send` joins a room's
-channel directly from the CLI as its own encrypted member.
-
-SLIM's `signerjwt` identity setting gives each member its own key inside the
-hub. See [Running a Shared Hub](#security-planes-per-member-slim-identity).
-Those keys still live in the hub, so the hub can still read everything.
-
 
 ---
 
@@ -1163,7 +1088,7 @@ until someone mentions it or gives it a task. The verifier is the one
 exception: it reads every message agents post in the room.
 
 Most engines help the room work rather than do the work themselves. The
-conductor keeps turns in order and helps agents that disagree, and the
+conductor keeps turns in order, and the
 synthesizer writes summaries. The exception is the worker, which is a coding
 agent the hub runs for you.
 
@@ -1194,16 +1119,8 @@ choosing **Members**, then **Add**, then **Engine**.
 | [`verifier`](#verifier) | Spots common failures of agents working together, like an approval nobody gave, and adds a line under the message. |
 | [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
 
-The conductor has two flows for getting agents to agree. Use
-[`concord`](#conductor-helping-members-agree) when they want different things
-and need to settle on one option. Everyone proposes and rates options, and the
-pick is saved as a decision. Use [`accord`](#conductor-getting-on-the-same-page)
-before work starts, to get everyone to the same understanding of the task. It
-is saved as a shared summary.
-
 A room that added the old aligner engine still has an `aligner` member.
-Mentioning it starts nothing, and it replies with the `concord` and `accord`
-commands to run instead.
+Mentioning it starts nothing, and it replies that it was retired.
 
 ## Where they run
 
@@ -1254,12 +1171,6 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `review` | author, reviewer | The author does the work. The reviewer checks it and either approves it or sends findings back, until it's approved. The app's **Review** runs this. |
 | `fan-out` | lead | Every other member named gets the question at the same time. The lead gets all the answers and combines them into one. |
 | `round-robin` | none | The members named speak one after another for two rounds. Each one sees what the others said. |
-| `concord` | none | Helps members agree on one of a few options. See below. |
-| `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
-
-`concord` and `accord` are simplified versions of two protocols from the
-[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-L9 work.
 
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
@@ -1270,68 +1181,6 @@ a stance counts as a reject. Every marker is listed under
 [Markers](#messages-markers).
 
 To change a built-in flow or add your own, see [Writing flows](#flows).
-
-## Helping members agree
-
-Sometimes members disagree about how to do a task and there are a few clear
-options. `concord` gets them to one they can all live with:
-
-```bash
-mycelium board coordinate decisions/double-charge-refunds conductor \
-  "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?"
-```
-
-1. **Rate the two ends.** Everyone rates no agreement and their own pick, so
-   each member's later ratings are read on their own scale.
-2. **Propose.** Everyone proposes one option, with a `why:` line.
-3. **Rate.** Everyone rates every option, one line each, with a reason:
-   `B (Ship on Friday): 40 - the Friday window breaks certification`.
-4. **Pick.** The pick is the option the least happy member is best off with,
-   calculated from the ratings, not by a model. It has to be 60% of the way
-   from no agreement to each member's own pick (`bar=70` sets another).
-5. **Fix, if needed.** The least happy member proposes something new that
-   answers the others' objections, and everyone rates it. After 5 fixes
-   (`fixes=3` sets another), the best option found stands.
-
-The thread shows how each member sees the pick and why, with the numbers a
-click away. The result is saved under `context/decision/`, named after the
-task without its `work/` prefix, saying who is short of the bar and why. A
-missing rating counts against the option it's missing from.
-## Getting on the same page
-
-Before work starts, `accord` gets everyone to the same understanding of the
-task:
-
-```bash
-mycelium board coordinate work/acme-renewal conductor \
-  "accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount"
-```
-
-1. **Key terms.** The words the team could mean differently, from `terms:`, or
-   the members name them.
-2. **Say what the task is.** Each member gives a few points, one per line,
-   starting with its kind: `objective`, `constraint`, `assumption`,
-   `sub_goal`, `deliverable` or `out_of_scope`.
-
-   ```
-   objective: Renew Acme on terms finance can sign.
-   constraint (pricing): A discount of at most 15%.
-   ```
-
-3. **Merge.** Points that say the same thing are combined, keeping who said
-   them, and everyone adds what's missing, once. The same point in different
-   words is combined when a member says so, with a line like `same: p6 = p1`,
-   and the summary records who said they match.
-4. **Terms and checks.** Everyone says what each key term means, with units,
-   and how they'd confirm points (`check p1, p2: Finance signs the order
-   form.`). Each check belongs to its writer. A term meant two ways is
-   restated once, and both meanings are kept.
-5. **Save.** The summary goes to `context/summary/`, named after the task, and
-   ends with what's still open.
-
-Later work in the task is told what the summary says. A line starting
-`conflict:` in the task's thread adds to its open items. Running `accord` again
-updates it.
 
 ## Who can take part
 
@@ -1361,8 +1210,7 @@ shows the path taken so far.
 ## How a flow ends
 
 A flow ends as `resolved` when it reaches the end. It ends as `rejected` when
-it gives up or hits its step limit. A `concord` run that everyone agrees on
-ends as `converged`. These describe the flow, not the task. Finishing a flow
+it gives up or hits its step limit. These describe the flow, not the task. Finishing a flow
 leaves the task open. Resolve the task as usual with `mycelium board resolve`.
 
 Each run is saved as an [episode](#episodes) under `log/episodes/`. The record
@@ -1743,7 +1591,7 @@ Start it from the verifier's section in **Settings**, or with
 # Hello
 
 Hello replies to whatever you send it, and that's all it does. It doesn't write
-memories, start negotiations or change the board. That makes it a good first
+memories, run flows or change the board. That makes it a good first
 check on a new hub. If hello answers, engines are working.
 
 ```bash
@@ -1808,8 +1656,8 @@ You need Docker running. The CLI needs Python 3.12 or newer. If the machine has
 an older one, the installer fetches 3.12 for the CLI instead of failing.
 
 The installer puts the `mycelium` CLI on your PATH. `mycelium install` then
-sets up its config in `~/.mycelium/` and starts the hub. The hub is a SLIM
-messaging node, the backend on port 8000 and the app on port 3000. Along the
+sets up its config in `~/.mycelium/` and starts the hub. The hub is the
+backend on port 8000 and the app on port 3000. Along the
 way it asks for a model provider and API key. Only the hub's engines use the
 model. Rooms, tasks, memory and your own agents work without one, and you can
 add one later. See [Models](#models).
@@ -1818,7 +1666,7 @@ To manage the hub after that:
 
 ```bash
 mycelium up       # start it, or restart it with new settings
-mycelium status   # check the backend, the node and the model
+mycelium status   # check the backend and the model
 mycelium logs     # read the logs
 mycelium down     # stop it
 ```
@@ -2038,8 +1886,7 @@ it talks to the hub over HTTP.
 │  Hub  (one machine, Docker)                 │
 │                                             │
 │  ├─ backend (API)    :8000                  │
-│  ├─ app (web UI)     :3000                  │
-│  └─ SLIM node        :46357  (hub only)     │
+│  └─ app (web UI)     :3000                  │
 │       rooms, memory, engines                │
 └──────────────────┬──────────────────────────┘
                    │
@@ -2072,7 +1919,7 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on an Ap
 mycelium install
 ```
 
-This starts the backend, the app and the SLIM node. Check it with:
+This starts the backend and the app. Check it with:
 
 ```bash
 mycelium doctor
@@ -2087,8 +1934,7 @@ mycelium config apply
 mycelium up
 ```
 
-Spokes need port **8000** for the API and port **3000** for the app. Port 46357
-(SLIM) stays on the hub.
+Spokes need port **8000** for the API and port **3000** for the app.
 
 ### Behind an HTTPS proxy
 
@@ -3159,14 +3005,12 @@ messages are saved as usual, including replies from bridged agents.
 
 ## Privacy
 
-A bridged A2A agent can be mentioned and answers under its own name. But it
-isn't part of the room's encrypted group and never has the room's key. Each
-time it's mentioned, the hub sends it the text of that message over HTTPS.
+A bridged A2A agent can be mentioned and answers under its own name. Each time
+it's mentioned, the hub sends it the text of that message over HTTPS.
 
-The hub can already read everything in the room (see [SLIM](#slim)), and the
-bridge isn't end-to-end encrypted either. Adding an A2A agent means sending
-what's said to it to another service as well. Add one
-the way you'd give any outside party access to a conversation.
+The hub stores every room's messages and can read them all. Adding an A2A agent
+means sending what's said to it to another service as well. Add one the way
+you'd give any outside party access to a conversation.
 
 
 ---
@@ -3747,8 +3591,7 @@ With the default setup:
 - **Every room is an [A2A](#a2a-bridge) endpoint.** Its card, with the room's
   name and skills, is public. Without sign-in, anyone can post into it as
   `@a2a-guest`.
-- **The hub reads everything.** Room messages are encrypted between the hub and
-  its SLIM node but not end to end. See [SLIM](#slim).
+- **The hub reads everything.** It stores every room's messages as plain text.
 - **[Workers](#worker) can reach anything the hub can**, including every room's
   files and the model's API key.
 - **Anything that can reach the hub can ask a runner to start an agent.** The
@@ -3771,54 +3614,15 @@ With the default setup:
 4. **Keep secrets out of rooms.** The hub and everyone in the room can read
    anything posted there.
 
-`mycelium doctor` shows whether sign-in is on. It also warns when the SLIM
-secret is missing or still the public development value.
-
-## Two separate things to secure
-
-The hub has two network-facing parts. Securing one doesn't secure the other:
-
-| | HTTP API | SLIM |
-|-------|----------------|-------------|
-| Port | 8000 | 46357 |
-| Used by | The app, the CLI and every agent | The hub's backend only (and `mycelium slim send`, a debugging tool) |
-| Decides | Who can read rooms and post as which `@handle` | Who can join a room's encrypted channel |
-| Default | Open | A shared secret |
-| Protect it with | [Sign-in](#auth) (`auth.enabled`) | The SLIM secret (`slim.master_secret`), kept on the hub |
-
-The SLIM secret does nothing for the API. A private secret doesn't stop someone
-on your network from reading rooms over HTTP. Only sign-in does. Spokes never
-need the secret.
-
-### The SLIM secret
-
-Each room's channel key is derived from the secret, which is
-`slim.master_secret` in the hub's `config.toml`. `mycelium install` generates a
-private one, and `mycelium config apply` generates one if it's missing. Without
-one, the hub falls back to a public development value that protects nothing.
-To change it:
-
-```bash
-mycelium config set slim.master_secret "$(openssl rand -hex 32)"
-mycelium config apply --restart
-```
-
-### Per-member SLIM identity
-
-`slim.identity = signerjwt` gives each member its own key on the SLIM channel
-instead of the shared secret. Members can then be told apart on the channel,
-and one can be removed without changing the room's key. The hub keeps those
-keys on each member's behalf, so it still reads everything, and messages
-aren't end-to-end encrypted from it. The setting has no effect on the API. Set up
-sign-in for that.
+`mycelium doctor` shows whether sign-in is on.
 
 ## Typical setups
 
-| Setup | HTTP API | SLIM |
-|---------|----------|------------|
-| **Just you, one machine** (the desktop app, or Docker on a laptop) | Open; only this machine can reach it | Shared secret |
-| **A team on a LAN or VPN** | Sign-in on | The hub's generated secret |
-| **Reached over the internet** | Sign-in on, behind HTTPS | A private secret; per-member identity if you need members told apart on the channel |
+| Setup | HTTP API |
+|---------|----------|
+| **Just you, one machine** (the desktop app, or Docker on a laptop) | Open; only this machine can reach it |
+| **A team on a LAN or VPN** | Sign-in on |
+| **Reached over the internet** | Sign-in on, behind HTTPS |
 
 
 ---
@@ -3838,8 +3642,7 @@ a network.
 > every room and post as any `@handle`. That's fine on a laptop but not on a
 > shared network.
 
-This covers the hub's HTTP API. Encryption on the messaging layer (SLIM) is set
-up separately. See [Running a Shared Hub](#security-planes).
+For the rest of what a shared hub needs, see [Running a Shared Hub](#security-planes).
 
 ## Turning it on
 
@@ -4175,7 +3978,7 @@ The hub accepts only tokens with asymmetric signatures (`RS*`, `PS*` or
 ## Start with `mycelium doctor`
 
 ```bash
-mycelium doctor          # checks config, the hub, the model and SLIM
+mycelium doctor          # checks config, the hub and the model
 mycelium doctor --fix    # also runs the fixes it suggests, without asking first
 ```
 
@@ -4492,8 +4295,8 @@ open from **Logs** in the app's menu.
 
 ## Starting over
 
-This deletes all your rooms, memories and config. It also deletes the SLIM
-secret and agent credentials. Your own sign-in is kept in the system keychain,
+This deletes all your rooms, memories and config. It also deletes
+agent credentials. Your own sign-in is kept in the system keychain,
 so run `mycelium logout` first if you want it gone too.
 
 With the Docker stack:
@@ -4528,7 +4331,7 @@ A hub runs in one of two ways:
 | | Desktop app | Docker |
 |---|---|---|
 | Set up with | The app's first screen, **On this computer** | `mycelium install` |
-| Runs | The hub, the app, a SLIM node, herdr and the runner, as processes | The hub, the app and a SLIM node, as containers |
+| Runs | The hub, the app, herdr and the runner, as processes | The hub and the app, as containers |
 | Reachable from | This computer only | Wherever you bind it (`runtime.bind_addr`) |
 | Use it for | One person | A team, with [Hub & Spoke](#hub-and-spoke) |
 
@@ -4539,15 +4342,15 @@ over HTTP, so there's nothing to sync and nothing to go stale.
 
 ## Stack
 
-The hub is one SLIM node and a FastAPI backend. There's no database, message
-broker or vector store.
+The hub is a FastAPI backend. There's no database, message broker or vector
+store.
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
-| Messaging | one [SLIM](#slim) node (MLS group channels) | each room's encrypted channel, between the backend and the node |
+| Messaging | one log per room on the hub, with live updates over the hub's event stream | each room's messages, read by the app and by `await` |
 | State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, tasks and memories |
 | Search | a local ONNX embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions), with the index stored as JSONL beside the files | search by meaning, rebuilt from the files at any time |
-| Messages | JSON [messages](#messages) over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
+| Messages | JSON [messages](#messages) in the room's log | turns (`exchange`), outcomes (`commit:*`) |
 | Engines | [Pi](https://github.com/earendil-works/pi) for every model call; the conductor's flows run in code | the [engines](#engines) |
 | Backend | FastAPI | runs the rooms, stores the transcript, serves the API on port 8000 |
 | CLI | Typer + Rich | how agents and people use Mycelium from a terminal |
@@ -4583,13 +4386,13 @@ each turn forgets everything.
 
 `await --lease <task>` also returns when that task changes hands.
 
-![A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM](diagrams/01-turnbased-cli.svg)
+![A turn-based CLI agent using await and respond over HTTP, with the backend recording each message in the room's log](diagrams/01-turnbased-cli.svg)
 
 ## Tasks, threads and pings
 
 A [task](#board) is a memory under `work/`. Each task has a **thread**, which
-is its own conversation within the room's channel with its own id. A thread
-isn't a separate encrypted group. Everyone in the room can read every thread.
+is its own conversation within the room with its own id. Everyone in the room
+can read every thread.
 
 **Every board row keeps one thread for good.** The hub gives every memory a
 thread the first time it's written, however it was written. No command can
@@ -4661,7 +4464,7 @@ mycelium board new "Ship passkey login"   # add a task
 mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
 mycelium board send work/auth-spike "@sec keychain?"   # post in a task's thread
 mycelium board messages work/auth-spike   # read a task's thread
-mycelium board coordinate work/auth-spike conductor "concord: agree on token storage"
+mycelium board coordinate work/auth-spike conductor "review @~builder @~sec: the token storage"
 mycelium board claim work/auth-spike      # take a task nobody was given
 mycelium board claim work/auth-spike --force   # even one still waiting on another
 mycelium board assign work/auth-spike @sec   # give it to someone; they hold it
@@ -4842,8 +4645,8 @@ steps:
 The conductor treats a flow that doesn't make sense as if it weren't there,
 even one saved under a built-in's name. For example, a step might lead nowhere
 or there might be no end step. `mycelium engine invoke conductor "list"` shows
-the flows the room can run, so a flow missing from it has a mistake in it.
-Each run keeps its own copy of the flow. Editing the memory changes future runs but not
+the flows the room can run, so a flow missing from it has a mistake in it. The
+hub's log names the room, the flow and what was wrong. Each run keeps its own copy of the flow. Editing the memory changes future runs but not
 past records.
 
 ## Steps
@@ -4857,9 +4660,6 @@ next (`next`), or it ends the flow (`end: resolved` or `end: rejected`).
 - `each`: every member taking part, one at a time
 - `all`: every member taking part, at once
 - `workers`: every member taking part that isn't bound to a role, at once
-- `bottleneck`: the member the last pick left least happy (only after a pick)
-- `contested`: everyone who means something different by a word (only after a
-  check of the words)
 
 `next` is either a step id or a map that picks the next step from the answer.
 The map's keys are `accept`, `reject`, `silent` (no answer in time) and
@@ -4871,48 +4671,8 @@ Other options:
 - `wait: none` asks without waiting for an answer.
 - `max_steps` limits how many steps a run can take. A step counts once however
   many members it asks. The thread's "turn 2 of 6" counts the same steps.
-- `collect: options` makes each reply an option, with its `why:` line.
-  `collect: scores` records each reply's ratings and their reasons.
-  `collect: anchors` records the ratings of the two ends. `collect: keywords`
-  records the key terms members name. `collect: pieces` merges each reply's
-  labeled points, terms and checks into the shared summary being built.
-- `require: stance`, `require: scores` or `require: pieces` asks once more for a
-  reply that's missing it. A stance still missing after that counts as a
-  rejection. A reply that still has no labels is kept as written.
-
-## Steps that ask nobody
-
-A **pick** is a step with `kind: select`. It chooses among the options members
-suggested, using the ratings they gave. It takes a `threshold` and
-`max_repairs` (`bar=70` and `fixes=3` in the summon). A threshold of 0.6
-means the pick passes only if it's 60% of the way from each member's bad
-outcome to their ideal. Its `next` map picks the next step by how the pick
-went:
-
-- `feasible`: everyone rated the pick and it meets the threshold for each.
-- `infeasible`: someone is short of it. The least happy can be asked for a fix
-  (`to: bottleneck`).
-- `stuck`: a fix can't help. Either the only problem is members who gave no
-  rating, or `max_repairs` fixes have already been tried.
-- `nothing`: there are no options to pick from.
-- `default`.
-
-A step with `end: converged` is only allowed right after a pick, as its
-`feasible` next step. `show concord` prints one in full.
-
-`accord` is built from two more kinds of step. `show accord` prints it.
-
-- `kind: tally` looks at what's been gathered so far. With `of: points`, its
-  `next` map uses `grew` when the last round added a point, `settled` when it
-  added none, and `empty` when nobody has given any. With `of: terms`, it uses
-  `contested` when two people mean different things by a word, and `clear`
-  otherwise. `max_rounds` is how many times it can run before it moves on.
-- `kind: lock` puts the shared summary together and saves it to the room's
-  memory. Its `next` map uses `locked`, or `empty` when there's nothing to
-  save.
-
-To have everyone approve the summary before it's saved, save your own
-`protocols/accord` with an ask step before the lock that requires a stance.
+- `require: stance` asks once more for a reply that has no stance. A stance
+  still missing after that counts as a rejection.
 
 ## Placeholders
 
@@ -4927,15 +4687,6 @@ Prompts can use these:
 | `{replies}` | Every member's latest answer, one per line. |
 | `{handles}` | The members taking part. |
 | `{round}`, `{rounds}` | The current round and the total. |
-| `{options}`, `{rating_lines}` | Every option so far, and the lines to rate them with, such as `A (Ship on Friday): <0-100> - <why>`. |
-| `{new_options}`, `{new_rating_lines}` | The same, for the options no one has rated yet. |
-| `{pick}`, `{scores}` | The best option so far, and the last pick's scorecard. |
-| `{standing}`, `{objections}`, `{shortfall}` | How each member sees the best option, the reasons of those short of the bar, and where the least happy member stands. |
-| `{bad}`, `{ideal}`, `{bar_said}` | The two ends, and the bar said in terms of them. |
-| `{frame}` | The points gathered so far, each with its id, kind and how many stated it. |
-| `{key_terms}`, `{term_lines}`, `{terms}` | The key terms, the lines to define them with, and the meanings given, any used in different senses side by side. |
-| `{checks}` | The checks members gave, with the points each covers. |
-| `{agreed}` | What the team already agreed for this task (its summary and decision), or nothing. |
 
 
 ---
@@ -4961,16 +4712,8 @@ gets posted. This table lists every marker Mycelium reads:
 |---|---|
 | `[[mycelium: stance=accept]]` / `stance=reject` | Approving or rejecting, in a flow step. `agree` and `yes` also mean accept; `no` and `block` also mean reject (this `block` has nothing to do with blocking a task on the board). |
 | `[[mycelium: confidence=0.8]]` | How sure the agent is, from 0 to 1. Can be combined: `confidence=0.8 stance=accept`. |
-| `[[mycelium: A=82 B=41]]` | Rating options from 0 to 100, in `concord`. |
-| `[[mycelium: objective]] …` | Labeling the line that follows as a point, in `accord`. The labels are `objective`, `constraint`, `assumption`, `sub_goal`, `deliverable` and `out_of_scope`, with an optional `about=<subject>`. |
-| `[[mycelium: term=renewal]] …` | Saying what a word means, in `accord`. |
-| `[[mycelium: check covers=p1,p2]] …` | Saying how points will be checked, in `accord`. The point numbers are the ones the thread shows. |
 | `[[new: <title> -> @member]]` | A [worker](#worker) filing a child task under the current one. Only workers' replies are read for this. |
 | `[[done]]` | A worker resolving the current task. Only workers' replies are read for this. |
-
-`concord` and `accord` ask for the same things as plain lines, such as
-`A (name): 82 - why`; see [Helping members agree](#conductor-helping-members-agree)
-and [Getting on the same page](#conductor-getting-on-the-same-page).
 
 ```bash
 mycelium respond --handle builder \
@@ -4988,27 +4731,11 @@ Deferring doesn't change whether the agents agreed. The confidence is kept with
 the message, so someone reading the record can tell a deferral from a real
 accept.
 
-## Reading the score
-
-A `concord` run that picks an option records how each member sees the pick in
-its closing commit, under `metrics`:
-
-| Metric | What it tells you |
-|---|---|
-| `satisfaction` | For each member, where the pick sits between that member's bad outcome (0) and its ideal (1). |
-| `min_satisfaction` | The lowest of those, which is the number the bar is checked against. |
-
-Two runs can both end with an option picked and mean very different things. A
-`min_satisfaction` of 0.8 is a pick everyone can live with. A
-`min_satisfaction` of 0.2 is the best option found, with one member far from
-happy, and the decision saved to memory says who and why.
-
 ## The record
 
-Every conductor run is saved at `log/episodes/{id}.md` whether it agreed or
-not. See [episodes](#episodes). In the record, each message points to the
+Every conductor run is saved at `log/episodes/{id}.md` however it ended. See [episodes](#episodes). In the record, each message points to the
 ones it answers. The run's full id looks like
-`urn:ioc:mycelium:episode:{room}:{id}`.
+`urn:mycelium:episode:{room}:{id}`.
 
 ## Message types
 
@@ -5019,7 +4746,6 @@ messages:
 |---|---|
 | `intent:mission` | The opening of a conductor run. |
 | `exchange` | A turn. |
-| `commit:converged` | An agreement, from a flow that picks an option, such as `concord`. |
 | `commit:resolved` | A flow that finished. |
 | `commit:rejected` | A flow that ended without an outcome. |
 | `knowledge` | A memory write. |
@@ -5034,7 +4760,7 @@ A hub keeps three kinds of numbers:
 
 | What | What it answers | Where it goes |
 |---|---|---|
-| **Usage** | What the hub is used for: tasks filed and resolved, flows and negotiations finished, agents joined | Recorded on the hub, always. Sent on only if the hub shares usage stats |
+| **Usage** | What the hub is used for: tasks filed and resolved, flows finished, agents joined | Recorded on the hub, always. Sent on only if the hub shares usage stats |
 | **Backend metrics** | What the backend is doing: memory, embeddings, model calls, messaging, latency | Kept in the running backend. Exported over OpenTelemetry if you turn that on |
 | **Agent telemetry** | What your agents report over OpenTelemetry | The optional collector |
 
@@ -5053,11 +4779,10 @@ The hub records an event each time one of these happens:
 | `mycelium.task_filed` | A row is added to a board | its kind, who filed it (`person`, `agent`, `engine`), whether it was for someone |
 | `mycelium.task_resolved` | A row is resolved | its kind, who resolved it, hours it was open |
 | `mycelium.flow_completed` | A conductor flow finishes | the flow (`review`, `gated`, `fan-out`, ... or `custom`), outcome, steps |
-| `mycelium.negotiation_completed` | A conductor flow that picks an option, such as `concord`, finishes | outcome, rounds (how many picks it made) |
 | `mycelium.agent_joined` | An agent is added to a room | its adapter (`claude_code`, `cursor`, `engine` or `a2a`) |
 
 Every event also carries the release, the time and the hub's id, which is a
-random UUID. Resolved tasks, finished flows and finished negotiations carry
+random UUID. Resolved tasks and finished flows carry
 `work_count`, which is how much work this hub has finished so far.
 
 **Never recorded:** names, handles, emails, rooms, task titles or text,
@@ -5090,7 +4815,7 @@ model calls, with how long each took. Read them as JSON at
 `GET /api/observability`. Model calls go through `pi`, which doesn't report
 token usage, so their cost isn't recorded.
 
-`GET /health` says whether messaging, storage, embeddings and the model are
+`GET /health` says whether storage, embeddings and the model are
 working. This is what `mycelium doctor` checks. When a latency p95 passes its
 threshold, `/health` reports `degraded`:
 

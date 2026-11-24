@@ -37,7 +37,7 @@ def test_the_view_shows_the_conversation_across_the_task_and_its_children():
 
     turn = {
         "event": "turn",
-        "protocol": "concord",
+        "protocol": "gated",
         "step": "propose",
         "to": "agent-1",
         "turn": 1,
@@ -46,7 +46,7 @@ def test_the_view_shows_the_conversation_across_the_task_and_its_children():
     step = view.render(
         _frame(
             "conductor",
-            text="concord · propose · turn 1 of 4 · agent-1\n\nThe room is…",
+            text="gated · propose · turn 1 of 4 · agent-1\n\nThe room is…",
             episode="ep-root",
             payload={"type": "message", "data": {"conductor": turn}},
         )
@@ -145,13 +145,13 @@ def test_each_conductor_line_is_said_in_a_few_words():
         describe_line(
             {
                 "event": "open",
-                "protocol": "concord",
+                "protocol": "fan-out",
                 "roles": {"lead": "agent-1"},
                 "members": ["agent-2", "agent-3"],
                 "steps": [],
             }
         )
-        == "Running concord · agent-1 as lead · agent-2, agent-3"
+        == "Running fan-out · agent-1 as lead · agent-2, agent-3"
     )
     assert (
         describe_line(
@@ -159,24 +159,8 @@ def test_each_conductor_line_is_said_in_a_few_words():
         )
         == "review: sec blocked, on to propose"
     )
-    close = {"event": "close", "protocol": "accord", "outcome": "resolved", "reason": ""}
-    assert describe_line(close | {"steps": 2}) == "accord done · 2 steps"
-    # An agreement is a success, and says what it went with.
-    close = {"event": "close", "protocol": "concord", "outcome": "converged", "steps": 4}
-    assert describe_line(close | {"pick": "C", "text": "15% off"}) == (
-        "Everyone's on board: going with C"
-    )
-    assert describe_line(close | {"outcome": "rejected", "pick": "B"}) == (
-        "Couldn't get everyone there · best was B"
-    )
-    pick = {
-        "outcome": "infeasible",
-        "pick": "B",
-        "threshold": 70,
-        "ratings": {"success": 55, "finance": 90},
-        "missing": ["legal"],
-    }
-    assert (
-        describe_line({"event": "select", "step": "pick", "select": pick})
-        == "pick: B, @success at 55; no rating from @legal"
+    close = {"event": "close", "protocol": "review", "outcome": "resolved", "reason": ""}
+    assert describe_line(close | {"steps": 2}) == "review done · 2 steps"
+    assert describe_line(close | {"outcome": "rejected", "reason": "hit the step cap"}) == (
+        "review rejected · hit the step cap"
     )

@@ -11,8 +11,8 @@ from PIL import Image
 
 from app.config import settings
 from app.services import message_format, persister, tasks, uploads
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 
 @pytest.fixture(autouse=True)
@@ -239,7 +239,7 @@ def _say(room: str, message_id: str, *, sender: str, text: str, at, episode: str
         episode=episode or message_format.live_episode_urn(room),
         sender=sender,
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        topic=f"urn:concept:mycelium:{room}",
+        topic=f"urn:mycelium:topic:{room}",
         message_id=message_id,
         payload_type="reply",
     )

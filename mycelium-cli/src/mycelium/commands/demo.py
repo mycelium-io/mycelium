@@ -7,8 +7,8 @@ A guided onboarding command. It is pure glue over the real
 system, with no mirrored data: it discovers scenarios and agent personas from
 the public ``agent-personas`` dataset at run time, creates a room, runs
 ``mycelium agent create`` for each persona on your chosen adapter, files a
-task, and has the conductor run its ``concord`` flow in that task's thread so
-the agents actually negotiate to an agreement.
+task, and has the conductor run its ``round-robin`` flow in that task's thread
+so the agents actually work the question through, each in turn.
 There is no canned transcript and nothing replayed; what you watch is a live
 run.
 
@@ -48,11 +48,11 @@ DEFAULT_SCENARIO = "ex07_investment_portfolio"
 
 # The conductor engine the demo adds to the room, and the flow it runs. A
 # conductor run needs a task (it walks that task's thread and holds its floor),
-# so the demo files one and summons the conductor there. ``concord`` asks every
-# member it names to rate, propose and re-rate until the options meet
-# everyone's bar, then saves the decision as a memory for the task.
+# so the demo files one and summons the conductor there. ``round-robin`` gives
+# every member it names the floor in turn, for two rounds, each answering what
+# the others said.
 CONDUCTOR_HANDLE = "conductor"
-FLOW = "concord"
+FLOW = "round-robin"
 
 # Adapters that can host a demo agent. Mirrors AGENT_ADAPTERS (underscore form).
 _KNOWN_ADAPTERS = ("claude_code", "cursor")
@@ -326,13 +326,11 @@ def _task_key(stdout: str) -> str | None:
 
 
 def _drive_consensus(room: str, task: str, handles: list[str], topic: str) -> None:
-    """Summon the conductor's ``concord`` flow in the task's thread.
+    """Summon the conductor's ``round-robin`` flow in the task's thread.
 
     The summon names every agent with ``@~``, which binds them to the run
     without waking them; the flow's first step then asks each of them in
     turn, so the payoff doesn't depend on an agent remembering to start it.
-    When the agents agree, the hub saves the decision as a ``context/``
-    memory for the task.
     """
     cast = " ".join(f"@~{h}" for h in handles)
     ask = f"{FLOW} {cast}: agree on the {topic} decision"
@@ -343,7 +341,7 @@ def _drive_consensus(room: str, task: str, handles: list[str], topic: str) -> No
         return
     console.print(
         f"[green]✓[/green] Summoned [bold]@{CONDUCTOR_HANDLE}[/bold]; it asks each agent in "
-        f"{task}'s thread, and saves what they agree as a memory for the task."
+        f"{task}'s thread in turn."
     )
 
 
@@ -360,7 +358,7 @@ def _print_intro(scenario: dict[str, Any], adapter: str, room: str) -> None:
         Panel(
             body,
             title=f"[bold]mycelium demo · {scenario['title']}[/bold]",
-            subtitle="[dim]live run: real agents, real negotiation[/dim]",
+            subtitle="[dim]live run: real agents, a real discussion[/dim]",
             border_style="cyan",
         )
     )
@@ -429,7 +427,7 @@ def demo(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
     list_flag: bool = typer.Option(False, "--list", help="List available scenarios and exit."),
 ) -> None:
-    """Run a real sample coordination: personas → agents → seeded room → live negotiation.
+    """Run a real sample coordination: personas → agents → seeded room → live discussion.
 
     Scenarios and personas are discovered from the public agent-personas dataset.
     Requires an installed adapter, the backend up, and an LLM configured:
@@ -486,7 +484,7 @@ def demo(
         n = len(chosen["agents"])
         proceed = typer.confirm(
             f"\nThis will create room '{room_name}' and {n} live {adapter} agents, "
-            f"then run a real negotiation (uses your LLM). Continue?"
+            f"then run a real discussion (uses your LLM). Continue?"
         )
         if not proceed:
             raise typer.Exit(0)

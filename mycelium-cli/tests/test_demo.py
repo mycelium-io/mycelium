@@ -233,8 +233,8 @@ def test_provision_resident_passes_cwd_and_creates_agents(tmp_path) -> None:  # 
         assert cwd.endswith(tuple(a["handle"] for a in spec["agents"]))
 
 
-def test_drive_consensus_runs_concord_in_the_tasks_thread() -> None:
-    """The demo summons the conductor's concord flow inside the task it filed
+def test_drive_consensus_runs_round_robin_in_the_tasks_thread() -> None:
+    """The demo summons the conductor's round-robin flow inside the task it filed
     (a conductor run from the room, outside a task, is refused), naming every
     agent so the flow binds them."""
     calls: list[list[str]] = []
@@ -248,7 +248,7 @@ def test_drive_consensus_runs_concord_in_the_tasks_thread() -> None:
     cmd = calls[0]
     assert cmd[:4] == ["board", "coordinate", "work/portfolio", demo.CONDUCTOR_HANDLE]
     ask = cmd[4]
-    assert ask.startswith("concord @~growth @~risk @~execution: ")
+    assert ask.startswith("round-robin @~growth @~risk @~execution: ")
     assert "investment portfolio" in ask
     assert cmd[cmd.index("--room") + 1] == "demo-room"
 

@@ -41,9 +41,9 @@ if TYPE_CHECKING:
 runner = CliRunner()
 
 ROOM = "atlas"
-THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb"
+THREAD = "urn:mycelium:episode:atlas:t3aa11bb"
 SHORT = "t3aa11bb"
-OTHER = "urn:ioc:mycelium:episode:atlas:c0ffee42"
+OTHER = "urn:mycelium:episode:atlas:c0ffee42"
 OTHER_SHORT = "c0ffee42"
 
 
@@ -262,7 +262,7 @@ class TestBeyondTheBoard:
 #: An open task that hasn't changed in a while, assigned and marked gone quiet:
 #: the board's read of the room's most recent memories leaves it out.
 QUIET_KEY = "work/add-a-rule-that-a-pr-touches-the-docs-only-when"
-QUIET_THREAD = "urn:ioc:mycelium:episode:atlas:5bd40de8"
+QUIET_THREAD = "urn:mycelium:episode:atlas:5bd40de8"
 QUIET = {
     "key": QUIET_KEY,
     "value": {"text": "Add a rule that a PR touches the docs only when a reader has something new"},
@@ -370,11 +370,11 @@ class TestChatVerbs:
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
         result = runner.invoke(
-            board_cmd.app, ["coordinate", SHORT, "conductor", "concord @~api @~sec: storage"]
+            board_cmd.app, ["coordinate", SHORT, "conductor", "gated @~api @~sec: storage"]
         )
         assert result.exit_code == 0, result.output
         post = sent["post"]
-        assert post["content"] == "@conductor concord @~api @~sec: storage"
+        assert post["content"] == "@conductor gated @~api @~sec: storage"
         assert post["episode"] == THREAD
 
     def test_coordinating_with_an_old_aligner_says_what_to_run_instead(
@@ -693,7 +693,7 @@ def test_a_thread_with_nothing_in_it_says_so_rather_than_no_messages(
     assert "nothing said in this thread yet" in capsys.readouterr().out
 
 
-LIVE = f"urn:ioc:mycelium:episode:{ROOM}:live"
+LIVE = f"urn:mycelium:episode:{ROOM}:live"
 
 
 def _ping_frame() -> dict:

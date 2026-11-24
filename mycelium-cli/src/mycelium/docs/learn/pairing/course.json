@@ -36,24 +36,20 @@
     },
     {
       "title": "When you disagree",
-      "video": {
-        "take": "agree-concord",
-        "about": "Agents each suggest an option and rate them all. The least happy one proposes a fix, everyone settles on it, and the decision is kept."
-      },
       "lessons": [
         {
           "id": "03-disagreeing",
           "title": "When you disagree",
-          "minutes": 5,
+          "minutes": 4,
           "quiz": {
-            "question": "Concord got web and api to agree. Where does the outcome live?",
+            "question": "You and your teammate settled where carts live. Where should the decision go?",
             "options": [
               "Only in the thread",
-              "In a decision memory saved for the task",
-              "In a new row on the board"
+              "In a memory under decisions/",
+              "In each agent's own notes"
             ],
             "answer": 1,
-            "why": "A thread scrolls away. Concord saves its decision under context/decision/, and later work in the task is shown it."
+            "why": "A thread scrolls away. A memory under decisions/ is where the next person, or the next agent, finds it."
           }
         }
       ]

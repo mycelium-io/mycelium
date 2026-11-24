@@ -47,7 +47,7 @@ def _posted(request: httpx.Request) -> tuple[int, dict]:
     return 201, {
         "room": ROOM,
         "task": "work/apple-pay",
-        "episode": f"urn:ioc:mycelium:episode:{ROOM}:apple-pay",
+        "episode": f"urn:mycelium:episode:{ROOM}:apple-pay",
         "message_id": "00000000-0000-0000-0000-000000000000",
         "ask": ask,
     }

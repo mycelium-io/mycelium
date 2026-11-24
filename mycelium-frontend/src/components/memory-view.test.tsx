@@ -88,7 +88,7 @@ const MEMORY = {
   created_by: "alice",
   updated_at: "2026-01-01T00:00:00Z",
 };
-const TASK = { ...MEMORY, episode: "urn:ioc:mycelium:episode:demo:t9f0" };
+const TASK = { ...MEMORY, episode: "urn:mycelium:episode:demo:t9f0" };
 
 describe("<MemoryView />", () => {
   beforeEach(() => {
@@ -171,7 +171,7 @@ describe("<MemoryView />", () => {
     // Reading that as a thread would empty the room's history into the view.
     vi.mocked(fetchMemory).mockResolvedValue({
       ...MEMORY,
-      episode: "urn:ioc:mycelium:episode:demo:live",
+      episode: "urn:mycelium:episode:demo:live",
     });
     renderWithSWR(<MemoryView roomName="demo" memoryKey={MEMORY.key} onOpenMemory={vi.fn()} />);
     expect(await screen.findByTestId("memory-detail")).toHaveAttribute("data-collapse-body-at", "");

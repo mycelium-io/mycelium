@@ -131,7 +131,7 @@ describe("useRoomRoster", () => {
     ]);
     vi.mocked(fetchRoomMembers).mockReset().mockResolvedValue({
       members: [
-        { handle: "conductor", kind: "slim", last_seen: null },
+        { handle: "conductor", kind: "lease", last_seen: null },
         { handle: "watcher", kind: "lease", last_seen: "2026-08-20T00:00:00Z" },
       ],
       floors: [],
@@ -234,7 +234,7 @@ function Feeds({ room, episode }: { room: string; episode: string }) {
 }
 
 describe("useThreadMessages", () => {
-  const EPISODE = "urn:ioc:mycelium:episode:demo:t3aa11bb";
+  const EPISODE = "urn:mycelium:episode:demo:t3aa11bb";
 
   beforeEach(() => {
     vi.mocked(fetchMessages).mockReset();

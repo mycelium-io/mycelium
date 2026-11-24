@@ -19,24 +19,11 @@ We round-trip it through the existing .env on regeneration so that
 from __future__ import annotations
 
 import json
-import secrets
 from pathlib import Path
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
-
-
-def _is_hub_config(config: MyceliumConfig) -> bool:
-    """Return True when this config targets a local backend (hub / all-in-one).
-
-    Spokes point ``server.api_url`` at a remote host and do not run a SLIM
-    node, so hub-only operations (PSK generation, container management) should
-    be skipped for them.
-    """
-    host = (urlparse(config.server.api_url).hostname or "").lower()
-    return host in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
 
 
 # Operator-managed keys: not derivable from config.toml, but preserved across
@@ -51,8 +38,6 @@ _OPERATOR_MANAGED_KEYS: tuple[str, ...] = (
     # avoids pulling GHCR images over the locally-built ones.
     "MYCELIUM_BUILD_MODE",
 )
-
-_MASTER_SECRET_ENV = "MYCELIUM_SLIM_MASTER_SECRET"
 
 # Config fields that never reach a container, and why. `.env` is the only
 # transport from config.toml into the stack, so a field neither rendered by
@@ -70,8 +55,6 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
     "identity.autonomous": "whether this CLI runs unattended",
     "server.api_url": "this machine's view of the hub; in-container the backend "
     "gets API_BASE_URL from compose",
-    "slim.node_endpoint": "the client's node address; the backend gets "
-    "SLIM_NODE_ENDPOINT from compose (the in-network name)",
     "rooms.active": "the room this shell is scoped to",
     "herdr.autowake": "CLI-side wake layer; the backend is herdr-blind",
     "herdr.wake_timeout_ms": "CLI-side wake layer; the backend is herdr-blind",
@@ -97,8 +80,6 @@ LOCAL_ONLY_FIELDS: dict[str, str] = {
 # process environment when a key is absent from .env, which is how these are
 # meant to be set — so `config apply` regenerating .env doesn't drop them.
 ENVIRONMENT_SUPPLIED_VARS: dict[str, str] = {
-    "SLIM_IMAGE_TAG": "node image pin, overridable for a lockstep bindings bump",
-    "MYCELIUM_SLIM_PORT": "published node port; the compose default is the norm",
     "MYCELIUM_GRAFANA_PORT": "Grafana UI port for mycelium-grafana (--grafana profile); default 3001",
     "MYCELIUM_GRAFANA_LOKI_PORT": "Loki push port for mycelium-grafana; default 3100",
     "MYCELIUM_GRAFANA_OTLP_PORT": "OTLP HTTP host port for mycelium-grafana; default 4319 (avoids 4318 collision with collector)",
@@ -110,62 +91,6 @@ ENVIRONMENT_SUPPLIED_VARS: dict[str, str] = {
     "AUTH_SESSION_SECRET": "frontend cookie sealing key (a secret; not in config.toml)",
     "MYCELIUM_COOKIE_SECURE": "set only for a plain-HTTP appliance deployment",
 }
-
-
-def _read_env_value(env_path: Path | None, key: str) -> str | None:
-    """Return a single key from an existing ``.env``, or ``None``."""
-    if env_path is None or not env_path.exists():
-        return None
-    try:
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
-                continue
-            k, _, value = stripped.partition("=")
-            if k.strip() == key:
-                cleaned = value.strip().strip('"').strip("'")
-                return cleaned or None
-    except OSError:
-        return None
-    return None
-
-
-def ensure_slim_master_secret(
-    config: MyceliumConfig,
-    *,
-    env_path: Path | None = None,
-    allow_generate: bool = True,
-) -> bool:
-    """Ensure ``config.slim.master_secret`` is set before rendering ``.env``.
-
-    Import order when unset:
-
-    1. Existing ``MYCELIUM_SLIM_MASTER_SECRET`` in ``env_path`` (migration /
-       hub at a non-localhost address).
-    2. Fresh ``secrets.token_hex(32)`` — only when ``allow_generate`` is
-       ``True`` (hub install / apply).  Pass ``allow_generate=False`` on a
-       spoke so an existing secret in ``.env`` is promoted into ``config.toml``
-       but no new secret is minted.
-
-    Returns ``True`` when a value was imported or generated (caller should
-    ``config.save()``).
-    """
-    if config.slim.master_secret:
-        return False
-
-    if env_path is None:
-        env_path = config.get_global_config_dir() / ".env"
-
-    imported = _read_env_value(env_path, _MASTER_SECRET_ENV)
-    if imported:
-        config.slim.master_secret = imported
-        return True
-
-    if not allow_generate:
-        return False
-
-    config.slim.master_secret = secrets.token_hex(32)
-    return True
 
 
 def _read_operator_managed_keys(env_path: Path | None) -> dict[str, str]:
@@ -347,13 +272,6 @@ def generate_env_file(
         f"AUTH_LEEWAY_S={config.auth.leeway_s}",
         f"AUTH_JWKS_TTL_S={config.auth.jwks_ttl_s}",
         "",
-        "# ── SLIM channel identity (off by default, #567) ─────────────────────────",
-        # 'psk' | 'signerjwt'. The backend + CLI both read MYCELIUM_SLIM_IDENTITY;
-        # the shared master secret is authored in config.toml ([slim].master_secret)
-        # and rendered here. See slim_identity.py.
-        f"MYCELIUM_SLIM_IDENTITY={config.slim.identity}",
-        f"MYCELIUM_SLIM_MASTER_SECRET={config.slim.master_secret or ''}",
-        "",
         "# ── Frontend dev-mode cross-origin allowlist ─────────────────────────────",
         # Next.js dev server blocks cross-origin requests by default. When running
         # the UI behind a public IP or NAT (e.g. an EC2 instance accessed from a
@@ -443,33 +361,15 @@ def generate_env_file(
     return "\n".join(lines) + "\n"
 
 
-def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> tuple[Path, bool]:
+def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> Path:
     """Write (or overwrite) the .env file derived from config.toml.
 
-    Always runs the import path for ``[slim].master_secret``: if the key
-    already exists in ``.env`` it is promoted into ``config.toml`` so the
-    rendered output stays correct for hubs at non-localhost addresses (LAN IP,
-    reverse proxy).  Generation of a *new* secret is only performed on hubs
-    (local ``server.api_url``) — spokes have no SLIM node and must not silently
-    mint a secret that would diverge from the hub's shared PSK.
-
     Preserves operator-managed pins (``MYCELIUM_IMAGE_TAG``,
-    ``MYCELIUM_BUILD_MODE``) from the existing .env.
-
-    Returns ``(path, secret_was_assigned)`` where ``secret_was_assigned`` is
-    ``True`` when a master secret was imported or generated this call.
+    ``MYCELIUM_BUILD_MODE``) from the existing .env. Returns the path written.
     """
     if env_path is None:
         env_path = config.get_global_config_dir() / ".env"
     env_path.parent.mkdir(parents=True, exist_ok=True)
-
-    secret_assigned = ensure_slim_master_secret(
-        config,
-        env_path=env_path,
-        allow_generate=_is_hub_config(config),
-    )
-    if secret_assigned:
-        config.save()
 
     preserved = _read_operator_managed_keys(env_path)
     rendered = generate_env_file(
@@ -478,4 +378,4 @@ def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> tupl
         build_mode=preserved.get("MYCELIUM_BUILD_MODE") or None,
     )
     env_path.write_text(rendered, encoding="utf-8")
-    return env_path, secret_assigned
+    return env_path

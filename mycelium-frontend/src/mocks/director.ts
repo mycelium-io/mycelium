@@ -43,7 +43,7 @@ export class Director {
 
   /** A thread's episode URN, from its short id. */
   ep(short: string): string {
-    return `urn:ioc:mycelium:episode:${this.room}:${short}`;
+    return `urn:mycelium:episode:${this.room}:${short}`;
   }
 
   /** Post a message as `who`, in `episode` (a thread) or the room. */

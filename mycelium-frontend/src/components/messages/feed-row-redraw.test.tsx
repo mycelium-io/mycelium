@@ -69,11 +69,12 @@ function rows(props: Partial<React.ComponentProps<typeof FeedRow>> = {}) {
 describe("a message's row in a list that draws again", () => {
   it("doesn't draw again when nothing it shows changed", () => {
     drawn.length = 0;
-    const { rerender } = renderWithSWR(rows({ replyContext: { rated: undefined } }));
+    const query = ["refund"];
+    const { rerender } = renderWithSWR(rows({ hit: { query, active: false } }));
     expect(drawn).toHaveLength(1);
-    // A thread passes a new reply context each time it draws, holding the same.
-    rerender(rows({ replyContext: { rated: undefined } }));
-    rerender(rows({ replyContext: { rated: undefined } }));
+    // A find passes a new hit each time it draws, holding the same.
+    rerender(rows({ hit: { query, active: false } }));
+    rerender(rows({ hit: { query, active: false } }));
     expect(drawn).toHaveLength(1);
   });
 

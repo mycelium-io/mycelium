@@ -9,7 +9,7 @@ function ep(overrides: Partial<FleetEpisode> = {}): FleetEpisode {
   return {
     room: "atlas",
     short_id: "ep",
-    episode: "urn:ioc:episode:ep",
+    episode: "urn:mycelium:episode:demo:ep",
     topic: "cutover",
     outcome: "converged",
     subkind: "converged",

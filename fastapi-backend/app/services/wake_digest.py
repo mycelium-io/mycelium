@@ -1179,17 +1179,6 @@ def build(
         lines.append(f"         open now: {tally}")
     else:
         lines.append(f"Board:   {tally}")
-    # What the team agreed for the task it's about, so it works to that.
-    task_key = (
-        wake.get("key") if reason in ("assigned", "handback") else (where[0] if where else None)
-    )
-    if task_key:
-        from app.services import agreed
-
-        pointers = agreed.pointer(room, str(task_key))
-        if pointers:
-            lines.append(f"Agreed:  {pointers[0]}")
-            lines.extend(f"         {p}" for p in pointers[1:])
     # Who else is busy right now and on what, so it doesn't act across them:
     # a small members pane, set off on its own.
     if pane := members(room, me, now):

@@ -14,7 +14,7 @@ Two properties everything downstream reads off this module:
 **The container outlives what happens inside it.**  A task's episode is minted
 when the task is created, not when someone argues about it.  A negotiation
 inside a task is its own, later episode with its own lifecycle
-(:class:`~app.services.message_slim.EpisodeLifecycle`), and closing or aborting one
+(:class:`~app.services.episode_lifecycle.EpisodeLifecycle`), and closing or aborting one
 touches neither the row's custody nor its status.  A task can be created,
 claimed, worked and resolved with no negotiation ever opened.
 
@@ -157,7 +157,8 @@ def episode_of(room: str, key: str) -> str | None:
     found = read_memory_file(get_room_dir(room), key)
     if found is None:
         return None
-    return system_meta(found[0]).get(EPISODE_META)
+    urn = system_meta(found[0]).get(EPISODE_META)
+    return message_format.canonical_urn(urn) if isinstance(urn, str) and urn else None
 
 
 def carry_thread(room: str, key: str) -> dict[str, str]:
@@ -184,8 +185,10 @@ def row_of_episode(room: str, episode: str) -> tuple[str, str] | None:
     rather than the thread's id. One scan of the room's files, for events that
     happen a few times per protocol step rather than per message.
     """
+    episode = message_format.canonical_urn(episode)
     for key, meta, content in list_memory_files(get_room_dir(room), limit=None):
-        if system_meta(meta).get(EPISODE_META) != episode:
+        urn = system_meta(meta).get(EPISODE_META)
+        if not isinstance(urn, str) or message_format.canonical_urn(urn) != episode:
             continue
         first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
         return key, first.lstrip("# ").strip()
@@ -202,7 +205,7 @@ def bound_episodes(room: str) -> set[str]:
     for _key, meta, _content in list_memory_files(get_room_dir(room), limit=None):
         urn = system_meta(meta).get(EPISODE_META)
         if isinstance(urn, str) and urn:
-            urns.add(urn)
+            urns.add(message_format.canonical_urn(urn))
     return urns
 
 
@@ -261,7 +264,7 @@ def episode_write_rejection(
 
     A **container** — a task's thread — refuses none of these on its own, and
     that is deliberate rather than unfinished. Freezing membership is a negotiation's
-    policy, not an episode's (:class:`~app.services.message_slim.EpisodeLifecycle`):
+    policy, not an episode's (:class:`~app.services.episode_lifecycle.EpisodeLifecycle`):
     a task outlives what happens inside it, so an agent that claims a row after
     the thread opened must be able to speak in it.  The honest boundary: a task's
     thread is scoped to the room, not narrower.  Everyone who may write in the

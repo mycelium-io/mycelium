@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
     from mycelium_backend_client.models import (
         HealthAuth,
-        HealthCoordination,
         HealthEmbedding,
         HealthLLM,
         HealthRead,
@@ -80,13 +79,6 @@ class HubHealth:
 
         found = self.read.embedding if self.read else None
         return found if isinstance(found, HealthEmbedding) else None
-
-    @property
-    def coordination(self) -> HealthCoordination | None:
-        from mycelium_backend_client.models import HealthCoordination
-
-        found = self.read.coordination if self.read else None
-        return found if isinstance(found, HealthCoordination) else None
 
 
 def health(

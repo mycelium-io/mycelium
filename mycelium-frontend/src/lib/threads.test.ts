@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  canonicalUrn,
   isLiveEpisode,
   liveEpisodeUrn,
   noticeLabel,
@@ -13,7 +14,7 @@ import {
 } from "@/lib/threads";
 
 const ROOM = "atlas";
-const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
+const THREAD = "urn:mycelium:episode:atlas:t3aa11bb";
 
 function pingFrame(episode: string, sender?: string, message?: string) {
   return {
@@ -39,6 +40,12 @@ describe("the room, and the threads inside it", () => {
 
   it("does not mistake another room's live URN for this room's", () => {
     expect(isLiveEpisode(ROOM, liveEpisodeUrn("pricing"))).toBe(false);
+  });
+
+  it("reads an episode id stored before 3.1 as the current one", () => {
+    expect(canonicalUrn("urn:ioc:mycelium:episode:atlas:t3aa11bb")).toBe(THREAD);
+    expect(canonicalUrn(THREAD)).toBe(THREAD);
+    expect(isLiveEpisode(ROOM, "urn:ioc:mycelium:episode:atlas:live")).toBe(true);
   });
 
   it("names a thread by the tail of its URN, and the room by nothing", () => {

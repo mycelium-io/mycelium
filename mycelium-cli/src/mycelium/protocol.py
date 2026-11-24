@@ -79,8 +79,7 @@ AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine", "
 
 #: Cognition-engine kinds hosted by the first-party ``engine`` runtime family,
 #: the same set the hub's ``routes/engines.py`` accepts. ``conductor`` walks a
-#: flow through a task's thread (negotiation is its ``concord`` and ``accord``
-#: flows), ``synthesizer`` distills room memory, ``hello`` is one Pi turn with no
+#: flow through a task's thread, ``synthesizer`` distills room memory, ``hello`` is one Pi turn with no
 #: side effects (the cheap proof the engine path works); no new adapter per kind.
 ENGINE_KINDS: frozenset[str] = frozenset(
     {"conductor", "hello", "persona", "synthesizer", "verifier", "worker"}
@@ -92,9 +91,8 @@ ENGINE_KINDS: frozenset[str] = frozenset(
 #: with this text, the same answer the hub gives.
 RETIRED_ENGINE_KINDS: dict[str, str] = {
     "aligner": (
-        "The aligner was retired, so nothing started. To negotiate, run "
-        '`mycelium board coordinate <row> conductor "concord …"` to help members '
-        'agree, or `"accord …"` to get them on the same page.'
+        "The aligner was retired, so nothing started. To work it out in a task, run a "
+        'conductor flow there, like `mycelium board coordinate <row> conductor "review …"`.'
     ),
 }
 

@@ -16,7 +16,7 @@ import {
   threadPanelId,
 } from "@/lib/room-dock";
 
-const EPISODE = "urn:ioc:mycelium:episode:checkout:f1a5c7";
+const EPISODE = "urn:mycelium:episode:checkout:f1a5c7";
 const THREAD = threadPanelId(EPISODE);
 const MEMORY = memoryPanelId("work/x");
 

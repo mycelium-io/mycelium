@@ -23,12 +23,7 @@ its messages. A summon from a task's thread nests the episode in that task
 and one when it ends; a summon from the room nests it in nothing. Tasks are
 context or output, never the container the flow lives in.
 
-**What a run agrees outlives it, in memory, never on the board.** A flow
-that locks (``accord``) saves the shared summary it assembled, and a
-``concord`` that converges saves its decision, each as a ``context/`` memory
-for the task (:mod:`~app.services.agreed`); the commit points at it. A later
-run in the same task is shown what was saved (``{agreed}``). No conductor
-run files board rows.
+A run ends ``resolved`` or ``rejected`` and files no board rows.
 
 What it shares with the other engines: dormant until a registered engine of
 its kind is summoned, runs as that handle. What it does not share: it opens
@@ -48,9 +43,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from app.config import settings
-from app.services import agreed, episode_state, markers, message_format, protocols, tasks, turns
-from app.services import frame as framing
-from app.services import select as choosing
+from app.services import episode_state, markers, message_format, protocols, tasks, turns
 from app.services.agent_registry import norm_handle
 from app.services.engine_kinds import registered_engine_kind
 from app.services.episode_records import EPISODES_PREFIX
@@ -93,10 +86,6 @@ _NOT_A_REPLY = frozenset(
     }
 )
 
-#: How alike a fix and an option already on the table can be before the fix
-#: counts as the same option (with the embedding model; without it, equal text).
-REPEAT_SIMILARITY = 0.92
-
 #: A handle named in a summon, loud, silent (``@~``) or interrupting (``@!``).
 _MENTION = re.compile(r"@[~!]?[\w.@-]+")
 _LEADING_PUNCT = re.compile(r"^[\s:,;\u2014\u2013-]+")
@@ -118,62 +107,6 @@ def split_directive(text: str) -> tuple[str, str]:
     name = words[0].strip(":,;").lower()
     ask = _LEADING_PUNCT.sub("", " ".join(words[1:])).strip()
     return name, ask
-
-
-@dataclass
-class Settings:
-    """What a summon sets for its run, beside the question: the bar (0-1), how
-    many fixes, the two reference outcomes, and the key terms."""
-
-    bar: float | None = None
-    fixes: int | None = None
-    bad: str = ""
-    ideal: str = ""
-    terms: list[str] = field(default_factory=list)
-
-
-#: The two ends a concord is measured between when the summon names none:
-#: no agreement at all, and each member's own choice.
-DEFAULT_BAD = "no agreement: nothing is decided and the task stays open"
-DEFAULT_IDEAL = "your own pick: the option you'd choose if it were up to you alone"
-
-_BAR = re.compile(r"\bbar\s*[=:]\s*(\d{1,3})\s*%?", re.IGNORECASE)
-_FIXES = re.compile(r"\bfixes\s*[=:]\s*(\d{1,2})\b", re.IGNORECASE)
-#: ``bad: …``, ``ideal: …`` and ``terms: …``, each running to the next of them.
-_LABELLED = re.compile(r"\b(bad|ideal|terms)\s*:\s*", re.IGNORECASE)
-
-
-def run_settings(ask: str) -> tuple[str, Settings]:
-    """``(the question, what the summon set)`` from a summon's ask.
-
-    ``bar=60`` (a percentage) and ``fixes=3`` can sit anywhere in it.
-    ``bad: …``, ``ideal: …`` and ``terms: a, b`` run to the next of them or the
-    end, so they go after the question: ``decide the renewal offer bad: we lose
-    Acme ideal: Acme renews for three years at full price``.
-    """
-    found = Settings()
-    if m := _BAR.search(ask):
-        value = int(m.group(1))
-        if 0 < value <= 100:
-            found.bar = value / 100
-        ask = ask[: m.start()] + ask[m.end() :]
-    if m := _FIXES.search(ask):
-        found.fixes = int(m.group(1))
-        ask = ask[: m.start()] + ask[m.end() :]
-    marks = list(_LABELLED.finditer(ask))
-    if marks:
-        for i, mark in enumerate(marks):
-            stop = marks[i + 1].start() if i + 1 < len(marks) else len(ask)
-            value = ask[mark.end() : stop].strip().rstrip(".,;")
-            kind = mark.group(1).lower()
-            if kind == "terms":
-                found.terms = [t.strip() for t in re.split(r"[,;]", value) if t.strip()][:5]
-            elif kind == "bad":
-                found.bad = value
-            else:
-                found.ideal = value
-        ask = ask[: marks[0].start()]
-    return re.sub(r"\s+", " ", ask).strip().rstrip(",;"), found
 
 
 class _Fields(dict[str, str]):
@@ -202,57 +135,10 @@ class Run:
     task: str = ""
     title: str = ""
     #: What a step's replies were, by handle: the record each reply arrived
-    #: as, for reading ratings and stances off. Reset at every step.
+    #: as, for reading stances off. Reset at every step.
     answers: dict[str, dict[str, Any]] = field(default_factory=dict)
-    #: The options suggested so far, lettered in cast order.
-    options: list[choosing.Option] = field(default_factory=list)
-    #: ``{member: {letter: 0-100}}``, the ratings given so far; a later rating
-    #: of the same option replaces the earlier one.
-    ratings: dict[str, dict[str, int]] = field(default_factory=dict)
-    #: ``{member: {letter: why}}``, the reason each rating came with.
-    reasons: dict[str, dict[str, str]] = field(default_factory=dict)
-    #: What the summon set: the bar, the fixes, the reference outcomes, the terms.
-    settings: Settings = field(default_factory=Settings)
-    #: ``{member: (bad, ideal)}``, each member's ratings of the two reference outcomes.
-    anchors: dict[str, tuple[int, int]] = field(default_factory=dict)
-    #: The key terms of an accord run, from the summon or as members named them.
-    key_terms: list[str] = field(default_factory=list)
-    #: Members who were refused a fix that repeated an option, so it's once each.
-    repeat_refused: set[str] = field(default_factory=set)
-    #: Options before this index have been put to a rating round already.
-    rated_upto: int = 0
-    #: The latest select step's result, and how many picks the run has made.
-    last_pick: dict[str, Any] | None = None
-    picks: int = 0
-    #: How many times each select step has sent it back for a fix.
-    repairs: dict[str, int] = field(default_factory=dict)
-    #: Who was least happy at the first sending back, and their objection then,
-    #: so an agreement can say what the fixes answered.
-    first_short: tuple[str, str] | None = None
     #: Who didn't answer the last step taken, for the close to name.
     quiet: list[str] = field(default_factory=list)
-    #: The points, words and checks members labelled, merged as they arrive.
-    frame: framing.Frame = field(default_factory=framing.Frame)
-    #: How many new points the latest step that gathers pieces added.
-    added: int = 0
-    #: How many times each tally step has run, and how many steps that ask
-    #: nobody the run has taken (a graph that loops through them alone is
-    #: still bounded).
-    tallies: dict[str, int] = field(default_factory=dict)
-    computed: int = 0
-    #: The members the latest tally of words found using one in different senses.
-    contested: list[str] = field(default_factory=list)
-    terms_shown: str = ""
-    #: The similarity points and meanings fold by, or ``None`` for equal text only.
-    similar: framing.Similar | None = None
-    #: What the team agreed earlier in this task, for prompts to carry.
-    agreed: str = ""
-    #: The assembled shared summary, when a lock made one.
-    made: dict[str, Any] | None = None
-    #: Where the run's result was saved; ``saving`` is set once there was
-    #: something to save, so a failed write reads differently from none.
-    saved_to: str | None = None
-    saving: bool = False
 
     def targets(self, step: Step) -> list[str]:
         to = step.to or ""
@@ -261,75 +147,10 @@ class Run:
             return [h for h in self.handles if h not in named]
         if to in protocols.GROUP_TARGETS:
             return list(self.handles)
-        if to == protocols.BOTTLENECK:
-            least = (self.last_pick or {}).get("least_happy")
-            return [least] if least else []
-        if to == protocols.CONTESTED:
-            return list(self.contested)
         return [self.bound[to]]
-
-    def new_options(self) -> list[choosing.Option]:
-        """Options no rating round has seen yet."""
-        return self.options[self.rated_upto :]
-
-    def bar(self) -> float:
-        """The bar this run holds every member to, 0-1: the summon's, else the
-        flow's select step's, else the default. Fixed for the run."""
-        if self.settings.bar is not None:
-            return self.settings.bar
-        select = next((s for s in self.protocol.steps if s.kind == "select"), None)
-        if select is not None and select.threshold is not None:
-            return select.threshold
-        return protocols.DEFAULT_THRESHOLD
-
-    def fixes(self, step: Step) -> int:
-        """How many fixes a select step may send for: the summon's, else its own."""
-        if self.settings.fixes is not None:
-            return self.settings.fixes
-        return step.max_repairs if step.max_repairs is not None else protocols.DEFAULT_MAX_REPAIRS
-
-    def bar_said(self) -> str:
-        """The bar in terms of the two reference outcomes, never as a bare number."""
-        if self.settings.bad in ("", DEFAULT_BAD) and self.settings.ideal in ("", DEFAULT_IDEAL):
-            return (
-                f"The bar: the option picked has to be at least {round(self.bar() * 100)}% of the "
-                "way from no agreement to each member's own pick, for every member."
-            )
-        bad = self.settings.bad or "the bad outcome"
-        ideal = self.settings.ideal or "the ideal one"
-        return (
-            f"The bar: the option picked has to be at least {round(self.bar() * 100)}% of the "
-            f"way from *{bad}* to *{ideal}* for every member."
-        )
-
-    def _listed(self, options: list[choosing.Option]) -> str:
-        """Options as raters read them: each with why its proposers proposed it."""
-        lines = []
-        for o in options:
-            lines.append(f"{o.label}. {o.text}")
-            lines += [f"   why ({h}): {w}" for h, w in o.why.items() if w]
-        return "\n".join(lines)
-
-    def objections(self) -> str:
-        """What the members short of the bar said about the pick, in their words."""
-        pick = self.last_pick or {}
-        label = pick.get("pick")
-        why = (pick.get("reasons") or {}).get(label, {}) if label else {}
-        lines = [
-            f"- {s['member']}: {s.get('why') or 'gave no reason'}" for s in pick.get("short") or []
-        ]
-        others = [
-            h
-            for h in self.handles
-            if h in why and h not in {s["member"] for s in pick.get("short") or []}
-        ]
-        lines += [f"- {h} (meets the bar): {why[h]}" for h in others]
-        return "\n".join(lines) or "- (no reasons given)"
 
     def fields(self, *, round_n: int = 1, rounds: int = 1) -> _Fields:
         said = [(h, self.replies[h]) for h in self.handles if self.replies.get(h)]
-        fresh = self.new_options()
-        pick = self.last_pick or {}
         return _Fields(
             ask=self.ask,
             reply=self.recent,
@@ -339,58 +160,8 @@ class Run:
             # The row's title, for prompts a person or a model reads: a key like
             # work/decide-the-renewal-offer-for-acme reads as a path, not a task.
             title=self.title or self.task or "this task",
-            option_labels=" ".join(f"{o.label}=.." for o in self.options),
             round=str(round_n),
             rounds=str(rounds),
-            options=self._listed(self.options) or "(none yet)",
-            new_options=self._listed(fresh) or "(none)",
-            new_labels=" ".join(f"{o.label}=.." for o in fresh),
-            # Each line carries the option's name, so a reply reads as what it
-            # rates, not as a bare letter.
-            rating_lines=_rating_lines(self.options, self.options),
-            new_rating_lines=_rating_lines(fresh, self.options),
-            scores=choosing.scorecard(self.last_pick) if self.last_pick else "",
-            standing="\n".join(f"- {v}" for v in choosing.views(pick, pick["pick"]))
-            if pick.get("pick")
-            else "",
-            objections=self.objections(),
-            bad=self.settings.bad or "the bad outcome",
-            ideal=self.settings.ideal or "the ideal outcome",
-            bar=str(round(self.bar() * 100)),
-            bar_said=self.bar_said(),
-            key_terms=", ".join(self.key_terms) or "(none named)",
-            term_lines="\n".join(f"{t}: <what you mean, with units>" for t in self.key_terms)
-            or "term <word>: <what you mean, with units>",
-            # The best option so far in full: a fix revises it, so it has to
-            # see what earlier fixes put in.
-            pick=(
-                f"{self.last_pick['pick']}. {self.last_pick['text']}"
-                if self.last_pick and self.last_pick.get("pick")
-                else ""
-            ),
-            threshold=str(round(self.bar() * 100)),
-            shortfall=self.shortfall(),
-            frame=framing.show_points(self.frame, self.handles),
-            # Grouping meanings can call the embedding model, so the words are
-            # shown as the latest tally of them grouped them, off the loop.
-            terms=self.terms_shown or "(no words defined yet)",
-            checks=framing.show_checks(self.frame),
-            agreed=self.agreed,
-        )
-
-    def shortfall(self) -> str:
-        """Where the least happy member stands on the pick, said to them in words."""
-        pick = self.last_pick or {}
-        least = pick.get("least_happy")
-        if not least:
-            return ""
-        at = (pick.get("standing") or {}).get(least)
-        why = ((pick.get("reasons") or {}).get(pick.get("pick"), {}) or {}).get(least, "")
-        said = choosing.verdict(at, self.bar())
-        because = f", because {choosing.mid_sentence(why)}" if why else ""
-        return (
-            f"For you, {choosing.pick_named(pick)} is "
-            f"{said}{because}. You're the one furthest from the bar."
         )
 
     def flow(self) -> dict[str, Any]:
@@ -457,18 +228,13 @@ def edge_event(step: Step, stance: str | None, who: str) -> dict[str, Any]:
 
 def close_line(run: Run, outcome: str, why: str) -> dict[str, Any]:
     """How the run ended."""
-    line: dict[str, Any] = {
+    return {
         "event": "close",
         "protocol": run.protocol.name,
         "outcome": outcome,
         "steps": run.steps_taken,
         "reason": why,
     }
-    if run.last_pick and run.last_pick.get("pick"):
-        line |= {"pick": run.last_pick["pick"], "text": run.last_pick["text"]}
-    if run.saving:
-        line["memory"] = run.saved_to
-    return line
 
 
 def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
@@ -476,40 +242,6 @@ def bind_roles(protocol: Protocol, handles: list[str]) -> dict[str, str] | None:
     if len(handles) < len(protocol.roles):
         return None
     return dict(zip(protocol.roles, handles, strict=False))
-
-
-def _rating_lines(options: list[choosing.Option], every: list[choosing.Option]) -> str:
-    """The lines a member fills in to rate ``options``, each naming its option
-    by a name no other option in ``every`` (the run's options) shares."""
-    names = choosing.option_names([(o.label, o.text) for o in every])
-    return "\n".join(f"{choosing.named(o.label, o.text, names)}: <0-100> - <why>" for o in options)
-
-
-def _sentence(text: str) -> str:
-    """``text`` ending in exactly one full stop, however it ended before."""
-    return text.rstrip().rstrip(".") + "."
-
-
-def _counted(numbers: dict[str, Any]) -> str:
-    """A shared summary's size, as a person reads it."""
-    parts = [
-        f"{numbers['points']} point(s)",
-        f"{numbers['shared']} stated by more than one person",
-    ]
-    if numbers["contested"]:
-        parts.append(f"{numbers['contested']} word(s) used in different senses")
-    if numbers["checks"]:
-        parts.append(f"{numbers['checks']} check(s)")
-    return ", ".join(parts) + "."
-
-
-def _saved(run: Run, what: str) -> str:
-    """Where a run's result went, or that it could not be saved."""
-    if not run.saving:
-        return ""
-    if run.saved_to:
-        return f" The {what} is saved as {run.saved_to}."
-    return f" The {what} could not be saved."
 
 
 def stance_of_step(replies: list[tuple[str, str | None]]) -> str | None:
@@ -561,9 +293,6 @@ class ConductorEngine:
         #: (``outcome`` None) and once when it closes, for anything that follows
         #: a run as it goes. It must return at once; a failure is logged.
         self.on_step: Callable[[str, str, str | None], None] | None = None
-        #: Makes the similarity a run folds points and meanings by; ``None``
-        #: from it means equal text only. Tests put their own in.
-        self.similarity: Callable[[], framing.Similar | None] = framing.embedding_similarity
 
     def _stepped(self, room: str, thread: str, outcome: str | None) -> None:
         if self.on_step is None:
@@ -729,7 +458,6 @@ class ConductorEngine:
         # episode of its own — the same slice, with the flow and the trace on
         # it — so the task stays one row and one thread.
         row = tasks.row_of_episode(room, thread)
-        ask, set_by_summon = run_settings(ask)
         run = Run(
             protocol=protocol,
             ask=ask,
@@ -738,25 +466,13 @@ class ConductorEngine:
             episode=thread,
             task=row[0] if row else "",
             title=row[1] if row else "",
-            similar=self.similarity(),
-            settings=set_by_summon,
-            key_terms=list(set_by_summon.terms),
         )
-        # The two ends any agreement is measured between: no agreement at all,
-        # and each member's own choice. They need nobody to write them; a
-        # summon's `bad:` / `ideal:` names others in their place.
-        run.settings.bad = run.settings.bad or DEFAULT_BAD
-        run.settings.ideal = run.settings.ideal or DEFAULT_IDEAL
-        if not run.similar:
-            run.frame.similarity = False
-        # What the team agreed earlier in this task, so a later flow builds on it.
-        run.agreed = await asyncio.to_thread(agreed.for_prompt, room, run.task)
         ep = episode_state.EpisodeState(
             episode=thread,
             topic=message_format.topic_urn(room),
             parent_room=room,
             short_id=mint_episode_id(),
-            workspace_id=managed.workspace,
+            workspace_id="mycelium",
             mas_id="",
             agents=list(handles),
             engine_handle=me,
@@ -835,32 +551,9 @@ class ConductorEngine:
 
     @classmethod
     def _opening(cls, run: Run) -> str:
-        """The first line of a run: who plays what, what it holds them to, and
-        the graph about to be walked.
-
-        A run that picks says its bar here, before anyone rates, in terms of
-        the two reference outcomes, and how many fixes it allows; a run that
-        fixes key terms names them, or says the members will."""
-        said = [f"Running {run.protocol.name} with {cls._cast(run)}."]
-        select = next((s for s in run.protocol.steps if s.kind == "select"), None)
-        if select is not None:
-            said.append(run.bar_said())
-            default = run.settings.bar is None and select.threshold == protocols.DEFAULT_THRESHOLD
-            if default:
-                said.append(
-                    "That's the default bar; `bar=NN` in the summon sets another. It stays "
-                    "the same for the whole run."
-                )
-            said.append(
-                f"Up to {run.fixes(select)} fixes; then the best option found stands, saying "
-                "who is still short and why."
-            )
-        if any(s.collect == "keywords" for s in run.protocol.steps):
-            if run.key_terms:
-                said.append(f"The key terms: {', '.join(run.key_terms)}.")
-            else:
-                said.append("The members will name the key terms first.")
-        return " ".join(said) + f"\n\n{protocols.describe(run.protocol)}"
+        """The first line of a run: who plays what, and the graph about to be walked."""
+        said = f"Running {run.protocol.name} with {cls._cast(run)}."
+        return f"{said}\n\n{protocols.describe(run.protocol)}"
 
     async def _walk(
         self, managed: ManagedRoomChannel, run: Run, ep: episode_state.EpisodeState, me: str
@@ -872,60 +565,6 @@ class ConductorEngine:
         while True:
             if step.end is not None:
                 return step.end, f"reached `{step.id}`"
-            if step.kind == "select":
-                # A pick asks nobody, so it costs no step; a graph that loops
-                # through picks alone is still bounded.
-                run.picks += 1
-                if run.picks > cap + 1:
-                    return "rejected", f"picked {run.picks - 1} times without asking anyone"
-                nxt = await self._select(managed, run, ep, me, step)
-                if nxt is None:
-                    outcome = (run.last_pick or {}).get("outcome")
-                    return "rejected", f"`{step.id}` came out {outcome} with no edge for it"
-                step = protocol.step(nxt)
-                continue
-            if step.kind in ("tally", "lock"):
-                # Like a pick: code reads the run and asks nobody, so it costs
-                # no step, and a graph that loops through these alone is bounded.
-                run.computed += 1
-                if run.computed > 2 * cap + 2:
-                    return "rejected", f"ran {step.kind} steps {run.computed - 1} times"
-                if step.kind == "tally":
-                    came, nxt = await self._tally(managed, run, ep, me, step)
-                else:
-                    came, nxt = await self._lock(managed, run, ep, me, step)
-                if nxt is None:
-                    return "rejected", f"`{step.id}` came out {came} with no edge for it"
-                step = protocol.step(nxt)
-                continue
-            if step.needs == "scores" and run.options and not run.new_options():
-                # A fix that added nothing (the fixer was silent, or suggested an
-                # option already on the table) leaves nothing new to rate: go on
-                # without asking anyone to rate "(none)".
-                ep.trace.append(
-                    {
-                        "step": step.id,
-                        "turn": run.steps_taken,
-                        "skipped": "nothing new to rate",
-                        "next": step.edge(None),
-                        "at": datetime.now(UTC).isoformat(),
-                    }
-                )
-                step = protocol.step(step.edge(None))
-                continue
-            if step.collect == "keywords" and run.key_terms:
-                # The summon named the key terms, so nobody is asked for them.
-                ep.trace.append(
-                    {
-                        "step": step.id,
-                        "turn": run.steps_taken,
-                        "skipped": "the summon named the key terms",
-                        "next": step.edge(None),
-                        "at": datetime.now(UTC).isoformat(),
-                    }
-                )
-                step = protocol.step(step.edge(None))
-                continue
             if run.steps_taken >= cap:
                 return "rejected", f"hit the step cap ({cap}) at `{step.id}`"
             run.steps_taken += 1
@@ -955,308 +594,6 @@ class ConductorEngine:
             self._stepped(managed.room, run.episode, None)
             step = protocol.step(nxt)
 
-    async def _select(
-        self,
-        managed: ManagedRoomChannel,
-        run: Run,
-        ep: episode_state.EpisodeState,
-        me: str,
-        step: Step,
-    ) -> str | None:
-        """Pick among the options by the ratings given; post the scorecard;
-        return the next step's id, or ``None`` when no edge takes the outcome."""
-        done = run.repairs.get(step.id, 0)
-        record = choosing.pick(
-            run.options,
-            run.handles,
-            run.ratings,
-            run.bar(),
-            repairs_done=done,
-            max_repairs=run.fixes(step),
-            anchors=run.anchors,
-            reasons=run.reasons,
-        )
-        if not run.options:
-            record["outcome"] = "nothing"
-        outcome = record["outcome"]
-        if outcome == "infeasible":
-            run.repairs[step.id] = done + 1
-            least = record["least_happy"]
-            if run.first_short is None and least:
-                why = (record.get("reasons") or {}).get(record["pick"], {}).get(least, "")
-                run.first_short = (least, why)
-        run.last_pick = record
-        edges = step.next if isinstance(step.next, dict) else {}
-        nxt = edges.get(outcome) or edges.get("default")
-        ep.trace.append(
-            {
-                "step": step.id,
-                "turn": run.steps_taken,
-                "select": {
-                    k: record[k] for k in ("outcome", "pick", "lowest", "missing", "least_happy")
-                },
-                "next": nxt,
-                "at": datetime.now(UTC).isoformat(),
-            }
-        )
-        episode_state.write_episode_record(ep, outcome="open", metrics=None)
-        await self._say(
-            managed,
-            run.episode,
-            me,
-            choosing.scorecard(record),
-            line={"event": "select", "step": step.id, "next": nxt, "select": record},
-        )
-        return nxt
-
-    @staticmethod
-    def _edge(step: Step, came: str) -> str | None:
-        if isinstance(step.next, str):
-            return step.next
-        edges = step.next or {}
-        return edges.get(came) or edges.get("default")
-
-    async def _tally(
-        self,
-        managed: ManagedRoomChannel,
-        run: Run,
-        ep: episode_state.EpisodeState,
-        me: str,
-        step: Step,
-    ) -> tuple[str, str | None]:
-        """Read the frame and say which way it went: ``(how it came out, next step)``.
-
-        Of points: the last round added some (go round again), added none, or
-        nobody has given any. Of words: some are used in different senses (ask
-        those members, once), or none are. A tally that has run its
-        ``max_rounds`` settles either way, and what was still moving is flagged.
-        """
-        n = run.tallies[step.id] = run.tallies.get(step.id, 0) + 1
-        most = step.max_rounds or protocols.DEFAULT_MAX_ROUNDS[step.of or "points"]
-        frame = run.frame
-        report: dict[str, Any] = {"of": step.of, "round": n, "max_rounds": most}
-        if step.of == "terms":
-            words = await asyncio.to_thread(framing.contested, frame, run.similar)
-            run.terms_shown = await asyncio.to_thread(framing.show_terms, frame, run.similar)
-            again = bool(words) and n < most
-            came = "contested" if again else "clear"
-            run.contested = (
-                await asyncio.to_thread(framing.contested_members, frame, run.handles, run.similar)
-                if again
-                else []
-            )
-            shown = [frame.terms[w][0] for w in words]
-            report |= {
-                "words": len(frame.terms),
-                "contested": shown,
-                "asked": list(run.contested),
-            }
-            if again:
-                said = (
-                    f"Words used in different senses: {', '.join(shown)}. Asking "
-                    f"{', '.join(run.contested)} to say again what they mean."
-                )
-            elif words:
-                said = (
-                    f"Still used in different senses: {', '.join(shown)}. The meanings "
-                    "are kept side by side in the shared summary."
-                )
-            else:
-                said = (
-                    f"{len(frame.terms)} word(s) defined, none used in different senses."
-                    if frame.terms
-                    else "Nobody defined a word."
-                )
-        else:
-            total = len(frame.points)
-            if not total:
-                came = "empty"
-            elif run.added and n < most:
-                came = "grew"
-            else:
-                came = "settled"
-                if run.added:
-                    frame.capped = True
-            report |= {"added": run.added, "points": total, "capped": frame.capped}
-            if came == "empty":
-                said = "Nobody gave any points."
-            elif came == "grew":
-                said = f"{run.added} new point(s), {total} in all so far."
-            elif frame.capped:
-                said = (
-                    f"Points were still being added after {n} rounds; going on with the "
-                    f"{total} there are."
-                )
-            else:
-                said = f"Nobody added anything new; {total} points in all."
-            if total:
-                said += f"\n\n{framing.show_points(frame, run.handles)}"
-        nxt = self._edge(step, came)
-        report["outcome"] = came
-        ep.trace.append(
-            {
-                "step": step.id,
-                "turn": run.steps_taken,
-                "tally": report,
-                "next": nxt,
-                "at": datetime.now(UTC).isoformat(),
-            }
-        )
-        episode_state.write_episode_record(ep, outcome="open", metrics=None)
-        await self._say(
-            managed,
-            run.episode,
-            me,
-            said,
-            line={"event": "tally", "step": step.id, "next": nxt, "tally": report},
-        )
-        return came, nxt
-
-    async def _lock(
-        self,
-        managed: ManagedRoomChannel,
-        run: Run,
-        ep: episode_state.EpisodeState,
-        me: str,
-        step: Step,
-    ) -> tuple[str, str | None]:
-        """Assemble the shared summary from what the run gathered and save it to
-        the room's memory: ``(how it came out, next step)``.
-
-        Assembly, not a vote: everything flagged is recorded, and a member who
-        disagrees with the result says so in the thread. Nothing to assemble
-        (no points at all) comes out ``empty``. A failed save leaves the outcome
-        as it is and says so.
-        """
-        frame = run.frame
-        framing.known_covers(frame)
-        made = await asyncio.to_thread(
-            framing.contract,
-            frame,
-            cast=run.handles,
-            ask=run.ask,
-            task=run.task,
-            title=run.title,
-            similar=run.similar,
-        )
-        if not made["points"]:
-            came, key, saved = "empty", None, False
-        else:
-            came = "locked"
-            run.made = made
-            run.saving = True
-            key = agreed.summary_key(run.task or ep.short_id)
-            saved = await agreed.save(
-                managed.room,
-                key,
-                body=framing.render(made),
-                meta={
-                    agreed.CONTRACT_META: made,
-                    "flow": run.protocol.name,
-                    "record": f"{EPISODES_PREFIX}{ep.short_id}",
-                },
-                task=run.task,
-                by=me,
-                tags=["shared-summary"],
-            )
-            run.saved_to = key if saved else None
-            ep.memory = run.saved_to
-        nxt = self._edge(step, came)
-        numbers = framing.counts(made)
-        report = {"outcome": came, "memory": run.saved_to, "saved": saved, **numbers}
-        ep.trace.append(
-            {
-                "step": step.id,
-                "turn": run.steps_taken,
-                "lock": report,
-                "next": nxt,
-                "at": datetime.now(UTC).isoformat(),
-            }
-        )
-        episode_state.write_episode_record(ep, outcome="open", metrics=None)
-        if came == "empty":
-            said = "There is nothing to put in a shared summary: nobody gave any points."
-        else:
-            items = [f["text"] for f in made["flags"]]
-            listed = "\n".join(f"- {t}" for t in items) or "- None."
-            where = (
-                f"Saved as [[{key}]]. Later work in this task is held to it; a line "
-                "starting `conflict:` in this thread adds to its open items."
-                if saved
-                else "The shared summary could not be saved; it is in this thread."
-            )
-            said = f"The shared summary: {_counted(numbers)}\n\nOpen items:\n{listed}\n\n{where}"
-        await self._say(
-            managed,
-            run.episode,
-            me,
-            said,
-            line={"event": "lock", "step": step.id, "next": nxt, "lock": report},
-        )
-        return came, nxt
-
-    async def _save_decision(
-        self, managed: ManagedRoomChannel, run: Run, ep: episode_state.EpisodeState, me: str
-    ) -> None:
-        """Save the option the run ended on to the room's memory, the way a
-        shared summary is saved, so the work that follows can read it.
-
-        It leads with reasons: the option, how each member sees it and why, and
-        for a best found rather than an agreement, who is still short and why.
-        The numbers come last, for anyone checking the arithmetic."""
-        pick = run.last_pick or {}
-        run.saving = True
-        key = agreed.decision_key(run.task or ep.short_id)
-        ratings = pick.get("ratings") or {}
-        agreed_by_all = pick.get("outcome") == "feasible"
-        label = str(pick.get("pick") or "")
-        options = []
-        for o in pick.get("options") or []:
-            options.append(f"- **{o['label']}.** {o['text']}")
-            options += [f"  - why ({h}): {w}" for h, w in (o.get("why") or {}).items() if w]
-        verdict = (
-            "Everyone meets the bar."
-            if agreed_by_all
-            else f"Best found, below the bar: {choosing.summary(pick)}"
-        )
-        views = "\n".join(f"- {v}" for v in choosing.views(pick, label))
-        considered = "\n".join(options)
-        body = (
-            f"# Decision: {run.title or run.task or 'this task'}\n\n"
-            f"Going with {label}: {pick.get('text')}\n\n{verdict}\n\n"
-            f"{run.bar_said()}\n\n"
-            f"## How each member sees it\n\n{views}\n\n"
-            f"## Options considered\n\n{considered}\n\n"
-            f"## The numbers\n\n{choosing.numbers(pick)}\n"
-        )
-        saved = await agreed.save(
-            managed.room,
-            key,
-            body=body,
-            meta={
-                agreed.DECISION_META: {
-                    "pick": label,
-                    "text": pick.get("text"),
-                    "agreed": agreed_by_all,
-                    "threshold": pick.get("threshold"),
-                    "outcomes": {"bad": run.settings.bad, "ideal": run.settings.ideal},
-                    "views": choosing.views(pick, label) if label else [],
-                    "short": pick.get("short") or [],
-                    "ratings": ratings,
-                    "standing": pick.get("standing") or {},
-                    "options": pick.get("options") or [],
-                    "cast": list(run.handles),
-                },
-                "flow": run.protocol.name,
-                "record": f"{EPISODES_PREFIX}{ep.short_id}",
-            },
-            task=run.task,
-            by=me,
-            tags=["decision"],
-        )
-        run.saved_to = key if saved else None
-        ep.memory = run.saved_to
-
     async def _take(
         self,
         managed: ManagedRoomChannel,
@@ -1268,228 +605,23 @@ class ConductorEngine:
     ) -> list[tuple[str, str | None]]:
         """Put one step to its targets; return each target's stance.
 
-        A step that collects adds what the replies carried to the run; one that
-        requires something asks, once, whoever replied without it.
+        A step that requires a stance asks, once, whoever replied without one.
         """
-        before = len(run.options)
         stances = await self._ask(managed, run, ep, me, step, cap)
         replied = set(run.answers)
-        if step.collect == "pieces":
-            run.added = 0
-        await self._gather(managed, run, me, step, list(run.answers))
-        if step.collect == "options" and step.to == protocols.BOTTLENECK:
-            await self._refuse_a_repeat(managed, run, ep, me, step, cap, before)
         lacking = self._lacking(run, step, stances)
         if lacking and run.steps_taken < cap:
             stances = await self._reask(managed, run, ep, me, step, cap, lacking, stances)
-        if step.needs == "pieces":
-            await self._keep_unlabelled(managed, run, me, lacking)
-        if step.needs == "scores":
-            run.rated_upto = len(run.options)
         if step.needs == "stance":
             # Someone who wrote back but never marked a stance, even when asked
             # again, objected: a written objection is never read as consent.
             stances = [(h, "reject" if h in replied and s is None else s) for h, s in stances]
         return stances
 
-    async def _refuse_a_repeat(
-        self,
-        managed: ManagedRoomChannel,
-        run: Run,
-        ep: episode_state.EpisodeState,
-        me: str,
-        step: Step,
-        cap: int,
-        before: int,
-    ) -> None:
-        """A fix has to be something new. One that is an option already on the
-        table, or nearly the same text, is taken back and the fixer is asked
-        once more for something that answers the objections. A second repeat
-        stands: the next rating round, or the lack of one, says what it's worth."""
-        fixer = next(iter(run.targets(step)), None)
-        if fixer is None or fixer not in run.answers or fixer in run.repeat_refused:
-            return
-        if run.steps_taken >= cap:
-            return
-        added = run.options[before:]
-        if added:
-            newest = added[-1]
-            same = await asyncio.to_thread(self._near, run, newest.text, run.options[:before])
-            if same is not None:
-                run.options.pop()
-        else:
-            prose = markers.MARKER_RE.sub("", run.replies.get(fixer, "")).strip()
-            option, _why = markers.split_why(prose)
-            same = (
-                next((o for o in run.options if choosing.same_text(o.text, option)), None)
-                if option
-                else None
-            )
-        if same is None:
-            return
-        run.repeat_refused.add(fixer)
-        run.steps_taken += 1
-        prompt = (
-            f"{run.protocol.name} · {step.id} (again) · turn {run.steps_taken} of {cap} · {fixer}\n\n"
-            f"That's option {same.label} again, or very close to it. A fix has to be "
-            "something new that answers these objections, not the same option or a small "
-            f"change to it:\n\n{run.objections()}\n\nReply with the option, then a line "
-            "saying what it answers and how:\n\n<the option>\nwhy: <what it answers>"
-        )
-        self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=[fixer])
-        run.answers = {}
-        line = turn_line(run, step, fixer, cap=cap, round_n=1) | {"again": True}
-        await self._turn(
-            managed,
-            ep,
-            me,
-            run,
-            fixer,
-            prompt,
-            {"step": step.id, "protocol": run.protocol.name, LINE_KEY: line},
-        )
-        await self._gather(managed, run, me, step, list(run.answers))
-        ep.trace.append(
-            {
-                "step": step.id,
-                "turn": run.steps_taken,
-                "again": True,
-                "asked": [fixer],
-                "repeat_of": same.label,
-                "at": datetime.now(UTC).isoformat(),
-            }
-        )
-
-    @staticmethod
-    def _near(run: Run, text: str, options: list[choosing.Option]) -> choosing.Option | None:
-        """The option ``text`` repeats: the same words, or (with the embedding
-        model) a near-identical meaning."""
-        for o in options:
-            if choosing.same_text(o.text, text):
-                return o
-        if run.similar is None:
-            return None
-        for o in options:
-            try:
-                if float(run.similar(o.text, text)) >= REPEAT_SIMILARITY:
-                    return o
-            except Exception:
-                logger.warning(
-                    "similarity unavailable; repeats checked by text only", exc_info=True
-                )
-                return None
-        return None
-
-    def _collect(self, run: Run, step: Step, answered: list[str]) -> None:
-        """Add what the replies of ``answered`` carried, in cast order (whatever
-        order they arrived in): options with why they were proposed, ratings of
-        the options on the table with their reasons, ratings of the two
-        reference outcomes, or the key terms members named."""
-        order = [h for h in run.handles if h in answered]
-        if step.collect == "options":
-            for handle in order:
-                # The prose without any marker; a reply that was only a marker
-                # proposed nothing, so it puts nothing on the table.
-                prose = markers.MARKER_RE.sub("", run.replies.get(handle, "")).strip()
-                option, why = markers.split_why(prose)
-                if option:
-                    choosing.add_option(run.options, option, handle, why)
-        elif step.needs == "scores":
-            labels = {o.label for o in run.options}
-            for handle in order:
-                given = markers.rated_of(run.answers[handle])
-                kept = {k: v for k, v in given.items() if k in labels}
-                if kept:
-                    run.ratings.setdefault(handle, {}).update({k: v for k, (v, _w) in kept.items()})
-                    run.reasons.setdefault(handle, {}).update(
-                        {k: w for k, (_v, w) in kept.items() if w}
-                    )
-        elif step.collect == "anchors":
-            for handle in order:
-                said = markers.anchor_lines(run.replies.get(handle, ""))
-                if "bad" in said and "ideal" in said and said["ideal"][0] > said["bad"][0]:
-                    run.anchors[handle] = (said["bad"][0], said["ideal"][0])
-        elif step.collect == "keywords":
-            run.key_terms = self._key_terms(run, order)
-
-    @staticmethod
-    def _key_terms(run: Run, order: list[str]) -> list[str]:
-        """The key terms members named (``term: …`` lines), the most named first
-        and then in the order they were first named; five at most."""
-        named: dict[str, tuple[str, int, int]] = {}
-        for handle in order:
-            seen: set[str] = set()
-            for text in markers.term_names(run.replies.get(handle, "")):
-                key = text.lower()
-                if key in seen:
-                    continue
-                seen.add(key)
-                shown, count, first = named.get(key, (text, 0, len(named)))
-                named[key] = (shown, count + 1, first)
-        ranked = sorted(named.values(), key=lambda v: (-v[1], v[2]))
-        return [shown for shown, _c, _f in ranked[:5]]
-
-    async def _gather(
-        self, managed: ManagedRoomChannel, run: Run, me: str, step: Step, answered: list[str]
-    ) -> None:
-        """What the replies of ``answered`` add to the run: options, ratings, or
-        labelled pieces merged into the frame (off the loop, since merging can
-        ask the embedding model), with a note in the thread for anything a
-        bound dropped."""
-        if step.collect != "pieces":
-            self._collect(run, step, answered)
-            return
-        order = [h for h in run.handles if h in answered]
-        replies = [(h, markers.pieces_of(run.answers[h], run.key_terms)) for h in order]
-        folded = await asyncio.to_thread(framing.fold, run.frame, replies, similar=run.similar)
-        run.added += len(folded.added)
-        if folded.notes:
-            await self._say(managed, run.episode, me, " ".join(folded.notes))
-
-    async def _keep_unlabelled(
-        self, managed: ManagedRoomChannel, run: Run, me: str, lacking: list[str]
-    ) -> None:
-        """A reply that still carries no label, even when asked again, is kept
-        whole as one unlabelled statement by its writer: never lost, never
-        guessed into a type."""
-        for handle in lacking:
-            if handle in run.answers and markers.pieces_of(run.answers[handle], run.key_terms):
-                continue
-            text = markers.MARKER_RE.sub("", run.replies.get(handle, "")).strip()
-            if not text:
-                continue
-            kept = await asyncio.to_thread(
-                framing.add_statement, run.frame, handle, text, similar=run.similar
-            )
-            run.added += len(kept.added)
-            if kept.notes:
-                await self._say(managed, run.episode, me, " ".join(kept.notes))
-
     @staticmethod
     def _lacking(run: Run, step: Step, stances: list[tuple[str, str | None]]) -> list[str]:
         """Who replied without what the step requires. Silence is not lacking:
         a member who didn't answer isn't asked again."""
-        if step.needs == "pieces":
-            return [
-                h
-                for h in run.handles
-                if h in run.answers
-                and not markers.pieces_of(run.answers[h], run.key_terms)
-                and markers.MARKER_RE.sub("", run.replies.get(h, "")).strip()
-            ]
-        if step.needs == "scores":
-            # A rating has to come with its reason: the reason is the argument.
-            wanted = {o.label for o in run.new_options()}
-            return [
-                h
-                for h in run.handles
-                if h in run.answers
-                and not (
-                    wanted <= set(run.ratings.get(h, {})) and wanted <= set(run.reasons.get(h, {}))
-                )
-            ]
-        if step.needs == "anchors":
-            return [h for h in run.handles if h in run.answers and h not in run.anchors]
         if step.needs == "stance":
             return [h for h, s in stances if s is None and h in run.answers]
         return []
@@ -1507,36 +639,10 @@ class ConductorEngine:
     ) -> list[tuple[str, str | None]]:
         """One more turn for just ``lacking``, at once, as its own step."""
         run.steps_taken += 1
-        if step.needs == "scores":
-            # Restate what's being rated: the re-ask arrives on its own, and a
-            # member can't rate options it can't see.
-            fresh = run.new_options()
-            lines = _rating_lines(fresh, run.options)
-            ask = (
-                "I couldn't read a rating with a reason for each of these options:\n\n"
-                f"{run._listed(fresh)}\n\nRate each for your role, on the scale you rated "
-                f"the two outcomes on, one line each with your reason:\n\n{lines}"
-            )
-        elif step.needs == "anchors":
-            ask = (
-                "I couldn't read your ratings of the two outcomes, or your ideal wasn't "
-                f"rated above the bad one.\n\nbad: {run.settings.bad}\nideal: "
-                f"{run.settings.ideal}\n\nRate each from 0 to 100 on your own scale, "
-                "one line each, with why:\n\nbad: <0-100> - <why>\nideal: <0-100> - <why>"
-            )
-        elif step.needs == "pieces":
-            ask = (
-                "I couldn't find a labelled line in your reply, so I can't tell what kind "
-                "of point each part is. Say it again with each point on its own line, "
-                "starting with what kind it is, like `constraint: the limit`. The kinds "
-                f"are {', '.join(markers.POINT_TYPES)}. Whatever you send without one is "
-                "kept as you wrote it."
-            )
-        else:
-            ask = (
-                "I couldn't tell whether you accept this. End your reply with "
-                "[[mycelium: stance=accept]] or [[mycelium: stance=reject]]."
-            )
+        ask = (
+            "I couldn't tell whether you accept this. End your reply with "
+            "[[mycelium: stance=accept]] or [[mycelium: stance=reject]]."
+        )
         head = f"{run.protocol.name} · {step.id} (again) · turn {run.steps_taken} of {cap}"
         self._manager.hold_floor(managed.room, run.episode, holder=me, speakers=lacking)
         run.answers = {}
@@ -1560,7 +666,6 @@ class ConductorEngine:
                 )
             )
         )
-        await self._gather(managed, run, me, step, list(run.answers))
         ep.trace.append(
             {
                 "step": step.id,
@@ -1612,7 +717,7 @@ class ConductorEngine:
                         managed, ep, me, run, handle, render(handle, round_n), data(handle, round_n)
                     )
                 return []
-            if step.to in ("all", "workers", protocols.CONTESTED):
+            if step.to in ("all", "workers"):
                 self._manager.hold_floor(room, run.episode, holder=me, speakers=targets)
                 stances = list(
                     await asyncio.gather(
@@ -1729,16 +834,9 @@ class ConductorEngine:
     ) -> None:
         """Commit the outcome onto the thread and write the run's record.
 
-        A run that picked carries its last pick; an agreement commits
-        ``converged`` and its decision is saved to the room's memory first, so
-        the commit can point at it. A conductor run files no board rows: the
-        commit carries no ``assignments`` for the compile seam to turn into work.
+        A conductor run files no board rows: the commit carries no
+        ``assignments`` for the compile seam to turn into work.
         """
-        pick = run.last_pick
-        if outcome in ("converged", "resolved") and pick is not None and pick.get("pick"):
-            # An agreement, or the best found when the fixes ran out: either way
-            # it's the answer the run gives, saved for the work that follows.
-            await self._save_decision(managed, run, ep, me)
         data: dict[str, Any] = {
             "protocol": run.protocol.name,
             "steps": run.steps_taken,
@@ -1747,22 +845,6 @@ class ConductorEngine:
             "record": f"{EPISODES_PREFIX}{ep.short_id}",
             LINE_KEY: close_line(run, outcome, why),
         }
-        metrics = None
-        if pick is not None:
-            data["select"] = pick
-            # Satisfaction is where each member placed the pick between its own
-            # bad and ideal outcomes, so one member's number means what another's does.
-            standing: dict[str, float] = pick.get("standing") or {}
-            if standing:
-                metrics = {
-                    "satisfaction": dict(standing),
-                    "min_satisfaction": min(standing.values()),
-                }
-                data["metrics"] = metrics
-        if run.saving:
-            # Where the shared summary or the decision was saved; null when the
-            # write failed, so a reader can tell that from a run that saved none.
-            data["memory"] = run.saved_to
         commit = message_format.build_envelope(
             kind=Kind.commit,
             subkind=outcome,
@@ -1780,60 +862,21 @@ class ConductorEngine:
             await managed.post(commit, text, list_write=True)
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
-        episode_state.write_episode_record(ep, outcome=outcome, metrics=metrics)
+        episode_state.write_episode_record(ep, outcome=outcome, metrics=None)
         self._stepped(managed.room, run.episode, outcome)
         from app.services import analytics as usage
 
         await asyncio.to_thread(usage.flow_completed, run.protocol.name, outcome, run.steps_taken)
-        if pick is not None:
-            # An agreement run is a negotiation too, so the negotiation count
-            # keeps counting whichever mechanism ran it.
-            await asyncio.to_thread(usage.negotiation_completed, outcome, run.picks)
 
     @staticmethod
     def _result_line(run: Run, outcome: str, why: str) -> str:
         """The one line a person reads to know how the run ended."""
-        pick = run.last_pick
-        if pick is None or not pick.get("pick"):
-            mark = "✓" if outcome in protocols.SUCCESS else "✗"
-            if run.made is not None:
-                numbers = framing.counts(run.made)
-                flagged = [f["text"] for f in run.made["flags"] if f["kind"] != "quiet_member"]
-                said = f" {_counted(numbers)}"
-                if flagged:
-                    said += f" Flagged: {'; '.join(flagged)}."
-                quiet = numbers["quiet"]
-                said += f" No answer from {', '.join(quiet)}." if quiet else ""
-                return (
-                    f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s)."
-                    f"{said}{_saved(run, 'shared summary')}"
-                )
-            # The close says who was silent at the last step, so a step that
-            # went on without someone shows whose answer it went on without.
-            quiet = f" No answer from {', '.join(run.quiet)}." if run.quiet else ""
-            return (
-                f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), "
-                f"{why}.{quiet}"
-            )
-        label, text = pick["pick"], pick["text"]
-        if outcome == "converged":
-            answered = ""
-            if run.first_short is not None:
-                who, objection = run.first_short
-                if objection:
-                    answered = f" It answers {who}'s objection: {_sentence(objection)}"
-            return (
-                f"✓ Everyone meets the bar: going with {label}: {_sentence(text)}{answered}"
-                f"{_saved(run, 'decision')}"
-            )
-        if outcome == "resolved":
-            return (
-                f"Best found: {label}: {_sentence(text)} It's below the bar for some: "
-                f"{choosing.summary(pick)}{_saved(run, 'decision')}"
-            )
+        mark = "✓" if outcome in protocols.SUCCESS else "✗"
+        # The close says who was silent at the last step, so a step that
+        # went on without someone shows whose answer it went on without.
+        quiet = f" No answer from {', '.join(run.quiet)}." if run.quiet else ""
         return (
-            f"✗ Couldn't get everyone there. Best was {label}: {_sentence(text)} "
-            f"{choosing.summary(pick)}"
+            f"{mark} {run.protocol.name}: {outcome} after {run.steps_taken} step(s), {why}.{quiet}"
         )
 
     async def _say(

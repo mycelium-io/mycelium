@@ -5,9 +5,9 @@
 Usage events: what a hub is used for, counted, as product KPIs.
 
 The unit of work is a task, so the events follow it: a task filed and
-resolved, a flow run inside one, a negotiation inside one, an agent joining a
-room, and the hub itself starting. Every way the app starts work (a plain
-task, Review, Split, Settle, Catch up) lands as one of these, so the KPIs
+resolved, a flow run inside one, an agent joining a room, and the hub itself
+starting. Every way the app starts work (a plain task, Review, Split, Catch
+up) lands as one of these, so the KPIs
 cover what people actually do rather than one engine.
 
 Two halves, deliberately separate:
@@ -54,6 +54,7 @@ EventName = Literal[
     "mycelium.task_filed",
     "mycelium.task_resolved",
     "mycelium.flow_completed",
+    # Nothing records this one now; a hub's earlier events still count.
     "mycelium.negotiation_completed",
     "mycelium.agent_joined",
 ]
@@ -343,10 +344,6 @@ def flow_completed(flow: str, outcome: str, steps: int) -> None:
         outcome=outcome,
         steps=steps,
     )
-
-
-def negotiation_completed(outcome: str, rounds: int) -> None:
-    record("mycelium.negotiation_completed", outcome=outcome, rounds=rounds)
 
 
 def agent_joined(adapter: str | None) -> None:

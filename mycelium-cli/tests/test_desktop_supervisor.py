@@ -80,8 +80,8 @@ def comp(name: str, argv: list[str], ready=lambda: True, **kw: Any) -> Component
 def test_each_component_waits_for_the_one_before_it():
     events = Events()
     gate = threading.Event()
-    first = comp("slim", SLEEP, ready=gate.is_set)
-    second = comp("hub", SLEEP)
+    first = comp("hub", SLEEP, ready=gate.is_set)
+    second = comp("ui", SLEEP)
     sup = hub(events, [first, second])
 
     def check() -> bool:
@@ -92,8 +92,7 @@ def test_each_component_waits_for_the_one_before_it():
 
     run_until(sup, check)
     order = [
-        (s["components"]["slim"]["state"], s["components"]["hub"]["state"])
-        for s in events.statuses()
+        (s["components"]["hub"]["state"], s["components"]["ui"]["state"]) for s in events.statuses()
     ]
     assert ("starting", "stopped") in order
     assert order.index(("running", "stopped")) < order.index(("running", "starting"))
@@ -101,14 +100,14 @@ def test_each_component_waits_for_the_one_before_it():
 
 def test_a_crash_is_restarted_and_one_that_keeps_crashing_is_left_failed():
     events = Events()
-    crashing = comp("slim", EXIT, ready=lambda: False)
+    crashing = comp("hub", EXIT, ready=lambda: False)
     run_until(hub(events, [crashing]), lambda: crashing.state == "failed")
-    details = [s["components"]["slim"]["detail"] or "" for s in events.statuses()]
+    details = [s["components"]["hub"]["detail"] or "" for s in events.statuses()]
     assert any("starting again" in d for d in details)
     assert "keeps exiting (last time it exited with code 3)" in details[-1]
     # Each exit is in the log as a line of its own, before it's started again.
-    said = [e["line"] for e in events.all if e["type"] == "log" and e.get("component") == "slim"]
-    assert "slim exited with code 3" in said
+    said = [e["line"] for e in events.all if e["type"] == "log" and e.get("component") == "hub"]
+    assert "hub exited with code 3" in said
 
 
 def test_a_program_killed_by_a_signal_says_which():
@@ -344,25 +343,25 @@ def test_a_runner_still_connecting_isn_t_signed_out():
 
 def test_a_missing_program_says_what_to_install():
     def missing() -> tuple[list[str], Path | None]:
-        raise LocateError("slimctl isn't installed")
+        raise LocateError("node isn't installed")
 
     events = Events()
-    absent = Component(name="slim", argv=missing, ready=lambda: True)
+    absent = Component(name="ui", argv=missing, ready=lambda: True)
     run_until(hub(events, [absent]), lambda: absent.state == "failed")
     assert {
         "type": "error",
-        "component": "slim",
-        "message": "slimctl isn't installed",
+        "component": "ui",
+        "message": "node isn't installed",
     } in events.all
 
 
 def test_stopping_stops_the_children():
     events = Events()
-    running = comp("slim", SLEEP)
+    running = comp("hub", SLEEP)
     sup = hub(events, [running])
     run_until(sup, lambda: running.state == "running")
     assert running.proc is None  # terminated and let go
-    assert events.state("slim") == "stopped"
+    assert events.state("hub") == "stopped"
 
 
 def test_client_mode_runs_herdr_the_ui_and_the_runner_against_the_hub():
@@ -382,7 +381,6 @@ def test_client_mode_runs_herdr_the_ui_and_the_runner_against_the_hub():
     assert status["ui_url"] == "http://127.0.0.1:3717"
     assert {k: v["state"] for k, v in status["components"].items()} == {
         "herdr": "stopped",
-        "slim": "disabled",
         "hub": "disabled",
         "ui": "stopped",
         "runner": "stopped",
@@ -420,18 +418,15 @@ def test_programs_are_found_in_the_bundle_before_the_path(
     macos.mkdir(parents=True)
     (resources / "ui" / ".next" / "static").mkdir(parents=True)
     (resources / "ui" / "server.js").write_text("")
-    for name in ("slimctl", "node"):
-        (macos / name).write_text("")
+    (macos / "node").write_text("")
     (resources / "hub").mkdir()
     (resources / "hub" / "mycelium-hub").write_text("")
     (resources / "models").mkdir()
-    monkeypatch.delenv("MYCELIUM_SLIMCTL", raising=False)
     monkeypatch.delenv("MYCELIUM_HUB_CMD", raising=False)
     monkeypatch.delenv("MYCELIUM_UI_DIR", raising=False)
     monkeypatch.delenv("MYCELIUM_NODE", raising=False)
     loc = Locator(bundle=macos, repo=None)
 
-    assert loc.slim()[:3] == [str(macos / "slimctl"), "slim", "start"]
     assert loc.hub()[0][0] == str(resources / "hub" / "mycelium-hub")
     assert loc.ui() == ([str(macos / "node"), "server.js"], resources / "ui")
     assert loc.models() == resources / "models"
@@ -458,13 +453,13 @@ def test_programs_are_found_in_each_platforms_bundle(
     resources: tuple[str, ...],
 ):
     monkeypatch.setattr(sv, "WINDOWS", windows)
-    for var in ("MYCELIUM_SLIMCTL", "MYCELIUM_HUB_CMD", "MYCELIUM_UI_DIR", "MYCELIUM_NODE"):
+    for var in ("MYCELIUM_HUB_CMD", "MYCELIUM_UI_DIR", "MYCELIUM_NODE"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.delenv("ALIGNER_PI_BINARY", raising=False)
     exe = ".exe" if windows else ""
     bin_dir, res = tmp_path.joinpath(*programs), tmp_path.joinpath(*resources)
     bin_dir.mkdir(parents=True, exist_ok=True)
-    for name in ("slimctl", "node", "herdr"):
+    for name in ("node", "herdr"):
         (bin_dir / f"{name}{exe}").write_text("")
     (res / "hub").mkdir(parents=True)
     (res / "hub" / f"mycelium-hub{exe}").write_text("")
@@ -478,7 +473,6 @@ def test_programs_are_found_in_each_platforms_bundle(
     (res / "models").mkdir()
     loc = Locator(bundle=bin_dir, repo=None)
 
-    assert loc.slim()[0] == str(bin_dir / f"slimctl{exe}")
     assert loc.herdr() == [str(bin_dir / f"herdr{exe}"), "server"]
     assert loc.hub()[0][0] == str(res / "hub" / f"mycelium-hub{exe}")
     assert loc.ui() == ([str(bin_dir / f"node{exe}"), "server.js"], res / "ui")
@@ -519,13 +513,10 @@ def test_a_ui_build_without_its_static_files_is_not_used(tmp_path: Path):
 
 def test_without_a_bundle_or_checkout_the_hub_says_so(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("MYCELIUM_HUB_CMD", raising=False)
-    monkeypatch.delenv("MYCELIUM_SLIMCTL", raising=False)
     monkeypatch.setattr(sv.shutil, "which", lambda _name: None)
     loc = Locator(bundle=None, repo=None)
     with pytest.raises(LocateError, match="doesn't include the hub"):
         loc.hub()
-    with pytest.raises(LocateError, match="slimctl isn't installed"):
-        loc.slim()
 
 
 def test_the_repo_checkout_is_found_from_this_code():

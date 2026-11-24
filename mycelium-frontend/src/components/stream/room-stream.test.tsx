@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { layOut } from "@/test/scroll";
 
-const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
+const THREAD = "urn:mycelium:episode:sprint:t1";
 const at = (m: number) => `2026-10-11T20:${String(m).padStart(2, "0")}:00Z`;
 
 const history = [

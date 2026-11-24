@@ -13,7 +13,7 @@ import { noticeLabel } from "@/lib/threads";
 
 const contract = <T,>(name: string): T =>
   JSON.parse(readFileSync(path.resolve(__dirname, "../../../contracts", name), "utf-8")) as T;
-const wire = contract<{ notice: { subkinds: string[]; upstream_changes: string[] } }>("slim-wire.json");
+const wire = contract<{ notice: { subkinds: string[]; upstream_changes: string[] } }>("message-wire.json");
 const board = contract<{ kinds: string[] }>("board-vocabulary.json");
 
 describe("event icons", () => {

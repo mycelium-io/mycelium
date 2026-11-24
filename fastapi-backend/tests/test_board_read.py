@@ -30,7 +30,7 @@ CONTRACT = json.loads(
 
 
 def thread(name: str) -> str:
-    return f"urn:ioc:mycelium:episode:{ROOM}:{name}"
+    return f"urn:mycelium:episode:{ROOM}:{name}"
 
 
 def row(key: str, title: str, *, minute: int, **meta: object) -> None:

@@ -77,11 +77,6 @@
             "answer": 1,
             "why": "A task is a row and a thread. Keeping the work in each thread keeps context focused and the room's chat legible."
           }
-        },
-        {
-          "id": "08-concord",
-          "title": "When agents disagree",
-          "minutes": 3
         }
       ]
     },

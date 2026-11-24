@@ -4,7 +4,7 @@
 #    or: curl -fsSL https://raw.githubusercontent.com/mycelium-io/mycelium/main/install.sh | bash
 #
 # On an Apple silicon Mac this installs Mycelium for Mac, which runs the hub,
-# the UI, the SLIM node and the runner itself (no Docker), and puts its
+# the UI and the runner itself (no Docker), and puts its
 # `mycelium` CLI on PATH. Anywhere else it installs the CLI for the Docker stack
 # (`mycelium install`). --docker picks the Docker stack on a Mac too, and
 # --client-only installs just the CLI, for a machine that uses someone else's hub.
@@ -78,7 +78,7 @@ Usage:
 
 On an Apple silicon Mac, installs Mycelium for Mac into /Applications (or
 ~/Applications), links its `mycelium` CLI into ~/.local/bin and opens it. The
-app runs the hub, the UI, the SLIM node and the runner itself: no Docker.
+app runs the hub, the UI and the runner itself: no Docker.
 Anywhere else, installs the CLI; `mycelium install` then brings up the Docker stack.
 
 Options:

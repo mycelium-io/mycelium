@@ -4,8 +4,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CHANNEL, clearOnScreen, onOnScreenChange, onScreenNow, setOnScreen, shows, type OnScreen } from "./on-screen";
 
-const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
-const OTHER = "urn:ioc:mycelium:episode:sprint:t2";
+const THREAD = "urn:mycelium:episode:sprint:t1";
+const OTHER = "urn:mycelium:episode:sprint:t2";
 const screen: OnScreen = { room: "sprint", panes: [CHANNEL, THREAD] };
 
 describe("shows", () => {

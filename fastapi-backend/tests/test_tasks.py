@@ -59,7 +59,7 @@ def _write_unbound(room: str, key: str, value: str, **meta) -> None:
 
 class TestMinting:
     def test_a_urn_is_scoped_to_its_room(self):
-        assert tasks.mint_episode_urn("atlas").startswith("urn:ioc:mycelium:episode:atlas:")
+        assert tasks.mint_episode_urn("atlas").startswith("urn:mycelium:episode:atlas:")
 
     def test_every_mint_is_a_distinct_thread(self):
         assert tasks.mint_episode_urn("atlas") != tasks.mint_episode_urn("atlas")
@@ -245,7 +245,7 @@ class TestBinding:
                     MemoryCreate(key=written.key, value="Ship passkey login", created_by="other")
                 ]
             ),
-            system={EPISODE_META: "urn:ioc:mycelium:episode:elsewhere:zzz"},
+            system={EPISODE_META: "urn:mycelium:episode:elsewhere:zzz"},
         )
         assert _meta(room, written.key)[EPISODE_META] == written.episode
 

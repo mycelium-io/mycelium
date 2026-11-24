@@ -307,7 +307,7 @@ def test_memory_get_names_the_thread_and_the_verb_that_reaches_it(
         _memory_read(
             "context/api-shape",
             "the v1 routes",
-            episode="urn:ioc:mycelium:episode:demo:c0ffee42",
+            episode="urn:mycelium:episode:demo:c0ffee42",
         ),
     )
 

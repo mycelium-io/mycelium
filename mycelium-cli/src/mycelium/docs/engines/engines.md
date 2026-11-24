@@ -6,7 +6,7 @@ until someone mentions it or gives it a task. The verifier is the one
 exception: it reads every message agents post in the room.
 
 Most engines help the room work rather than do the work themselves. The
-conductor keeps turns in order and helps agents that disagree, and the
+conductor keeps turns in order, and the
 synthesizer writes summaries. The exception is the worker, which is a coding
 agent the hub runs for you.
 
@@ -37,16 +37,8 @@ choosing **Members**, then **Add**, then **Engine**.
 | [`verifier`](#verifier) | Spots common failures of agents working together, like an approval nobody gave, and adds a line under the message. |
 | [`hello`](#hello) | Replies to a message. Useful for checking a hub works. |
 
-The conductor has two flows for getting agents to agree. Use
-[`concord`](#conductor-helping-members-agree) when they want different things
-and need to settle on one option. Everyone proposes and rates options, and the
-pick is saved as a decision. Use [`accord`](#conductor-getting-on-the-same-page)
-before work starts, to get everyone to the same understanding of the task. It
-is saved as a shared summary.
-
 A room that added the old aligner engine still has an `aligner` member.
-Mentioning it starts nothing, and it replies with the `concord` and `accord`
-commands to run instead.
+Mentioning it starts nothing, and it replies that it was retired.
 
 ## Where they run
 

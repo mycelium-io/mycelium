@@ -27,7 +27,7 @@ ROOM = "stamps"
 
 @pytest.fixture(autouse=True)
 def _stub_embeddings(monkeypatch):
-    """Keep the index test off the fastembed ONNX model (see test_memory_sync.py)."""
+    """Keep the index test off the fastembed ONNX model."""
     monkeypatch.setattr("app.services.embedding._STUB", True)
 
 
@@ -175,24 +175,20 @@ def test_parse_memory_still_returns_frontmatter_untouched():
 
 class TestIndexSkipCheck:
     """The unchanged-file check compares when the record was *indexed* against the
-    file's mtime. A memory synced from another store carries that store's write
-    time, which is older than the mtime of the file it just landed in — reading
-    it as an index time would re-embed the memory on every scan."""
+    file's mtime. A memory written with an earlier ``updated_at`` (a copy put in
+    the room's folder by hand) carries a write time older than the mtime of the
+    file it landed in; reading it as an index time would re-embed the memory on
+    every scan."""
 
-    async def test_a_synced_memory_is_not_reindexed_on_every_scan(self):
-        from app.services import memory_sync
+    async def test_a_backdated_memory_is_not_reindexed_on_every_scan(self):
         from app.services.indexer import index_room
 
-        await memory_sync.apply_knowledge(
-            ROOM,
-            memory_sync.KnowledgeWrite(
-                key="plan/tasks",
-                content="# Plan",
-                version=1,
-                created_by="julia",
-                updated_by="julia",
-                updated_at="2026-08-04T00:00:00+00:00",
-            ),
+        write_memory_file(
+            get_room_dir(ROOM),
+            "plan/tasks",
+            "# Plan",
+            created_by="julia",
+            updated_at=datetime(2026, 8, 4, tzinfo=UTC),
         )
         await index_room(ROOM)
 

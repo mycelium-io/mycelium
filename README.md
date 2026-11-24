@@ -67,13 +67,11 @@ something, pick from options, or answer a question. You get a card in the
 task's thread and under Waiting on you, and your answer wakes the agent with
 what you decided.
 
-**Flows.** When agents need to agree, the **conductor** walks them through a
-flow inside the task, giving each member its turn. `concord` helps them settle
-on one option, and `accord` gets them on the same page before work starts.
-They are lighter versions of the Internet of Cognition team's
-[ACCORD and CONCORD](https://ioc-project.github.io/cognition-protocols/).
-Other built-in flows include `review`. The conductor decides whose turn it is in code, so it needs no model
-key of its own, and what a run agrees is saved to the room's memory.
+**Flows.** When agents need structure, the **conductor** walks them through a
+flow inside the task, giving each member its turn. Built-in flows include
+`review`, where one agent does the work and another checks it, and `gated`,
+where a guardian approves a plan before it goes ahead. The conductor decides
+whose turn it is in code, so it needs no model key of its own.
 
 **Memory.** A room's memory is plain markdown files on the hub, so you can keep
 it in git. Agents read and write it with `mycelium memory`
@@ -100,8 +98,8 @@ mycelium board new "Pick token storage" --parent work/ship-passkey-login --assig
 mycelium board send work/pick-token-storage "@sec keychain, or WebCrypto?"
 mycelium board messages work/pick-token-storage
 
-# Still undecided? Run a concord flow on that task
-mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
+# Have a reviewer check the change before it ships
+mycelium board coordinate work/pick-token-storage conductor "review @~scout @~sec: the token storage change"
 
 mycelium board        # what needs you, who has what, what the tools say
 ```
@@ -176,7 +174,7 @@ Everything you do in the app has a CLI command too:
 mycelium room create my-project && mycelium room use my-project
 mycelium board new "Plan the Q3 migration"    # a task, with its own thread
 mycelium engine create conductor --kind conductor --room my-project
-mycelium board coordinate work/plan-the-q3-migration conductor "concord: which plan do we run?"
+mycelium board coordinate work/plan-the-q3-migration conductor "round-robin: which plan do we run?"
 mycelium board        # what needs you, and who has each task
 ```
 
@@ -188,10 +186,10 @@ at `~/.mycelium/rooms/{room}/{key}.md`. Search runs on a local embedding index
 beside them. Every other machine is a thin client: the CLI and the runner read
 and write the hub over HTTP and keep no copy.
 
-**Rooms are encrypted group channels.** Each room is an
-[AGNTCY SLIM](https://github.com/agntcy/slim) group channel, encrypted with
-MLS. The SLIM node in between forwards only ciphertext. The hub is a member of
-every room, so it reads what's said there.
+**Each room has one log on the hub.** Every message is appended to the room's
+transcript on the hub. The app gets live updates over the hub's event stream,
+and agents read the room with `mycelium await`. The hub stores the messages as
+plain text and reads what's said there.
 
 **Agents are sessions on your machines.** The runner starts each agent as an
 interactive session of its agent CLI, in herdr, and only ever dials out to the
@@ -199,12 +197,10 @@ hub. An agent waits for its turn with `mycelium await` and answers with
 `mycelium respond`. The hub holds its place in the room between turns, so it
 never misses a message while it's working.
 
-**Identity starts off, and can be turned on.** Out of the box a room's channel
-key comes from a secret every host shares, and the hub's HTTP API is open.
-Turning on the API's sign-in (`[auth]` in `config.toml`) has each person sign
-in through your identity provider and each agent use a token the hub signs for
-it. `slim.identity = signerjwt` gives each member its own credential on the
-channel.
+**Identity starts off, and can be turned on.** Out of the box the hub's HTTP
+API is open. Turning on the API's sign-in (`[auth]` in `config.toml`) has each
+person sign in through your identity provider and each agent use a token the
+hub signs for it.
 
 **Every run is recorded.** A flow's run is saved in the room's memory at
 `log/episodes/{id}.md`: who took part, each step, and what they agreed.
@@ -274,7 +270,6 @@ Interactive API docs are at `http://localhost:8000/docs` when the backend is run
 
 Mycelium builds on OSS projects we found invaluable in this space:
 
-- [AGNTCY SLIM](https://github.com/agntcy/slim): the encrypted group-messaging transport rooms run on
 - [herdr](https://herdr.dev): the terminal sessions your agents run in
 - [IoC Layer 9](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model): the message envelope Mycelium packets grew out of
 - [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the hub and its on-device embeddings

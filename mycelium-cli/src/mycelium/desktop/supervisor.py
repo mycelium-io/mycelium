@@ -5,9 +5,9 @@
 
 Two modes, which are what the desktop app offers on its first screen:
 
-- **hub**: this machine runs the hub. herdr's server, a SLIM node
-  (``slimctl slim start``), the hub's API, the UI server, and the runner, each
-  started in order once the one before it answers.
+- **hub**: this machine runs the hub. herdr's server, the hub's API, the UI
+  server, and the runner, each started in order once the one before it
+  answers.
 - **client**: another machine runs the hub. herdr's server, the UI server and
   the runner, pointed at it. The window shows this machine's own UI in both
   modes; a hub elsewhere is reached through it, never by showing its pages.
@@ -94,7 +94,6 @@ Mode = Literal["hub", "client"]
 State = Literal["starting", "running", "stopped", "failed", "disabled"]
 
 HOST = "127.0.0.1"
-SLIM_PORT = 46357
 #: Off 8000, the default of most local web servers, so someone's own server
 #: rarely holds it. The Docker install's hub stays on 8000.
 HUB_PORT = 3718
@@ -268,20 +267,6 @@ class Locator:
     def _program(self, name: str) -> Path | None:
         """A program the app carries, by the name it has on this platform."""
         return self._bundled(f"{name}.exe" if WINDOWS else name)
-
-    def slim(self) -> list[str]:
-        exe = (
-            os.environ.get("MYCELIUM_SLIMCTL")
-            or self._program("slimctl")
-            or shutil.which("slimctl")
-        )
-        if not exe:
-            raise LocateError(
-                "slimctl isn't installed, so the hub has no SLIM node. "
-                "Install it with: brew tap agntcy/slim https://github.com/agntcy/slim.git "
-                "&& brew install slimctl"
-            )
-        return [str(exe), "slim", "start", "--endpoint", f"{HOST}:{SLIM_PORT}"]
 
     def hub(self, port: int = HUB_PORT) -> tuple[list[str], Path | None]:
         if cmd := os.environ.get("MYCELIUM_HUB_CMD"):
@@ -856,8 +841,6 @@ class Supervisor:
         loc = self.locator
         hub_env_vars = {
             **self.env,
-            "SLIM_NODE_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
-            "MYCELIUM_SLIM_ENDPOINT": f"http://{HOST}:{SLIM_PORT}",
             "FASTEMBED_CACHE_PATH": str(loc.models()),
             "MYCELIUM_HUB_MODE": "desktop",
             # The CLI the hub's Hub page saves settings through
@@ -948,22 +931,13 @@ class Supervisor:
             watch=True,
         )
         hub.prepare = lambda: self._choose_hub_port(hub)
-        return [
-            Component(
-                name="slim",
-                argv=lambda: (loc.slim(), None),
-                ready=lambda: port_open(SLIM_PORT),
-                external=lambda: port_open(SLIM_PORT),
-            ),
-            hub,
-            self._ui(),
-        ]
+        return [hub, self._ui()]
 
     # ── status ───────────────────────────────────────────────────────────────
 
     def status(self) -> dict[str, Any]:
         components = {c.name: c.wire() for c in self.components}
-        for name in ("slim", "hub", "ui"):
+        for name in ("hub", "ui"):
             components.setdefault(name, {"state": "disabled", "detail": None})
         components["runner"] = {"state": self.runner_state, "detail": self.runner_detail}
         return {

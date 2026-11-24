@@ -1,7 +1,7 @@
 # Mycelium test targets.
 #
 # One command to validate a change without standing up the real stack. Every
-# target here runs against local files + in-process fakes — no SLIM node, no Pi
+# target here runs against local files + in-process fakes: no Pi
 # binary, no live LLM, no backend server. See fastapi-backend/tests/README.md and
 # mycelium-cli/tests/README.md for how the fakes work.
 

@@ -3,7 +3,7 @@
 
 """The floor: a thread narrowed to whose turn it is, held by backend code.
 
-Node-free. The policy is a value, the manager holds one per thread, and the
+The policy is a value, the manager holds one per thread, and the
 one write gate both routes pass reads it — a refused write never reaches the
 transcript, so the wake side needs nothing. With no floor held, every rule
 here answers exactly as it did before the floor existed.
@@ -12,7 +12,7 @@ here answers exactly as it did before the floor existed.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -26,12 +26,8 @@ OTHER = message_format.episode_urn(ROOM, "t9")
 
 
 def _manager() -> tuple[RoomChannelManager, ManagedRoomChannel]:
-    manager = RoomChannelManager(endpoint="http://127.0.0.1:46357", default_workspace="mycelium")
-    channel = MagicMock()
-    channel.send = AsyncMock()
-    managed = ManagedRoomChannel(
-        room=ROOM, workspace="mycelium", client=MagicMock(), channel=channel
-    )
+    manager = RoomChannelManager()
+    managed = ManagedRoomChannel(room=ROOM, persister=MagicMock())
     manager._channels[ROOM] = managed
     return manager, managed
 
@@ -62,8 +58,8 @@ class TestFloorPolicy:
 
 
 class TestHoldingTheFloor:
-    def test_a_room_with_no_channel_holds_nothing(self):
-        manager = RoomChannelManager(endpoint="http://x", default_workspace="mycelium")
+    def test_a_room_with_no_folder_holds_nothing(self):
+        manager = RoomChannelManager()
         assert manager.hold_floor(ROOM, THREAD, holder="conductor") is None
         assert manager.floor(ROOM, THREAD) is None
         assert manager.release_floor(ROOM, THREAD) is False
@@ -155,7 +151,7 @@ class TestTheWriteGate:
 
 
 class TestTheLiveGate:
-    """``thread_write_refusal`` reads the floor off the room's live channel."""
+    """``thread_write_refusal`` reads the floor off the room's channel."""
 
     @pytest.fixture
     def held(self, monkeypatch):

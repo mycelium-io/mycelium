@@ -12,7 +12,7 @@ instead.
 
 - `app/routes/` — the HTTP API. This is the only surface clients touch; the CLI
   and the frontend are both just callers of it.
-- `app/services/` — the actual work: SLIM channel + moderator lifecycle, message
+- `app/services/` — the actual work: each room's log and presence, message
   construction and episode tracking, the engines (the conductor and its flows,
   persona, worker, verifier, synthesizer and hello), memory persistence and the
   search index.

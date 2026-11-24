@@ -100,7 +100,7 @@ export function AgentCard({
       {ownerName && <span className="ml-1.5 text-faint">@{agent.owner}</span>}
     </>
   ) : null;
-  const active = p?.status === "working" || p?.kind === "slim" ? "now" : p?.last_seen ? <Ago at={p.last_seen} /> : null;
+  const active = p?.status === "working" ? "now" : p?.last_seen ? <Ago at={p.last_seen} /> : null;
   const open = () => opener?.open(lc);
 
   return (

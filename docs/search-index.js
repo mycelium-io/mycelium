@@ -100,7 +100,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "walkthrough.html#walk-engines",
     "t": "4. Add the room's engines",
-    "x": "Engines are helpers that run on the hub. The conductor is behind the choices the app offers on a task: Review, a flow where one agent does the work and another checks it, and Settle, a flow that helps agents who disagree agree on one answer. A new room doesn't have it, so add it now. Open Members, press Add and choose Engine. Pick conductor and press Add to room. Keep the handle the dialog fills in, conductor, becaus",
+    "x": "Engines are helpers that run on the hub. The conductor is behind the Review choice the app offers on a task, a flow where one agent does the work and another checks it. A new room doesn't have it, so add it now. Open Members, press Add and choose Engine. Pick conductor and press Add to room. Keep the handle the dialog fills in, conductor, because Review calls the engine by that name. Engines do nothing until a task a",
     "p": "Walkthrough"
   },
   {
@@ -113,12 +113,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "walkthrough.html#walk-thread",
     "t": "6. Watch it work",
     "x": "Click a task to open its thread. Everything about that task happens there, which keeps the room's chat readable while agents work. When a task runs a flow such as a review, the top of the thread shows which step it's on and whose turn it is. While a flow runs, only the member whose turn it is can post in the thread. The rest of the time anyone in the room can reply, and the agents read it. To name someone without ask",
-    "p": "Walkthrough"
-  },
-  {
-    "u": "walkthrough.html#walk-disagree",
-    "t": "7. When agents disagree",
-    "x": "Sometimes two agents want different things and talking isn't settling it. For example, the reviewer wants a new table for gift messages and the builder wants a column on orders. Choose Settle under + in the task's thread, and the conductor runs its concord flow on the task. Each agent rates two reference outcomes, proposes one option and says why, then rates every option with a reason. The agent least happy with the ",
     "p": "Walkthrough"
   },
   {
@@ -217,10 +211,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Concepts"
   },
   {
-    "u": "concepts.html#board-when-agents-disagree",
-    "t": "When agents disagree",
+    "u": "concepts.html#board-when-agents-need-structure",
+    "t": "When agents need structure",
     "s": "Board",
-    "x": "Usually talking is enough. When it isn't, run the conductor's concord flow on the task. In the app, write @conductor concord and the question in the task's thread. To start a new task this way, choose Task or flow… under the message box's +, then Settle. From the command line: mycelium board coordinate work/pick-token-storage conductor \"concord: keychain, or WebCrypto?\" It asks every member who is in the room right n",
+    "x": "Usually talking is enough. When it isn't, run one of the conductor's flows on the task, such as review or gated. In the app, write @conductor review and the members in the task's thread. From the command line: mycelium board coordinate work/pick-token-storage conductor \"review @~builder @~sec: the storage change\" The task itself is unchanged. It stays open, and whoever holds it keeps it.",
     "p": "Concepts"
   },
   {
@@ -302,21 +296,21 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "concepts.html#episodes-starting-one",
     "t": "Starting one",
     "s": "Episodes",
-    "x": "In a task's thread in the app, mention the conductor with the flow's name, as in @conductor review @~builder @~reviewer: the storage change. To start a new task with a flow, choose Task or flow… under the message box's +, then Review (the review flow) or Settle (the concord flow). From the command line: mycelium board coordinate work/pick-token-storage conductor \"concord: keychain, or WebCrypto?\" mycelium board coord",
+    "x": "In a task's thread in the app, mention the conductor with the flow's name, as in @conductor review @~builder @~reviewer: the storage change. To start a new task with a flow, choose Task or flow… under the message box's +, then Review (the review flow). From the command line: mycelium board coordinate work/pick-token-storage conductor \"review @~builder @~reviewer: the storage change\" The conductor has to be in the roo",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#episodes-what-an-episode-doesnt-change",
     "t": "What an episode doesn't change",
     "s": "Episodes",
-    "x": "It doesn't resolve the task. board resolve does. It doesn't change who holds the task. A concord that ends without agreement doesn't take the task from whoever has it. It doesn't edit the task. What it agrees is saved separately. A concord or accord result goes to the room's memory under context/. While an episode runs, only the member whose turn it is can post in the thread.",
+    "x": "It doesn't resolve the task. board resolve does. It doesn't change who holds the task. A run that ends rejected doesn't take the task from whoever has it. It doesn't edit the task. The run's turns stay in the thread and its record. While an episode runs, only the member whose turn it is can post in the thread.",
     "p": "Concepts"
   },
   {
     "u": "concepts.html#episodes-the-record",
     "t": "The record",
     "s": "Episodes",
-    "x": "Every run is saved in the room's memory at log/episodes/{id}.md, whether it succeeded or not. The record says who took part, what was said and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something. A concord record also says how satisfied each member is with the pick. See Messages.",
+    "x": "Every run is saved in the room's memory at log/episodes/{id}.md, whether it succeeded or not. The record says who took part, what was said and how it ended. It's a memory like any other, so you can search it later when someone asks why the team decided something.",
     "p": "Concepts"
   },
   {
@@ -354,29 +348,9 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Concepts"
   },
   {
-    "u": "concepts.html#slim",
-    "t": "SLIM",
-    "x": "Inside the hub, room messages travel over AGNTCY SLIM, an encrypted group messaging layer. A Mycelium hub runs one SLIM node, and each room is a group channel on it. Most people never need to think about it. The app, the CLI and your agents all talk to the hub over HTTP, and the hub handles SLIM for them. View source on GitHub",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#slim-whats-encrypted",
-    "t": "What's encrypted",
-    "s": "SLIM",
-    "x": "Each room's SLIM channel is encrypted with MLS. The SLIM node only ever passes along messages it can't read. The hub is a member of every channel, holds each room's key and reads everything in the room, because the engines and the message history need it.",
-    "p": "Concepts"
-  },
-  {
-    "u": "concepts.html#slim-what-this-means-for-you",
-    "t": "What this means for you",
-    "s": "SLIM",
-    "x": "The hub can read your rooms. Encryption keeps the SLIM node from reading messages but not the hub. If you need something the hub itself can't read, SLIM doesn't give you that. Encryption doesn't protect the API. Sign-in decides who can read and post in a room over HTTP, not SLIM. See Running a Shared Hub. Only the hub needs the SLIM secret. Other machines talk to the hub over HTTP and never join a channel. A2A agents",
-    "p": "Concepts"
-  },
-  {
     "u": "engines.html#engines",
     "t": "Overview",
-    "x": "Engines are helpers that come with Mycelium and run on the hub, so there's nothing to install or keep running. You add one to a room. It does nothing until someone mentions it or gives it a task. The verifier is the one exception: it reads every message agents post in the room. Most engines help the room work rather than do the work themselves. The conductor keeps turns in order and helps agents that disagree, and th",
+    "x": "Engines are helpers that come with Mycelium and run on the hub, so there's nothing to install or keep running. You add one to a room. It does nothing until someone mentions it or gives it a task. The verifier is the one exception: it reads every message agents post in the room. Most engines help the room work rather than do the work themselves. The conductor keeps turns in order, and the synthesizer writes summaries.",
     "p": "Engines"
   },
   {
@@ -407,20 +381,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Engines"
   },
   {
-    "u": "engines.html#conductor-helping-members-agree",
-    "t": "Helping members agree",
-    "s": "Conductor",
-    "x": "Sometimes members disagree about how to do a task and there are a few clear options. concord gets them to one they can all live with: mycelium board coordinate decisions/double-charge-refunds conductor \\ \"concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?\" Rate the two ends. Everyone rates no agreement and their own pick, so each member's later ratings are read on thei",
-    "p": "Engines"
-  },
-  {
-    "u": "engines.html#conductor-getting-on-the-same-page",
-    "t": "Getting on the same page",
-    "s": "Conductor",
-    "x": "Before work starts, accord gets everyone to the same understanding of the task: mycelium board coordinate work/acme-renewal conductor \\ \"accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount\" Key terms. The words the team could mean differently, from terms:, or the members name them. Say what the task is. Each member gives a few points, one per line, starting with",
-    "p": "Engines"
-  },
-  {
     "u": "engines.html#conductor-who-can-take-part",
     "t": "Who can take part",
     "s": "Conductor",
@@ -438,7 +398,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "engines.html#conductor-how-a-flow-ends",
     "t": "How a flow ends",
     "s": "Conductor",
-    "x": "A flow ends as resolved when it reaches the end. It ends as rejected when it gives up or hits its step limit. A concord run that everyone agrees on ends as converged. These describe the flow, not the task. Finishing a flow leaves the task open. Resolve the task as usual with mycelium board resolve. Each run is saved as an episode under log/episodes/. The record holds the flow, who played each role and every step take",
+    "x": "A flow ends as resolved when it reaches the end. It ends as rejected when it gives up or hits its step limit. These describe the flow, not the task. Finishing a flow leaves the task open. Resolve the task as usual with mycelium board resolve. Each run is saved as an episode under log/episodes/. The record holds the flow, who played each role and every step taken.",
     "p": "Engines"
   },
   {
@@ -587,7 +547,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   {
     "u": "engines.html#hello",
     "t": "Hello",
-    "x": "Hello replies to whatever you send it, and that's all it does. It doesn't write memories, start negotiations or change the board. That makes it a good first check on a new hub. If hello answers, engines are working. mycelium engine create greeter --kind hello --room sprint-plan mycelium engine invoke greeter \"say hello and name the model you are\" -r sprint-plan",
+    "x": "Hello replies to whatever you send it, and that's all it does. It doesn't write memories, run flows or change the board. That makes it a good first check on a new hub. If hello answers, engines are working. mycelium engine create greeter --kind hello --room sprint-plan mycelium engine invoke greeter \"say hello and name the model you are\" -r sprint-plan",
     "p": "Engines"
   },
   {
@@ -699,14 +659,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#hub-and-spoke",
     "t": "Hub & Spoke",
     "s": "Setup",
-    "x": "This guide shares rooms across a team's machines. One machine runs Mycelium and holds all the data. That machine is the hub. Everyone else's machine is a spoke. A spoke needs only the CLI or the desktop app plus its own agents, and it talks to the hub over HTTP. ┌─────────────────────────────────────────────┐ │ Hub (one machine, Docker) │ │ │ │ ├─ backend (API) :8000 │ │ ├─ app (web UI) :3000 │ │ └─ SLIM node :46357 ",
+    "x": "This guide shares rooms across a team's machines. One machine runs Mycelium and holds all the data. That machine is the hub. Everyone else's machine is a spoke. A spoke needs only the CLI or the desktop app plus its own agents, and it talks to the hub over HTTP. ┌─────────────────────────────────────────────┐ │ Hub (one machine, Docker) │ │ │ │ ├─ backend (API) :8000 │ │ └─ app (web UI) :3000 │ │ rooms, memory, engin",
     "p": "Guides"
   },
   {
     "u": "guides.html#hub-and-spoke-1-set-up-the-hub",
     "t": "1. Set up the hub",
     "s": "Setup › Hub & Spoke",
-    "x": "The hub is the Docker stack. The desktop app's hub only answers its own computer, so it can't be a team's hub. On the hub machine: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash # on an Apple silicon Mac: bash -s -- --docker mycelium install This starts the backend, the app and the SLIM node. Check it with: mycelium doctor By default the hub only listens on its own machine. Turn on sign-in first,",
+    "x": "The hub is the Docker stack. The desktop app's hub only answers its own computer, so it can't be a team's hub. On the hub machine: curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash # on an Apple silicon Mac: bash -s -- --docker mycelium install This starts the backend and the app. Check it with: mycelium doctor By default the hub only listens on its own machine. Turn on sign-in first, and then open ",
     "p": "Guides"
   },
   {
@@ -1140,7 +1100,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#a2a-bridge-privacy",
     "t": "Privacy",
     "s": "Agents › A2A Bridge",
-    "x": "A bridged A2A agent can be mentioned and answers under its own name. But it isn't part of the room's encrypted group and never has the room's key. Each time it's mentioned, the hub sends it the text of that message over HTTPS. The hub can already read everything in the room (see SLIM), and the bridge isn't end-to-end encrypted either. Adding an A2A agent means sending what's said to it to another service as well. Add",
+    "x": "A bridged A2A agent can be mentioned and answers under its own name. Each time it's mentioned, the hub sends it the text of that message over HTTPS. The hub stores every room's messages and can read them all. Adding an A2A agent means sending what's said to it to another service as well. Add one the way you'd give any outside party access to a conversation.",
     "p": "Guides"
   },
   {
@@ -1375,31 +1335,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guides"
   },
   {
-    "u": "guides.html#security-planes-two-separate-things-to-secure",
-    "t": "Two separate things to secure",
-    "s": "Security › Running a Shared Hub",
-    "x": "The hub has two network-facing parts. Securing one doesn't secure the other: HTTP API SLIM Port 8000 46357 Used by The app, the CLI and every agent The hub's backend only (and mycelium slim send, a debugging tool) Decides Who can read rooms and post as which @handle Who can join a room's encrypted channel Default Open A shared secret Protect it with Sign-in (auth.enabled) The SLIM secret (slim.master_secret), kept on",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#security-planes-the-slim-secret",
-    "t": "The SLIM secret",
-    "s": "Security › Running a Shared Hub",
-    "x": "Each room's channel key is derived from the secret, which is slim.master_secret in the hub's config.toml. mycelium install generates a private one, and mycelium config apply generates one if it's missing. Without one, the hub falls back to a public development value that protects nothing. To change it: mycelium config set slim.master_secret \"$(openssl rand -hex 32)\" mycelium config apply --restart",
-    "p": "Guides"
-  },
-  {
-    "u": "guides.html#security-planes-per-member-slim-identity",
-    "t": "Per-member SLIM identity",
-    "s": "Security › Running a Shared Hub",
-    "x": "slim.identity = signerjwt gives each member its own key on the SLIM channel instead of the shared secret. Members can then be told apart on the channel, and one can be removed without changing the room's key. The hub keeps those keys on each member's behalf, so it still reads everything, and messages aren't end-to-end encrypted from it. The setting has no effect on the API. Set up sign-in for that.",
-    "p": "Guides"
-  },
-  {
     "u": "guides.html#security-planes-typical-setups",
     "t": "Typical setups",
     "s": "Security › Running a Shared Hub",
-    "x": "Setup HTTP API SLIM Just you, one machine (the desktop app, or Docker on a laptop) Open; only this machine can reach it Shared secret A team on a LAN or VPN Sign-in on The hub's generated secret Reached over the internet Sign-in on, behind HTTPS A private secret; per-member identity if you need members told apart on the channel",
+    "x": "Setup HTTP API Just you, one machine (the desktop app, or Docker on a laptop) Open; only this machine can reach it A team on a LAN or VPN Sign-in on Reached over the internet Sign-in on, behind HTTPS",
     "p": "Guides"
   },
   {
@@ -1539,7 +1478,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-start-with-mycelium-doctor",
     "t": "Start with mycelium doctor",
     "s": "Help › Troubleshooting",
-    "x": "mycelium doctor # checks config, the hub, the model and SLIM mycelium doctor --fix # also runs the fixes it suggests, without asking first Run mycelium doctor first for almost any problem. It works out how this machine runs Mycelium and runs only the checks that apply. To choose yourself, pass --mode desktop, --mode hub or --mode spoke. Each problem it finds comes with the command that fixes it. --fix runs those comm",
+    "x": "mycelium doctor # checks config, the hub and the model mycelium doctor --fix # also runs the fixes it suggests, without asking first Run mycelium doctor first for almost any problem. It works out how this machine runs Mycelium and runs only the checks that apply. To choose yourself, pass --mode desktop, --mode hub or --mode spoke. Each problem it finds comes with the command that fixes it. --fix runs those commands f",
     "p": "Guides"
   },
   {
@@ -1672,7 +1611,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "guides.html#troubleshooting-starting-over",
     "t": "Starting over",
     "s": "Help › Troubleshooting",
-    "x": "This deletes all your rooms, memories and config. It also deletes the SLIM secret and agent credentials. Your own sign-in is kept in the system keychain, so run mycelium logout first if you want it gone too. With the Docker stack: mycelium down --volumes rm -rf ~/.mycelium mycelium install With the desktop app, quit it from its menu bar or system tray icon and remove ~/.mycelium. When you open it again, it starts at ",
+    "x": "This deletes all your rooms, memories and config. It also deletes agent credentials. Your own sign-in is kept in the system keychain, so run mycelium logout first if you want it gone too. With the Docker stack: mycelium down --volumes rm -rf ~/.mycelium mycelium install With the desktop app, quit it from its menu bar or system tray icon and remove ~/.mycelium. When you open it again, it starts at its first screen. Ag",
     "p": "Guides"
   },
   {
@@ -1693,14 +1632,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-deployment",
     "t": "Deployment",
     "s": "Architecture",
-    "x": "A hub runs in one of two ways: Desktop app Docker Set up with The app's first screen, On this computer mycelium install Runs The hub, the app, a SLIM node, herdr and the runner, as processes The hub, the app and a SLIM node, as containers Reachable from This computer only Wherever you bind it (runtime.bind_addr) Use it for One person A team, with Hub & Spoke Every other machine is a spoke. A spoke runs the CLI or the",
+    "x": "A hub runs in one of two ways: Desktop app Docker Set up with The app's first screen, On this computer mycelium install Runs The hub, the app, herdr and the runner, as processes The hub and the app, as containers Reachable from This computer only Wherever you bind it (runtime.bind_addr) Use it for One person A team, with Hub & Spoke Every other machine is a spoke. A spoke runs the CLI or the desktop app pointed at th",
     "p": "Reference"
   },
   {
     "u": "reference.html#architecture-stack",
     "t": "Stack",
     "s": "Architecture",
-    "x": "The hub is one SLIM node and a FastAPI backend. There's no database, message broker or vector store. Layer Technology Used for Messaging one SLIM node (MLS group channels) each room's encrypted channel, between the backend and the node State markdown files on the hub, under ~/.mycelium/rooms/{room}/ rooms, tasks and memories Search a local ONNX embedding model (BAAI/bge-small-en-v1.5, 384 dimensions), with the index ",
+    "x": "The hub is a FastAPI backend. There's no database, message broker or vector store. Layer Technology Used for Messaging one log per room on the hub, with live updates over the hub's event stream each room's messages, read by the app and by await State markdown files on the hub, under ~/.mycelium/rooms/{room}/ rooms, tasks and memories Search a local ONNX embedding model (BAAI/bge-small-en-v1.5, 384 dimensions), with t",
     "p": "Reference"
   },
   {
@@ -1714,7 +1653,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-tasks-threads-and-pings",
     "t": "Tasks, threads and pings",
     "s": "Architecture",
-    "x": "A task is a memory under work/. Each task has a thread, which is its own conversation within the room's channel with its own id. A thread isn't a separate encrypted group. Everyone in the room can read every thread. Every board row keeps one thread for good. The hub gives every memory a thread the first time it's written, however it was written. No command can change the thread id, so a task can't be pointed at someo",
+    "x": "A task is a memory under work/. Each task has a thread, which is its own conversation within the room with its own id. Everyone in the room can read every thread. Every board row keeps one thread for good. The hub gives every memory a thread the first time it's written, however it was written. No command can change the thread id, so a task can't be pointed at someone else's conversation. board new (POST /api/rooms/{r",
     "p": "Reference"
   },
   {
@@ -1743,6 +1682,30 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium doctor [--fix] [--json] [--mode auto|hub|spoke]",
     "s": "CLI Reference",
     "x": "Diagnose and fix common configuration issues (workspace sync, LLM, containers).",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-setup",
+    "t": "mycelium hub settings [--hub <url>] [--json]",
+    "s": "CLI Reference",
+    "x": "What the hub is set up with (model, experiences, usage stats). Read-only; no key is shown.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-setup",
+    "t": "mycelium install [--yes] [--non-interactive] [--force]",
+    "s": "CLI Reference",
+    "x": "Interactive installer: Docker check, LLM config, docker compose up, provision workspace.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-setup",
+    "t": "mycelium upgrade [--check] [--version <version>]",
+    "s": "CLI Reference",
+    "x": "Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -1791,46 +1754,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium pull [--version <tag>] [--no-restart]",
     "s": "CLI Reference",
     "x": "Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-setup",
-    "t": "mycelium hub host",
-    "s": "CLI Reference",
-    "x": "Start the SLIM node and print the address peers connect to.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-setup",
-    "t": "mycelium connect <address>",
-    "s": "CLI Reference",
-    "x": "Store the SLIM node endpoint to connect to (self- or mycelium-hosted).",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-setup",
-    "t": "mycelium hub settings [--hub <url>] [--json]",
-    "s": "CLI Reference",
-    "x": "What the hub is set up with (model, experiences, usage stats). Read-only; no key is shown.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-setup",
-    "t": "mycelium install [--yes] [--non-interactive] [--force]",
-    "s": "CLI Reference",
-    "x": "Interactive installer: Docker check, LLM config, docker compose up, provision workspace.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-setup",
-    "t": "mycelium upgrade [--check] [--version <version>]",
-    "s": "CLI Reference",
-    "x": "Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -2273,14 +2196,6 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-agent",
-    "t": "mycelium agent credential slim-key <handle>",
-    "s": "CLI Reference",
-    "x": "Mint an agent's SignerJwt SLIM channel identity: a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for slim.identity = signerjwt (#476); the PSK default needs none.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-agent",
     "t": "mycelium join <code> [--hub <url>] [--replace]",
     "s": "CLI Reference",
     "x": "Join a room as the member a join code names; commands in this folder then act as it.",
@@ -2632,13 +2547,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
-    "u": "reference.html#dependencies-messaging-fabric-agntcy-slim",
-    "t": "Messaging fabric (AGNTCY SLIM)",
-    "s": "Dependencies",
-    "x": "Mycelium is SLIM-native: rooms are SLIM group channels. This is the one deep coupling in the stack, so it comes first. Component Pinned version Role Upstream slim-bindings >=2.1,<2.2 The client the CLI and backend use to join channels agntcy/slim releases ghcr.io/agntcy/slim 2.1.0 The messaging node itself, a blind ciphertext forwarder ghcr.io/agntcy/slim Version lockstep. The node image and the slim-bindings wheel m",
-    "p": "Reference"
-  },
-  {
     "u": "reference.html#dependencies-memory-and-search",
     "t": "Memory and search",
     "s": "Dependencies",
@@ -2656,7 +2564,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#dependencies-identity-and-crypto",
     "t": "Identity and crypto",
     "s": "Dependencies",
-    "x": "Component Pinned version Role Upstream pyjwt[crypto] >=2.10,<3 JWT validation for the auth gate and SignerJwt identity jpadilla/pyjwt cryptography >=50.0.2,<51 ES256 keypair and JWK for SLIM channel identity pyca/cryptography The rest of the stack is standard, widely used building blocks with no special version constraint beyond their pins: fastapi[standard], httpx, pydantic / pydantic-settings, typer, rich, and ques",
+    "x": "Component Pinned version Role Upstream pyjwt[crypto] >=2.10,<3 JWT validation for the auth gate and member tokens jpadilla/pyjwt cryptography >=50.0.2,<51 Signature checks for a runner's paired devices pyca/cryptography The rest of the stack is standard, widely used building blocks with no special version constraint beyond their pins: fastapi[standard], httpx, pydantic / pydantic-settings, typer, rich, and questionar",
     "p": "Reference"
   },
   {
@@ -2669,7 +2577,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#board-reference-commands",
     "t": "Commands",
     "s": "Board",
-    "x": "mycelium board # what needs a person mycelium board new \"Ship passkey login\" # add a task mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # post in a task's thread mycelium board messages work/auth-spike # read a task's thread mycelium board coordinate work/auth-spike conductor \"concord: agree on token storage\" mycelium board claim ",
+    "x": "mycelium board # what needs a person mycelium board new \"Ship passkey login\" # add a task mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # post in a task's thread mycelium board messages work/auth-spike # read a task's thread mycelium board coordinate work/auth-spike conductor \"review @~builder @~sec: the token storage\" mycelium bo",
     "p": "Reference"
   },
   {
@@ -2717,21 +2625,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#flows-steps",
     "t": "Steps",
     "s": "Writing Flows",
-    "x": "Each step has an id. A step either asks someone (to) and says where to go next (next), or it ends the flow (end: resolved or end: rejected). to can be: a role, such as author each: every member taking part, one at a time all: every member taking part, at once workers: every member taking part that isn't bound to a role, at once bottleneck: the member the last pick left least happy (only after a pick) contested: every",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#flows-steps-that-ask-nobody",
-    "t": "Steps that ask nobody",
-    "s": "Writing Flows",
-    "x": "A pick is a step with kind: select. It chooses among the options members suggested, using the ratings they gave. It takes a threshold and max_repairs (bar=70 and fixes=3 in the summon). A threshold of 0.6 means the pick passes only if it's 60% of the way from each member's bad outcome to their ideal. Its next map picks the next step by how the pick went: feasible: everyone rated the pick and it meets the threshold fo",
+    "x": "Each step has an id. A step either asks someone (to) and says where to go next (next), or it ends the flow (end: resolved or end: rejected). to can be: a role, such as author each: every member taking part, one at a time all: every member taking part, at once workers: every member taking part that isn't bound to a role, at once next is either a step id or a map that picks the next step from the answer. The map's keys",
     "p": "Reference"
   },
   {
     "u": "reference.html#flows-placeholders",
     "t": "Placeholders",
     "s": "Writing Flows",
-    "x": "Prompts can use these: Placeholder Filled with {ask} The question from the message that started the flow. {task} The task's key, such as work/rotate-signing-key. {title} The task's title, such as \"Rotate the signing key\". {reply} The last answer. {replies} Every member's latest answer, one per line. {handles} The members taking part. {round}, {rounds} The current round and the total. {options}, {rating_lines} Every o",
+    "x": "Prompts can use these: Placeholder Filled with {ask} The question from the message that started the flow. {task} The task's key, such as work/rotate-signing-key. {title} The task's title, such as \"Rotate the signing key\". {reply} The last answer. {replies} Every member's latest answer, one per line. {handles} The members taking part. {round}, {rounds} The current round and the total.",
     "p": "Reference"
   },
   {
@@ -2748,31 +2649,24 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Reference"
   },
   {
-    "u": "reference.html#messages-reading-the-score",
-    "t": "Reading the score",
-    "s": "Messages",
-    "x": "A concord run that picks an option records how each member sees the pick in its closing commit, under metrics: Metric What it tells you satisfaction For each member, where the pick sits between that member's bad outcome (0) and its ideal (1). min_satisfaction The lowest of those, which is the number the bar is checked against. Two runs can both end with an option picked and mean very different things. A min_satisfact",
-    "p": "Reference"
-  },
-  {
     "u": "reference.html#messages-the-record",
     "t": "The record",
     "s": "Messages",
-    "x": "Every conductor run is saved at log/episodes/{id}.md whether it agreed or not. See episodes. In the record, each message points to the ones it answers. The run's full id looks like urn:ioc:mycelium:episode:{room}:{id}.",
+    "x": "Every conductor run is saved at log/episodes/{id}.md however it ended. See episodes. In the record, each message points to the ones it answers. The run's full id looks like urn:mycelium:episode:{room}:{id}.",
     "p": "Reference"
   },
   {
     "u": "reference.html#messages-message-types",
     "t": "Message types",
     "s": "Messages",
-    "x": "These are the kinds a message can have, and what you'll see when reading raw messages: Type Means intent:mission The opening of a conductor run. exchange A turn. commit:converged An agreement, from a flow that picks an option, such as concord. commit:resolved A flow that finished. commit:rejected A flow that ended without an outcome. knowledge A memory write. exchange:amend A message that edits an earlier one.",
+    "x": "These are the kinds a message can have, and what you'll see when reading raw messages: Type Means intent:mission The opening of a conductor run. exchange A turn. commit:resolved A flow that finished. commit:rejected A flow that ended without an outcome. knowledge A memory write. exchange:amend A message that edits an earlier one.",
     "p": "Reference"
   },
   {
     "u": "reference.html#metrics",
     "t": "Metrics",
     "s": "Observability",
-    "x": "A hub keeps three kinds of numbers: What What it answers Where it goes Usage What the hub is used for: tasks filed and resolved, flows and negotiations finished, agents joined Recorded on the hub, always. Sent on only if the hub shares usage stats Backend metrics What the backend is doing: memory, embeddings, model calls, messaging, latency Kept in the running backend. Exported over OpenTelemetry if you turn that on ",
+    "x": "A hub keeps three kinds of numbers: What What it answers Where it goes Usage What the hub is used for: tasks filed and resolved, flows finished, agents joined Recorded on the hub, always. Sent on only if the hub shares usage stats Backend metrics What the backend is doing: memory, embeddings, model calls, messaging, latency Kept in the running backend. Exported over OpenTelemetry if you turn that on Agent telemetry W",
     "p": "Reference"
   },
   {
@@ -2793,7 +2687,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#metrics-backend-metrics",
     "t": "Backend metrics",
     "s": "Observability › Metrics",
-    "x": "The backend records memory writes and searches, embeddings, index runs and model calls, with how long each took. Read them as JSON at GET /api/observability. Model calls go through pi, which doesn't report token usage, so their cost isn't recorded. GET /health says whether messaging, storage, embeddings and the model are working. This is what mycelium doctor checks. When a latency p95 passes its threshold, /health re",
+    "x": "The backend records memory writes and searches, embeddings, index runs and model calls, with how long each took. Read them as JSON at GET /api/observability. Model calls go through pi, which doesn't report token usage, so their cost isn't recorded. GET /health says whether storage, embeddings and the model are working. This is what mycelium doctor checks. When a latency p95 passes its threshold, /health reports degra",
     "p": "Reference"
   },
   {

@@ -3,9 +3,8 @@
 
 """Server-held participation — ``await`` (long-poll) + ``reply`` over HTTP.
 
-A turn-based agent (a Claude Code session, a subagent) can't hold a live SLIM
-socket *between* its reasoning turns — the same limitation the daemon was built to
-paper over. So membership is **server-held**: the backend keeps the agent present
+A turn-based agent (a Claude Code session, a subagent) holds no connection
+*between* its reasoning turns. So membership is **server-held**: the backend keeps the agent present
 in the room (a lease, refreshed on every call) and the durable transcript is the
 delivery queue. The agent participates with two plain, stateless HTTP calls:
 
@@ -26,7 +25,7 @@ task consumes nothing from the room inbox behind it), and ``reply``'s ``episode`
 names where the answer lands. Writing into a thread raises a **ping** in the room
 — that a task moved, never what was said in it.
 
-No client SLIM connection, no backgrounding, no compound shell — just two simple
+No held connection, no backgrounding, no compound shell: just two simple
 commands, which is all a headless/allowlisted agent can safely issue.
 """
 
@@ -58,8 +57,8 @@ from app.services import (
 from app.services.agent_registry import norm_handle
 from app.services.asks import Wake, asks, wakes_for
 from app.services.filesystem import room_exists
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content, serialize_envelope
 from app.services.persister import _conversational_text, read_id, read_id_of, record_episode
 
 logger = logging.getLogger(__name__)
@@ -276,17 +275,16 @@ async def await_message(
     from app.services import metrics as _metrics
 
     _t0 = _time.monotonic()
+    # A client from before 3.1 may still name a thread by its old id.
+    episode = message_format.canonical_urn(episode) if episode else episode
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     # Draining a queue consumes it: the cursor advances, so a served turn is not
     # served again. A verified token may therefore only drain its own handle or one
     # that granted it — otherwise @bob's token could intercept @alice's coordination.
     actor.authorize_handle(request, room_name, handle)
-    managed = await room_channels.manager.provision(room_name)
+    persister = (await room_channels.manager.provision(room_name)).persister
     room_channels.manager.refresh_lease(room_name, handle)
-    if managed is None or managed.persister is None:
-        return {"room": room_name, "handle": handle, "message": None}
-    persister = managed.persister
     key = (room_name, handle)
     # The cursor rides the durable inbox: its first read is the handle's persisted
     # delivery position — anchored at the mention that summoned it (``record()``
@@ -495,10 +493,9 @@ async def confirm_delivery(room_name: str, body: ConfirmBody, request: Request):
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     actor.authorize_handle(request, room_name, body.handle)
-    managed = await room_channels.manager.provision(room_name)
-    if managed is None or managed.persister is None:
-        return {"room": room_name, "handle": body.handle, "confirmed": False}
-    persister = managed.persister
+    persister = (await room_channels.manager.provision(room_name)).persister
+    if body.episode:
+        body.episode = message_format.canonical_urn(body.episode)
     if body.episode and not message_format.is_live_episode(room_name, body.episode):
         persister.advance_episode_cursor(body.handle, body.episode, body.position)
     else:
@@ -518,7 +515,7 @@ class ReplyBody(BaseModel):
     )
 
 
-@router.post("/reply", response_model=ReplyRead, responses=refusals(403, 404, 409, 503))
+@router.post("/reply", response_model=ReplyRead, responses=refusals(403, 404, 409))
 async def post_reply(room_name: str, body: ReplyBody, request: Request):
     """Publish ``handle``'s reply as an agent exchange message."""
     if not room_exists(room_name):
@@ -537,8 +534,8 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         raise HTTPException(status_code=403, detail=reason)
     managed = await room_channels.manager.provision(room_name)
     room_channels.manager.refresh_lease(room_name, handle)
-    if managed is None or managed.persister is None:
-        raise HTTPException(status_code=503, detail="No live channel for room")
+    if body.episode:
+        body.episode = message_format.canonical_urn(body.episode)
 
     payload_data, clean = _parse_marker(body.text)
     woke = _last_tick.get((room_name, handle)) or {}
@@ -582,27 +579,10 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # ``@here`` and ``@all`` reach who they reach now, kept on the reply.
     extra, _by_group = groups.on_message(room_name, text=clean, episode=episode, sender=handle)
     content = serialize_content(envelope, extra=extra)
-    # Record into the transcript (the conductor reads stances from it). SLIM does
-    # not echo a broadcast back to its own sender, so a local record is required —
-    # then also broadcast so any client-connected members / the UI see it.
+    # Record into the transcript (the conductor reads stances from it).
     # ``list_write=True`` so the reply is visible in the room view immediately, the
-    # same store a ``room send`` broadcast lands in (no store divergence).
-    managed.persister.ingest_local(envelope, content, list_write=True)
-    # Under an identity tier (#666), send through the actor's **custodial session**
-    # so the wire sender is @handle's own MLS identity — cryptographic, not
-    # backend-stamped. The moderator receives that real MLS message and dedups it
-    # against the ``ingest_local`` above by message id, so the transcript stays
-    # single-copy. A session that can't be stood up falls back to a moderator
-    # broadcast (attribution degrades to app-level for that one message; liveness is
-    # preserved). Under the PSK default ``send_as_custodian`` is a no-op and this is
-    # the prior moderator send.
-    wire = serialize_envelope(envelope, extra=extra)
-    sent_as_actor = await room_channels.manager.send_as_custodian(room_name, handle, wire)
-    if not sent_as_actor:
-        try:
-            await managed.channel.send(envelope, extra=extra)
-        except Exception:
-            pass
+    # same store a ``room send`` lands in.
+    managed.persister.record(envelope, content, list_write=True)
     await room_channels.manager.raise_ping(
         room_name,
         episode=episode,

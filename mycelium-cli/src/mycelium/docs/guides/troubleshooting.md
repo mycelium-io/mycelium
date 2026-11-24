@@ -3,7 +3,7 @@
 ## Start with `mycelium doctor`
 
 ```bash
-mycelium doctor          # checks config, the hub, the model and SLIM
+mycelium doctor          # checks config, the hub and the model
 mycelium doctor --fix    # also runs the fixes it suggests, without asking first
 ```
 
@@ -320,8 +320,8 @@ open from **Logs** in the app's menu.
 
 ## Starting over
 
-This deletes all your rooms, memories and config. It also deletes the SLIM
-secret and agent credentials. Your own sign-in is kept in the system keychain,
+This deletes all your rooms, memories and config. It also deletes
+agent credentials. Your own sign-in is kept in the system keychain,
 so run `mycelium logout` first if you want it gone too.
 
 With the Docker stack:

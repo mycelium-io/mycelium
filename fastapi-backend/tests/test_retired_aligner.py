@@ -19,7 +19,7 @@ from app.services import message_format
 from app.services.filesystem import ensure_room_structure, get_room_dir, write_memory_file
 from app.services.message_models import Kind
 from app.services.retired_aligner import RETIRED_TEXT, RetiredAligner
-from tests.fakes import FakeChannel, FakeManaged, FakeManager
+from tests.fakes import FakeManaged, FakeManager
 
 ROOM = "old-room"
 THREAD = "urn:mycelium:episode:old-room:t1"
@@ -42,11 +42,11 @@ def _summon(sender: str = "julia"):
 
 
 async def _said(handle: str, sender: str = "julia") -> list[str]:
-    channel = FakeChannel()
-    engine = RetiredAligner(FakeManager(FakeManaged(room=ROOM, channel=channel)))  # type: ignore[arg-type]
+    managed = FakeManaged(room=ROOM)
+    engine = RetiredAligner(FakeManager(managed))  # type: ignore[arg-type]
     engine.handle_summon(ROOM, handle, _summon(sender))
     await asyncio.sleep(0)
-    return [(extra or {}).get("content", "") for _env, extra in channel.sent]
+    return managed.persister.texts()
 
 
 @pytest.fixture(autouse=True)
@@ -64,11 +64,11 @@ async def test_a_rooms_old_aligner_manifest_says_to_use_the_conductor():
 @pytest.mark.asyncio
 async def test_it_answers_in_the_thread_it_was_asked_in():
     _register("aligner", {"adapter": "engine", "kind": "aligner"})
-    channel = FakeChannel()
-    engine = RetiredAligner(FakeManager(FakeManaged(room=ROOM, channel=channel)))  # type: ignore[arg-type]
+    managed = FakeManaged(room=ROOM)
+    engine = RetiredAligner(FakeManager(managed))  # type: ignore[arg-type]
     engine.handle_summon(ROOM, "aligner", _summon())
     await asyncio.sleep(0)
-    ((env, _extra),) = channel.sent
+    ((env, _content),) = managed.persister.recorded
     assert env.header.message.episode == THREAD
     assert env.header.participants.actors[0].id == message_format.SYSTEM_ACTOR_ID
 

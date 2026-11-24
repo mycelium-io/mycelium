@@ -136,7 +136,7 @@ describe("settling and expiring", () => {
 
 describe("splitting by where the turn lands", () => {
   const entry = (handle: string, episode: string | null): Responding => ({ handle, episode, since: T0, until: T0 + 1 });
-  const live = "urn:ioc:mycelium:episode:atlas:live";
+  const live = "urn:mycelium:episode:atlas:live";
 
   it("keeps room-level turns here and groups thread turns by their thread", () => {
     const { here, elsewhere } = splitActivity(

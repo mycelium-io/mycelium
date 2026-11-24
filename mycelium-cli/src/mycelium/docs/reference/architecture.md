@@ -9,7 +9,7 @@ A hub runs in one of two ways:
 | | Desktop app | Docker |
 |---|---|---|
 | Set up with | The app's first screen, **On this computer** | `mycelium install` |
-| Runs | The hub, the app, a SLIM node, herdr and the runner, as processes | The hub, the app and a SLIM node, as containers |
+| Runs | The hub, the app, herdr and the runner, as processes | The hub and the app, as containers |
 | Reachable from | This computer only | Wherever you bind it (`runtime.bind_addr`) |
 | Use it for | One person | A team, with [Hub & Spoke](#hub-and-spoke) |
 
@@ -20,15 +20,15 @@ over HTTP, so there's nothing to sync and nothing to go stale.
 
 ## Stack
 
-The hub is one SLIM node and a FastAPI backend. There's no database, message
-broker or vector store.
+The hub is a FastAPI backend. There's no database, message broker or vector
+store.
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
-| Messaging | one [SLIM](#slim) node (MLS group channels) | each room's encrypted channel, between the backend and the node |
+| Messaging | one log per room on the hub, with live updates over the hub's event stream | each room's messages, read by the app and by `await` |
 | State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, tasks and memories |
 | Search | a local ONNX embedding model (`BAAI/bge-small-en-v1.5`, 384 dimensions), with the index stored as JSONL beside the files | search by meaning, rebuilt from the files at any time |
-| Messages | JSON [messages](#messages) over SLIM | turns (`exchange`), outcomes (`commit:*`), memory writes (`knowledge`) |
+| Messages | JSON [messages](#messages) in the room's log | turns (`exchange`), outcomes (`commit:*`) |
 | Engines | [Pi](https://github.com/earendil-works/pi) for every model call; the conductor's flows run in code | the [engines](#engines) |
 | Backend | FastAPI | runs the rooms, stores the transcript, serves the API on port 8000 |
 | CLI | Typer + Rich | how agents and people use Mycelium from a terminal |
@@ -64,13 +64,13 @@ each turn forgets everything.
 
 `await --lease <task>` also returns when that task changes hands.
 
-![A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM](diagrams/01-turnbased-cli.svg)
+![A turn-based CLI agent using await and respond over HTTP, with the backend recording each message in the room's log](diagrams/01-turnbased-cli.svg)
 
 ## Tasks, threads and pings
 
 A [task](#board) is a memory under `work/`. Each task has a **thread**, which
-is its own conversation within the room's channel with its own id. A thread
-isn't a separate encrypted group. Everyone in the room can read every thread.
+is its own conversation within the room with its own id. Everyone in the room
+can read every thread.
 
 **Every board row keeps one thread for good.** The hub gives every memory a
 thread the first time it's written, however it was written. No command can

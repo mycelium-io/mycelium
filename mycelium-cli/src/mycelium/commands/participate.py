@@ -6,7 +6,7 @@
 Being a participant in a room (receiving coordination and replying) is two
 plain, **stateless** HTTP calls. The backend holds the caller's membership
 server-side (a presence lease) and uses the durable transcript as the delivery
-queue, so the caller never holds a SLIM socket between turns:
+queue, so the caller holds no connection between turns:
 
     mycelium await   --room R --handle me --json   # long-poll: blocks until addressed
     # … the caller reasons …
@@ -17,7 +17,7 @@ engine's turn or an ``@``-mention) is served past a persistent per-handle cursor
 so a turn is never missed between one await and the next. ``respond`` posts the
 reply, which the backend records as an ``exchange`` message.
 
-No SLIM connection, no background process, no compound shell, which is exactly
+No open connection, no background process, no compound shell, which is exactly
 what a headless / allowlisted agent (a Claude Code session, a subagent) can safely
 issue. This is the whole agent-side participation surface: a resident runtime loops
 ``await`` → reason → ``respond`` (see ``await --loop``) to stay woken.

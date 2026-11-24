@@ -3,7 +3,7 @@
 
 """An agent asks a person to approve something, and reads the answer as a value.
 
-Node-free: the room's channel is a stand-in that records what is posted, so
+The room's log is a stand-in that records what is posted, so
 these exercise the ask, the answer, and every read that sees them (the history,
 Waiting on you, ``await``) against one transcript.
 """
@@ -32,7 +32,7 @@ _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers"
 
 
 def thread(name: str) -> str:
-    return f"urn:ioc:mycelium:episode:{ROOM}:{name}"
+    return f"urn:mycelium:episode:{ROOM}:{name}"
 
 
 def row(key: str, *, by: str = "julia", **meta: object) -> None:
@@ -51,9 +51,9 @@ class _Persister:
         self.log = persister.DeliveryLog()
         self.episode_cursors = persister.EpisodeCursors()
 
-    def ingest_local(self, envelope, content, *, list_write=False) -> None:
+    def record(self, envelope, content, *, list_write=False) -> None:
         record = persister.record_from(envelope, content)
-        self.log.record(record, delivered_to=set(), recipients=record_recipients(envelope))
+        self.log.record(record, recipients=record_recipients(envelope))
 
     def advance_cursor(self, handle: str, pos: int) -> None:
         self.log.advance(handle, pos)
@@ -70,29 +70,20 @@ def record_recipients(envelope) -> list[str]:
     return [a.id for a in actors[1:]]
 
 
-class _Channel:
-    async def send(self, *_a, **_k) -> None:
-        return None
-
-
 class _Managed:
     def __init__(self) -> None:
         self.persister = _Persister()
-        self.channel = _Channel()
         self.lifecycle = None
 
 
 @pytest.fixture
 def room(monkeypatch):
-    """A room with a task Julia filed, held by builder, and a live stand-in channel."""
+    """A room with a task Julia filed, held by builder, and a stand-in log."""
     row("work/apple-pay", assignee="builder")
     managed = _Managed()
 
     async def _provision(_room):
         return managed
-
-    async def _not_custodial(*_a, **_k):
-        return False
 
     async def _no_ping(*_a, **_k):
         return None
@@ -100,7 +91,6 @@ def room(monkeypatch):
     manager = room_channels.manager
     monkeypatch.setattr(manager, "provision", _provision)
     monkeypatch.setattr(manager, "get", lambda _r: managed)
-    monkeypatch.setattr(manager, "send_as_custodian", _not_custodial)
     monkeypatch.setattr(manager, "raise_ping", _no_ping)
     monkeypatch.setattr(manager, "refresh_lease", lambda *a, **k: None)
     monkeypatch.setattr(waiting, "_records", lambda _r: managed.persister.log.records)

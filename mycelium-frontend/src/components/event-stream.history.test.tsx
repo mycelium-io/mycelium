@@ -31,7 +31,7 @@ vi.mock("@/lib/api", () => ({
 import { EventStream } from "@/components/event-stream";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
-const THREAD = "urn:ioc:mycelium:episode:sprint:abc123";
+const THREAD = "urn:mycelium:episode:sprint:abc123";
 
 function said(id: string, text: string, sender = "alice") {
   return { id, message_type: "broadcast", sender_handle: sender, created_at: CREATED, content: text };

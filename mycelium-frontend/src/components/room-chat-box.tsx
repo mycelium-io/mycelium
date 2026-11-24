@@ -577,7 +577,7 @@ export function RoomChatBox({
       ...people.map((p) => ({
         handle: p.handle,
         name: nameOf(names, p.handle),
-        secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
+        secondary: p.you ? "you" : "person",
         tertiary: undefined as string | undefined,
         engine: false,
         working: false,

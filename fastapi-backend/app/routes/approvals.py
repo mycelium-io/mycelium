@@ -36,9 +36,7 @@ def _room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail=f"Room '{room_name}' not found")
 
 
-@router.post(
-    "", response_model=AskPosted, status_code=201, responses=refusals(403, 404, 409, 422, 503)
-)
+@router.post("", response_model=AskPosted, status_code=201, responses=refusals(403, 404, 409, 422))
 async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPosted:
     """Ask a person something, in a task's thread or the room's channel."""
     from app.routes.participate import _last_tick
@@ -79,7 +77,7 @@ async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPo
 @router.post(
     "/{ask_id}/answer",
     response_model=AskAnswered,
-    responses=refusals(403, 404, 409, 422, 503),
+    responses=refusals(403, 404, 409, 422),
 )
 async def answer_ask(
     room_name: str, ask_id: str, body: AskAnswerCreate, request: Request

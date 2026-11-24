@@ -11,14 +11,12 @@
  * `*` is one part of a key, `**` any number of parts.
  */
 
-export type MemoryEdit = "body" | "field" | "none";
+export type MemoryEdit = "body" | "none";
 
 export interface MemoryKind {
   id: string;
   patterns: string[];
   edit: MemoryEdit;
-  /** The frontmatter field a `field` kind's text is drawn from. */
-  source?: string;
   /** What the hub says when a write to an `edit: none` kind is refused. */
   says?: string;
 }
@@ -36,8 +34,6 @@ export const MEMORY_KINDS: MemoryKind[] = [
   { id: "skill", patterns: ["skills/*"], edit: "body" },
   { id: "thread", patterns: ["threads/*"], edit: "body" },
   { id: "task", patterns: ["work/**", "decisions/**", "status/**", "failed/**"], edit: "body" },
-  { id: "summary", patterns: ["context/summary/**"], edit: "field", source: "contract" },
-  { id: "decision", patterns: ["context/decision/**"], edit: "field", source: "decision" },
   { id: "synthesis", patterns: ["context/synthesis"], edit: "body" },
   {
     id: "standing",
@@ -69,9 +65,5 @@ export function kindOf(key: string): MemoryKind {
 /** Why the editor doesn't offer to edit `kind`'s text, or null when it does. */
 export function notEditable(kind: MemoryKind): string | null {
   if (kind.edit === "none") return kind.says ?? "This memory can't be edited.";
-  if (kind.edit === "field") {
-    const what = kind.id === "summary" ? "summary" : "decision";
-    return `This text is made from the ${what} kept in its ${kind.source} field, so it isn't edited here.`;
-  }
   return null;
 }

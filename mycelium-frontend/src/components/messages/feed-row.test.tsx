@@ -12,7 +12,7 @@ import { NOTICE_TYPE, PING_TYPE } from "@/lib/threads";
 import { FeedRow, type FeedContext } from "./feed-row";
 
 const AT = "2026-10-18T20:30:00.000Z";
-const THREAD = "urn:ioc:mycelium:episode:stick-fighter:a1b2c3d4";
+const THREAD = "urn:mycelium:episode:stick-fighter:a1b2c3d4";
 
 function event(over: Partial<Event>): Event {
   return {

@@ -11,11 +11,11 @@ import { Tooltip } from "@/components/ui/tooltip";
 
 export { initials };
 
-/** Live-presence tier surfaced as a halo around the avatar. "slim" = active
- *  SLIM socket (steady accent ring); "lease" = server-held await/reply poll
- *  (breathing muted ring); "herdr" = alive in a herdr pane, its ring color and
- *  motion driven by `status`. Undefined = not present, no halo. */
-export type Presence = "slim" | "lease" | "herdr";
+/** Live-presence tier surfaced as a halo around the avatar. "lease" =
+ *  server-held await/reply poll (breathing muted ring); "herdr" = alive in a
+ *  herdr pane, its ring color and motion driven by `status`. Undefined = not
+ *  present, no halo. */
+export type Presence = "lease" | "herdr";
 
 interface Props {
   handle: string;
@@ -58,9 +58,8 @@ interface Halo {
 const HERDR_STATES = new Set(["idle", "working", "blocked", "done"]);
 
 /** Presence → ring color and motion. A herdr state colors the ring by activity
- *  (working/blocked breathe, done is a steady green, idle drops the ring); a held
- *  SLIM socket is a steady fact and holds a static ring; a lease is a poll in
- *  flight, so it breathes. */
+ *  (working/blocked breathe, done is a steady green, idle drops the ring); a
+ *  lease is a poll in flight, so it breathes. */
 function halo(presence: Presence, status?: string | null): Halo {
   if (presence === "herdr" || (status && HERDR_STATES.has(status))) {
     switch (status) {
@@ -74,9 +73,7 @@ function halo(presence: Presence, status?: string | null): Halo {
         return { color: "var(--muted-foreground)", ring: false, pulse: false, label: "idle, asleep" };
     }
   }
-  return presence === "slim"
-    ? { color: "var(--accent)", ring: true, pulse: false, label: "SLIM connected" }
-    : { color: "var(--muted-foreground)", ring: true, pulse: true, label: "server-held lease (awaiting)" };
+  return { color: "var(--muted-foreground)", ring: true, pulse: true, label: "server-held lease (awaiting)" };
 }
 
 /** Circular monogram avatar; shared across roster, stream, and picker.

@@ -8,13 +8,12 @@ A deliberately thin, in-memory store for messages, presence, and memory
 subscriptions. There is no database, so these live in process memory to keep
 the endpoints answering. They are NOT durable and NOT rich.
 
-Presence liveness rides SLIM channel membership: ``room_channels``
-is authoritative for *who is present*, while the participant rows here remain the
-metadata store (intent, context files) and the fallback when no fabric is up.
+``room_channels`` is authoritative for *who is present*, while the participant
+rows here remain the metadata store (intent, context files).
 
-Messages: the durable transcript for the SLIM channel is the persister's
-markdown (``services/persister.py``). The in-memory message list here
-still backs the HTTP post/list endpoints and the SSE feed the UI reads.
+Messages: the room's durable transcript is the persister's
+(``services/persister.py``). The in-memory message list here still backs the
+HTTP post/list endpoints and the SSE feed the UI reads.
 """
 
 from __future__ import annotations

@@ -13,8 +13,7 @@ a network.
 > every room and post as any `@handle`. That's fine on a laptop but not on a
 > shared network.
 
-This covers the hub's HTTP API. Encryption on the messaging layer (SLIM) is set
-up separately. See [Running a Shared Hub](#security-planes).
+For the rest of what a shared hub needs, see [Running a Shared Hub](#security-planes).
 
 ## Turning it on
 

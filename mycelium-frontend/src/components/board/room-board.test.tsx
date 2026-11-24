@@ -10,7 +10,7 @@ import { renderWithSWR } from "@/test/swr";
 import { describe, expect, it, vi } from "vitest";
 import type { BoardPart, BoardRead, ClosedPage, ClosedTask, WaitingRead } from "@/lib/api";
 
-const ep = (id: string) => `urn:ioc:mycelium:episode:checkout:${id}`;
+const ep = (id: string) => `urn:mycelium:episode:checkout:${id}`;
 const AN_HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 const HOURS_AGO = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
 

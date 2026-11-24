@@ -86,8 +86,8 @@ describe("RoomA2aView", () => {
     render(<RoomA2aView roomName="pricing-model" />);
 
     expect(screen.getByText("A2A bridge")).toBeInTheDocument();
-    // The honest boundary cue is visible without expanding.
-    expect(screen.getByText(/not in the MLS group/)).toBeInTheDocument();
+    // The proxied cue is visible without expanding.
+    expect(screen.getByText(/proxied by the hub/)).toBeInTheDocument();
   });
 
   it("lists bridged agents with their endpoint and skills once expanded", async () => {

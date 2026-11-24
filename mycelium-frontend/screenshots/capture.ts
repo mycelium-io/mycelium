@@ -4,7 +4,7 @@
 /**
  * The app's camera. Drives each entry in the shot manifest against the frontend
  * running in mock mode (`pnpm dev:mock`, so every state renders with no
- * backend/SLIM/LLM), optimizes the PNGs, and writes committed assets into docs/
+ * backend or LLM), optimizes the PNGs, and writes committed assets into docs/
  * and the splash repo per `targets.ts`.
  *
  * Conceptually a sibling of docs/generate_docs.py: both regenerate published

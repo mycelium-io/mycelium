@@ -3,21 +3,17 @@
 
 """Shared in-process fakes for the backend test suite.
 
-One import gets you a fake coordination stack — no SLIM node, no Pi binary, no
-live LLM. This module is the single, shared home for the backend test fakes.
+One import gets you a fake room: no Pi binary, no live LLM. This module is the
+single, shared home for the backend test fakes.
 
 What stands in for what:
 
-* :class:`FakeSlimClient` / :class:`FakeSession` — the ``slim_bindings`` transport
-  (``app.services.slim_client.SlimClient``), so ``room_channels`` provisioning /
-  membership / channel lifecycle run without a node.
-* :class:`FakeChannel` — an ``MessageChannel`` (``app.services.message_slim``): records
-  broadcasts and can simulate a prompted participant replying.
-* :class:`FakePersister` — the transcript side of ``RoomPersister``
-  (``app.services.persister``): a ``DeliveryLog`` plus ``ingest_local``.
-* :class:`FakeManaged` / :class:`FakeManager` — ``ManagedRoomChannel`` /
+* :class:`FakePersister`: the log side of ``RoomPersister``
+  (``app.services.persister``): a ``DeliveryLog``, plus every message recorded
+  through it, and optionally a simulated member who answers each prompt.
+* :class:`FakeManaged` / :class:`FakeManager`: ``ManagedRoomChannel`` /
   ``RoomChannelManager`` (``app.services.room_channels``).
-* :func:`patch_pi_run` — mock ``subprocess.run`` / ``shutil.which`` so ``PiSession``
+* :func:`patch_pi_run`: mock ``subprocess.run`` / ``shutil.which`` so ``PiSession``
   never spawns a real ``pi``.
 
 See ``tests/README.md`` for the "test a feature without a live stack" recipe.
@@ -25,17 +21,18 @@ See ``tests/README.md`` for the "test a feature without a live stack" recipe.
 
 from __future__ import annotations
 
-import asyncio
 import subprocess
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
 from app.services import message_format
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 from app.services.persister import DeliveryLog, TranscriptRecord, record_from
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pytest
 
 # The default room the fakes and the simulated participant replies are stamped for.
@@ -79,112 +76,84 @@ def position_record(
     )
 
 
-# ── Message channel + persister (what an engine posts through) ──────────────────
-
-
-class FakeChannel:
-    """Records broadcasts; optionally simulates a prompted participant replying.
-
-    Stands in for ``app.services.message_slim.MessageChannel``. With ``reply_conf`` set,
-    every ``exchange`` prompt draws a simulated reply from each addressed actor
-    into the paired persister's log — enough to answer a turn put through
-    :func:`app.services.turns.addressed_turn` node-free (see ``test_turns``).
-    """
-
-    def __init__(
-        self, persister: FakePersister | None = None, reply_conf: float | None = None
-    ) -> None:
-        self.sent: list[tuple[Any, dict[str, Any] | None]] = []
-        self._persister = persister
-        self._reply_conf = reply_conf
-        self._reply_seq = 0
-
-    async def send(self, envelope: Any, *, extra: dict[str, Any] | None = None) -> None:
-        self.sent.append((envelope, extra))
-        # Only exchange prompts trigger a simulated reply — never the commit.
-        if self._reply_conf is None or envelope.header.kind != Kind.exchange:
-            return
-        assert self._persister is not None
-        for actor in envelope.header.participants.actors[1:]:
-            self._reply_seq += 1
-            self._persister.log.record(
-                position_record(
-                    actor.id, confidence=self._reply_conf, message_id=f"reply-{self._reply_seq}"
-                ),
-                delivered_to=set(),
-            )
+# ── The room's log (what an engine posts through) ────────────────────────────
 
 
 class FakePersister:
-    """The transcript side of ``RoomPersister``: a log plus ``ingest_local``."""
+    """The log side of ``RoomPersister``: a ``DeliveryLog`` plus ``record``.
 
-    def __init__(self, records: list[TranscriptRecord] | None = None) -> None:
-        self.log = DeliveryLog(records or [])
-        self.ingested: list[tuple[Any, dict[str, Any]]] = []
+    Every message recorded through it lands in :attr:`recorded` as
+    ``(envelope, content)``; ``content["content"]`` is the message's text.
+    What is recorded is not appended to :attr:`log`, so an engine reading the
+    log sees only what a test put there (or a simulated reply).
 
-    def ingest_local(
-        self, envelope: Any, content: dict[str, Any], *, list_write: bool = False
+    With ``reply_conf`` set, every ``exchange`` prompt draws a simulated reply
+    from each addressed actor into :attr:`log`: enough to answer a turn put
+    through :func:`app.services.turns.addressed_turn` (see ``test_turns``).
+    Each callable in :attr:`listeners` is called with ``(envelope, content)``
+    after a message is recorded, for a test that scripts its own replies.
+    """
+
+    def __init__(
+        self, records: list[TranscriptRecord] | None = None, *, reply_conf: float | None = None
     ) -> None:
-        self.ingested.append((envelope, content))
+        self.log = DeliveryLog(records or [])
+        self.recorded: list[tuple[Any, dict[str, Any]]] = []
+        self.listeners: list[Callable[[Any, dict[str, Any]], None]] = []
+        self._reply_conf = reply_conf
+        self._reply_seq = 0
+
+    def record(self, envelope: Any, content: dict[str, Any], *, list_write: bool = False) -> None:
+        self.recorded.append((envelope, content))
+        for listener in self.listeners:
+            listener(envelope, content)
+        # Only exchange prompts draw a simulated reply, never the commit.
+        if self._reply_conf is None or envelope.header.kind != Kind.exchange:
+            return
+        for actor in envelope.header.participants.actors[1:]:
+            self._reply_seq += 1
+            self.log.record(
+                position_record(
+                    actor.id, confidence=self._reply_conf, message_id=f"reply-{self._reply_seq}"
+                )
+            )
+
+    def texts(self) -> list[str]:
+        """The text of every message recorded, in order."""
+        return [content.get("content", "") for _env, content in self.recorded]
 
 
 @dataclass
 class FakeManaged:
-    """Stands in for ``room_channels.ManagedRoomChannel`` (room + channel state)."""
+    """Stands in for ``room_channels.ManagedRoomChannel`` (the room and its log)."""
 
     room: str = DEFAULT_ROOM
-    workspace: str = "mycelium"
-    channel: Any = None
-    persister: Any = None
+    persister: Any = field(default_factory=FakePersister)
 
-    async def post(
-        self,
-        envelope: Any,
-        text: str,
-        *,
-        list_write: bool = False,
-        raise_on_send_failure: bool = False,
-    ) -> None:
-        """Mirror of ``ManagedRoomChannel.post`` for node-free tests."""
+    async def post(self, envelope: Any, text: str, *, list_write: bool = False) -> None:
+        """Mirror of ``ManagedRoomChannel.post``."""
         content = serialize_content(envelope, extra={"content": text})
-        if self.channel is not None:
-            await self.channel.send(envelope, extra={"content": text})
-        if self.persister is not None:
-            self.persister.ingest_local(envelope, content, list_write=list_write)
+        self.persister.record(envelope, content, list_write=list_write)
 
 
 class FakeManager:
     """Just enough of ``RoomChannelManager`` for the engines.
 
-    Two construction styles are supported:
-
-    * ``FakeManager(managed, members)`` — an explicit managed channel and roster.
-    * ``FakeManager(live=False)`` — builds a default managed channel wrapping a
-      fresh :class:`FakeChannel` (or ``None`` when not ``live``) and exposes it
-      as ``.channel``.
+    ``FakeManager(managed, members)``: a managed channel (a fresh
+    :class:`FakeManaged` when omitted) and the room's roster.
     """
 
     def __init__(
-        self,
-        managed: FakeManaged | None = None,
-        members: list[str] | None = None,
-        *,
-        live: bool = True,
+        self, managed: FakeManaged | None = None, members: list[str] | None = None
     ) -> None:
-        self.channel: Any
-        if managed is None:
-            self.channel = FakeChannel()
-            managed = FakeManaged(channel=self.channel) if live else None
-        else:
-            self.channel = getattr(managed, "channel", None)
-        self._managed = managed
+        self._managed = managed if managed is not None else FakeManaged()
         self._members = list(members) if members is not None else ["a", "b"]
         self.opened: list[str] = []
         self.closed: list[str] = []
         self.floors: dict[str, Any] = {}
         self.floor_log: list[Any] = []
 
-    def get(self, room: str) -> FakeManaged | None:
+    def get(self, room: str) -> FakeManaged:
         return self._managed
 
     def members(self, room: str) -> list[str]:
@@ -215,102 +184,6 @@ class FakeManager:
     async def close_episode(self, room: str) -> bool:
         self.closed.append(room)
         return True
-
-
-# ── the SLIM transport (room_channels / slim_client layer) ────────────────────
-
-
-@dataclass
-class FakeSession:
-    """A stand-in for a ``slim_bindings`` group session.
-
-    Records what the moderator did to it (invites, removes, broadcasts) so
-    ``room_channels`` provisioning/membership can be asserted without a node.
-    """
-
-    channel: Any = None
-    published: list[bytes] = field(default_factory=list)
-    invited: list[Any] = field(default_factory=list)
-    removed: list[Any] = field(default_factory=list)
-
-    async def publish_async(self, data: bytes, *_a: Any, **_k: Any) -> None:
-        self.published.append(data)
-
-
-class FakeSlimClient:
-    """A minimal in-process stand-in for ``slim_client.SlimClient``.
-
-    Covers both roles the real client plays:
-
-    * **Moderator** (backend / ``room_channels``): ``connect`` → ``create_group`` →
-      ``invite`` / ``remove_member`` → ``close``.
-    * **Member** (a replayed inbox): ``listen_for_session`` plus the static
-      ``publish`` / ``receive_message`` the durable-inbox stream sits on.
-
-    Instance state records the lifecycle; ``inbox`` is a class-level scripted
-    queue so a test can preload messages before the client is constructed (mirror
-    of the CLI's ``FakeSlimClient``). Reset it per test with :meth:`reset`.
-    """
-
-    inbox: ClassVar[list[bytes]] = []
-    published: ClassVar[list[bytes]] = []
-
-    def __init__(self, identity: Any, *, secret: str | None = None) -> None:
-        self.identity = identity
-        self.secret = secret
-        self.endpoint: str | None = None
-        self.session: FakeSession | None = None
-        self.closed = False
-
-    @classmethod
-    def reset(cls) -> None:
-        """Clear the class-level scripted inbox/outbox (call between tests)."""
-        cls.inbox = []
-        cls.published = []
-
-    async def connect(self, endpoint: str = "") -> FakeSlimClient:
-        self.endpoint = endpoint
-        return self
-
-    async def create_group(self, channel: Any) -> FakeSession:
-        self.session = FakeSession(channel=channel)
-        return self.session
-
-    async def invite(self, session: FakeSession, member: Any) -> None:
-        session.invited.append(member)
-
-    async def remove_member(self, session: FakeSession, member: Any) -> None:
-        session.removed.append(member)
-
-    async def listen_for_session(self) -> str:
-        return "session-1"
-
-    async def close(self) -> None:
-        self.closed = True
-
-    @staticmethod
-    async def publish(session: Any, data: bytes) -> None:
-        if isinstance(session, FakeSession):
-            session.published.append(data)
-        FakeSlimClient.published.append(data)
-
-    @staticmethod
-    async def receive_message(session: Any, *, timeout_s: float = 30.0) -> Any:
-        from app.services.slim_client import SlimError
-
-        if not FakeSlimClient.inbox:
-            # Simulate a real idle window: block briefly, then report a benign
-            # timeout the reconnecting stream treats as "quiet, still connected".
-            await asyncio.sleep(0.02)
-            raise SlimError("receive timeout")
-        payload = FakeSlimClient.inbox.pop(0)
-
-        class _Msg:
-            def __init__(self, p: bytes) -> None:
-                self.payload = p
-                self.context = None
-
-        return _Msg(payload)
 
 
 # ── the Pi session / LLM seam ───────────────────────────────────────────────────

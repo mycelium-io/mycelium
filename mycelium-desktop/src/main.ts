@@ -210,7 +210,6 @@ const PREVIEW_OTHER_HUB: Status | null =
         mode: "hub",
         components: {
           herdr: { state: "running" },
-          slim: { state: "running" },
           hub: { state: "running", detail: "another hub on port 8000" },
           ui: { state: "starting" },
           runner: { state: "starting" },
@@ -963,7 +962,7 @@ function setsUpPiece(c: Choices): HTMLElement {
       : ["mycelium and herdr on your PATH", "Links in ~/.local/bin, so agents can run them. A file you already have there is left alone."],
     [ON_WINDOWS ? "%USERPROFILE%\\.mycelium" : "~/.mycelium", `Your settings, and these choices. Rooms on this ${MACHINE} keep their notes here too.`],
     c.mode === "hub"
-      ? [`Rooms on this ${MACHINE}, while Mycelium is open`, `SLIM, the hub and its UI, reachable only from this ${MACHINE} (127.0.0.1).`]
+      ? [`Rooms on this ${MACHINE}, while Mycelium is open`, `The hub and its UI, reachable only from this ${MACHINE} (127.0.0.1).`]
       : ["The runner, while Mycelium is open", `It tells the hub which agents this ${MACHINE} can start, and starts them in herdr.`],
     ...(c.restore
       ? ([["herdr's integrations", "A hook in each agent program's own settings, so herdr can reopen its agents after a restart."]] as [string, string][])
@@ -1485,7 +1484,6 @@ async function settingsWindow(open: Section = "mac") {
 
 const LABELS: Record<string, string> = {
   herdr: "herdr",
-  slim: "SLIM node",
   hub: "Hub",
   ui: "Room UI",
   runner: "Runner",
@@ -1578,7 +1576,7 @@ function otherHubNotice(h: OtherHub, home: string): HTMLElement {
 async function loading(setup: PathSetup | null = null) {
   const snap = await snapshot();
   const mode = snap.settings?.mode ?? "hub";
-  const names = mode === "hub" ? ["herdr", "slim", "hub", "ui", "runner"] : ["herdr", "runner"];
+  const names = mode === "hub" ? ["herdr", "hub", "ui", "runner"] : ["herdr", "runner"];
   const rows = new Map<string, { dot: HTMLElement; state: HTMLElement; detail: HTMLElement }>();
   const list = el("ul", { class: "status-list" });
   for (const name of names) {

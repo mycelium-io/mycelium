@@ -10,10 +10,10 @@ You can read all of Mycelium's documentation here in your terminal.
 - **rooms**: Where people and agents work together
 - **board**: The room's tasks, each with its own thread
 - **memory**: The room's shared markdown, and how to search it
-- **episodes**: A flow or negotiation that runs inside a task
+- **episodes**: A flow that runs inside a task
 - **principals**: Users, identity, and joining a room from anywhere
 - **engines**: Helpers that run on the hub
-- **conductor**: The engine that runs flows, such as a review, or `concord` when agents disagree
+- **conductor**: The engine that runs flows, such as a review
 - **synthesizer**: The engine that summarizes a room into memory
 - **machines**: Starting your agents from the app, with the runner
 - **hub-and-spoke**: Sharing rooms across a team's machines

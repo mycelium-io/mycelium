@@ -7,11 +7,8 @@ describe("intents", () => {
     expect(review.summon({ roles: { author: "codex", reviewer: "claude" }, group: [] }, "fix the flaky test")).toBe(
       "@conductor review @codex @claude: fix the flaky test",
     );
-    expect(intentById("settle").summon({ roles: {}, group: ["a", "b"] }, "")).toBe(
-      "@conductor concord @a @b: the task above",
-    );
-    expect(intentById("settle").summon({ roles: {}, group: ["a", "b"] }, "the cutover day")).toBe(
-      "@conductor concord @a @b: the cutover day",
+    expect(review.summon({ roles: { author: "codex", reviewer: "claude" }, group: [] }, "")).toBe(
+      "@conductor review @codex @claude: the task above",
     );
   });
 
@@ -22,9 +19,7 @@ describe("intents", () => {
     expect(ready(review, { roles: { author: "codex", reviewer: "claude" }, group: [] })).toBe(true);
   });
 
-  it("needs enough agents for a group intent, and none to catch up", () => {
-    expect(ready(intentById("settle"), { roles: {}, group: ["a"] })).toBe(false);
-    expect(ready(intentById("settle"), { roles: {}, group: ["a", "b"] })).toBe(true);
+  it("needs no agents to catch up", () => {
     expect(ready(intentById("catch-up"), { roles: {}, group: [] })).toBe(true);
   });
 

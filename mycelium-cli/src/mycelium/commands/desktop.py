@@ -4,7 +4,7 @@
 """``mycelium desktop``: run Mycelium on this machine without Docker.
 
 What the desktop app runs underneath its window, and the same thing from a
-terminal. ``serve --mode hub`` runs a hub here (SLIM node, API, UI) plus the
+terminal. ``serve --mode hub`` runs a hub here (API, UI) plus the
 runner; ``serve --mode client --hub-url <url>`` runs only the runner, for a
 hub elsewhere.
 """

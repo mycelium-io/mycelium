@@ -140,19 +140,8 @@ def _network_app() -> typer.Typer:
 
 
 def test_network_runs(monkeypatch: pytest.MonkeyPatch) -> None:
-    _stand_in_hub(
-        monkeypatch,
-        _health(
-            coordination={
-                "endpoint": "http://slim:46357",
-                "slim_enabled": True,
-                "channels_live": 0,
-                "provisions_ok": 0,
-                "provisions_failed": 0,
-                "invite_failures": 0,
-                "rooms": [],
-            },
-        ),
+    install_stand_in_hub(monkeypatch).answer = lambda request: (
+        [] if request.url.path == "/api/rooms" else (404, {"detail": "Not Found"})
     )
     result = runner.invoke(_network_app(), ["network"])
     assert result.exit_code == 0, result.output

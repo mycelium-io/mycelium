@@ -36,8 +36,8 @@ from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
 from mycelium.identity import resolve_actor
+from mycelium.message_format import is_room_episode
 from mycelium.names import who
-from mycelium.slim.message_format import room_episode
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 
@@ -514,7 +514,7 @@ def in_a_thread(room: str, mtype: str, msg: dict, data: dict) -> bool:
     A frame with no episode at all predates threading and is the room's.
     """
     episode = frame_episode(mtype, msg, data)
-    return episode is not None and episode != room_episode(room)
+    return episode is not None and not is_room_episode(room, episode)
 
 
 def _ping_line(data: dict, stamp: str) -> str | None:
@@ -529,7 +529,7 @@ def _ping_line(data: dict, stamp: str) -> str | None:
     a line that has already scrolled past is what this surface declines to do
     for an amendment too.
     """
-    from mycelium.slim.message_format import ping_of
+    from mycelium.message_format import ping_of
 
     ping = ping_of(data)
     if ping is None:
@@ -616,7 +616,7 @@ def _watch_room(
     from rich.table import Table
     from rich.text import Text
 
-    from mycelium.slim.message_format import payload_type_of
+    from mycelium.message_format import payload_type_of
 
     console = Console()
     owners = _agent_owner_map(room_name)
@@ -654,7 +654,7 @@ def _watch_room(
             return f"\n  {ts()}  [bold cyan]session started[/] ({n} agents joined)\n"
 
         if mtype == "coordination_tick":
-            # SSTP envelope: action fields live under data["payload"]
+            # An envelope: action fields live under data["payload"]
             if "payload" in data and isinstance(data["payload"], dict):
                 data = data["payload"]
             round_num = data.get("round", "?")

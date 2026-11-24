@@ -1,8 +1,8 @@
 # The Mycelium desktop app: macOS, Linux and Windows
 
 The desktop app. A thin [Tauri 2](https://v2.tauri.app) shell over
-`mycelium desktop serve`, which runs everything a machine needs: the SLIM node,
-the hub, the room UI and the runner in hub mode, or only the runner when the
+`mycelium desktop serve`, which runs everything a machine needs: the hub, the
+room UI and the runner in hub mode, or only the runner when the
 machine joins someone else's hub. One codebase, three packages:
 
 | Platform | Package | Updates |
@@ -64,7 +64,7 @@ The app carries everything it runs, so it works with nothing else installed.
 (on Windows, in Git Bash):
 
 - programs, into `src-tauri/binaries/` with the target triple Tauri expects:
-  `herdr`, `slimctl` (2.1.x, to match the hub's `slim-bindings`) and `node`;
+  `herdr` and `node`;
 - directories, into `src-tauri/resources/`: `cli/` (`mycelium`, a PyInstaller
   directory build, so it never unpacks itself into a temporary folder at run
   time), `hub/` (the hub, PyInstaller),

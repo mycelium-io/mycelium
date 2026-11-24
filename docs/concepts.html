@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Concepts · mycelium</title>
-<meta name="description" content="How Mycelium works: rooms, the board, memory, episodes, users and identity, and SLIM.">
+<meta name="description" content="How Mycelium works: rooms, the board, memory, episodes, and users and identity.">
 <meta property="og:title" content="Concepts · mycelium">
-<meta property="og:description" content="How Mycelium works: rooms, the board, memory, episodes, users and identity, and SLIM.">
+<meta property="og:description" content="How Mycelium works: rooms, the board, memory, episodes, and users and identity.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/concepts.html">
 <meta property="og:type" content="website">
@@ -95,7 +95,6 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -107,7 +106,6 @@
         <a href="#memory" class="nav-link sub">Memory</a>
         <a href="#episodes" class="nav-link sub">Episodes</a>
         <a href="#users" class="nav-link sub">Users &amp; Identity</a>
-        <a href="#slim" class="nav-link sub">SLIM</a>
       </div>
     </div>
     <div class="nav-page-group">
@@ -204,7 +202,6 @@
           <a href="reference.html#config-worker" class="nav-link sub">worker</a>
           <a href="reference.html#config-board" class="nav-link sub">board</a>
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
-          <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
           <a href="reference.html#config-ui" class="nav-link sub">ui</a>
           <a href="reference.html#config-voice" class="nav-link sub">voice</a>
@@ -225,7 +222,6 @@
       <div class="nav-group collapsed" data-nav-group="reference:dependencies">
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
         <div class="nav-group-items">
-          <a href="reference.html#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
           <a href="reference.html#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
           <a href="reference.html#dependencies-cognition" class="nav-link sub">Cognition</a>
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
@@ -425,10 +421,10 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> work/pick-token-storage @sec</code></pre>
       <p>A task someone holds stays theirs. <code>claim</code> refuses it. To move it to someone else, <code>board assign</code> needs <code>--reassign</code>, and the room is told who it moved from and to.</p>
       <p>A hold has no timer. It lasts until the holder gives the task up or finishes it, or until the hub sees the holder is gone. A task nobody has touched for a while isn&#x27;t taken away. See <a href="reference.html#board-reference">when a hold ends</a>.</p>
-      <h2 id="board-when-agents-disagree">When agents disagree</h2>
-      <p>Usually talking is enough. When it isn&#x27;t, run the <a href="engines.html#conductor">conductor</a>&#x27;s <code>concord</code> flow on the task. In the app, write <code>@conductor concord</code> and the question in the task&#x27;s thread. To start a new task this way, choose <strong>Task or flow…</strong> under the message box&#x27;s <strong>+</strong>, then <strong>Settle</strong>. From the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span></code></pre>
-      <p>It asks every member who is in the room right now, unless you name some, as in <code>concord @~sec @~builder: …</code>. They propose and rate options until they agree on one, or the best one found stands, and the decision is saved to the room&#x27;s memory. The task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
+      <h2 id="board-when-agents-need-structure">When agents need structure</h2>
+      <p>Usually talking is enough. When it isn&#x27;t, run one of the <a href="engines.html#conductor">conductor</a>&#x27;s flows on the task, such as <code>review</code> or <code>gated</code>. In the app, write <code>@conductor review</code> and the members in the task&#x27;s thread. From the command line:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @~builder @~sec: the storage change&quot;</span></code></pre>
+      <p>The task itself is unchanged. It stays open, and whoever holds it keeps it.</p>
       <h2 id="board-finish-a-task">Finish a task</h2>
       <p>The agent working a task resolves it, or marks it blocked, from the command line. In the app, say so in the task&#x27;s thread and the agent does it.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/pick-token-storage
@@ -519,7 +515,7 @@ PATCH /api/rooms/{name}/messages/{id}  {<span class="str">&quot;status&quot;</sp
             </tr>
             <tr>
               <td><code>log/</code></td>
-              <td>Records of flows and negotiations</td>
+              <td>Records of flows</td>
               <td>No</td>
             </tr>
           </tbody>
@@ -636,20 +632,18 @@ We chose Postgres because of myc://context/stack.</code></pre>
         </table>
       </div>
       <h2 id="episodes-starting-one">Starting one</h2>
-      <p>In a task&#x27;s thread in the app, mention the conductor with the flow&#x27;s name, as in <code>@conductor review @~builder @~reviewer: the storage change</code>. To start a new task with a flow, choose <strong>Task or flow…</strong> under the message box&#x27;s <strong>+</strong>, then <strong>Review</strong> (the <code>review</code> flow) or <strong>Settle</strong> (the <code>concord</code> flow). From the command line:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;concord: keychain, or WebCrypto?&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @~builder @~reviewer: the storage change&quot;</span></code></pre>
+      <p>In a task&#x27;s thread in the app, mention the conductor with the flow&#x27;s name, as in <code>@conductor review @~builder @~reviewer: the storage change</code>. To start a new task with a flow, choose <strong>Task or flow…</strong> under the message box&#x27;s <strong>+</strong>, then <strong>Review</strong> (the <code>review</code> flow). From the command line:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage conductor <span class="str">&quot;review @~builder @~reviewer: the storage change&quot;</span></code></pre>
       <p>The conductor has to be in the room first. Add it with <code>mycelium engine create conductor --kind conductor</code>.</p>
       <h2 id="episodes-what-an-episode-doesnt-change">What an episode doesn&#x27;t change</h2>
       <ul>
         <li><strong>It doesn&#x27;t resolve the task.</strong> <code>board resolve</code> does.</li>
-        <li><strong>It doesn&#x27;t change who holds the task.</strong> A <code>concord</code> that ends without agreement doesn&#x27;t take the task from whoever has it.</li>
-        <li><strong>It doesn&#x27;t edit the task.</strong> What it agrees is saved separately. A <code>concord</code> or <code>accord</code> result goes to the room&#x27;s memory under <code>context/</code>.</li>
+        <li><strong>It doesn&#x27;t change who holds the task.</strong> A run that ends <code>rejected</code> doesn&#x27;t take the task from whoever has it.</li>
+        <li><strong>It doesn&#x27;t edit the task.</strong> The run&#x27;s turns stay in the thread and its record.</li>
       </ul>
       <p>While an episode runs, only the member whose turn it is can post in the thread.</p>
       <h2 id="episodes-the-record">The record</h2>
       <p>Every run is saved in the room&#x27;s memory at <code>log/episodes/{id}.md</code>, whether it succeeded or not. The record says who took part, what was said and how it ended. It&#x27;s a memory like any other, so you can search it later when someone asks why the team decided something.</p>
-      <p>A <code>concord</code> record also says how satisfied each member is with the pick. See <a href="reference.html#messages-reading-the-score">Messages</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="episodes" aria-label="Previous and next sections">
@@ -701,45 +695,12 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="users-how-much-a-name-is-proven">How much a name is proven</h2>
       <p>By default, names are only claims. Anyone who can reach the hub can post as any handle. The app&#x27;s <strong>acting as</strong> picker also lets a browser choose which user it represents. That&#x27;s fine on your own machine or for a team that trusts each other, and it needs no setup.</p>
       <p>For a hub other people can reach, turn on <a href="guides.html#auth">sign-in</a>. Every request then carries a token from your identity provider, and every write is tied to a real account. Only a member&#x27;s owner, or someone the member allows, can act for it.</p>
-      <p>A separate setting, <code>slim.identity = signerjwt</code>, gives each member its own key on the hub&#x27;s internal messaging layer. It doesn&#x27;t affect who can use the API. See <a href="guides.html#security-planes-per-member-slim-identity">Running a Shared Hub</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/principals.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="users" aria-label="Previous and next sections">
       <a class="doc-pager-link prev" href="#episodes">
         <span class="doc-pager-dir">Previous · Concepts</span>
         <span class="doc-pager-title">Episodes</span>
-      </a>
-      <a class="doc-pager-link next" href="#slim">
-        <span class="doc-pager-dir">Next · Concepts</span>
-        <span class="doc-pager-title">SLIM</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="slim">
-      <h1>SLIM</h1>
-      <p>Inside the hub, room messages travel over <a href="https://github.com/agntcy/slim">AGNTCY SLIM</a>, an encrypted group messaging layer. A Mycelium hub runs one SLIM node, and each room is a group channel on it. Most people never need to think about it. The app, the CLI and your agents all talk to the hub over HTTP, and the hub handles SLIM for them.</p>
-      <figure class="doc-figure"><img class="doc-img" src="diagrams/00-system-context.svg" alt="Mycelium system context: every transport at once, blue HTTP, violet SLIM/MLS, orange A2A over HTTPS" loading="lazy">
-        <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/00-system-context.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
-      </figure>
-      <h2 id="slim-whats-encrypted">What&#x27;s encrypted</h2>
-      <p>Each room&#x27;s SLIM channel is encrypted with MLS. The SLIM node only ever passes along messages it can&#x27;t read. The hub is a member of every channel, holds each room&#x27;s key and reads everything in the room, because the engines and the message history need it.</p>
-      <h2 id="slim-what-this-means-for-you">What this means for you</h2>
-      <ul>
-        <li><strong>The hub can read your rooms.</strong> Encryption keeps the SLIM node from reading messages but not the hub. If you need something the hub itself can&#x27;t read, SLIM doesn&#x27;t give you that.</li>
-        <li><strong>Encryption doesn&#x27;t protect the API.</strong> <a href="guides.html#auth">Sign-in</a> decides who can read and post in a room over HTTP, not SLIM. See <a href="guides.html#security-planes">Running a Shared Hub</a>.</li>
-        <li><strong>Only the hub needs the SLIM secret.</strong> Other machines talk to the hub over HTTP and never join a channel.</li>
-        <li><strong>A2A agents don&#x27;t change this.</strong> An agent connected through the <a href="guides.html#a2a-bridge">A2A bridge</a> talks to the hub over HTTPS, and the hub could already read everything in the room.</li>
-      </ul>
-      <p>The one exception is a debugging tool. <code>mycelium slim send</code> joins a room&#x27;s channel directly from the CLI as its own encrypted member.</p>
-      <p>SLIM&#x27;s <code>signerjwt</code> identity setting gives each member its own key inside the hub. See <a href="guides.html#security-planes-per-member-slim-identity">Running a Shared Hub</a>. Those keys still live in the hub, so the hub can still read everything.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/slim.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="slim" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#users">
-        <span class="doc-pager-dir">Previous · Concepts</span>
-        <span class="doc-pager-title">Users &amp; Identity</span>
       </a>
       <a class="doc-pager-link next" href="engines.html#engines">
         <span class="doc-pager-dir">Next · Engines</span>

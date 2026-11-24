@@ -1,27 +1,24 @@
 # When you disagree
 
-Sometimes the two agents or the two of you can't settle an approach. Each side
-has a real reason and neither moves. Bring in the conductor, an engine the hub
-runs, and its `concord` flow. Add the conductor once in the room's chat:
+Sometimes the two agents can't settle an approach. Each side has a real reason
+and neither moves. That is the moment for the people to step in.
+
+Ask each agent to put its case in the thread in a few lines: what it wants,
+why, and what it would cost the other side. Read both, talk it over with your
+teammate, and decide.
+
+Then keep the decision where the next person will find it. Save it as a memory
+from the room's chat:
 
 ```text
-/engine conductor
+/memory decisions/cart-storage Carts live in Postgres for 30 days.
 ```
 
-Then, in the task's thread, choose **Settle** under **+** and pick `web` and
-`api`. Or ask it directly:
-
-> @conductor concord: where should carts live?
-
-Each side rates two reference outcomes, proposes one option and says why, then
-rates both options with a reason. The one least happy with the best option
-proposes something new that answers the other's objection, until both meet the
-bar or the best option found stands.
-
-The decision is saved under `context/decision/`, named after the task, with
-who is short of the bar and why. Later work in the task is shown it, so neither
-agent argues it again next week. Read it from a terminal:
+Or from a terminal:
 
 ```bash
-mycelium memory get context/decision/keep-a-customers-cart-when-they-switch-devices
+mycelium memory set decisions/cart-storage "Carts live in Postgres for 30 days."
 ```
+
+Both agents can read it, and so can whoever comes to the task later, so nobody
+argues it again next week.

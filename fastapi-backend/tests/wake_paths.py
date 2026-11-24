@@ -11,8 +11,8 @@ for. This module writes a message through the route or engine call that sends
 it for real, and then asks each of the three what it decided, so a test can
 hold them to one answer.
 
-A room here is a real persister over a channel that sends nothing: no SLIM
-node, but every write goes through the same ingest every message goes through.
+A room here is the room's real persister, built as the manager builds it, so
+every write goes through the same recording path every message goes through.
 """
 
 from __future__ import annotations
@@ -52,16 +52,6 @@ HERDR = (AGENT, PEER)
 _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers": []})
 
 
-class _QuietChannel:
-    """A channel that sends nothing: the transcript is all a row needs."""
-
-    async def send(self, *_a: Any, **_k: Any) -> None:
-        return None
-
-    def note_delivered(self, _envelope: Any) -> None:
-        return None
-
-
 @dataclass
 class Room:
     """The room a row is written into, and what its paths decided."""
@@ -74,8 +64,17 @@ class Room:
 
     @property
     def log(self) -> Any:
-        assert self.managed.persister is not None
         return self.managed.persister.log
+
+
+def _persister(manager: room_channels.RoomChannelManager) -> RoomPersister:
+    return RoomPersister(
+        ROOM,
+        on_summon=manager._summon_adapter(ROOM),
+        on_asked=manager._asked_adapter(ROOM),
+        on_recorded=manager._recorded_adapter(ROOM),
+        feed_bus=False,
+    )
 
 
 def _manifest(handle: str, body: dict[str, Any]) -> None:
@@ -86,17 +85,14 @@ def _manifest(handle: str, body: dict[str, Any]) -> None:
 
 async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
     """A room with two herdr agents, a person, the engines and an A2A agent."""
-    from app.config import settings
     from app.services import interrupts, subscriptions
 
     # Every test's room has the same name, and who was answering whom is kept
     # in memory; one test's wakes mustn't decide another's.
     subscriptions.reset()
     manager = room_channels.manager
-    monkeypatch.setattr(settings, "SLIM_ENABLED", True)
     monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
     monkeypatch.setattr(manager, "_herdr_wakes", {})
-    monkeypatch.setattr(manager, "invite_in_background", lambda *_a, **_k: None)
     # ``await`` with no timeout waits its longest; here that is one poll, so a
     # message it doesn't hand over answers at once rather than after an hour.
     monkeypatch.setattr(participate, "_POLL_INTERVAL_S", 0.001)
@@ -118,22 +114,8 @@ async def open_room(client: AsyncClient, monkeypatch: Any) -> Room:
         _manifest(handle, {"adapter": "engine", "kind": kind})
     _manifest(REMOTE, {"adapter": "a2a", "url": "https://remote.example/a2a"})
 
-    managed = room_channels.ManagedRoomChannel(
-        room=ROOM,
-        workspace="asks",
-        client=None,  # ty: ignore[invalid-argument-type]  # nothing here dials SLIM
-        channel=_QuietChannel(),  # ty: ignore[invalid-argument-type]
-    )
-    # Built as the manager builds a room's persister, minus the SLIM members.
-    managed.persister = RoomPersister(
-        ROOM,
-        channel=managed.channel,
-        members_provider=lambda: set(),
-        on_summon=manager._summon_adapter(ROOM),
-        on_asked=manager._asked_adapter(ROOM),
-        on_recorded=manager._recorded_adapter(ROOM),
-        feed_bus=False,
-    )
+    # Built as the manager builds a room's channel, off the app's live stream.
+    managed = room_channels.ManagedRoomChannel(room=ROOM, persister=_persister(manager))
     monkeypatch.setitem(manager._channels, ROOM, managed)
     manager.set_herdr_presence(ROOM, dict.fromkeys(HERDR, "idle"))
     room = Room(client=client, managed=managed)
@@ -247,7 +229,6 @@ async def say(
         # A turn through the turn primitive the conductor really calls, with
         # its default payload: a ``tick`` with a real ``@`` for the member at
         # the front.
-        assert room.managed.persister is not None
         await turns.addressed_turn(
             room.managed,
             room.managed.persister,
@@ -295,7 +276,6 @@ class Decided:
 def mark_read(room: Room, agent: str) -> int:
     """``agent`` has read everything so far, so a row reads only its message.
     Returns where the transcript stood, so the row's records can be found."""
-    assert room.managed.persister is not None
     room.managed.persister.advance_cursor(agent, len(room.log.records))
     participate._last_tick.pop((ROOM, agent), None)
     room.turns.clear()
@@ -343,12 +323,4 @@ def restart(room: Room) -> None:
     manager = room_channels.manager
     manager._herdr_wakes.clear()
     participate._last_tick.clear()
-    room.managed.persister = RoomPersister(
-        ROOM,
-        channel=room.managed.channel,
-        members_provider=lambda: set(),
-        on_summon=manager._summon_adapter(ROOM),
-        on_asked=manager._asked_adapter(ROOM),
-        on_recorded=manager._recorded_adapter(ROOM),
-        feed_bus=False,
-    )
+    room.managed.persister = _persister(manager)

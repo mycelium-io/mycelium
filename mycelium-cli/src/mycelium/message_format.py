@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Lean message helpers for the daemon connector (stdlib only).
+"""Lean message envelope helpers for the CLI (stdlib only).
 
-The connector only needs to do two things with messages, so this is a small, dependency-free
-counterpart to ``fastapi-backend/app/services/message_format.py`` rather than a copy of its
-pydantic model tree:
+A small, dependency-free counterpart to
+``fastapi-backend/app/services/message_format.py`` rather than a copy of its
+pydantic model tree. It does two things:
 
-1. **Read** an inbound message: pull the sender, recipients, message id, kind,
-   and the human-facing text a spawned turn should see.
-2. **Build a reply**: an ``exchange`` envelope parented on the message that woke
-   the agent, wrapped in a content dict under the additive ``l9`` key.
+1. **Read** a recorded message: pull the sender, recipients, message id, kind,
+   and the human-facing text.
+2. **Build a reply**: an ``exchange`` envelope parented on the message it
+   answers, wrapped in a content dict under the additive ``l9`` key.
 
 The reply is emitted in the **exact shape** the backend's
 ``message_format.envelope_to_dict(message_format.build_envelope(kind=exchange, ...))`` produces, so the
@@ -22,15 +22,22 @@ moves; the source of truth for the shape is ``app.services.message_format`` /
 
 from __future__ import annotations
 
-import json
 import uuid
 from typing import Any
 
-# Mirror the backend envelope constants (``app.services.message_format``). The version
-# tracks the vendored ioc-protocols-models binding.
-PROTOCOL = "SSTP"
+# Mirror the backend envelope constants (``app.services.message_format``).
+PROTOCOL = "MYCP"
 SUBPROTOCOL = "mycelium"
-VERSION = "0.0.6"
+VERSION = "1.0.0"
+
+# How episode and topic URNs start, and the prefixes a hub from before 3.1
+# used, read as the current ones.
+EPISODE_URN_PREFIX = "urn:mycelium:episode:"
+TOPIC_URN_PREFIX = "urn:mycelium:topic:"
+LEGACY_URN_PREFIXES = {
+    "urn:ioc:mycelium:episode:": EPISODE_URN_PREFIX,
+    "urn:concept:mycelium:": TOPIC_URN_PREFIX,
+}
 
 # The additive key a message rides under inside a message's content JSON.
 CONTENT_ENVELOPE_KEY = "l9"
@@ -54,7 +61,7 @@ KNOWLEDGE_KIND = "knowledge"
 # the room. It carries the thread's URN, who wrote and the message id — never the
 # prose, which is the whole reason a room with six agents arguing inside a task
 # stays readable. Mirrors the backend's ``app.services.message_format.PING_PAYLOAD_TYPE``;
-# ``contracts/slim-wire.json`` is the drift guard both suites assert against.
+# ``contracts/message-wire.json`` is the drift guard both suites assert against.
 PING_PAYLOAD_TYPE = "ping"
 
 
@@ -64,7 +71,7 @@ class MessageValidationError(ValueError):
 
 # Kind -> allowed subkinds. Mirrors the backend's authoritative table
 # (``app.services.message_format.VALID_SUBKINDS``) byte-for-byte; see
-# ``contracts/slim-wire.json`` for the drift guard both suites assert
+# ``contracts/message-wire.json`` for the drift guard both suites assert
 # against. An empty/None subkind is always valid, whatever the kind.
 VALID_SUBKINDS: dict[str, frozenset[str]] = {
     "knowledge": frozenset({"query", "distillation", "extraction", "feedback"}),
@@ -101,12 +108,26 @@ def validate_subkind(kind: str, subkind: str | None) -> None:
 
 def room_episode(room: str) -> str:
     """The room's live-episode URN; must match the backend's ``message_format.episode_urn``."""
-    return f"urn:ioc:mycelium:episode:{room}:live"
+    return f"{EPISODE_URN_PREFIX}{room}:live"
+
+
+def canonical_urn(urn: str) -> str:
+    """``urn`` with a legacy prefix replaced by the current one (a hub from
+    before 3.1 still sends them); any other string as it is."""
+    for old, new in LEGACY_URN_PREFIXES.items():
+        if urn.startswith(old):
+            return new + urn[len(old) :]
+    return urn
+
+
+def is_room_episode(room: str, episode: str | None) -> bool:
+    """Whether ``episode`` is the room itself rather than a thread in it."""
+    return episode is None or canonical_urn(episode) == room_episode(room)
 
 
 def room_topic(room: str) -> str:
     """The room's topic URN; must match the backend's ``message_format.topic_urn``."""
-    return f"urn:concept:mycelium:{room}"
+    return f"{TOPIC_URN_PREFIX}{room}"
 
 
 def build_envelope_content(
@@ -126,10 +147,9 @@ def build_envelope_content(
     """Build a full content dict for a hand-crafted envelope of any kind/subkind.
 
     The general form: :func:`build_reply_content` is the ``exchange``-reply
-    specialization every connector uses; this is the escape hatch for crafting
-    anything else (a ``commit``, a ``knowledge`` push, an odd subkind): the CLI's
-    ``mycelium message send`` plumbing. Raises :class:`MessageValidationError` before
-    touching the wire if ``subkind`` isn't valid for ``kind``.
+    specialization; this builds any other kind (a ``commit``, a ``knowledge``
+    write, an odd subkind). Raises :class:`MessageValidationError` if ``subkind``
+    isn't valid for ``kind``.
     """
     validate_subkind(kind, subkind)
 
@@ -194,20 +214,6 @@ def build_reply_content(
         payload_type=payload_type,
         payload_data=payload_data,
     )
-
-
-def serialize(content: dict[str, Any]) -> bytes:
-    """Encode a content dict to publishable bytes."""
-    return json.dumps(content).encode("utf-8")
-
-
-def parse(data: bytes) -> dict[str, Any] | None:
-    """Decode inbound bytes to a content dict, or ``None`` if not a JSON object."""
-    try:
-        decoded = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    return decoded if isinstance(decoded, dict) else None
 
 
 def envelope_of(content: dict[str, Any]) -> dict[str, Any] | None:

@@ -79,7 +79,7 @@ mycelium init --api-url http://your-server:8000
 
 **Fix**: The CLI handles this automatically, but if it persists:
 ```bash
-docker rm -f mycelium-slim mycelium-backend mycelium-frontend
+docker rm -f mycelium-backend mycelium-frontend
 mycelium up
 ```
 
@@ -90,7 +90,6 @@ mycelium up
 **Diagnosis**:
 ```bash
 lsof -i :8000   # backend port
-lsof -i :46357  # SLIM node port
 ```
 
 **Fixes**:
@@ -256,7 +255,6 @@ Stored in `~/.mycelium/.env`. Used by Docker Compose and the backend container.
 ```bash
 mycelium logs                      # all services
 mycelium logs mycelium-backend     # backend only
-mycelium logs mycelium-slim        # the SLIM node only
 docker logs mycelium-backend       # direct docker access
 ```
 

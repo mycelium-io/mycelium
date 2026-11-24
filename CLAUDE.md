@@ -11,8 +11,8 @@ the mistakes people have actually made.
 Multi-agent coordination and shared memory over a secure messaging layer.
 Agents are members of rooms. The unit of work is a **task**: a row on the
 room's board and a thread on its channel. A person files a task and never picks
-a protocol; agents claim it, split it up and work it in its thread. A mediated
-negotiation is one optional step inside a task, not the reason the task exists.
+a protocol; agents claim it, split it up and work it in its thread. A conductor
+flow is one optional step inside a task, not the reason the task exists.
 
 ## The repo
 
@@ -50,9 +50,6 @@ cd fastapi-backend && uv sync --group dev
 uv run pytest tests/ -x -q
 uv run ruff check . && uv run ruff format . && uv run ty check .
 
-# The live-node integration slices need a running SLIM node; they skip without one:
-MYCELIUM_SLIM_ENDPOINT=http://127.0.0.1:46357 uv run pytest tests/test_slim_roundtrip.py -q
-
 # Generate the OpenAPI client from the committed openapi.json (once after a
 # fresh clone, and whenever the API changes). After changing the API, refresh
 # the spec first with ./scripts/snapshot-openapi.sh.
@@ -89,11 +86,16 @@ screenshots and most UI work are done.
 that reads and writes over HTTP. A room is a folder with standard subfolders
 (`work/`, `decisions/`, `status/`, `failed/`, `context/`, `log/`).
 
-**Rooms are SLIM group channels.** Each room is one MLS-encrypted SLIM channel;
-the hub is its moderator (`app/services/room_channels.py`). Every message is a
-JSON envelope of one kind (`exchange`, `commit:converged|resolved|rejected`,
-`knowledge`; `app/services/message_format.py`). Some stored names carry
-`l9`/`ioc`/`SSTP`; they are part of the stored format, so leave them.
+**Each room has one log on the hub.** Every message is recorded in the room's
+transcript (`log/transcript.jsonl`) by its persister (`app/services/persister.py`,
+held per room by `app/services/room_channels.py`), which keeps each agent's read
+position and rings the triggers. The app follows it over the hub's event
+stream; agents read it with `await`. Every message is a JSON envelope of one
+kind (`exchange`, `commit:resolved|rejected`, `knowledge`;
+`app/services/message_format.py`), under the content's `l9` key, with episode
+ids `urn:mycelium:episode:{room}:{id}`. A room recorded before 3.1 had its
+`urn:ioc:` ids rewritten at startup (`app/services/urn_migration.py`), and
+every reader still takes the old form (`canonical_urn`).
 
 **Tasks are the surface.** A board row is a `work/` memory, and the hub binds it
 to a thread when it is created (`app/services/tasks.py`). The room's channel is
@@ -113,9 +115,9 @@ by the time it's due is recorded as `skipped` rather than handed over
 
 **Engines are members the hub runs.** Each is a kind under `app/services/`:
 the **conductor** walks a flow (a `Protocol`) through a task's thread, holding
-the thread's floor for whoever a step addresses, and negotiation is two of its
-flows, `concord` (help members agree) and `accord` (get them on the same
-page); a **persona** is a member a model plays in character; a **worker** is a coding agent in its own git
+the thread's floor for whoever a step addresses (`gated`, `review`, `fan-out`,
+`round-robin`, `swarm`, or a room's own under `protocols/`; every run ends
+`resolved` or `rejected`); a **persona** is a member a model plays in character; a **worker** is a coding agent in its own git
 worktree; the **verifier** flags claims it can't find in the room's records;
 the **synthesizer** distills messages into `context/synthesis`. An engine is
 summoned by `@`-mention, and every model call shells out to `pi`
@@ -151,7 +153,7 @@ module; read it before changing what a rule protects.
   (`app/services/subscriptions.py`). What the hub notices itself (a quiet
   task, a pull request changing, a verifier flag) is a notice, and notices
   and pings wake nobody, except an agent that subscribed to that notice. The verifier never blocks a message either. The notice kinds are a closed set (`message_format.NOTICE_SUBKINDS`,
-  frozen as `notice.subkinds` in `contracts/slim-wire.json`).
+  frozen as `notice.subkinds` in `contracts/message-wire.json`).
 - **Who may write in a thread is decided in code**, at
   `tasks.thread_write_refusal`: a frozen negotiation's roster and a floor's
   holder. A refused write never reaches the transcript.
@@ -168,7 +170,7 @@ module; read it before changing what a rule protects.
   anyone posts: a member that names someone without asking writes `@~name`,
   and hub-run members are told so in their prompts (`MENTION_ETIQUETTE`). A
   conductor summon written `@~a @~b` binds roles without waking anyone. An
-  `@`-mention of an engine is a summon, never a SLIM invite. Cases in
+  `@`-mention of an engine is a summon. Cases in
   `contracts/asks.json`, held through every path by
   `tests/test_wake_paths_table.py`.
 - **Mentions have three forms**, `@foo`, `@~foo` (silent) and `@!foo`
@@ -184,28 +186,28 @@ module; read it before changing what a rule protects.
   them, frozen under `epic` in `contracts/board-vocabulary.json`. The app's
   board is for people and has no row actions; agents move work from the CLI.
 - **`assignee` is who a task is for, the `assignment` field is who holds it.**
-  Never write `owner`. An agreement is saved to memory, never compiled into
-  board rows.
+  Never write `owner`.
 - **The CLI skill is a protocol**: take a task, work it in its thread, resolve
   it. Don't turn it into an augmentation layer.
 - **A room's people are recorded, never guessed from who posted**
   (`app/services/room_people.py`). A person's room folders are theirs, not the
   room's (`room_folders.py`).
 
-**Negotiation**
+**Flows**
 
-- **The conductor's picks and merges are code** (`select.py`, `frame.py`). A
-  model writes in the nodes, never on the edges.
+- **The conductor's edges are code** (`conductor.py`, `protocols.py`). A model
+  writes in the nodes, never on the edges. A room's own flow that doesn't parse
+  is left out, and the hub logs why.
 - **A summon of `@aligner` is answered, never dropped.** A room that added the
   old aligner engine still holds its manifest, and a summon of it gets one
-  reply saying what to run instead (`retired_aligner.py`).
+  reply saying it was retired (`retired_aligner.py`).
 
 **Store and memory**
 
 - **The spoke is a thin client.** No machine but the hub keeps a `.mycelium/`
   copy, and an unreachable hub is reported, never answered from something
-  stale. Git can back the files up but is never how rooms are shared; sharing
-  is the live channel (`mycelium hub host` / `mycelium connect`).
+  stale. Git can back the files up but is never how rooms are shared; machines
+  share a room by reaching the same hub.
 - **`memory set` always upserts**, and frontmatter the store doesn't manage is
   kept on every write.
 - **Links are derived** (`.link-index.jsonl`, `app/services/links.py`);
@@ -214,8 +216,8 @@ module; read it before changing what a rule protects.
   skills rail in the app. An upload's type comes from the service's table,
   never the record, and text is always served as `text/plain`
   (`app/services/uploads.py`).
-- **Rooms are always persistent.** A task resolves; a negotiation inside it is
-  a recorded episode.
+- **Rooms are always persistent.** A task resolves; a flow run inside it is a
+  recorded episode.
 
 **Machines and identity**
 
@@ -237,16 +239,10 @@ module; read it before changing what a rule protects.
 - **The HTTP auth gate is off by default, and that is a hard requirement.**
   Auth must never block trying Mycelium out. A new route is gated by default
   when it's on (`app/services/auth.py`).
-- **SLIM identity has two tiers**: `psk` (default, a shared secret) and
-  `signerjwt` (each member signs). SPIRE was removed (#668); don't bring it
-  back.
-- **The SLIM node and `slim-bindings` must be the same minor version** (2.1
-  today: `slim-bindings>=2.1,<2.2`, the compose image `slim:2.1.0`, and
-  `slimctl` 2.1.x in the desktop app). A mismatch has broken the stack before.
-- **The hub sees plaintext.** Custodial sessions (`custody.py`) and the A2A
-  bridge (`a2a_bridge.py`) harden the wire and attribution, but are never
-  end-to-end from the hub. Say so honestly in code and docs. The A2A hop stays
-  plain HTTPS until `slima2a` stops pinning an older `a2a-sdk` (#726).
+- **The hub sees plaintext.** Messages reach it over HTTP(S) and are stored as
+  written; access is the sign-in gate, member tokens and join codes. Never
+  claim end-to-end encryption in code or docs. The A2A bridge
+  (`a2a_bridge.py`) is proxied by the hub over HTTPS.
 - **The hub never fetches what a caller names.** Patterns load from a folder
   the operator provides (`app/services/patterns.py`).
 - **A person's sign-in is the normal flow, kept in the system keychain.**
@@ -333,15 +329,15 @@ mycelium config apply
 
 Then recreate the backend (`up -d --force-recreate mycelium-backend` with the
 same two files). To run the backend outside Docker with reload,
-`cd fastapi-backend && uv run uvicorn app.main:app --reload --port 8000`, with a
-SLIM node running (`mycelium hub host`) and `pi` on `PATH`.
+`cd fastapi-backend && uv run uvicorn app.main:app --reload --port 8000`, with
+`pi` on `PATH`.
 
 ## Conventions
 
 - Use `uv run` for Python and `uv add` for dependencies; never bare `python` or
   `pip install`. Ruff lints and formats (`select = ["ALL"]`).
-- Unit tests run against temp folders. Live-node SLIM tests skip without
-  `MYCELIUM_SLIM_ENDPOINT`; live-LLM tests run only with `MYCELIUM_LLM_TESTS=1`.
+- Unit tests run against temp folders; live-LLM tests run only with
+  `MYCELIUM_LLM_TESTS=1`.
 - Commit messages are imperative and short, with a body when it helps.
 - **PR titles and descriptions are plain English.** A title is one ordinary
   sentence saying what changes, in words someone outside the room knows: no

@@ -18,8 +18,8 @@ from typing import Any
 
 from rich.markup import escape
 
+from mycelium.message_format import payload_data_of, payload_type_of
 from mycelium.names import who
-from mycelium.slim.message_format import payload_data_of, payload_type_of
 
 #: The conductor engine's handle, whose posts are drawn from their structured line.
 CONDUCTOR = "conductor"
@@ -52,37 +52,12 @@ def describe_line(line: dict[str, Any]) -> str:
             str(line.get("stance")), "stated no stance"
         )
         return f"{line.get('step')}: {line.get('who')} {said}, on to {line.get('next')}"
-    if event == "select":
-        record = line.get("select") or {}
-        return f"{line.get('step')}: {_pick_summary(record)}"
     if event == "close":
         steps = line.get("steps")
-        outcome = line.get("outcome")
-        if line.get("pick"):
-            # A run that picked says what it went with, or that it couldn't get there.
-            if outcome == "converged":
-                return f"Everyone's on board: going with {line.get('pick')}"
-            return f"Couldn't get everyone there · best was {line.get('pick')}"
-        if outcome in ("resolved", "converged"):
+        if line.get("outcome") == "resolved":
             return f"{line.get('protocol')} done · {steps} step{'' if steps == 1 else 's'}"
-        return f"{line.get('protocol')} {outcome} · {line.get('reason')}"
+        return f"{line.get('protocol')} {line.get('outcome')} · {line.get('reason')}"
     return str(event)
-
-
-def _pick_summary(record: dict[str, Any]) -> str:
-    """Where a pick stands: "B, everyone at 70+" or "B, @finance at 55"."""
-    pick = record.get("pick")
-    if not pick:
-        return "nothing to pick yet"
-    bar = record.get("threshold", 70)
-    if record.get("outcome") == "feasible":
-        return f"{pick}, everyone at {bar}+"
-    ratings: dict[str, int] = record.get("ratings") or {}
-    short = [f"@{h} at {r}" for h, r in sorted(ratings.items(), key=lambda kv: kv[1]) if r < bar]
-    missing = record.get("missing") or []
-    if missing:
-        short.append("no rating from " + ", ".join(f"@{h}" for h in missing))
-    return f"{pick}, {'; '.join(short) or 'short of the bar'}"
 
 
 @dataclass

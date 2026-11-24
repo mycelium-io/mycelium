@@ -324,11 +324,11 @@ def read(
     plural = "message" if len(msgs) == 1 else "messages"
     owners = _agent_owner_map(room_name)
     # Reading the whole room, a message from a thread says which task it's in.
-    from mycelium.slim.message_format import room_episode
+    from mycelium.message_format import is_room_episode
 
-    live = room_episode(room_name)
     threaded = episode is None and any(
-        isinstance(m.episode, str) and m.episode and m.episode != live for m in msgs
+        isinstance(m.episode, str) and m.episode and not is_room_episode(room_name, m.episode)
+        for m in msgs
     )
     tasks = thread_tasks(config, room_name) if threaded else {}
     checks = _checks(config, room_name, since=msgs[-1].created_at)
@@ -353,7 +353,12 @@ def read(
             header += f" (owned by @{owner})"
         if m.recipient_handle:
             header += f" → @{m.recipient_handle}"
-        if threaded and isinstance(m.episode, str) and m.episode and m.episode != live:
+        if (
+            threaded
+            and isinstance(m.episode, str)
+            and m.episode
+            and not is_room_episode(room_name, m.episode)
+        ):
             task = tasks.get(m.episode)
             header += (
                 f' · in "{task[1]}"' if task else f" · in thread {m.episode.rsplit(':', 1)[-1]}"

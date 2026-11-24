@@ -1,6 +1,6 @@
 # CLI tests
 
-Unit tests run **without a SLIM node, a running backend, or live HTTP.**
+Unit tests run **without a running backend or live HTTP.**
 `conftest.py` holds the shared fakes + fixtures; import the classes from
 `tests.conftest`, or take the fixtures by name (pytest injects them). There is
 exactly one of each fake — don't re-declare them per file.
@@ -15,7 +15,6 @@ whatever hub answers on the developer's machine.
 | --- | --- | --- |
 | A command that calls the hub | `install_stand_in_hub(monkeypatch)` (or the `stand_in_hub` fixture), answering each request with the hub's real shape (`memory_read(...)` fills a memory) | the hub, behind every client: the typed client and `hub_client` alike |
 | One generated call in isolation | patch its `…​.sync_detailed` with `tests.hub_answers.ok(model)` / `refused(status)` | that one route |
-| Joining/publishing over SLIM (`slim.member.publish_once`, the `message send`/`slim send` plumbing) | `FakeSlimClient` (or the `fake_slim_client` fixture) | `slim.client.SlimClient` |
 | Anything that touches `~/.mycelium` | the `isolated_home` fixture | points `Path.home()` at a temp dir |
 
 ### Example — a command test (the stand-in hub)
@@ -32,22 +31,6 @@ def test_board_new_files_the_task(monkeypatch):
     result = CliRunner().invoke(board_cmd.app, ["new", "Ship it"])
     assert result.exit_code == 0
     assert hub.sent("POST", "/api/rooms/demo/tasks")
-```
-
-### Example — joining + publishing over SLIM (`FakeSlimClient`)
-
-```python
-from tests.conftest import FakeSlimClient
-
-monkeypatch.setattr(member, "SlimClient", fake_slim_client)  # the fixture, reset per test
-await member.publish_once(
-    api_url="http://localhost:8000",
-    node_endpoint="http://127.0.0.1:46357",
-    room="r",
-    handle="agent-a",
-    payload=message.serialize(content),
-)
-assert FakeSlimClient.published == [message.serialize(content)]
 ```
 
 ## Commands

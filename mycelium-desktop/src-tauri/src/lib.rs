@@ -479,7 +479,7 @@ fn status_line(status: &Value) -> String {
             format!("○ Joining {host}…")
         };
     }
-    let parts: Vec<String> = ["herdr", "slim", "hub", "ui", "runner"].iter().map(|p| state(p)).collect();
+    let parts: Vec<String> = ["herdr", "hub", "ui", "runner"].iter().map(|p| state(p)).collect();
     // A hub the app didn't start, on its port: running, but not on its own.
     let other_hub = status.get("existing_hub").is_some_and(|h| !h.is_null());
     // herdr from before the app was updated: its terminals can lose folders.

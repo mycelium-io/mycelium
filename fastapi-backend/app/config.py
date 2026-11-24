@@ -119,25 +119,6 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
-    # SLIM fabric — the coordination bus. Room provisioning is
-    # best-effort: when no node is reachable at this endpoint the backend simply
-    # skips channel provisioning, so memory/CRUD keep working without a fabric.
-    SLIM_NODE_ENDPOINT: str = "http://127.0.0.1:46357"
-    # Default SLIM org/workspace segment for a room whose meta carries no
-    # workspace_id (org=workspace, namespace=room, app=agent).
-    SLIM_WORKSPACE: str = "mycelium"
-    # Master toggle: set false to disable SLIM room provisioning outright.
-    SLIM_ENABLED: bool = True
-    # SLIM channel identity tier (off by default, #567). "psk" is the
-    # shared-secret credential every room member derives (zero infra, no
-    # per-agent identity). "signerjwt" opts into the SignerJwt floor (#476):
-    # the moderator + each agent present a per-member self-signed ES256 identity
-    # so members are cryptographically distinct, individually revocable MLS
-    # participants. Surfaced here for discoverability; the slim_identity module
-    # resolves it from MYCELIUM_SLIM_IDENTITY (env-only, like the master secret)
-    # so the CLI mirror agrees without config coupling.
-    SLIM_IDENTITY: str = "psk"
-
     # The retired aligner's usual handle. A mention of it in a room with no
     # member by that name is answered with what to run instead
     # (``retired_aligner.py``), as is a summon of a manifest of kind aligner.

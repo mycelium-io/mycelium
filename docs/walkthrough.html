@@ -95,7 +95,6 @@
         <a href="#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -107,7 +106,6 @@
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
-        <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
     </div>
     <div class="nav-page-group">
@@ -204,7 +202,6 @@
           <a href="reference.html#config-worker" class="nav-link sub">worker</a>
           <a href="reference.html#config-board" class="nav-link sub">board</a>
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
-          <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
           <a href="reference.html#config-ui" class="nav-link sub">ui</a>
           <a href="reference.html#config-voice" class="nav-link sub">voice</a>
@@ -225,7 +222,6 @@
       <div class="nav-group collapsed" data-nav-group="reference:dependencies">
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
         <div class="nav-group-items">
-          <a href="reference.html#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
           <a href="reference.html#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
           <a href="reference.html#dependencies-cognition" class="nav-link sub">Cognition</a>
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
@@ -358,8 +354,8 @@
 
     <section class="doc-section" id="walk-engines">
       <h1>4. Add the room&#x27;s engines</h1>
-      <p>Engines are helpers that run on the hub. The <strong>conductor</strong> is behind the choices the app offers on a task: <strong>Review</strong>, a flow where one agent does the work and another checks it, and <strong>Settle</strong>, a flow that helps agents who disagree agree on one answer. A new room doesn&#x27;t have it, so add it now.</p>
-      <p>Open <strong>Members</strong>, press <strong>Add</strong> and choose <strong>Engine</strong>. Pick <strong>conductor</strong> and press <strong>Add to room</strong>. Keep the handle the dialog fills in, <code>conductor</code>, because Review and Settle call the engine by that name.</p>
+      <p>Engines are helpers that run on the hub. The <strong>conductor</strong> is behind the <strong>Review</strong> choice the app offers on a task, a flow where one agent does the work and another checks it. A new room doesn&#x27;t have it, so add it now.</p>
+      <p>Open <strong>Members</strong>, press <strong>Add</strong> and choose <strong>Engine</strong>. Pick <strong>conductor</strong> and press <strong>Add to room</strong>. Keep the handle the dialog fills in, <code>conductor</code>, because Review calls the engine by that name.</p>
       <p>Engines do nothing until a task asks for them. The conductor never needs a model, since the agents taking part do the thinking. Other engines, such as personas and the synthesizer, do. If you skipped the model in step 1, add it in <strong>Settings → Engines&#x27; model</strong>. See <a href="guides.html#models">Models</a>.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/walkthrough/add-engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
@@ -417,25 +413,6 @@
         <span class="doc-pager-dir">Previous · Walkthrough</span>
         <span class="doc-pager-title">5. Hand it a task</span>
       </a>
-      <a class="doc-pager-link next" href="#walk-disagree">
-        <span class="doc-pager-dir">Next · Walkthrough</span>
-        <span class="doc-pager-title">7. When agents disagree</span>
-      </a>
-    </nav>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="walk-disagree">
-      <h1>7. When agents disagree</h1>
-      <p>Sometimes two agents want different things and talking isn&#x27;t settling it. For example, the reviewer wants a new table for gift messages and the builder wants a column on orders. Choose <strong>Settle</strong> under <strong>+</strong> in the task&#x27;s thread, and the <a href="engines.html#conductor">conductor</a> runs its <code>concord</code> flow on the task. Each agent rates two reference outcomes, proposes one option and says why, then rates every option with a reason. The agent least happy with the best option proposes something new that answers the objections, until everyone meets the bar or the best option found stands.</p>
-      <p>The decision is saved as a memory for the task, with who is short of the bar and why, and later work in the task is shown it. The task itself is left as it was. If nothing workable comes out, that&#x27;s recorded too, and the decision is yours. See <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> for the details.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/walkthrough/disagree.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-    <nav class="doc-pager" data-pager-for="walk-disagree" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#walk-thread">
-        <span class="doc-pager-dir">Previous · Walkthrough</span>
-        <span class="doc-pager-title">6. Watch it work</span>
-      </a>
       <a class="doc-pager-link next" href="#walk-next">
         <span class="doc-pager-dir">Next · Walkthrough</span>
         <span class="doc-pager-title">Where to go next</span>
@@ -455,9 +432,9 @@
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/walkthrough/next.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="walk-next" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="#walk-disagree">
+      <a class="doc-pager-link prev" href="#walk-thread">
         <span class="doc-pager-dir">Previous · Walkthrough</span>
-        <span class="doc-pager-title">7. When agents disagree</span>
+        <span class="doc-pager-title">6. Watch it work</span>
       </a>
       <a class="doc-pager-link next" href="concepts.html#rooms">
         <span class="doc-pager-dir">Next · Concepts</span>

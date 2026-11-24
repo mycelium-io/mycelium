@@ -86,7 +86,7 @@ ALIASES: dict[str, str] = {
 CLOSED_VALUES: dict[str, tuple[str, ...]] = {
     "in": ("channel", "thread"),
     "is": ("edited", "conductor"),
-    "has": ("mention", "link", "memory", "code", "scores"),
+    "has": ("mention", "link", "memory", "code"),
     "stance": ("accept", "reject"),
 }
 
@@ -101,7 +101,6 @@ class Side:
     recipients: tuple[str, ...] = ()
     stance: str | None = None
     subkind: str | None = None
-    scored: bool = False
 
 
 @dataclass
@@ -149,7 +148,6 @@ def _side_of(record: persister.TranscriptRecord) -> Side:
         recipients=recipients,
         stance=markers.stance_of(record.content),
         subkind=record.subkind,
-        scored=bool(markers.scores_of(record.content)),
     )
 
 
@@ -216,8 +214,6 @@ def _has(doc: Doc) -> list[str]:
         out.append("memory")
     if "```" in text or "`" in text:
         out.append("code")
-    if doc.side.scored:
-        out.append("scores")
     return out
 
 

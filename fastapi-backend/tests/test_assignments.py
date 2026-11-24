@@ -347,13 +347,15 @@ class TestRenew:
             ttl_minutes=30,
         )
         in_memory_store.clear_all()
+        # Filing the row is its own line in the room; the renewal must add none.
+        before = (await client.get("/api/rooms/lease-silent/messages")).json()["messages"]
         resp = await client.post(
             "/api/rooms/lease-silent/assignments/renew", json={"handle": "growth"}
         )
         # It did renew — the silence is the point, not an absence of work.
         assert len(resp.json()["renewed"]) == 1
         messages = await client.get("/api/rooms/lease-silent/messages")
-        assert messages.json()["messages"] == []
+        assert messages.json()["messages"] == before
 
     async def test_nobody_renews_a_lease_they_do_not_hold(self, client):
         await make_room(client, "lease-not-mine")

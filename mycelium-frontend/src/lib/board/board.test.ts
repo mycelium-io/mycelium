@@ -178,12 +178,12 @@ describe("projectItems", () => {
 
 describe("a task is one row, and it is a thread", () => {
   const NOW = "2026-08-22T10:00:00Z";
-  const URN = "urn:ioc:mycelium:episode:atlas:e4f1a2";
+  const URN = "urn:mycelium:episode:atlas:e4f1a2";
 
   const episode = {
     short_id: "e4f1a2",
     episode: URN,
-    topic: "urn:concept:mycelium:atlas",
+    topic: "urn:mycelium:topic:atlas",
     outcome: "converged",
     subkind: "converged",
     participants: ["growth", "risk"],
@@ -551,7 +551,7 @@ describe("shared vocabulary contract", () => {
     // A row that has one is not refused, whatever produced it — including an
     // orphan episode row, which *is* a thread.
     const episode: LiveItem = { id: "episode:e4f1a2", title: "e4f1a2", source: { kind: "episode", label: "e" }, fields: {} };
-    expect(threadRefusal(episode, "urn:ioc:mycelium:episode:atlas:e4f1a2")).toBeNull();
+    expect(threadRefusal(episode, "urn:mycelium:episode:atlas:e4f1a2")).toBeNull();
     // And one that hasn't is refused by what produced it, never generically.
     const agent: LiveItem = { id: "agent:risk", title: "risk", source: { kind: "agent", label: "a" }, fields: {} };
     expect(threadRefusal(agent, null)).toBe(task.refusals.agent);

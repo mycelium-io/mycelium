@@ -210,7 +210,7 @@ class TestProjection:
             {"handle": "growth", "adapter": "claude_code"},
             {"handle": "risk", "adapter": "claude_code"},
         ]
-        rows = self.project(agents=agents, members=[{"handle": "growth", "kind": "slim"}])
+        rows = self.project(agents=agents, members=[{"handle": "growth", "kind": "lease"}])
         agent_rows = [r for r in rows if r.id.startswith("agent:")]
         assert [r.id for r in agent_rows] == ["agent:growth"]
         assert assignment.attention_of_item(agent_rows[0], NOW) == "in_flight"
@@ -219,7 +219,7 @@ class TestProjection:
         episodes = [
             {
                 "short_id": "e4f1",
-                "topic": "urn:concept:mycelium:atlas-migration",
+                "topic": "urn:mycelium:topic:atlas-migration",
                 "outcome": "open",
                 "subkind": None,
                 "participants": ["growth", "risk"],
@@ -232,12 +232,12 @@ class TestProjection:
         assert row.title.startswith("atlas migration: negotiating")
 
 
-URN = "urn:ioc:mycelium:episode:atlas:e4f1a2"
+URN = "urn:mycelium:episode:atlas:e4f1a2"
 
 EPISODE = {
     "short_id": "e4f1a2",
     "episode": URN,
-    "topic": "urn:concept:mycelium:atlas",
+    "topic": "urn:mycelium:topic:atlas",
     "outcome": "converged",
     "subkind": "converged",
     "participants": ["growth", "risk"],

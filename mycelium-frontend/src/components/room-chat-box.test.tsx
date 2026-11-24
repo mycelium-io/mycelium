@@ -64,12 +64,12 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ]),
   fetchProtocols: async () => [
     { name: "gated", description: "A proposer proposes, a guardian approves or blocks.", roles: ["proposer", "guardian"], source: "builtin" },
-    { name: "concord", description: "Help them agree.", roles: [], source: "builtin" },
+    { name: "round-robin", description: "Every member speaks in turn.", roles: [], source: "builtin" },
   ],
   fetchRoomMembers: vi.fn().mockResolvedValue({
     members: [
       { handle: "watcher", kind: "lease", last_seen: null },
-      { handle: "synthesizer", kind: "slim", last_seen: null },
+      { handle: "synthesizer", kind: "lease", last_seen: null },
     ],
     floors: [],
   }),
@@ -972,7 +972,7 @@ describe("<RoomChatBox /> conductor summons", () => {
   beforeEach(() => {
     sendRoomMessage.mockClear();
   });
-  const thread = "urn:ioc:mycelium:episode:demo:t1";
+  const thread = "urn:mycelium:episode:demo:t1";
 
   it("completes the flow, then lights its roles in the order they bind", async () => {
     renderWithSWR(<RoomChatBox roomName="demo" episode={thread} threadLabel="the fix" />);
@@ -1012,7 +1012,7 @@ describe("<RoomChatBox /> conductor summons", () => {
     renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
-    await userEvent.type(box, "@conductor concord ");
+    await userEvent.type(box, "@conductor round-robin ");
     expect(await screen.findByLabelText("@conductor usage")).toHaveTextContent(
       "A flow runs inside a task",
     );
@@ -1043,7 +1043,7 @@ describe("<RoomChatBox /> targeting", () => {
   });
 
   it("writes into the thread it was pointed at", async () => {
-    const episode = "urn:ioc:mycelium:episode:demo:t3aa11bb";
+    const episode = "urn:mycelium:episode:demo:t3aa11bb";
     renderWithSWR(<RoomChatBox roomName="demo" episode={episode} threadLabel="flip reads" />);
     // Where it lands is the one thing the composer must not be coy about: the
     // same box writes both places, and the difference is whether an argument
@@ -1058,7 +1058,7 @@ describe("<RoomChatBox /> targeting", () => {
   });
 
   it("still says it is a thread when nothing named it", async () => {
-    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:ioc:mycelium:episode:demo:t9" />);
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:mycelium:episode:demo:t9" />);
     expect(await screen.findByPlaceholderText(/Reply in this thread/)).toBeInTheDocument();
   });
 });

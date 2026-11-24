@@ -32,8 +32,8 @@ vi.mock("@/lib/api", () => ({
 import { EventStream } from "@/components/event-stream";
 
 const ROOM = "atlas";
-const LIVE = "urn:ioc:mycelium:episode:atlas:live";
-const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
+const LIVE = "urn:mycelium:episode:atlas:live";
+const THREAD = "urn:mycelium:episode:atlas:t3aa11bb";
 const TASK = "work/flip-reads-behind-a-flag";
 const TITLE = "flip reads behind a flag";
 const OTHER_TASK = "work/retire-the-legacy-store";

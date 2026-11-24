@@ -18,11 +18,8 @@ The send path resolves the card via a dual well-known probe, then builds a
 client with ``accepted_output_modes`` set — without it, older servers reject
 the send with a pydantic ``-32600``.
 
-**Transport: HTTPS.** A bridged A2A agent is **not** a member of the room's
-MLS group channel — it never holds a group key. It is proxied by this backend
-seat, which reads the room's plaintext (as moderator/custodian) and calls the
-remote agent out-of-band over plain HTTPS; the hub sees plaintext, so this is
-**NOT** E2E-from-the-hub. Auth to the remote is a bearer token whose value
+**Transport: HTTPS.** A bridged A2A agent is proxied by this backend seat,
+which reads the room's messages and calls the remote agent over HTTPS. Auth to the remote is a bearer token whose value
 lives in the backend env (``a2a_auth_env`` names the var); the room manifest
 never stores the secret.
 """
