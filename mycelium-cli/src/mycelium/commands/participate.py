@@ -34,7 +34,7 @@ from typing import Any
 import httpx
 import typer
 
-from mycelium import chat, sdk
+from mycelium import chat
 from mycelium.cli_options import ACT_FLAGS, ACT_HELP, acts_as, emits_json, in_room, resolve_handle
 from mycelium.client import answered, sent_unparsed, typed_client
 from mycelium.commands.room import _resolve_room
@@ -745,7 +745,7 @@ def respond(
         with typed_client(
             config, timeout=30.0, handle=handle, raise_on_unexpected_status=False
         ) as client:
-            replied = sdk.reply(client, room_name, handle or "", text, episode)
+            replied = chat.reply(client, room_name, handle or "", text, episode)
         if json_output:
             typer.echo(json_module.dumps(replied.to_dict()))
         else:

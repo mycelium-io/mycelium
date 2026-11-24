@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING
 from mycelium._console import use_utf8_console
 
 if TYPE_CHECKING:
-    from mycelium.sdk import Held, HubError, Room, Waiting
+    from mycelium.board.tasks import Held, Waiting
+    from mycelium.exceptions import HubError
+    from mycelium.room import Room
 
 __all__ = ["Held", "HubError", "Room", "Waiting", "__version__"]
 
@@ -29,14 +31,20 @@ def _installed_version() -> str:
 
 __version__ = _installed_version()
 
-#: What ``from mycelium import ...`` gives from the library, loaded only when asked for.
-_SDK_NAMES = frozenset({"Held", "HubError", "Room", "Waiting"})
+#: What ``from mycelium import ...`` gives from the library, and the module that
+#: holds each, loaded only when asked for.
+_LIBRARY = {
+    "Held": "mycelium.board.tasks",
+    "HubError": "mycelium.exceptions",
+    "Room": "mycelium.room",
+    "Waiting": "mycelium.board.tasks",
+}
 
 
 def __getattr__(name: str) -> object:
-    if name in _SDK_NAMES:
-        from mycelium import sdk
+    if name in _LIBRARY:
+        from importlib import import_module
 
-        return getattr(sdk, name)
+        return getattr(import_module(_LIBRARY[name]), name)
     msg = f"module 'mycelium' has no attribute {name!r}"
     raise AttributeError(msg)

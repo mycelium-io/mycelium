@@ -3,6 +3,11 @@
 
 """Custom exceptions for Mycelium CLI."""
 
+from mycelium_backend_client.errors import UnexpectedStatus
+
+#: A refusal from the hub: ``status_code`` and ``content`` say what it answered.
+HubError = UnexpectedStatus
+
 
 class MyceliumError(Exception):
     """Base exception for all Mycelium CLI errors."""

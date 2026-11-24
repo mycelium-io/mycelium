@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from mycelium import identity, sdk
+from mycelium import identity
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged, room_or_exit
 from mycelium.client import answered, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
@@ -28,6 +28,14 @@ from mycelium.filesystem import (
     get_room_dir,
     serialize_memory,
     write_hub_memories,
+)
+from mycelium.memory import (
+    check_key,
+    learned,
+    memory_item,
+    read_memory,
+    save_memory,
+    search_memories,
 )
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
@@ -214,7 +222,7 @@ def memory_set(
             --kind finding --derived-from payments/stripe-dedupes --task work/apple-pay
     """
     try:
-        sdk.check_key(key)
+        check_key(key)
     except ValueError as e:
         console.print(f"[red]Error:[/red] {escape(str(e))}")
         raise typer.Exit(1) from e
@@ -229,8 +237,8 @@ def memory_set(
         frontmatter["expandable"] = True
     # What the team learned (the hub checks these, and refuses a bad one).
     derived = [k.strip() for k in derived_from.split(",") if k.strip()] if derived_from else None
-    frontmatter |= sdk.learned(kind, task, derived, still_open=still_open)
-    item = sdk.memory_item(
+    frontmatter |= learned(kind, task, derived, still_open=still_open)
+    item = memory_item(
         key,
         value,
         handle=handle,
@@ -242,7 +250,7 @@ def memory_set(
     # Write to hub (single store; spoke has no local copy)
     with _hub_session() as client:
         try:
-            saved = sdk.save_memory(client, room_name, item)
+            saved = save_memory(client, room_name, item)
         except UnexpectedStatus as e:
             # A validation refusal, or nothing saved, is said here; any other
             # refusal is the session's to report.
@@ -389,7 +397,7 @@ def memory_get(
 
     with _hub_session() as client:
         try:
-            mem = sdk.read_memory(client, room_name, key)
+            mem = read_memory(client, room_name, key)
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(f"[red]Not found:[/red] {key}")
@@ -524,7 +532,7 @@ def memory_search(
     room_name = _get_active_room(room)
 
     with _hub_session() as client:
-        results = sdk.search_memories(client, room_name, query, limit)
+        results = search_memories(client, room_name, query, limit)
 
         if as_json:
             _echo_json([r.to_dict() for r in results])

@@ -21,9 +21,10 @@ fastapi-backend/    The hub: FastAPI, Python 3.12. No database; state is
                     markdown files plus a JSONL search index.
 mycelium-cli/       The CLI agents use (typer, Rich, a typed OpenAPI client),
                     the desktop supervisor, the runner, and the docs' source.
-                    Its Python library is `mycelium.sdk` (`from mycelium import
-                    Room`), which the CLI's await, respond, board, memory and
-                    file verbs send through. It ships on PyPI as `mycelium-io`
+                    It is also a Python library, `from mycelium import Room`
+                    (`mycelium/room.py`), whose methods call the same request
+                    functions the CLI's verbs do (`chat.reply`, `board/tasks.py`,
+                    `memory.py`, `files.py`). It ships on PyPI as `mycelium-io`
                     (`scripts/build-mycelium-io.py`: this package, without the
                     `mycelium` command).
 mycelium-client/    The generated OpenAPI client. Not committed; generate it.

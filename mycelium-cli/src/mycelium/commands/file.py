@@ -25,11 +25,11 @@ import typer
 from rich.console import Console
 from rich.markup import escape
 
-from mycelium import sdk
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged
 from mycelium.client import answered, hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.files import upload_file
 from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
@@ -152,7 +152,7 @@ def file_upload(
                 failed += 1
                 continue
             try:
-                record = sdk.upload_file(client, room, path, handle)
+                record = upload_file(client, room, path, handle)
             except UnexpectedStatus as e:
                 detail = hub_error_detail(e.content) or f"HTTP {e.status_code}"
                 err_console.print(f"[red]Refused:[/red] {detail}")

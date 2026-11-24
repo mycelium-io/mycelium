@@ -926,21 +926,21 @@ def _thread_label(room: str, thread: str) -> str:
 
 def _write_assignment(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
     """Write an assignment change through the hub, and say what it did."""
-    from mycelium import sdk
+    from mycelium.board.tasks import Held, Waiting, change_assignment
 
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            held = sdk.change_assignment(client, room, action, **body)
+            held = change_assignment(client, room, action, **body)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    except sdk.Waiting as e:
+    except Waiting as e:
         console.print(
             f"[yellow]·[/yellow] {e.key} still waits on {', '.join(e.waiting_on)}. "
             "[dim]Resolve those first, or pass --force to take it anyway.[/dim]"
         )
         raise typer.Exit(1) from e
-    except sdk.Held as e:
+    except Held as e:
         console.print(
             f"[yellow]·[/yellow] {e.key} is already held by @{e.owner}. "
             f"[dim]They hand it back, or someone moves it with "
@@ -1090,11 +1090,11 @@ def board_new(
     # memory, so a row projected from anything else has nothing to be the
     # parent *of*.
     parent_key = _parent_key(name, parent) if parent else None
-    from mycelium import sdk
+    from mycelium.board.tasks import create_task
 
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            task = sdk.create_task(
+            task = create_task(
                 client,
                 name,
                 title=title,
