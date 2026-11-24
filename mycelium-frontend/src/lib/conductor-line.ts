@@ -8,6 +8,8 @@
 // the live stream inside the message's payload, and on a reload in the
 // message's `metadata`.
 
+import { envelopeOf } from "@/lib/threads";
+
 export interface ConductorStep {
   id: string;
   to?: string;
@@ -127,9 +129,10 @@ function payloadData(content: unknown): Record<string, unknown> | null {
       return null;
     }
   }
-  return (
-    (content as { l9?: { payload?: { data?: Record<string, unknown> } } } | null)?.l9?.payload?.data ?? null
-  );
+  const payload = envelopeOf(content as Record<string, unknown> | null)?.payload as
+    | { data?: Record<string, unknown> }
+    | undefined;
+  return payload?.data ?? null;
 }
 
 /** One line of plain text for a conductor line, for surfaces that draw no widget. */

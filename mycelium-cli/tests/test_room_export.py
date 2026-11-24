@@ -37,7 +37,7 @@ def _frame(
 ) -> dict[str, Any]:
     urn = f"urn:mycelium:episode:{ROOM}:{episode}"
     content: dict[str, Any] = {
-        "l9": {
+        "envelope": {
             "header": {
                 "message": {"episode": urn, "id": f"m{n}", "parents": []},
                 "participants": {"actors": [{"id": sender, "role": role}]},
@@ -50,7 +50,7 @@ def _frame(
     return {
         "id": f"m{n}",
         "sender_handle": sender,
-        "message_type": "l9_exchange",
+        "message_type": "envelope_exchange",
         "content": json.dumps(content),
         "created_at": (T0 + timedelta(minutes=n)).isoformat(),
         "room_name": ROOM,

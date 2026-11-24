@@ -129,8 +129,26 @@ def test_parse_envelope_rejects_invalid_subkind():
 def test_extract_parent_id():
     env = message_format.build_envelope(kind=Kind.exchange, episode="e")
     assert env.header.message is not None
-    content = json.dumps({"payload": {"round": 1}, "l9": message_format.envelope_to_dict(env)})
+    as_dict = message_format.envelope_to_dict(env)
+    content = json.dumps({"payload": {"round": 1}, "envelope": as_dict})
     assert message_format.extract_parent_id(content) == env.header.message.id
+    assert message_format.extract_parent_id({"l9": as_dict}) == env.header.message.id
     assert message_format.extract_parent_id('{"payload": {}}') is None
     assert message_format.extract_parent_id("not json") is None
     assert message_format.extract_parent_id({}) is None
+
+
+def test_serialize_content_writes_the_envelope_key():
+    env = message_format.build_envelope(kind=Kind.exchange, episode="e")
+    content = message_format.serialize_content(env, extra={"content": "hi"})
+    assert set(content) == {"content", "envelope"}
+    assert message_format.frame_type("exchange") == "envelope_exchange"
+
+
+def test_envelope_of_reads_the_key_and_the_older_one():
+    env = {"header": {"kind": "exchange"}}
+    assert message_format.envelope_of({"envelope": env}) == env
+    assert message_format.envelope_of({"l9": env}) == env
+    assert message_format.envelope_of({"envelope": env, "l9": {"header": {}}}) == env
+    assert message_format.envelope_of({"content": "hi"}) == {}
+    assert message_format.envelope_of({"envelope": "not a dict"}) == {}

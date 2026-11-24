@@ -53,12 +53,12 @@ const row = (key: string, title: string, episode: string | null) => ({
 function notice(subkind: string, by: string, offsetMs = 0, key = TASK, title = TITLE) {
   return {
     id: `notice-${subkind}-${key}`,
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     sender_handle: "system",
     created_at: at(offsetMs),
     episode: LIVE,
     content: JSON.stringify({
-      l9: {
+      envelope: {
         payload: {
           type: "notice",
           data: { subkind, key, title, episode: THREAD, by, kind: "action" },
@@ -71,13 +71,13 @@ function notice(subkind: string, by: string, offsetMs = 0, key = TASK, title = T
 function knowledge(version: number, updatedBy: string, offsetMs = 0, key = TASK) {
   return {
     id: `knowledge-${key}-${version}`,
-    message_type: "l9_knowledge",
+    message_type: "envelope_knowledge",
     sender_handle: "system",
     created_at: at(offsetMs),
     episode: LIVE,
     content: JSON.stringify({
       content: `memory updated → ${key}`,
-      l9: { payload: { type: "extraction", data: { key, updated_by: updatedBy, version } } },
+      envelope: { payload: { type: "extraction", data: { key, updated_by: updatedBy, version } } },
     }),
   };
 }
@@ -85,12 +85,12 @@ function knowledge(version: number, updatedBy: string, offsetMs = 0, key = TASK)
 function ping(sender: string, message: string, offsetMs = 0) {
   return {
     id: `ping-${message}`,
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     sender_handle: "system",
     created_at: at(offsetMs),
     episode: LIVE,
     content: JSON.stringify({
-      l9: { payload: { type: "ping", data: { episode: THREAD, sender, message } } },
+      envelope: { payload: { type: "ping", data: { episode: THREAD, sender, message } } },
     }),
   };
 }
@@ -98,11 +98,11 @@ function ping(sender: string, message: string, offsetMs = 0) {
 function said(text: string, sender = "operator", offsetMs = 0) {
   return {
     id: `said-${text.length}`,
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     sender_handle: sender,
     created_at: at(offsetMs),
     episode: LIVE,
-    content: JSON.stringify({ content: text, l9: { payload: { type: "message", data: {} } } }),
+    content: JSON.stringify({ content: text, envelope: { payload: { type: "message", data: {} } } }),
   };
 }
 

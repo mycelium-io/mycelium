@@ -415,7 +415,7 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
 
 def test_raise_up_message_frames_project_into_the_conversational_view():
     """A ``knowledge`` push and a ``commit`` consensus are promoted into the chat
-    feed on the cold read, carrying the whole envelope as their ``l9_<kind>`` frame
+    feed on the cold read, carrying the whole envelope as their ``envelope_<kind>`` frame
     — the exact shape the live SSE bus pushes. Without this the frontend promotes
     them live but a refresh drops them (the "temporary" raise-up rows bug).
     """
@@ -456,12 +456,12 @@ def test_raise_up_message_frames_project_into_the_conversational_view():
 
     projected = persister.conversational_messages(room)
     assert [(m.message_type, m.message_id) for m in projected] == [
-        ("l9_knowledge", "k-1"),
-        ("l9_commit", "c-1"),
+        ("envelope_knowledge", "k-1"),
+        ("envelope_commit", "c-1"),
     ]
     # The content is the full envelope JSON, so the frontend decodes a refresh
     # identically to the live frame it pushes over SSE.
-    assert json.loads(projected[0].content)["l9"]["header"]["kind"] == "knowledge"
+    assert json.loads(projected[0].content)["envelope"]["header"]["kind"] == "knowledge"
     assert projected[0].episode == "urn:mycelium:episode:raise-up-room:knowledge"
 
 

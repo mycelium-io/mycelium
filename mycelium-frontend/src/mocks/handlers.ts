@@ -242,7 +242,7 @@ function memorySummary(room: string, memory: MockMemory, messages: MockMessage[]
  *  the newest few who replied (newest first), and the newest reply. */
 function threadReplies(messages: MockMessage[], episode: string): NonNullable<MemorySummary["thread"]> {
   const said = messages
-    .filter((m) => m.episode === episode && (m.message_type === "broadcast" || m.message_type === "l9_exchange"))
+    .filter((m) => m.episode === episode && (m.message_type === "broadcast" || m.message_type === "envelope_exchange"))
     .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const last = said.at(-1);
   const repliers = [...new Set([...said].reverse().map((m) => m.sender_handle))].slice(0, 3);

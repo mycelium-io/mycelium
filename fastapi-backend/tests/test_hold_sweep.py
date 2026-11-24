@@ -253,7 +253,9 @@ def test_the_quiet_notice_is_not_activity(monkeypatch):
     notice = SimpleNamespace(
         sender="system",
         recorded_at="2026-10-13T10:00:00+00:00",
-        content={"l9": {"payload": {"type": "notice", "data": {"key": KEY, "subkind": "quiet"}}}},
+        content={
+            "envelope": {"payload": {"type": "notice", "data": {"key": KEY, "subkind": "quiet"}}}
+        },
     )
     managed = SimpleNamespace(persister=SimpleNamespace(log=SimpleNamespace(records=[notice])))
     monkeypatch.setattr(manager, "get", lambda _r: managed)

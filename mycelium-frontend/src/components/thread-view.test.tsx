@@ -369,11 +369,11 @@ describe("<ThreadView />", () => {
     await act(async () => {
       es.open();
       es.emit({
-        message_type: "l9_exchange",
+        message_type: "envelope_exchange",
         sender_handle: "system",
         episode: "urn:mycelium:episode:atlas:live",
         content: JSON.stringify({
-          l9: { payload: { type: "ping", data: { episode: THREAD, sender: "risk", message: "m3" } } },
+          envelope: { payload: { type: "ping", data: { episode: THREAD, sender: "risk", message: "m3" } } },
         }),
       });
     });

@@ -9,8 +9,8 @@ Every message on a room's channel carries an envelope: a fixed header
 plus a typed payload. It is how the hub labels and records what passes through
 a room, which is what the Network pane shows.
 
-A message's content JSON carries its envelope under the ``l9`` key. The key
-is additive: agents and UIs that ignore it keep working.
+A message's content JSON carries its envelope under the ``envelope`` key. The
+key is additive: agents and UIs that ignore it keep working.
 
 In the subkind vocabulary below, a failed negotiation commits as ``rejected``.
 """
@@ -33,7 +33,12 @@ from app.services.message_models import (
 )
 
 #: The key a message's envelope sits under inside its content JSON.
-CONTENT_ENVELOPE_KEY = "l9"
+CONTENT_ENVELOPE_KEY = "envelope"
+#: The key older records carry their envelope under; read, never written.
+LEGACY_CONTENT_ENVELOPE_KEY = "l9"
+#: How a frame that carries a whole recorded envelope names its type:
+#: ``envelope_<kind>`` (``envelope_exchange``, ``envelope_knowledge``, ...).
+FRAME_TYPE_PREFIX = "envelope_"
 
 #: What a message's header names its format and version as.
 PROTOCOL = "MYCP"
@@ -45,7 +50,7 @@ EPISODE_URN_PREFIX = "urn:mycelium:episode:"
 #: How a room's topic URN starts: ``urn:mycelium:topic:{room}``.
 TOPIC_URN_PREFIX = "urn:mycelium:topic:"
 #: The prefixes rooms recorded before these, rewritten to the ones above by
-#: the ``mycelium-urns`` migration and when a client still sends one.
+#: the ``mycelium-3.1-names`` migration and when a client still sends one.
 LEGACY_URN_PREFIXES = {
     "urn:ioc:mycelium:episode:": EPISODE_URN_PREFIX,
     "urn:concept:mycelium:": TOPIC_URN_PREFIX,
@@ -283,6 +288,21 @@ def serialize_content(
     return content
 
 
+def envelope_of(content: dict[str, Any]) -> dict[str, Any]:
+    """The envelope inside a message's content dict, or ``{}`` if it has none.
+
+    Reads :data:`CONTENT_ENVELOPE_KEY`, then :data:`LEGACY_CONTENT_ENVELOPE_KEY`
+    for a record written before the key was renamed.
+    """
+    env = content.get(CONTENT_ENVELOPE_KEY) or content.get(LEGACY_CONTENT_ENVELOPE_KEY)
+    return env if isinstance(env, dict) else {}
+
+
+def frame_type(kind: str) -> str:
+    """The ``message_type`` a recorded envelope of ``kind`` rides as on a frame."""
+    return f"{FRAME_TYPE_PREFIX}{kind}"
+
+
 def parse_envelope(raw: dict[str, Any] | str) -> MyceliumMessage:
     """Parse and validate an envelope from content JSON (raises on invalid)."""
     if isinstance(raw, str):
@@ -300,6 +320,6 @@ def extract_parent_id(content: str | dict[str, Any]) -> str | None:
     """
     try:
         data = json.loads(content) if isinstance(content, str) else content
-        return data["l9"]["header"]["message"]["id"]
-    except (json.JSONDecodeError, KeyError, TypeError):
+        return envelope_of(data)["header"]["message"]["id"]
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
         return None

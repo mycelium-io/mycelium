@@ -79,7 +79,7 @@ def _norm(handle: object) -> str:
 
 
 def _data(record: TranscriptRecord) -> dict[str, Any]:
-    data = ((record.content.get("l9") or {}).get("payload") or {}).get("data") or {}
+    data = (message_format.envelope_of(record.content).get("payload") or {}).get("data") or {}
     return data if isinstance(data, dict) else {}
 
 

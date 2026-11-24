@@ -38,7 +38,7 @@ def _said(n: int, sender: str, text: str, seconds: int) -> TranscriptRecord:
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": message_format.live_episode_urn(ROOM)},

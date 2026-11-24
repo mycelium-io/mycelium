@@ -324,7 +324,7 @@ class Match:
 
 
 def _payload(record: Any) -> dict[str, Any]:
-    return (record.content.get("l9") or {}).get("payload") or {}
+    return message_format.envelope_of(record.content).get("payload") or {}
 
 
 def _notice(record: Any) -> dict[str, Any] | None:
@@ -447,7 +447,7 @@ def _reply_to(record: Any) -> set[str]:
     member whose message woke the replier. Empty for anything but a reply."""
     if _payload(record).get("type") != "reply":
         return set()
-    header = (record.content.get("l9") or {}).get("header") or {}
+    header = message_format.envelope_of(record.content).get("header") or {}
     actors = (header.get("participants") or {}).get("actors") or []
     return {norm_handle(a.get("id")) or "" for a in actors[1:] if isinstance(a, dict)}
 

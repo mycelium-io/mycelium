@@ -160,7 +160,7 @@ def _describe(
     room: str, handle: str, record: Any, *, earlier: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
     content = record.content
-    header = (content.get("l9") or {}).get("header") or {}
+    header = message_format.envelope_of(content).get("header") or {}
     message = header.get("message") or {}
     context = header.get("context") or {}
     episode = message.get("episode")
@@ -539,7 +539,7 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
 
     payload_data, clean = _parse_marker(body.text)
     woke = _last_tick.get((room_name, handle)) or {}
-    woke_header = (woke.get("l9") or {}).get("header") or {}
+    woke_header = message_format.envelope_of(woke).get("header") or {}
     woke_msg = woke_header.get("message") or {}
     woke_actors = (woke_header.get("participants") or {}).get("actors") or []
     tick_sender = (

@@ -71,7 +71,7 @@ function message(text: string, episode: string | null = null) {
     id: `msg-${seq}`,
     room_name: "sprint",
     sender_handle: "alice",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: CREATED,
     episode,
     content: JSON.stringify({ content: text }),

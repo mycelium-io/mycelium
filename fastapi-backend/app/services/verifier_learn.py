@@ -41,6 +41,7 @@ import numpy as np
 
 from app.config import settings
 from app.services import embedding, verifier_claims
+from app.services.message_format import envelope_of
 from app.services.persister import load_transcript
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,7 @@ def agent_messages(rooms: list[str]) -> list[dict[str, Any]]:
     out = []
     for room in rooms:
         for r in load_transcript(room):
-            payload = (r.content.get("l9") or {}).get("payload") or {}
+            payload = envelope_of(r.content).get("payload") or {}
             text = str(r.content.get("content") or "")
             if (
                 payload.get("type") not in PROSE_TYPES

@@ -79,14 +79,14 @@ import {
 export const RAISE_UP_TYPES = [
   "coordination_join",
   "coordination_consensus",
-  "l9_knowledge",
+  "envelope_knowledge",
 ];
 
 /**
  * Lifecycle events that render as slim system notices (not chat rows). A chat
  * message only groups under the sender above it when no notice interrupts the
  * run. A ping is a system notice too, but is not on the shared raise-up list:
- * it is an `l9_exchange` already on the chat path, renamed by `parseEvent`.
+ * it is an `envelope_exchange` already on the chat path, renamed by `parseEvent`.
  */
 export const SYSTEM_TYPES = new Set([...RAISE_UP_TYPES, PING_TYPE, NOTICE_TYPE]);
 
@@ -502,7 +502,7 @@ function FeedRowView({
     );
   }
 
-  if (ev.type === "l9_knowledge") {
+  if (ev.type === "envelope_knowledge") {
     const key = ev.raw.key as string | undefined;
     const updatedBy = ev.raw.updated_by as string | undefined;
     const version = ev.raw.version;

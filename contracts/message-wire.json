@@ -48,7 +48,7 @@
   },
 
   "envelope": {
-    "_comment": "A frozen serialized 'exchange' message content dict. The backend produces this via message_format.envelope_to_dict(message_format.build_envelope(kind=exchange, ...)); the CLI produces the same dict via message_format.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope.",
+    "_comment": "A frozen serialized 'exchange' message content dict. The backend produces this via message_format.envelope_to_dict(message_format.build_envelope(kind=exchange, ...)); the CLI produces the same dict via message_format.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope. The envelope sits under the `envelope` key; every reader also accepts it under `l9`, the key older records carry (backend and CLI message_format.envelope_of, frontend threads.ts envelopeOf).",
     "inputs": {
       "sender": "alice",
       "recipients": ["bob"],
@@ -61,7 +61,7 @@
     },
     "expected_content": {
       "content": "hi",
-      "l9": {
+      "envelope": {
         "header": {
           "protocol": "MYCP",
           "subprotocol": "mycelium",

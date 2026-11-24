@@ -17,11 +17,11 @@ from mycelium.live_view import LiveView, describe_line
 
 
 def _frame(sender: str, *, text: str = "", episode: str | None = None, payload=None) -> dict:
-    content: dict[str, Any] = {"l9": {"payload": payload or {"type": "reply", "data": {}}}}
+    content: dict[str, Any] = {"envelope": {"payload": payload or {"type": "reply", "data": {}}}}
     if text:
         content["content"] = text
     return {
-        "message_type": "l9_exchange",
+        "message_type": "envelope_exchange",
         "sender_handle": sender,
         "episode": episode,
         "content": json.dumps(content),

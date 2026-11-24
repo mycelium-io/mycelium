@@ -46,7 +46,7 @@ def _said(
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": episode or message_format.live_episode_urn(ROOM)},
@@ -61,7 +61,10 @@ def _said(
 
 def _notice(minutes: int = 1, **data: str) -> TranscriptRecord:
     record = _said("system", "", minutes=minutes)
-    record.content["l9"]["payload"] = {"type": message_format.NOTICE_PAYLOAD_TYPE, "data": data}
+    record.content["envelope"]["payload"] = {
+        "type": message_format.NOTICE_PAYLOAD_TYPE,
+        "data": data,
+    }
     return record
 
 
@@ -209,8 +212,8 @@ def _reply(
 ) -> TranscriptRecord:
     """What ``respond`` records: a ``reply`` whose recipient is ``to``."""
     record = _said(sender, text, minutes=minutes, episode=episode)
-    record.content["l9"]["payload"] = {"type": "reply"}
-    record.content["l9"]["header"]["participants"]["actors"] = [{"id": sender}, {"id": to}]
+    record.content["envelope"]["payload"] = {"type": "reply"}
+    record.content["envelope"]["header"]["participants"]["actors"] = [{"id": sender}, {"id": to}]
     return record
 
 

@@ -188,7 +188,8 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
     message_count = 0
     if managed.persister is not None:
         for record in managed.persister.log.records:
-            message = record.content.get("l9", {}).get("header", {}).get("message", {})
+            header = message_format.envelope_of(record.content).get("header") or {}
+            message = header.get("message") or {}
             if message.get("episode") == urn:
                 message_count += 1
     return {

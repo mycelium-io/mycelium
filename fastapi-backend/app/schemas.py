@@ -160,7 +160,7 @@ class MessageType(StrEnum):
 
 # The message types whose ``content`` is human-readable prose — real chat, and
 # the only part of a room's feed a reader can distill for meaning. Everything
-# else the feed carries is structured: the ``l9_*`` raise-up frames hold a
+# else the feed carries is structured: the ``envelope_*`` raise-up frames hold a
 # serialized envelope as their content, and the coordination/plan kinds are
 # lifecycle markers. A consumer that reads the transcript for what was *said*
 # (the synthesizer) filters on this table rather than sniffing payloads, so a

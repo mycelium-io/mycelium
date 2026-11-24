@@ -68,7 +68,7 @@ describe("conductorLineOf", () => {
   it("reads the line the live stream carries in the envelope's payload", () => {
     const content = JSON.stringify({
       content: "fan-out · gather · …",
-      l9: { payload: { type: "message", data: { step: "gather", conductor: turn } } },
+      envelope: { payload: { type: "message", data: { step: "gather", conductor: turn } } },
     });
     expect(conductorLineOf({ content })).toEqual(turn);
   });

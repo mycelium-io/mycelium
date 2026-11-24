@@ -129,7 +129,7 @@ def test_a_record_with_no_stamp_holds_its_place_instead_of_dating_to_now(tmp_pat
     served = sorted(_read_messages(room, None), key=lambda m: m.created_at)
 
     # Beside the record it was appended after, not below the newest message.
-    assert [m.message_type for m in served] == ["broadcast", "l9_knowledge", "broadcast"]
+    assert [m.message_type for m in served] == ["broadcast", "envelope_knowledge", "broadcast"]
     assert served[1].created_at == served[0].created_at
 
 

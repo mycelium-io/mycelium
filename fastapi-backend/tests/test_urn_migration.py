@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The ``mycelium-urns`` migration: a room recorded before 3.1 reads like a new one."""
+"""The ``mycelium-3.1-names`` migration: a room recorded before 3.1 reads like a new one."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import json
 import pytest
 
 from app.services import message_format, migrations, urn_migration
-from app.services.filesystem import ensure_room_structure, get_room_dir
+from app.services.filesystem import ensure_room_structure, get_data_dir, get_room_dir
 from app.services.persister import load_transcript, record_episode
 
 OLD_THREAD = "urn:ioc:mycelium:episode:ops:4f2a9c1e"
@@ -70,10 +70,26 @@ async def test_a_room_from_before_31_is_rewritten_once(old_room) -> None:
         encoding="utf-8"
     )
     records = load_transcript("ops")
+    assert all(message_format.CONTENT_ENVELOPE_KEY in r.content for r in records)
+    assert all("l9" not in r.content for r in records)
     assert message_format.is_live_episode("ops", record_episode(records[0]))
     assert record_episode(records[1]) == "urn:mycelium:episode:ops:4f2a9c1e"
+    # Each file it changed was copied first, as it was.
+    backup = get_data_dir() / urn_migration.BACKUP_DIR / "ops"
+    assert "urn:ioc:" in (backup / "log" / "transcript.jsonl").read_text(encoding="utf-8")
+    assert "urn:ioc:" in (backup / "work" / "ship-it.md").read_text(encoding="utf-8")
     # The ledger has it: a second start leaves the room alone.
     assert await urn_migration.migrate_rooms(["ops"]) == 0
+
+
+async def test_a_message_that_quotes_the_old_key_keeps_its_text(old_room) -> None:
+    transcript = old_room / "log" / "transcript.jsonl"
+    quoting = _old_record(OLD_LIVE, 'the old shape was {"l9": {"header": {}}}')
+    with transcript.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(quoting) + "\n")
+    await urn_migration.migrate_rooms(["ops"])
+    last = load_transcript("ops")[-1]
+    assert last.content["content"] == 'the old shape was {"l9": {"header": {}}}'
 
 
 def test_an_old_id_still_reads_as_the_new_one() -> None:

@@ -175,7 +175,7 @@ def _read_new_messages(room: str, *, me: str, full: bool) -> tuple[list[StoredMe
     """The room's undistilled chat, and how many messages the room holds in all.
 
     Read by type (:func:`app.services.persister.prose_messages`), so a
-    coordination tick or a promoted ``l9_*`` frame — whose content is a
+    coordination tick or a promoted ``envelope_*`` frame — whose content is a
     serialized envelope — is excluded structurally rather than by inspecting what
     a payload looks like.
     """

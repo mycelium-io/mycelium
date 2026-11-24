@@ -10,7 +10,7 @@
 import { parseMentions } from "@/lib/mentions";
 import type { OnScreen, SkipRule } from "@/lib/on-screen";
 import { CHAT_TYPES, unwrapContent } from "@/lib/room-events";
-import { isLiveEpisode, threadShortId } from "@/lib/threads";
+import { envelopeOf, frameType, isLiveEpisode, threadShortId } from "@/lib/threads";
 
 export type NotificationKind = "mention" | "direct" | "consensus" | "knowledge" | "join" | "message";
 
@@ -144,10 +144,10 @@ export function roomOfPath(pathname: string): string | null {
  * as a room's SSE stream, tagged with `room_name`), or return null when it
  * isn't notification-worthy — a room lifecycle frame, a keepalive, or a
  * message type this system doesn't surface (e.g. `plan_updated`, which
- * narrates the same knowledge push already carried by `l9_knowledge`).
+ * narrates the same knowledge push already carried by `envelope_knowledge`).
  */
 export function classify(raw: Record<string, unknown>, principal: string): ClassifiedNotification | null {
-  const mtype = (raw.message_type as string) || "";
+  const mtype = frameType((raw.message_type as string) || "");
   const room = raw.room_name as string | undefined;
   if (!room) return null;
 
@@ -159,10 +159,10 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
 
   const content = unwrapContent(raw);
 
-  // The persister's frames are `l9_exchange`; a message published as its plain
-  // chat type reads the same.
-  switch (CHAT_TYPES.has(mtype) ? "l9_exchange" : mtype) {
-    case "l9_exchange": {
+  // The persister's frames are `envelope_exchange`; a message published as its
+  // plain chat type reads the same.
+  switch (CHAT_TYPES.has(mtype) ? "envelope_exchange" : mtype) {
+    case "envelope_exchange": {
       const text = (content.content as string) || (content.text as string) || "";
       // Your own post is never a notification to yourself.
       if (sender.toLowerCase() === handle) return null;
@@ -184,8 +184,8 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
         text,
       };
     }
-    case "l9_commit": {
-      const envelope = (content.l9 as Record<string, unknown> | undefined) ?? {};
+    case "envelope_commit": {
+      const envelope = envelopeOf(content) ?? {};
       const header = (envelope.header as Record<string, unknown> | undefined) ?? {};
       const converged = header.subkind === "converged";
       const fallback = converged ? "Consensus reached" : "Negotiation ended without agreement";
@@ -203,7 +203,7 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
         text,
       };
     }
-    case "l9_knowledge": {
+    case "envelope_knowledge": {
       // Memory changes all the time; it badges its room and never rings.
       const text = (content.content as string) || "Room memory updated";
       return { id, room, sender, time, kind: "knowledge", summary: text.slice(0, 160), needsMe: false };

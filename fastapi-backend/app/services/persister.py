@@ -422,7 +422,9 @@ def rename_positions(positions: dict[str, int], old: str, new: str) -> dict[str,
 
 def record_episode(record: TranscriptRecord) -> str | None:
     """The episode URN a transcript record rode under, if it carries one."""
-    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    episode = (
+        (message_format.envelope_of(record.content).get("header") or {}).get("message") or {}
+    ).get("episode")
     return message_format.canonical_urn(episode) if isinstance(episode, str) and episode else None
 
 
@@ -587,12 +589,12 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
 
 
 # message record kinds promoted into the room chat view on a cold read, mirroring the
-# frontend's ``L9_RAISE_UP_TYPES`` (contracts/channel-surface.json): ``knowledge`` (a
+# frontend's ``RAISE_UP_TYPES`` (contracts/channel-surface.json): ``knowledge`` (a
 # memory push, e.g. a distilled extraction) and ``commit`` (a negotiation's
 # outcome). Chat itself (an ``exchange`` with a ``message``/``reply``
 # payload) is projected as a plain broadcast above; these ride as their
-# ``l9_<kind>`` frame instead — the exact shape the live SSE bus pushes
-# (:func:`l9_bus_frame`), so the frontend decodes a refresh identically to the
+# ``envelope_<kind>`` frame instead — the exact shape the live SSE bus pushes
+# (:func:`bus_frame`), so the frontend decodes a refresh identically to the
 # live stream instead of dropping the row (the "temporary" raise-up rows bug).
 _RAISE_UP_KINDS = frozenset({"knowledge", "commit"})
 
@@ -605,10 +607,10 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
     reaction isn't chat either: it is read as the emoji on another message
     (:func:`reaction_text`).
     """
-    l9 = content.get("l9", {})
-    if l9.get("header", {}).get("subkind") == message_format.REACTION_SUBKIND:
+    envelope = message_format.envelope_of(content)
+    if (envelope.get("header") or {}).get("subkind") == message_format.REACTION_SUBKIND:
         return None
-    payload_type = l9.get("payload", {}).get("type")
+    payload_type = (envelope.get("payload") or {}).get("type")
     text = content.get("content")
     if payload_type not in ("message", "reply") or not isinstance(text, str) or not text:
         return None
@@ -617,8 +619,8 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
 
 def reaction_text(content: dict[str, Any]) -> str | None:
     """A reaction record's text (``@~author 👍``), or None if it isn't one."""
-    l9 = content.get("l9", {})
-    if l9.get("header", {}).get("subkind") != message_format.REACTION_SUBKIND:
+    envelope = message_format.envelope_of(content)
+    if (envelope.get("header") or {}).get("subkind") != message_format.REACTION_SUBKIND:
         return None
     text = content.get("content")
     return text if isinstance(text, str) and text else None
@@ -781,20 +783,21 @@ def stored_message_from_record(
         content = text
     elif record.kind in _RAISE_UP_KINDS:
         # A promoted system frame (memory push / consensus): carry the whole
-        # envelope as the ``l9_<kind>`` frame the live stream uses, so the cold
-        # read reproduces the live view instead of dropping it on refresh.
-        message_type = f"l9_{record.kind}"
+        # envelope as the ``envelope_<kind>`` frame the live stream uses, so the
+        # cold read reproduces the live view instead of dropping it on refresh.
+        message_type = message_format.frame_type(record.kind)
         content = json.dumps(record.content)
     else:
         return None
-    header = record.content.get("l9", {}).get("header", {})
+    envelope = message_format.envelope_of(record.content)
+    header = envelope.get("header") or {}
     episode = header.get("message", {}).get("episode")
     # A conductor post carries a structured line beside its prose (see
     # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
     # rides the message's metadata, and a reload draws the run as the live
     # stream did rather than as the prompts behind it. An ask and its answer
     # (``approvals``) ride the same way, so the app draws the card.
-    data = (record.content.get("l9", {}).get("payload") or {}).get("data") or {}
+    data = (envelope.get("payload") or {}).get("data") or {}
     lifted = (
         {k: data[k] for k in ("conductor", "ask", "answer") if isinstance(data.get(k), dict)}
         if isinstance(data, dict)
@@ -940,7 +943,7 @@ def room_conversation(room: str) -> list[StoredMessage]:
 def prose_messages(room: str) -> list[StoredMessage]:
     """The room's chat, oldest first — what was actually *said*, by type.
 
-    :func:`room_conversation` is the whole feed: chat, the promoted ``l9_*``
+    :func:`room_conversation` is the whole feed: chat, the promoted ``envelope_*``
     frames (whose content is a serialized envelope) and the coordination
     lifecycle rows. A reader that wants the conversation itself selects on
     :data:`~app.schemas.PROSE_MESSAGE_TYPES` — the type the projection already
@@ -956,19 +959,20 @@ def prose_messages(room: str) -> list[StoredMessage]:
 def bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     """Project a transcript record into the wire frame the SSE bus carries.
 
-    The single shape the frontend's channel and Stream read (``l9_<kind>`` + the full
-    ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
-    and the history replay (:func:`l9_wire_history`) so backfilled and live frames
+    The single shape the frontend's channel and Stream read (``envelope_<kind>`` + the
+    full ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
+    and the history replay (:func:`wire_history`) so backfilled and live frames
     are byte-identical.
     """
-    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    header = message_format.envelope_of(record.content).get("header") or {}
+    episode = (header.get("message") or {}).get("episode")
     return {
         "id": record.message_id,
         # The id the room's history read gives the same message, so a client
         # holding both copies can tell they're one.
         "read_id": str(read_id(record)),
         "sender_handle": record.sender or message_format.SYSTEM_ACTOR_ID,
-        "message_type": f"l9_{record.kind}",
+        "message_type": message_format.frame_type(record.kind),
         "content": json.dumps(record.content),
         "created_at": record.recorded_at,
         "room_name": room,

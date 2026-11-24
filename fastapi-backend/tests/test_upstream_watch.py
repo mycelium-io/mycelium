@@ -350,7 +350,7 @@ def _record(sender: str, text: str, episode: str, minutes_ago: int = 1) -> Trans
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {"kind": "exchange", "message": {"episode": episode}},
                 "payload": {"type": "message"},
             },
@@ -363,7 +363,7 @@ def _upstream(
     key: str, title: str, change: str, minutes_ago: int, **extra: str
 ) -> TranscriptRecord:
     record = _record("system", "", message_format.live_episode_urn(ROOM), minutes_ago)
-    record.content["l9"]["payload"] = {
+    record.content["envelope"]["payload"] = {
         "type": message_format.NOTICE_PAYLOAD_TYPE,
         "data": {"subkind": "upstream", "key": key, "title": title, "change": change,
                  "ref": "acme/shop#12", **extra},

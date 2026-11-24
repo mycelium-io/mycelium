@@ -152,7 +152,7 @@ def _turn_from(sender: str, episode: str) -> dict[str, Any]:
         topic=message_format.topic_urn(ROOM),
         payload_type="message",
     )
-    return {"l9": message_format.envelope_to_dict(env), "content": "earlier turn"}
+    return {"envelope": message_format.envelope_to_dict(env), "content": "earlier turn"}
 
 
 async def _respond(room: Room, sender: str, text: str, episode: str, heard_from: str | None):

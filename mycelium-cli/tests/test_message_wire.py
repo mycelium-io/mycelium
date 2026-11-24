@@ -36,10 +36,13 @@ def test_ping_payload_matches_contract():
     assert g["payload_type"] == message_format.PING_PAYLOAD_TYPE
 
     fields = dict.fromkeys(g["payload_fields"], "x")
-    ping = {"l9": {"payload": {"type": g["payload_type"], "data": fields}}}
+    ping = {"envelope": {"payload": {"type": g["payload_type"], "data": fields}}}
     assert message_format.ping_of(ping) == fields
     # Anything else on the channel is not a ping, however it is shaped.
-    assert message_format.ping_of({"l9": {"payload": {"type": "message", "data": fields}}}) is None
+    assert (
+        message_format.ping_of({"envelope": {"payload": {"type": "message", "data": fields}}})
+        is None
+    )
     assert message_format.ping_of({"content": "hello"}) is None
 
 

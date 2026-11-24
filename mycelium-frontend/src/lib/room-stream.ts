@@ -18,7 +18,7 @@
 import { formatDate } from "@/lib/date-format";
 import { parseMentions } from "@/lib/mentions";
 import { CHAT_TYPES, unwrapContent } from "@/lib/room-events";
-import { isLiveEpisode, noticeOf, pingOf } from "@/lib/threads";
+import { envelopeOf, frameType, isLiveEpisode, noticeOf, pingOf } from "@/lib/threads";
 
 export type StreamKind = "message" | "board" | "github" | "saved";
 
@@ -74,13 +74,16 @@ function threadOf(room: string, episode: unknown): string | null {
  *  (the message itself arrives too), a floor change, presence, or the save of
  *  a board row. */
 export function streamEventOf(raw: Record<string, unknown>, room: string): StreamEvent | null {
-  const mtype = str(raw.message_type) ?? "";
+  const mtype = frameType(str(raw.message_type) ?? "");
   const id = str(raw.id);
   const at = str(raw.created_at);
   if (!id || !at) return null;
   const content = unwrapContent(raw);
-  const l9 = (content.l9 ?? {}) as Record<string, unknown>;
-  const header = ((l9.header as Record<string, unknown> | undefined)?.message ?? {}) as Record<string, unknown>;
+  const envelope = envelopeOf(content) ?? {};
+  const header = ((envelope.header as Record<string, unknown> | undefined)?.message ?? {}) as Record<
+    string,
+    unknown
+  >;
   const base = {
     id,
     at,
@@ -95,18 +98,18 @@ export function streamEventOf(raw: Record<string, unknown>, room: string): Strea
     mentions: [] as string[],
   };
 
-  if (mtype === "l9_knowledge" || mtype === "knowledge") {
-    const data = ((l9.payload as Record<string, unknown> | undefined)?.data ?? {}) as Record<string, unknown>;
+  if (mtype === "envelope_knowledge" || mtype === "knowledge") {
+    const data = ((envelope.payload as Record<string, unknown> | undefined)?.data ?? {}) as Record<string, unknown>;
     const fallback = str(content.content)?.replace(/^memory updated\s*→\s*/, "") ?? null;
     const key = str(data.key) ?? fallback;
     if (!key || BOARD_KEY.test(key)) return null;
     return { ...base, kind: "saved", episode: null, text: key, who: base.who === "system" ? "hub" : base.who };
   }
 
-  if (mtype !== "l9_exchange" && !CHAT_TYPES.has(mtype)) return null;
+  if (mtype !== "envelope_exchange" && !CHAT_TYPES.has(mtype)) return null;
   if (pingOf(content)) return null;
   // A reaction is drawn on the message it's on, never as a line of its own.
-  if ((l9.header as Record<string, unknown> | undefined)?.subkind === "reaction" || raw.reacts) return null;
+  if ((envelope.header as Record<string, unknown> | undefined)?.subkind === "reaction" || raw.reacts) return null;
 
   const notice = noticeOf(content);
   if (notice) {

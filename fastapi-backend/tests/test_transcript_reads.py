@@ -30,7 +30,7 @@ def _record(n: int, *, stamped: bool = True) -> TranscriptRecord:
         subkind=None,
         content={
             "content": f"message {n}",
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": message_format.live_episode_urn(ROOM)},

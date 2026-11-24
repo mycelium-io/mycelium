@@ -55,7 +55,7 @@ def said(n: int, sender: str, text: str, minute: int, episode: str | None = None
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": ep},

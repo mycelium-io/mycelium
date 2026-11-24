@@ -273,7 +273,7 @@ async def test_the_engines_own_posts_never_feed_the_next_run(
 
 @pytest.mark.asyncio
 async def test_system_frames_never_reach_the_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A ``knowledge`` push projects as an ``l9_knowledge`` frame whose content is
+    """A ``knowledge`` push projects as an ``envelope_knowledge`` frame whose content is
     a serialized envelope. Reading by type keeps it out of the corpus."""
     _knowledge(_ROOM, "k-1", at=_T0)
     _chat(_ROOM, "m-1", sender="agent-a", text="Plain prose.", at=_T0 + timedelta(minutes=1))
@@ -286,11 +286,11 @@ async def test_system_frames_never_reach_the_prompt(monkeypatch: pytest.MonkeyPa
 
     assert result is not None
     assert "Plain prose." in prompts[0]
-    assert '"l9"' not in prompts[0]
+    assert '"envelope"' not in prompts[0]
     assert "memory updated" not in prompts[0]
     body = read_memory_file(get_room_dir(_ROOM), synthesizer.SYNTHESIS_KEY)
     assert body is not None
-    assert '"l9"' not in body[1]
+    assert '"envelope"' not in body[1]
 
 
 @pytest.mark.asyncio
@@ -492,5 +492,5 @@ def test_prose_messages_reads_the_room_by_type() -> None:
     assert [m.content for m in chat] == ["said out loud"]
     # The frame is in the room's feed — it is the *type* that excludes it here.
     feed = persister.room_conversation(_ROOM)
-    assert any(m.message_type == "l9_knowledge" for m in feed)
-    assert all(json.loads(m.content) for m in feed if m.message_type == "l9_knowledge")
+    assert any(m.message_type == "envelope_knowledge" for m in feed)
+    assert all(json.loads(m.content) for m in feed if m.message_type == "envelope_knowledge")

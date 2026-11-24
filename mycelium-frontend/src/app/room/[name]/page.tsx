@@ -54,7 +54,8 @@ function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string;
   const latest = episodes[0];
   const s = latest.subkind ?? latest.outcome;
   if (s === "rejected") return { text: "rejected", color: "var(--yellow)" };
-  return { text: "converged", color: "var(--green)" };
+  // A run ends resolved; an older record may say converged.
+  return { text: s === "converged" ? "converged" : "resolved", color: "var(--green)" };
 }
 
 /** `useSearchParams` suspends on the static prerender pass, so the room's body

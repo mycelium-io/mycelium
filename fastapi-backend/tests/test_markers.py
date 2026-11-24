@@ -38,18 +38,18 @@ def test_parse_lifts_only_confidence_and_stance():
 def test_stance_prefers_the_payload_the_reply_route_wrote():
     content = {
         "content": "sure [[mycelium: stance=reject]]",
-        "l9": {"payload": {"type": "reply", "data": {"action": "accept"}}},
+        "envelope": {"payload": {"type": "reply", "data": {"action": "accept"}}},
     }
     assert markers.stance_of(content) == "accept"
 
 
 def test_stance_falls_back_to_a_marker_left_in_the_prose():
-    content = {"content": "Blocked: no rollback plan. [[mycelium: stance=block]]", "l9": {}}
+    content = {"content": "Blocked: no rollback plan. [[mycelium: stance=block]]", "envelope": {}}
     assert markers.stance_of(content) == "reject"
 
 
 def test_no_stance_is_none():
-    assert markers.stance_of({"content": "thinking about it", "l9": {}}) is None
+    assert markers.stance_of({"content": "thinking about it", "envelope": {}}) is None
     assert markers.stance_of({}) is None
 
 

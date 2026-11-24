@@ -26,6 +26,7 @@ from app.schemas import (
 )
 from app.services import actor, approvals, principals, room_people
 from app.services.filesystem import room_exists
+from app.services.message_format import envelope_of
 from app.services.persister import read_id, record_episode
 
 router = APIRouter(prefix="/rooms/{room_name}/asks", tags=["asks"])
@@ -46,7 +47,7 @@ async def create_ask(room_name: str, body: AskCreate, request: Request) -> AskPo
     reason = principals.post_rejection_reason(room_name, handle, allow_unregistered=False)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
-    last = (_last_tick.get((room_name, handle)) or {}).get("l9") or {}
+    last = envelope_of(_last_tick.get((room_name, handle)) or {})
     recent = ((last.get("header") or {}).get("message") or {}).get("episode")
     try:
         ask, record, task = await approvals.create(

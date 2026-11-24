@@ -10,7 +10,7 @@ pydantic model tree. It does two things:
 1. **Read** a recorded message: pull the sender, recipients, message id, kind,
    and the human-facing text.
 2. **Build a reply**: an ``exchange`` envelope parented on the message it
-   answers, wrapped in a content dict under the additive ``l9`` key.
+   answers, wrapped in a content dict under the additive ``envelope`` key.
 
 The reply is emitted in the **exact shape** the backend's
 ``message_format.envelope_to_dict(message_format.build_envelope(kind=exchange, ...))`` produces, so the
@@ -40,7 +40,14 @@ LEGACY_URN_PREFIXES = {
 }
 
 # The additive key a message rides under inside a message's content JSON.
-CONTENT_ENVELOPE_KEY = "l9"
+CONTENT_ENVELOPE_KEY = "envelope"
+# The key older records carry their envelope under; read, never written.
+LEGACY_CONTENT_ENVELOPE_KEY = "l9"
+# How a frame carrying a whole recorded envelope names its ``message_type``
+# (``envelope_exchange``, ``envelope_knowledge``, ...), and how an older hub
+# named it.
+FRAME_TYPE_PREFIX = "envelope_"
+LEGACY_FRAME_TYPE_PREFIX = "l9_"
 
 # The content field carrying the human-facing message body (matches the HTTP
 # ``MessageCreate.content`` semantics). A connector reads it to prompt the turn
@@ -195,7 +202,7 @@ def build_reply_content(
     payload_type: str = "reply",
     payload_data: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a full content dict for an agent reply: ``{content, l9: <envelope>}``.
+    """Build a full content dict for an agent reply: ``{content, envelope: <envelope>}``.
 
     The envelope is an ``exchange`` (no subkind, always valid), with ``sender``
     as the first actor and ``recipients`` after it, parented on ``parents`` (the
@@ -216,10 +223,26 @@ def build_reply_content(
     )
 
 
-def envelope_of(content: dict[str, Any]) -> dict[str, Any] | None:
-    """The ``l9`` envelope embedded in a content dict, if any."""
-    env = content.get(CONTENT_ENVELOPE_KEY)
-    return env if isinstance(env, dict) else None
+def envelope_of(content: dict[str, Any]) -> dict[str, Any]:
+    """The envelope embedded in a content dict, or ``{}`` if it has none.
+
+    Reads :data:`CONTENT_ENVELOPE_KEY`, then :data:`LEGACY_CONTENT_ENVELOPE_KEY`
+    for a record written before the key was renamed.
+    """
+    env = content.get(CONTENT_ENVELOPE_KEY) or content.get(LEGACY_CONTENT_ENVELOPE_KEY)
+    return env if isinstance(env, dict) else {}
+
+
+def frame_kind(message_type: str) -> str | None:
+    """The envelope kind a frame's ``message_type`` names (``envelope_exchange``
+    is ``exchange``), or ``None`` for a frame that is not a recorded envelope.
+
+    Accepts the ``l9_<kind>`` spelling an older hub sends.
+    """
+    for prefix in (FRAME_TYPE_PREFIX, LEGACY_FRAME_TYPE_PREFIX):
+        if message_type.startswith(prefix):
+            return message_type.removeprefix(prefix)
+    return None
 
 
 def _actors(content: dict[str, Any]) -> list[dict[str, Any]]:
@@ -315,7 +338,7 @@ def human_text_of(content: dict[str, Any]) -> str:
     """The human-facing body a spawned turn should read.
 
     Prefers the canonical ``content`` field; otherwise joins every string leaf
-    outside the ``l9`` envelope (so a message that carried its text elsewhere
+    outside the envelope (so a message that carried its text elsewhere
     still reaches the agent).
     """
     text = content.get(CONTENT_TEXT_KEY)
@@ -323,7 +346,7 @@ def human_text_of(content: dict[str, Any]) -> str:
         return text
     parts: list[str] = []
     for key, value in content.items():
-        if key == CONTENT_ENVELOPE_KEY:
+        if key in (CONTENT_ENVELOPE_KEY, LEGACY_CONTENT_ENVELOPE_KEY):
             continue
         parts.extend(t for t in _iter_text(value) if t.strip())
     return "\n".join(parts)

@@ -91,11 +91,11 @@ function envelope(room: string, id: string, payload: Record<string, unknown>): R
   return {
     id,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     room_name: room,
     episode: live,
     content: {
-      l9: {
+      envelope: {
         header: {
           kind: "exchange",
           message: { id, parents: [], episode: live },

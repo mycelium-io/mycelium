@@ -13,7 +13,7 @@
  * A change to a payload's shape lands here once, not once per surface.
  */
 
-import { NOTICE_TYPE, PING_TYPE, noticeOf, pingOf } from "@/lib/threads";
+import { NOTICE_TYPE, PING_TYPE, envelopeOf, frameType, noticeOf, pingOf } from "@/lib/threads";
 import type { MessageReactions } from "@/lib/api";
 import { conductorLineOf, type ConductorLine } from "@/lib/conductor-line";
 import { answerOf, askOf, type ApprovalAsk, type AskReply } from "@/lib/approvals";
@@ -124,7 +124,7 @@ export function withReaction(reactions: MessageReactions[], emoji: string, who: 
 export const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
 
 const messageType = (msg: Record<string, unknown>): string =>
-  (msg.message_type as string) || (msg.type as string) || "unknown";
+  frameType((msg.message_type as string) || (msg.type as string) || "unknown");
 
 /**
  * The envelope a wire message carries, unwrapped.
@@ -212,7 +212,7 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       content = `${key} v${version} by ${by}`;
       break;
     }
-    case "l9_exchange": {
+    case "envelope_exchange": {
       // A ping rides the exchange kind like everything else, so it has to be
       // recognized before the prose unwrap below — which would otherwise turn
       // it into an empty chat row from `system`, the one shape a thread exists
@@ -260,10 +260,10 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       mtype = recipient ? "direct" : "broadcast";
       break;
     }
-    case "l9_commit": {
+    case "envelope_commit": {
       // Unwrap the commit message envelope into the coordination_consensus shape
       // the channel notice row and the message inspector both read.
-      const envelope = (raw.l9 as Record<string, unknown> | undefined) ?? {};
+      const envelope = envelopeOf(raw) ?? {};
       const header = (envelope.header as Record<string, unknown> | undefined) ?? {};
       const payload = (envelope.payload as Record<string, unknown> | undefined) ?? {};
       const data = (payload.data as Record<string, unknown> | undefined) ?? {};
@@ -287,11 +287,11 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       mtype = "coordination_consensus";
       break;
     }
-    case "l9_knowledge": {
+    case "envelope_knowledge": {
       // A memory push (e.g. a compiled task landing in the room) rides as
       // a "knowledge" message envelope. Recognized as its own system notice rather
       // than falling to the unhandled-type fallback.
-      const envelope = (raw.l9 as Record<string, unknown> | undefined) ?? {};
+      const envelope = envelopeOf(raw) ?? {};
       const payload = (envelope.payload as Record<string, unknown> | undefined) ?? {};
       const data = (payload.data as Record<string, unknown> | undefined) ?? {};
       content = (raw.content as string) || `${(data.key as string) ?? "memory"} updated`;
@@ -300,7 +300,7 @@ export function parseEvent(msg: Record<string, unknown>): Event {
     }
     default:
       // A message type nothing above handles would otherwise vanish from the
-      // channel view without a trace (exactly how l9_exchange hid). Surface it
+      // channel view without a trace (as an unhandled exchange once did). Surface it
       // loudly so an unsupported/renamed type can't fail silently again.
       console.warn(
         `[mycelium] EventStream: unhandled message_type "${mtype}" — ` +
@@ -320,8 +320,7 @@ export function parseEvent(msg: Record<string, unknown>): Event {
   // An amendment names the message it revises: over SSE that's the message's
   // subkind + parents, on the REST snapshot the backend has already folded it and
   // only the `edited_at` stamp survives.
-  const envelopeHeader = ((raw.l9 as Record<string, unknown> | undefined)?.header ??
-    {}) as Record<string, unknown>;
+  const envelopeHeader = (envelopeOf(raw)?.header ?? {}) as Record<string, unknown>;
   const parents = (envelopeHeader.message as Record<string, unknown> | undefined)?.parents;
   const amends =
     envelopeHeader.subkind === "amend" && Array.isArray(parents) && typeof parents[0] === "string"

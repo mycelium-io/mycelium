@@ -13,13 +13,13 @@ def _message(text: str, *, subkind: str | None = None, parents: list[str] | None
     header: dict = {"kind": "exchange", "message": {"parents": parents or []}}
     if subkind:
         header["subkind"] = subkind
-    return {"content": text, "l9": {"header": header, "payload": {"type": "message"}}}
+    return {"content": text, "envelope": {"header": header, "payload": {"type": "message"}}}
 
 
 def test_live_chat_is_unwrapped_from_its_envelope() -> None:
-    """Without this the tail drops every live message: chat rides SSE as l9_exchange."""
+    """Without this the tail drops every live message: chat rides SSE as envelope_exchange."""
     line = chat_line(
-        "l9_exchange", {}, _message("hello over the live channel"), "growth", "12:00:00", ""
+        "envelope_exchange", {}, _message("hello over the live channel"), "growth", "12:00:00", ""
     )
 
     assert line is not None
@@ -28,12 +28,12 @@ def test_live_chat_is_unwrapped_from_its_envelope() -> None:
 
 
 def test_a_control_payload_carries_no_prose() -> None:
-    assert chat_line("l9_exchange", {}, _message(""), "growth", "12:00:00", "") is None
+    assert chat_line("envelope_exchange", {}, _message(""), "growth", "12:00:00", "") is None
 
 
 def test_a_live_amendment_reads_as_an_edit_of_what_it_revises() -> None:
     line = chat_line(
-        "l9_exchange",
+        "envelope_exchange",
         {},
         _message(
             "the TTL is 300s", subkind="amend", parents=["a1b2c3d4-dead-beef-0000-000000000000"]

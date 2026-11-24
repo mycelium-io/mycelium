@@ -102,7 +102,7 @@ def test_ping_payload_matches_contract():
             message_id="m1",
         )
     )
-    payload = content["l9"]["payload"]
+    payload = content["envelope"]["payload"]
     assert payload["type"] == g["payload_type"]
     assert sorted(payload["data"]) == sorted(g["payload_fields"])
     # The whole of it: a ping names the thread and never echoes what was said.
@@ -130,7 +130,7 @@ def test_notice_payload_matches_contract():
             kind="action",
         )
     )
-    payload = content["l9"]["payload"]
+    payload = content["envelope"]["payload"]
     assert payload["type"] == g["payload_type"]
     assert payload["data"]["subkind"] in g["subkinds"]
     assert payload["data"]["key"] == "work/ship-auth"

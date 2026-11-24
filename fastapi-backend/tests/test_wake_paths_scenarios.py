@@ -67,7 +67,7 @@ async def test_a_reply_does_not_ask_whoever_its_sender_last_heard_from(room):
 
     reply = room.log.records[-1]
     assert reply.sender == AGENT
-    assert PEER in [a["id"] for a in reply.content["l9"]["header"]["participants"]["actors"]]
+    assert PEER in [a["id"] for a in reply.content["envelope"]["header"]["participants"]["actors"]]
     got = await wake_paths.decided(room, PEER)
     assert got == wake_paths.Decided(doorbell=None, awaited=False, digest=False)
 

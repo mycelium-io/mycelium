@@ -31,7 +31,7 @@ def _said(
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": ep},
@@ -46,7 +46,10 @@ def _said(
 
 def _notice(n: int, minutes_ago: int, **data: str) -> TranscriptRecord:
     record = _said(n, "system", "", minutes_ago)
-    record.content["l9"]["payload"] = {"type": message_format.NOTICE_PAYLOAD_TYPE, "data": data}
+    record.content["envelope"]["payload"] = {
+        "type": message_format.NOTICE_PAYLOAD_TYPE,
+        "data": data,
+    }
     return record
 
 

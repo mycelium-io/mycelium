@@ -18,7 +18,7 @@ from typing import Any
 
 from rich.markup import escape
 
-from mycelium.message_format import payload_data_of, payload_type_of
+from mycelium.message_format import frame_kind, payload_data_of, payload_type_of
 from mycelium.names import who
 
 #: The conductor engine's handle, whose posts are drawn from their structured line.
@@ -125,7 +125,7 @@ class LiveView:
         return line
 
     def _render(self, frame: dict[str, Any]) -> str | None:
-        if frame.get("message_type") != "l9_exchange":
+        if frame_kind(str(frame.get("message_type") or "")) != "exchange":
             return None
         try:
             data = json.loads(frame.get("content") or "{}")

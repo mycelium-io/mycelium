@@ -25,6 +25,7 @@ import typer
 
 from mycelium.client import answered
 from mycelium.client import typed_client as _typed_client
+from mycelium.message_format import envelope_of, frame_kind
 from mycelium.names import who
 
 if TYPE_CHECKING:
@@ -146,10 +147,11 @@ def readable(message_type: str, content: str) -> str:
     """The words a person reads for a message, never a raw protocol record.
 
     A memory update or the end of a negotiation arrives as its whole envelope
-    (``l9_knowledge``, ``l9_commit``), which printed as a screen of JSON. The
-    line it carries is what's said; one with none is named plainly.
+    (``envelope_knowledge``, ``envelope_commit``), which printed as a screen of
+    JSON. The line it carries is what's said; one with none is named plainly.
     """
-    if not message_type.startswith("l9_"):
+    kind = frame_kind(message_type)
+    if kind is None:
         return content
     try:
         frame = json_module.loads(content)
@@ -160,14 +162,15 @@ def readable(message_type: str, content: str) -> str:
     text = frame.get("content")
     if isinstance(text, str) and text.strip():
         return text
-    header = (frame.get("l9") or {}).get("header") or {}
-    if message_type == "l9_commit":
+    envelope = envelope_of(frame)
+    header = envelope.get("header") or {}
+    if kind == "commit":
         outcome = header.get("subkind") or "ended"
         return f"Negotiation {outcome}."
-    if message_type == "l9_knowledge":
-        data = ((frame.get("l9") or {}).get("payload") or {}).get("data") or {}
+    if kind == "knowledge":
+        data = (envelope.get("payload") or {}).get("data") or {}
         return f"Memory updated: {data.get('key') or 'a memory'}."
-    return f"({message_type.removeprefix('l9_')} record)"
+    return f"({kind} record)"
 
 
 def thread_tasks(config: MyceliumConfig, room_name: str) -> dict[str, tuple[str, str]]:

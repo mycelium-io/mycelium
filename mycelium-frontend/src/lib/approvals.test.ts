@@ -64,7 +64,7 @@ describe("askOf", () => {
   });
 
   it("reads one from a live frame's payload", () => {
-    const content = JSON.stringify({ l9: { payload: { data: { ask: ASK } } } });
+    const content = JSON.stringify({ envelope: { payload: { data: { ask: ASK } } } });
     expect(askOf({ content, metadata: null })?.id).toBe("7e21c0a4");
   });
 

@@ -28,7 +28,7 @@ def _said(n: int, sender: str, text: str, episode: str | None = None) -> Transcr
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": episode or message_format.live_episode_urn(ROOM)},

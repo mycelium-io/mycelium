@@ -320,7 +320,7 @@ const checkoutNegotiation: MockMessage[] = (() => {
 // The message chain as persister bus frames: bare `{header, payload}` under content,
 // with the flat sender_handle/message_type/created_at the channel and Stream read.
 const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((env, i) => ({
-  message_type: `l9_${env.header.kind}`,
+  message_type: `envelope_${env.header.kind}`,
   sender_handle: env.header.participants?.actors?.[0]?.id ?? "conductor",
   created_at: iso(44 - i),
   content: env,
@@ -346,12 +346,12 @@ function checkoutPing(
   return {
     id: `ping-${message}`,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "checkout",
     episode: CHECKOUT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: {
           kind: "exchange",
           message: { id: `ping-${message}`, parents: [], episode: CHECKOUT_LIVE },
@@ -387,12 +387,12 @@ function checkoutNotice(
   return {
     id,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "checkout",
     episode: CHECKOUT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: {
           kind: "exchange",
           message: { id, parents: [], episode: CHECKOUT_LIVE },
@@ -899,7 +899,7 @@ const checkout: RoomFixture = {
   ],
   // The channel is the room's whole history, so every row on the board is a thing
   // it once filed: the chat lines below set up each filing, and the task-created
-  // notices in the `l9` feed are the filings themselves. Read top to bottom it is
+  // notices in the envelope feed are the filings themselves. Read top to bottom it is
   // one arc — set up the room, move payments to Stripe, build Apple Pay, broker
   // the launch day, file what it breaks into, then chase the double charges.
   messages: [
@@ -935,7 +935,7 @@ const checkout: RoomFixture = {
     ...checkoutNegotiation,
     { id: "a6", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
     // The room files the work the call breaks into. The two task-created notices
-    // land right after this line (see the `l9` feed below), so the chat reads
+    // land right after this line (see the envelope feed below), so the chat reads
     // "here is the work" → the tasks, in sequence.
     { id: "file1", sender_handle: "conductor", message_type: "broadcast", content: "settled: test orders thursday, apple pay on friday morning. filing the work:", created_at: iso(40) },
     { id: "a7", sender_handle: "builder", message_type: "broadcast", content: "stripe has been live a full day. 312 orders, no failed payments.", created_at: iso(30) },
@@ -1993,12 +1993,12 @@ function storefrontPing(key: string, sender: string, message: string, minutesAgo
   return {
     id: `gp-${message}`,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "storefront",
     episode: STOREFRONT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { id: `gp-${message}`, parents: [], episode: STOREFRONT_LIVE } },
         payload: { type: "ping", data: { episode, sender, message } },
       },
@@ -2018,12 +2018,12 @@ function storefrontNotice(
   return {
     id,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "storefront",
     episode: STOREFRONT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { id, parents: [], episode: STOREFRONT_LIVE } },
         payload: {
           type: "notice",
@@ -2046,12 +2046,12 @@ function storefrontKnowledge(key: string, updatedBy: string, minutesAgo: number)
   return {
     id: `gk-${key}-${minutesAgo}`,
     sender_handle: "system",
-    message_type: "l9_knowledge",
+    message_type: "envelope_knowledge",
     created_at: iso(minutesAgo),
     episode: STOREFRONT_LIVE,
     content: JSON.stringify({
       content: `memory updated → ${key}`,
-      l9: { payload: { type: "extraction", data: { key, updated_by: updatedBy, version: 3 } } },
+      envelope: { payload: { type: "extraction", data: { key, updated_by: updatedBy, version: 3 } } },
     }),
   };
 }

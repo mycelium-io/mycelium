@@ -20,7 +20,7 @@ def _memory_lines(room: str) -> list[persister.TranscriptRecord]:
 
 
 def _payload(record: persister.TranscriptRecord) -> dict:
-    return record.content["l9"]["payload"]["data"]
+    return record.content["envelope"]["payload"]["data"]
 
 
 async def _write(client: AsyncClient, room: str, key: str, value: str, who: str):

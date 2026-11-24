@@ -1,92 +1,26 @@
-# Copyright 2026 Cisco Systems, Inc. and its affiliates
-#
 # SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Mycelium Contributors
 
-# Mycelium's message models: the shape of every message the hub records.
+"""The shape of a message the hub records: a header and a payload.
+
+Built by :func:`app.services.message_format.build_envelope` and read back by
+:func:`app.services.message_format.parse_envelope`. Fields the hub never sets
+are left out; a stored message that carries others still reads, since unknown
+fields are ignored.
+"""
 
 from __future__ import annotations
 
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, RootModel
-
-
-class MessageSchema(RootModel[Any]):
-    root: Any = Field(
-        ...,
-        description="Combined JSON Schema for the message models.",
-        title="MessageSchema",
-    )
-
-
-class Actor(BaseModel):
-    id: str = Field(..., title="Id")
-    role: str = Field(..., title="Role")
-    attestation: str | None = Field(None, title="Attestation")
-
-
-class Epistemic(BaseModel):
-    pass
-
-
-class Provenance(BaseModel):
-    pass
-
-
-class Semantic(BaseModel):
-    schema_id: str = Field(..., title="Schema Id")
-    ontology_ref: str = Field(..., title="Ontology Ref")
-    provenance: Provenance | None = None
-
-
-class Context(BaseModel):
-    topic: str = Field(..., title="Topic")
-    epistemic: Epistemic | None = None
-    semantic: Semantic | None = None
-
-
-class MessageRef(BaseModel):
-    id: str = Field(..., title="Id")
-    parents: list[str] = Field(
-        ...,
-        description="Ordered list of parent message IDs. Empty list for root messages.",
-        title="Parents",
-    )
-    episode: str = Field(..., title="Episode")
-
-
-class Episode(BaseModel):
-    id: str = Field(..., title="Id")
-    messages: list[MessageRef] = Field(..., title="Messages")
-
-
-class ParticipantSet(BaseModel):
-    actors: list[Actor] = Field(..., title="Actors")
-    groups: dict[str, Any] | None = Field(..., title="Groups")
-
-
-class PolicyLabel(BaseModel):
-    sensitivity: str = Field(..., title="Sensitivity")
-    propagation: str = Field(..., title="Propagation")
-    retention_policy: str = Field(..., title="Retention Policy")
-
-
-class TaskWork(BaseModel):
-    id: str = Field(..., title="Id")
-    assigned_to: str = Field(..., title="Assigned To")
-    task_description: str = Field(..., title="Task Description")
-    status: str = Field(..., title="Status")
-    episodes: list[Episode] = Field(..., title="Episodes")
-
-
-class Team(BaseModel):
-    id: str = Field(..., title="Id")
-    team_members: list[str] = Field(..., title="Team Members")
-    tasks: list[TaskWork] = Field(..., title="Tasks")
+from pydantic import BaseModel, Field
 
 
 class Kind(Enum):
+    """What a message is: the kinds the subkind table
+    (``message_format.VALID_SUBKINDS``) is keyed by."""
+
     intent = "intent"
     contingency = "contingency"
     exchange = "exchange"
@@ -94,24 +28,56 @@ class Kind(Enum):
     knowledge = "knowledge"
 
 
+class Actor(BaseModel):
+    """Someone a message is from or to: a handle and the role it speaks in."""
+
+    id: str
+    role: str
+
+
+class ParticipantSet(BaseModel):
+    """Who a message involves: its sender first, then its recipients."""
+
+    actors: list[Actor]
+    groups: dict[str, Any] | None = Field(...)
+
+
+class MessageRef(BaseModel):
+    """A message's id, the ids it answers, and the episode it belongs to."""
+
+    id: str
+    parents: list[str] = Field(..., description="Parent message ids; empty for a root message.")
+    episode: str
+
+
+class Context(BaseModel):
+    """What a message is about: the room's topic URN."""
+
+    topic: str
+
+
 class MessageHeader(BaseModel):
-    protocol: str = Field(..., title="Protocol")
-    subprotocol: str = Field(..., title="Subprotocol")
-    version: str = Field(..., title="Version")
+    """Everything about a message except what it carries."""
+
+    protocol: str
+    subprotocol: str
+    version: str
     kind: Kind
-    subkind: str | None = Field(None, title="Subkind")
+    subkind: str | None = None
     participants: ParticipantSet
     message: MessageRef | None = None
-    policy: PolicyLabel | None = None
-    attributes: dict[str, Any] | None = Field(None, title="Attributes")
     context: Context | None = None
 
 
 class MessagePayload(BaseModel):
-    type: str = Field(..., title="Type")
-    data: dict[str, Any] = Field(..., title="Data")
+    """What a message carries: a type and its data."""
+
+    type: str
+    data: dict[str, Any]
 
 
 class MyceliumMessage(BaseModel):
+    """One recorded message's envelope."""
+
     header: MessageHeader
     payload: MessagePayload

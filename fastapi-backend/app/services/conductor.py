@@ -763,13 +763,13 @@ class ConductorEngine:
                 return False
             if record_episode(record) != episode:
                 return False
-            payload = (record.content.get("l9") or {}).get("payload") or {}
+            payload = message_format.envelope_of(record.content).get("payload") or {}
             return payload.get("type") not in _NOT_A_REPLY
 
         def on_reply(record: TranscriptRecord) -> None:
             answered.append(record)
-            env = record.content.get("l9")
-            if isinstance(env, dict):
+            env = message_format.envelope_of(record.content)
+            if env:
                 ep.messages.append(env)
 
         prose = await turns.addressed_turn(

@@ -247,7 +247,7 @@ async def test_reply_stamps_the_token_handle_on_the_message_actor(
     assert resp.json()["handle"] == "alice"
     replies = [r for r in persister.load_transcript(ROOM) if r.content.get("content") == "x"]
     assert [r.sender for r in replies] == ["alice"]
-    actors = replies[0].content["l9"]["header"]["participants"]["actors"]
+    actors = replies[0].content["envelope"]["header"]["participants"]["actors"]
     assert actors[0]["id"] == "alice"
 
 

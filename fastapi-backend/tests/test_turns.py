@@ -114,7 +114,7 @@ async def test_a_reply_the_predicate_rejects_is_skipped():
     persister.log.record(position_record("a", role="human", prose="human a"))
 
     def only_agents(record) -> bool:
-        actors = record.content["l9"]["header"]["participants"]["actors"]
+        actors = record.content["envelope"]["header"]["participants"]["actors"]
         return actors[0].get("role") != "human"
 
     out = await turns.addressed_turn(

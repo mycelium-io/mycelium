@@ -32,7 +32,7 @@ fields a message has:
 =============  ================================================================
 
 By default the search covers what was *said* (the prose message types); the
-structured frames the feed also carries (``l9_*``, coordination lifecycle)
+structured frames the feed also carries (``envelope_*``, coordination lifecycle)
 hold serialized envelopes rather than text, so they come in only when a
 ``type:`` names them.
 """
@@ -140,7 +140,7 @@ _side_cache: dict[str, tuple[tuple[int, int], dict[str, Side]]] = {}
 
 
 def _side_of(record: persister.TranscriptRecord) -> Side:
-    header = (record.content.get("l9") or {}).get("header") or {}
+    header = message_format.envelope_of(record.content).get("header") or {}
     actors = ((header.get("participants") or {}).get("actors")) or []
     ids = [a.get("id") for a in actors if isinstance(a, dict) and isinstance(a.get("id"), str)]
     recipients = tuple(h for h in ids[1:] if h and h != message_format.SYSTEM_ACTOR_ID)

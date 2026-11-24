@@ -494,7 +494,7 @@ class TestPing:
         assert len(published) == 1
         channel, frame = published[0]
         assert channel == room_channel(ROOM)
-        assert frame["message_type"] == "l9_exchange"
+        assert frame["message_type"] == "envelope_exchange"
         assert frame["episode"] == message_format.live_episode_urn(ROOM)
         assert THREAD in frame["content"]
 

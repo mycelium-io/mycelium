@@ -22,6 +22,6 @@
   "raise_up_types": [
     "coordination_join",
     "coordination_consensus",
-    "l9_knowledge"
+    "envelope_knowledge"
   ]
 }

@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalUrn,
+  envelopeOf,
+  frameType,
   isLiveEpisode,
   liveEpisodeUrn,
   noticeLabel,
@@ -18,7 +20,7 @@ const THREAD = "urn:mycelium:episode:atlas:t3aa11bb";
 
 function pingFrame(episode: string, sender?: string, message?: string) {
   return {
-    l9: {
+    envelope: {
       header: { kind: "exchange", message: { episode: liveEpisodeUrn(ROOM) } },
       payload: { type: "ping", data: { episode, ...(sender ? { sender } : {}), ...(message ? { message } : {}) } },
     },
@@ -55,6 +57,26 @@ describe("the room, and the threads inside it", () => {
   });
 });
 
+describe("reading a recorded envelope", () => {
+  it("reads the envelope key, and the older l9 key a record may still carry", () => {
+    const env = { header: { kind: "exchange" } };
+    expect(envelopeOf({ envelope: env })).toBe(env);
+    expect(envelopeOf({ l9: env })).toBe(env);
+    expect(envelopeOf({ content: "hi" })).toBeNull();
+    expect(envelopeOf(null)).toBeNull();
+  });
+
+  it("reads an older hub's l9_<kind> frame type as envelope_<kind>", () => {
+    expect(frameType("l9_exchange")).toBe("envelope_exchange");
+    expect(frameType("envelope_knowledge")).toBe("envelope_knowledge");
+    expect(frameType("broadcast")).toBe("broadcast");
+  });
+
+  it("finds a ping under the older key", () => {
+    expect(pingOf({ l9: { payload: { type: "ping", data: { episode: THREAD } } } })?.episode).toBe(THREAD);
+  });
+});
+
 describe("reading a ping", () => {
   it("takes the thread from the payload, never from the frame's own episode", () => {
     // A ping rides in `live` — that is what makes it reach the room — so the
@@ -65,12 +87,12 @@ describe("reading a ping", () => {
   });
 
   it("is not a ping when the payload is a message", () => {
-    const frame = { content: "hello", l9: { payload: { type: "message", data: {} } } };
+    const frame = { content: "hello", envelope: { payload: { type: "message", data: {} } } };
     expect(pingOf(frame)).toBeNull();
   });
 
   it("refuses a ping that names no thread rather than inventing one", () => {
-    expect(pingOf({ l9: { payload: { type: "ping", data: {} } } })).toBeNull();
+    expect(pingOf({ envelope: { payload: { type: "ping", data: {} } } })).toBeNull();
   });
 
   it("survives a frame with no envelope at all", () => {
@@ -82,7 +104,7 @@ describe("reading a ping", () => {
 describe("reading a notice", () => {
   function noticeFrame(data: Record<string, unknown>) {
     return {
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { episode: liveEpisodeUrn(ROOM) } },
         payload: { type: "notice", data },
       },

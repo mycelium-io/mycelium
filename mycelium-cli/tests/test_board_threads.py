@@ -699,7 +699,7 @@ LIVE = f"urn:mycelium:episode:{ROOM}:live"
 def _ping_frame() -> dict:
     """The frame the hub raises into the room when a thread moves."""
     return {
-        "l9": {
+        "envelope": {
             "header": {"kind": "exchange", "message": {"episode": LIVE}},
             "payload": {
                 "type": "ping",
@@ -712,10 +712,10 @@ def _ping_frame() -> dict:
 def _bus_frame(content: dict, sender: str = "sec") -> dict:
     """The SSE frame the hub pushes: an envelope carried as a JSON string."""
     return {
-        "message_type": "l9_exchange",
+        "message_type": "envelope_exchange",
         "sender_handle": sender,
         "content": json.dumps(content),
-        "episode": content["l9"]["header"]["message"]["episode"],
+        "episode": content["envelope"]["header"]["message"]["episode"],
     }
 
 
@@ -723,7 +723,7 @@ def _prose_frame(episode: str, text: str = "keychain, with a WebCrypto fallback"
     """The message itself, as the live stream carries it."""
     return {
         "content": text,
-        "l9": {
+        "envelope": {
             "header": {"kind": "exchange", "message": {"episode": episode, "parents": []}},
             "payload": {"type": "message"},
         },
@@ -734,7 +734,7 @@ def test_a_ping_draws_the_thread_that_moved_and_not_what_was_said() -> None:
     """The room's whole account of a thread write: which task, and who."""
     from mycelium.commands.room import chat_line
 
-    line = chat_line("l9_exchange", {}, _ping_frame(), "system", "12:00:00", "")
+    line = chat_line("envelope_exchange", {}, _ping_frame(), "system", "12:00:00", "")
     assert line is not None
     assert SHORT in line
     assert "@sec" in line
@@ -765,18 +765,18 @@ class TestTheRoomShowsThePingAndNotTheProse:
     def test_the_prose_of_a_thread_write_is_dropped_from_the_tail(self) -> None:
         from mycelium.commands.room import in_a_thread
 
-        assert in_a_thread(ROOM, "l9_exchange", {}, _prose_frame(THREAD)) is True
+        assert in_a_thread(ROOM, "envelope_exchange", {}, _prose_frame(THREAD)) is True
 
     def test_the_ping_announcing_it_is_not(self) -> None:
         """It rides the room's own episode, which is what makes it the room's line."""
         from mycelium.commands.room import in_a_thread
 
-        assert in_a_thread(ROOM, "l9_exchange", {}, _ping_frame()) is False
+        assert in_a_thread(ROOM, "envelope_exchange", {}, _ping_frame()) is False
 
     def test_a_message_to_the_room_still_draws_in_full(self) -> None:
         from mycelium.commands.room import in_a_thread
 
-        assert in_a_thread(ROOM, "l9_exchange", {}, _prose_frame(LIVE)) is False
+        assert in_a_thread(ROOM, "envelope_exchange", {}, _prose_frame(LIVE)) is False
 
     def test_a_replayed_row_is_judged_by_the_same_rule(self) -> None:
         """History arrives as a folded row carrying the episode as a plain field,
@@ -956,7 +956,7 @@ def test_a_thread_no_row_carries_is_named_by_its_id(
 
 def _notice_frame(subkind: str) -> dict:
     return {
-        "l9": {
+        "envelope": {
             "header": {"kind": "exchange", "message": {"episode": LIVE}},
             "payload": {
                 "type": "notice",

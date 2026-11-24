@@ -28,9 +28,34 @@ export const PING_PAYLOAD_TYPE = "ping";
 export const PING_PAYLOAD_FIELDS = ["episode", "sender", "message"] as const;
 
 /**
+ * The envelope inside a message's content, or null when it carries none.
+ *
+ * Content carries it under `envelope`; a record from before the key was
+ * renamed carries it under `l9`, so both are read.
+ */
+export function envelopeOf(raw: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  const envelope = raw?.envelope ?? raw?.l9 ?? null;
+  return envelope && typeof envelope === "object" ? (envelope as Record<string, unknown>) : null;
+}
+
+/** How a frame carrying a whole recorded envelope names its type: `envelope_<kind>`. */
+export const ENVELOPE_FRAME_PREFIX = "envelope_";
+const LEGACY_ENVELOPE_FRAME_PREFIX = "l9_";
+
+/**
+ * A frame's `message_type` in its current spelling: an older hub's
+ * `l9_<kind>` reads as `envelope_<kind>`, anything else is returned as is.
+ */
+export function frameType(messageType: string): string {
+  return messageType.startsWith(LEGACY_ENVELOPE_FRAME_PREFIX)
+    ? ENVELOPE_FRAME_PREFIX + messageType.slice(LEGACY_ENVELOPE_FRAME_PREFIX.length)
+    : messageType;
+}
+
+/**
  * The normalized type a ping wears once parsed.
  *
- * A ping arrives as an `l9_exchange` like any other message, so it would
+ * A ping arrives as an `envelope_exchange` like any other message, so it would
  * otherwise render as a chat row from `system` with nothing in it. Naming it
  * here is what lets the feed render it as the notice it is.
  */
@@ -91,7 +116,7 @@ export interface Ping {
  * about in its payload, so the two answer different questions.
  */
 export function pingOf(raw: Record<string, unknown> | null | undefined): Ping | null {
-  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const envelope = envelopeOf(raw);
   const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
   if (!payload || payload.type !== PING_PAYLOAD_TYPE) return null;
   const data = (payload.data ?? {}) as Record<string, unknown>;
@@ -202,7 +227,7 @@ export interface Notice {
  * "resolved" in sequence with the chat and open the same thread the row does.
  */
 export function noticeOf(raw: Record<string, unknown> | null | undefined): Notice | null {
-  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const envelope = envelopeOf(raw);
   const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
   if (!payload || payload.type !== NOTICE_PAYLOAD_TYPE) return null;
   const data = (payload.data ?? {}) as Record<string, unknown>;

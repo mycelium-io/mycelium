@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.services.message_format import envelope_of
+
 MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
 
 #: A marker and the spaces after it, so a marker at the start of a line leaves
@@ -89,7 +91,7 @@ def stance_of(content: dict[str, Any]) -> str | None:
     marker it stripped. A marker still in the prose (a human's write through
     the message route) is read next. Anything else stated no stance.
     """
-    payload = ((content.get("l9") or {}).get("payload") or {}).get("data") or {}
+    payload = (envelope_of(content).get("payload") or {}).get("data") or {}
     action = payload.get("action") if isinstance(payload, dict) else None
     if action in ("accept", "reject"):
         return action
