@@ -187,7 +187,6 @@ describe("a task is one row, and it is a thread", () => {
     outcome: "converged",
     subkind: "converged",
     participants: ["growth", "risk"],
-    metrics: null,
     assignments: { cutover: "phased" },
     tasks: ["work/cutover"],
     message_count: 7,

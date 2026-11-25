@@ -92,18 +92,17 @@ describe("parseEvent", () => {
     expect(ev.content).toBe("growth joined: argue for the phased cutover");
   });
 
-  it("summarizes a consensus with assignments, compiled rows and GAR", () => {
+  it("summarizes a consensus with assignments and compiled rows", () => {
     const ev = parseEvent({
       message_type: "coordination_consensus",
       sender_handle: "conductor",
       content: JSON.stringify({
         assignments: { cutover: "phased", owner: "growth" },
         tasks: ["t1", "t2"],
-        metrics: { gar: 1 },
       }),
       created_at: CREATED,
     });
-    expect(ev.content).toBe("cutover=phased, owner=growth · compiled → 2 rows · GAR 1.00");
+    expect(ev.content).toBe("cutover=phased, owner=growth · compiled → 2 rows");
   });
 
   it("reads memory_changed fields from the message itself when there is no content", () => {
@@ -176,7 +175,7 @@ describe("parseEvent", () => {
       content: JSON.stringify({
         envelope: {
           header: { subkind: "converged", message: { episode: "urn:e:s1" } },
-          payload: { data: { assignments: { scope: "mvp" }, metrics: { gar: 0.5 } } },
+          payload: { data: { assignments: { scope: "mvp" } } },
         },
       }),
       created_at: CREATED,
@@ -184,7 +183,6 @@ describe("parseEvent", () => {
     expect(ev.type).toBe("coordination_consensus");
     expect(ev.raw.broken).toBe(false);
     expect(ev.raw.assignments).toEqual({ scope: "mvp" });
-    expect(ev.raw.metrics).toEqual({ gar: 0.5 });
     expect(ev.raw.episode).toBe("urn:e:s1");
   });
 

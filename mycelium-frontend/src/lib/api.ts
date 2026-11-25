@@ -2457,8 +2457,8 @@ export async function fetchUsage(days = 30): Promise<UsageKpis | null> {
 // Episodes are the persisted, causally-linked message record of a coordination
 // session (one markdown file per session under `log/episodes/`). The episode
 // detail view and the metrics page read them for the causal chain and the
-// consensus metrics; wire envelopes carry empty `message.parents`, so the chain
-// lives here instead.
+// outcomes; wire envelopes carry empty `message.parents`, so the chain lives
+// here instead.
 
 export interface MessageActor {
   id: string;
@@ -2479,14 +2479,6 @@ export interface MyceliumMessage {
   payload?: { type?: string; data?: Record<string, unknown> };
 }
 
-export interface EpisodeMetrics {
-  mpc: number;
-  gar: number;
-  scr: number;
-  provenance_weight: number;
-  participants?: number;
-}
-
 export interface EpisodeSummary {
   short_id: string;
   episode: string;
@@ -2494,7 +2486,6 @@ export interface EpisodeSummary {
   outcome: string;
   subkind: string | null;
   participants: string[];
-  metrics: EpisodeMetrics | null;
   assignments: Record<string, string> | null;
   /** Memory keys of the `work/` rows the agreement compiled into. */
   tasks: string[];

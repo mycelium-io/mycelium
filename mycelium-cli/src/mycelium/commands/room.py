@@ -452,28 +452,6 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     return resolve_room(config, channel)
 
 
-def _fmt_metric(value: object) -> str:
-    """Format a metric value: 2 decimals for numbers, str() otherwise."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return f"{value:.2f}"
-    return str(value)
-
-
-def _consensus_quality_line(data: dict, indent: str) -> str | None:
-    """Render the optional consensus ``metrics`` block as a human-readable line.
-
-    Example: ``quality: MPC 0.82 · GAR 0.75 · SCR 0.25``
-    """
-    metrics = data.get("metrics")
-    if not isinstance(metrics, dict):
-        return None
-    return (
-        f"{indent}quality: MPC {_fmt_metric(metrics.get('mpc'))} "
-        f"· GAR {_fmt_metric(metrics.get('gar'))} "
-        f"· SCR {_fmt_metric(metrics.get('scr'))}"
-    )
-
-
 def _agent_owner_map(room_name: str) -> dict[str, str]:
     """Map each agent handle to its owner, for agents that declare one.
 
@@ -669,9 +647,6 @@ def _watch_room(
                 lines.append(f"              [dim]work:[/] {', '.join(tasks)}")
             for handle, task in assignments.items():
                 lines.append(f"              [cyan]{handle}[/]: {task}")
-            quality_line = _consensus_quality_line(data, "              ")
-            if quality_line:
-                lines.append(f"[dim]{quality_line}[/]")
             return "\n".join(lines)
 
         if frame_kind(mtype) == "knowledge":

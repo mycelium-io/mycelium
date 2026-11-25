@@ -14,7 +14,6 @@ function episode(over: Partial<EpisodeSummary>): EpisodeSummary {
     outcome: "resolved",
     subkind: null,
     participants: [],
-    metrics: null,
     assignments: null,
     tasks: [],
     message_count: 0,

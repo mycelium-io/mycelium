@@ -498,7 +498,7 @@ class ConductorEngine:
         try:
             # The record exists from the opening, so the run can be read while
             # it is still walking.
-            episode_state.write_episode_record(ep, outcome="open", metrics=None)
+            episode_state.write_episode_record(ep, outcome="open")
             await self._say(managed, thread, me, self._opening(run), line=open_line(run))
             outcome, why = await self._walk(managed, run, ep, me)
         finally:
@@ -584,7 +584,7 @@ class ConductorEngine:
                 }
             )
             # The record moves with the run, so an open episode shows where it is.
-            episode_state.write_episode_record(ep, outcome="open", metrics=None)
+            episode_state.write_episode_record(ep, outcome="open")
             who = ", ".join(h for h, _s in stances) or (step.to or "")
             line = protocols.edge_line(step, stance, who)
             if line is not None:
@@ -862,7 +862,7 @@ class ConductorEngine:
             await managed.post(commit, text, list_write=True)
         except Exception:
             logger.warning("conductor failed to post the outcome for %s", run.episode)
-        episode_state.write_episode_record(ep, outcome=outcome, metrics=None)
+        episode_state.write_episode_record(ep, outcome=outcome)
         self._stepped(managed.room, run.episode, outcome)
         from app.services import analytics as usage
 

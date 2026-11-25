@@ -95,21 +95,13 @@ export interface EpisodeRollup {
   tasks: number;
   /** Mean distinct agents per episode, or null with nothing to average. */
   avgParticipants: number | null;
-  /** Means over the episodes that carry quality metrics. Only converged
-   *  episodes do, so `scored` is the denominator, not `total`. */
-  scored: number;
-  mpc: number | null;
-  gar: number | null;
-  scr: number | null;
-  provenance: number | null;
   /** Newest first, for the short list on the panel. */
   recent: FleetEpisode[];
 }
 
 const EMPTY_ROLLUP: EpisodeRollup = {
   total: 0, converged: 0, rejected: 0, open: 0, tasks: 0,
-  avgParticipants: null, scored: 0, mpc: null, gar: null, scr: null, provenance: null,
-  recent: [],
+  avgParticipants: null, recent: [],
 };
 
 function mean(values: number[]): number | null {
@@ -120,7 +112,6 @@ function mean(values: number[]): number | null {
 /** Roll a fleet's episodes up into the counts the panel draws. */
 export function rollupEpisodes(episodes: FleetEpisode[]): EpisodeRollup {
   if (episodes.length === 0) return EMPTY_ROLLUP;
-  const scored = episodes.filter((e) => e.metrics != null);
   const recent = [...episodes].sort((a, b) =>
     (b.updated_at ?? "").localeCompare(a.updated_at ?? ""),
   );
@@ -132,11 +123,6 @@ export function rollupEpisodes(episodes: FleetEpisode[]): EpisodeRollup {
     open: states.filter((s) => s !== "converged" && s !== "resolved" && s !== "rejected").length,
     tasks: episodes.reduce((s, e) => s + (e.tasks?.length ?? 0), 0),
     avgParticipants: mean(episodes.map((e) => e.participants?.length ?? 0)),
-    scored: scored.length,
-    mpc: mean(scored.map((e) => e.metrics!.mpc)),
-    gar: mean(scored.map((e) => e.metrics!.gar)),
-    scr: mean(scored.map((e) => e.metrics!.scr)),
-    provenance: mean(scored.map((e) => e.metrics!.provenance_weight)),
     recent,
   };
 }

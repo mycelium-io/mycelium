@@ -2014,20 +2014,6 @@ class EnvelopeRead(BaseModel):
     payload: EnvelopePayloadRead | None = None
 
 
-class EpisodeMetricsRead(BaseModel):
-    #: The SIEP scores a negotiation run by the retired aligner carried. Records
-    #: it wrote still have them; a conductor run doesn't.
-    mpc: float = 0.0
-    gar: float = 0.0
-    scr: float = 0.0
-    provenance_weight: float = 0.0
-    participants: int | None = None
-    #: Where each member placed the conductor's pick between its own bad and
-    #: ideal outcomes (0 to 1), and the least of those.
-    satisfaction: dict[str, float] | None = None
-    min_satisfaction: float | None = None
-
-
 class EpisodeSummaryRead(BaseModel):
     short_id: str
     episode: str
@@ -2035,7 +2021,6 @@ class EpisodeSummaryRead(BaseModel):
     outcome: str
     subkind: str | None = None
     participants: list[str] = Field(default_factory=list)
-    metrics: EpisodeMetricsRead | None = None
     assignments: dict[str, str] | None = None
     #: Memory keys of the ``work/`` rows the agreement compiled into.
     tasks: list[str] = Field(default_factory=list)

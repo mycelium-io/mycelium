@@ -224,7 +224,7 @@ describe("<EventStream /> live message rendering", () => {
               subkind: "converged",
               message: { episode: "urn:mycelium:episode:sprint:s1" },
             },
-            payload: { type: "consensus", data: { assignments: { stack: "next" }, metrics: { gar: 0.8 } } },
+            payload: { type: "consensus", data: { assignments: { stack: "next" } } },
           },
         }),
       });
@@ -232,7 +232,6 @@ describe("<EventStream /> live message rendering", () => {
 
     expect(await screen.findByText("Consensus")).toBeInTheDocument();
     expect(screen.getByText("1 issue agreed", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("GAR 0.80", { exact: false })).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });

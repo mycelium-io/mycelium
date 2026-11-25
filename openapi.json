@@ -17929,16 +17929,6 @@
             "type": "array",
             "title": "Participants"
           },
-          "metrics": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EpisodeMetricsRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "assignments": {
             "anyOf": [
               {
@@ -18050,68 +18040,6 @@
         ],
         "title": "EpisodeListResponse"
       },
-      "EpisodeMetricsRead": {
-        "properties": {
-          "mpc": {
-            "type": "number",
-            "title": "Mpc",
-            "default": 0.0
-          },
-          "gar": {
-            "type": "number",
-            "title": "Gar",
-            "default": 0.0
-          },
-          "scr": {
-            "type": "number",
-            "title": "Scr",
-            "default": 0.0
-          },
-          "provenance_weight": {
-            "type": "number",
-            "title": "Provenance Weight",
-            "default": 0.0
-          },
-          "participants": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Participants"
-          },
-          "satisfaction": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Satisfaction"
-          },
-          "min_satisfaction": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min Satisfaction"
-          }
-        },
-        "type": "object",
-        "title": "EpisodeMetricsRead"
-      },
       "EpisodeSummaryRead": {
         "properties": {
           "short_id": {
@@ -18147,16 +18075,6 @@
             },
             "type": "array",
             "title": "Participants"
-          },
-          "metrics": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EpisodeMetricsRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "assignments": {
             "anyOf": [

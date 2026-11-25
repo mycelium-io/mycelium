@@ -286,7 +286,7 @@ const checkoutMessageChain: MyceliumMessage[] = [
     },
     payload: {
       type: "consensus",
-      data: { assignments: CHECKOUT_CONSENSUS, metrics: { mpc: 0.86, gar: 0.79, scr: 0.0 } },
+      data: { assignments: CHECKOUT_CONSENSUS },
     },
   },
 ];
@@ -414,7 +414,6 @@ const checkoutEpisodeSummary: EpisodeSummary = {
   outcome: "converged",
   subkind: "converged",
   participants: ["operator", "builder", "conductor"],
-  metrics: { mpc: 0.86, gar: 0.79, scr: 0.91, provenance_weight: 0.74, participants: 3 },
   assignments: { launch: "friday am" },
   tasks: ["work/turn-on-apple-pay", "work/remove-old-card-form"],
   message_count: 3,
@@ -434,7 +433,6 @@ const checkoutGatedEpisode: EpisodeSummary = {
   outcome: "open",
   subkind: null,
   participants: ["builder", "operator", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 5,
@@ -472,7 +470,6 @@ const checkoutFanOutEpisode: EpisodeSummary = {
   outcome: "open",
   subkind: null,
   participants: ["operator", "builder", "reviewer", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 4,
@@ -508,7 +505,6 @@ const checkoutRoundRobinEpisode: EpisodeSummary = {
   outcome: "resolved",
   subkind: null,
   participants: ["builder", "reviewer", "operator", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 8,
@@ -544,7 +540,6 @@ const checkoutReleaseEpisode: EpisodeSummary = {
   outcome: "open",
   subkind: null,
   participants: ["builder", "reviewer", "operator", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 14,
@@ -933,7 +928,7 @@ const checkout: RoomFixture = {
     // broadcast; the conductor reads it and emits a coordination_tick
     // from it. The chat is the source (see checkoutMoves).
     ...checkoutNegotiation,
-    { id: "a6", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
+    { id: "a6", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE }), created_at: iso(41), episode: CHECKOUT_EPISODE },
     // The room files the work the call breaks into. The two task-created notices
     // land right after this line (see the envelope feed below), so the chat reads
     // "here is the work" → the tasks, in sequence.
@@ -1479,8 +1474,7 @@ const pricing: RoomFixture = {
       outcome: "open",
       subkind: null,
       participants: ["finance", "growth", "conductor"],
-      metrics: null,
-      assignments: null,
+          assignments: null,
       tasks: [],
       message_count: 4,
       updated_at: iso(9),

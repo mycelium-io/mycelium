@@ -71,7 +71,7 @@ const pricingTimeline: StreamStep[] = [
   { delayMs: 1600, message: say("s9", "growth", "Deal. $22 a month for two bags.") },
   { delayMs: 1500, message: tick("s10", 3, "growth", "accept", { price: "22", bags: "2", billing: "monthly" }) },
   { delayMs: 1400, message: tick("s11", 3, "finance", "accept", { price: "22", bags: "2", billing: "monthly" }) },
-  { delayMs: 1800, message: { id: "s12", sender_handle: "backend", message_type: "coordination_consensus", content: JSON.stringify({ plan: "subscription price agreed", assignments: { price: "22", bags: "2", billing: "monthly" }, plan_file: "plan/tasks.md", episode: PRICING_EPISODE, metrics: { gar: 0.86 } }), episode: PRICING_EPISODE } },
+  { delayMs: 1800, message: { id: "s12", sender_handle: "backend", message_type: "coordination_consensus", content: JSON.stringify({ plan: "subscription price agreed", assignments: { price: "22", bags: "2", billing: "monthly" }, plan_file: "plan/tasks.md", episode: PRICING_EPISODE }), episode: PRICING_EPISODE } },
 ];
 
 const TIMELINES: Record<string, StreamStep[]> = {

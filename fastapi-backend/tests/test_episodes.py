@@ -50,7 +50,6 @@ async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: 
                 payload_type="reply",
             )
         )
-    metrics = {"satisfaction": {"alice": 0.9, "bob": 0.8}, "min_satisfaction": 0.8}
     outcome = "rejected" if broken else "converged"
     add(
         kind=Kind.commit,
@@ -59,15 +58,14 @@ async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: 
         sender="conductor",
         recipients=["alice", "bob"],
         payload_type="outcome",
-        payload_data={"metrics": metrics},
     )
-    episode_state.write_episode_record(ep, outcome=outcome, metrics=metrics)
-    return ep, metrics
+    episode_state.write_episode_record(ep, outcome=outcome)
+    return ep
 
 
 @pytest.mark.asyncio
 async def test_list_episodes_returns_summary(client):
-    _ep, metrics = await _seed_episode(client, "sprint")
+    await _seed_episode(client, "sprint")
 
     resp = await client.get("/api/rooms/sprint/episodes")
     assert resp.status_code == 200
@@ -81,9 +79,6 @@ async def test_list_episodes_returns_summary(client):
     assert summary["participants"] == ["alice", "bob"]
     assert summary["tasks"] == []
     assert summary["message_count"] > 0
-    # Metrics are lifted straight off the commit envelope, not the markdown.
-    assert summary["metrics"]["satisfaction"] == metrics["satisfaction"]
-    assert summary["metrics"]["min_satisfaction"] == metrics["min_satisfaction"]
 
 
 @pytest.mark.asyncio
@@ -219,7 +214,7 @@ def _flow_record(outcome: str, trace: list[dict], *, within: str | None = None) 
             "payload": {"type": "outcome", "data": {}},
         }
     )
-    episode_state.write_episode_record(ep, outcome=outcome, metrics=None)
+    episode_state.write_episode_record(ep, outcome=outcome)
     return f"log/episodes/{ep.short_id}"
 
 

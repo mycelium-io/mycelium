@@ -198,11 +198,6 @@ export function parseEvent(msg: Record<string, unknown>): Event {
       if (!broken && tasks.length) {
         content += ` · compiled → ${tasks.length} ${tasks.length === 1 ? "row" : "rows"}`;
       }
-      {
-        const metrics = raw.metrics as Record<string, unknown> | undefined;
-        const gar = metrics && typeof metrics === "object" ? metrics.gar : undefined;
-        if (typeof gar === "number" && Number.isFinite(gar)) content += ` · GAR ${gar.toFixed(2)}`;
-      }
       break;
     }
     case "memory_changed": {
@@ -278,7 +273,6 @@ export function parseEvent(msg: Record<string, unknown>): Event {
         protocol: data.protocol,
         steps: data.steps,
         assignments: data.assignments,
-        metrics: data.metrics,
         episode: message?.episode,
         // A conductor run's close line, for the channel's line about how the
         // run ended.

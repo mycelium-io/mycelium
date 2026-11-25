@@ -14,7 +14,7 @@ Mycelium is a thin FastAPI hub and local files. There is no database.
 
 All model calls go through **Pi**; there is no litellm.
 
-**Messages.** Every message on a room's channel is a Mycelium packet, Mycelium's own JSON format. The causal record of each thread and run is kept at `log/episodes/{id}.md`, with the quality metrics (MPC, GAR, SCR) old negotiations recorded.
+**Messages.** Every message on a room's channel is a Mycelium packet, Mycelium's own JSON format. The causal record of each thread and run is kept at `log/episodes/{id}.md`.
 
 **A2A bridge.** Outbound, a remote A2A agent is registered as a room member, and a hub-held seat calls it over plain HTTPS when it's mentioned. Inbound, a room is offered to an external A2A client as an agent, through an Agent Card. The hub is the translation boundary either way.
 

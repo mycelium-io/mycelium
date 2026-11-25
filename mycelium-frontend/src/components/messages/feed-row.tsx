@@ -50,7 +50,6 @@ import { ThreadReplies } from "@/components/messages/thread-replies";
 import { EpisodeTag } from "@/components/episode-tag";
 import { EventIconMark } from "@/components/event-icon";
 import { Monogram } from "@/components/ui/monogram";
-import { Tooltip } from "@/components/ui/tooltip";
 import { AskCard } from "@/components/approval-card";
 import { ReactionChips } from "@/components/messages/reactions";
 import {
@@ -546,10 +545,6 @@ function FeedRowView({
     const planFile = ev.raw.plan_file as string | undefined;
     const assignments = ev.raw.assignments as Record<string, string> | undefined;
     const issueCount = assignments ? Object.keys(assignments).length : 0;
-    const metrics =
-      ev.raw.metrics && typeof ev.raw.metrics === "object" ? (ev.raw.metrics as Record<string, unknown>) : undefined;
-    const garRaw = metrics ? metrics.gar : undefined;
-    const gar = typeof garRaw === "number" && Number.isFinite(garRaw) ? garRaw : undefined;
     const tone = broken ? "var(--yellow)" : "var(--green)";
     const openEpisode = onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined;
     const where = shortId ? (
@@ -596,16 +591,6 @@ function FeedRowView({
             <span>
               {issueCount} issue{issueCount === 1 ? "" : "s"} agreed
             </span>
-            {gar !== undefined ? (
-              <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
-                <span
-                  className="font-mono"
-                  aria-description="Genuine agreement ratio: how many agents actually moved toward the outcome"
-                >
-                  · GAR {gar.toFixed(2)}
-                </span>
-              </Tooltip>
-            ) : null}
             {planFile ? (
               <span>
                 → <span className="font-mono text-accent">{planFile}</span>

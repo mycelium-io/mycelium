@@ -78,7 +78,6 @@ function episode(overrides: Partial<EpisodeSummary> = {}): EpisodeSummary {
     outcome: "converged",
     subkind: "converged",
     participants: ["planner", "avery"],
-    metrics: { mpc: 0.82, gar: 0.75, scr: 0.1, provenance_weight: 0.68 },
     assignments: null,
     tasks: ["work/cutover", "work/rollback"],
     message_count: 14,
@@ -167,7 +166,6 @@ describe("<MetricsScreen />", () => {
               topic: "list price floor",
               subkind: "rejected",
               outcome: "rejected",
-              metrics: null,
               tasks: [],
             }),
           ],
@@ -178,10 +176,10 @@ describe("<MetricsScreen />", () => {
     await screen.findByText("2 rooms");
     const negotiations = panel("Negotiations");
     expect(within(negotiations).getByText("2 rooms")).toBeInTheDocument();
-    // Two episodes, one of each outcome, and only the converged one is scored.
-    expect(within(negotiations).getByText("0.82")).toBeInTheDocument();
-    expect(within(negotiations).getByText(/averaged over the 1 episode\b/)).toBeInTheDocument();
+    // Two episodes from two rooms, one of each outcome, both in the recent list.
     expect(within(negotiations).getByText("cutover window")).toBeInTheDocument();
+    expect(within(negotiations).getByText("list price floor")).toBeInTheDocument();
+    expect(within(negotiations).getByText("2.0")).toBeInTheDocument();
   });
 
   it("says what would fill a panel rather than drawing zeros", async () => {

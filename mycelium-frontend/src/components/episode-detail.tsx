@@ -8,7 +8,6 @@ import { FileQuestion } from "lucide-react";
 import { EmptyNote, EmptyState } from "@/components/empty-state";
 import { fetchEpisode, type EpisodeDetail as EpisodeDetailT, type MyceliumMessage } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip } from "@/components/ui/tooltip";
 
 function outcomeColor(state: string | null): string {
   if (state === "converged" || state === "resolved") return "var(--green)";
@@ -22,23 +21,6 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
       <span className="text-micro uppercase tracking-wide text-faint">{label}</span>
       <span className="text-label text-text">{children}</span>
     </div>
-  );
-}
-
-/** A quality metric tile. The label is an acronym, so the tooltip spelling it
- *  out is the tile's only explanation — `aria-description` keeps it for readers
- *  that never hover. */
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <Tooltip content={hint}>
-      <div
-        aria-description={hint}
-        className="flex flex-col gap-0.5 rounded-lg border border-border bg-surface px-3 py-2"
-      >
-        <span className="text-micro uppercase tracking-wide text-faint">{label}</span>
-        <span className="font-mono text-label tabular text-text">{value}</span>
-      </div>
-    </Tooltip>
   );
 }
 
@@ -103,7 +85,6 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
   const state = detail.subkind ?? detail.outcome;
   const color = outcomeColor(state);
   const assignments = detail.assignments ?? {};
-  const m = detail.metrics;
 
   return (
     <div>
@@ -116,14 +97,6 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
           <Meta label="Updated"><span className="tabular">{new Date(detail.updated_at).toLocaleString()}</span></Meta>
         )}
       </div>
-
-      {m && (
-        <div className="grid grid-cols-3 gap-2 border-b border-border px-5 py-4">
-          <Stat label="MPC" value={m.mpc.toFixed(2)} hint="Mutual proposal coherence" />
-          <Stat label="GAR" value={m.gar.toFixed(2)} hint="Genuine agreement ratio" />
-          <Stat label="SCR" value={m.scr.toFixed(2)} hint="Self-consistency ratio" />
-        </div>
-      )}
 
       {Object.keys(assignments).length > 0 && (
         <div className="border-b border-border px-5 py-4">

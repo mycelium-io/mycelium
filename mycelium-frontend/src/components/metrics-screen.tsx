@@ -198,10 +198,6 @@ function stateColor(state: string): string {
   return "var(--accent)";
 }
 
-function fmtRatio(n: number | null): string {
-  return n == null ? "-" : n.toFixed(2);
-}
-
 function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number }) {
   const recent = rollup.recent.slice(0, RECENT_EPISODES);
   return (
@@ -217,7 +213,7 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
         </Nothing>
       ) : (
         <>
-          <Figures cols={5}>
+          <Figures cols={6}>
             <Figure label="Episodes" value={fmtNum(rollup.total)} />
             <Figure label="Converged" value={fmtNum(rollup.converged)} color="var(--green)" />
             <Figure
@@ -227,20 +223,9 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
             />
             <Figure label="Open" value={fmtNum(rollup.open)} color={rollup.open > 0 ? "var(--accent)" : undefined} />
             <Figure label="Work rows" value={fmtNum(rollup.tasks)} />
-          </Figures>
-
-          <Figures cols={5}>
             <Figure
               label="Avg agents"
               value={rollup.avgParticipants == null ? "-" : rollup.avgParticipants.toFixed(1)}
-            />
-            <Figure label="MPC" value={fmtRatio(rollup.mpc)} hint="Mean posterior confidence" />
-            <Figure label="GAR" value={fmtRatio(rollup.gar)} hint="Genuine agreement ratio" />
-            <Figure label="SCR" value={fmtRatio(rollup.scr)} hint="Sycophantic collapse risk" />
-            <Figure
-              label="Provenance"
-              value={fmtRatio(rollup.provenance)}
-              hint="(1 - SCR) x GAR — agreement discounted by how much of it was deference"
             />
           </Figures>
 
@@ -249,12 +234,6 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
               <RecentEpisode key={`${ep.room}/${ep.short_id}`} episode={ep} />
             ))}
           </ul>
-
-          <Note>
-            Quality ratios are averaged over the {rollup.scored}{" "}
-            {rollup.scored === 1 ? "episode" : "episodes"} that committed with quality metrics; an
-            episode still in progress contributes to the counts above but not to the ratios.
-          </Note>
         </>
       )}
     </Panel>
