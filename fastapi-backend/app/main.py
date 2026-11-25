@@ -288,17 +288,9 @@ async def lifespan(app: FastAPI):
         settings.ALIGNER_PI_BINARY,
     )
 
-    # Rooms recorded before 3.1 get their thread and topic ids rewritten once,
-    # before anything reads them.
-    from app.services import urn_migration
-
-    rooms_now = list_room_names()
-    if migrated := await urn_migration.migrate_rooms(rooms_now):
-        logger.info("rewrote the ids in %d room(s)", migrated)
-
     # Open every room's channel on startup (its log, read back from disk), so
     # the first request into a room doesn't pay for reading its transcript.
-    for _room in rooms_now:
+    for _room in list_room_names():
         try:
             room_channel_manager.open(_room)
         except Exception:

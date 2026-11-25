@@ -87,7 +87,7 @@ function episodeItem(ep: EpisodeSummary, room: string): LiveItem {
     source: {
       kind: "episode",
       label: `episode ${ep.short_id}`,
-      href: `/room/${encodeURIComponent(room)}?focus=episode:${encodeURIComponent(ep.short_id)}`,
+      href: `/room/${encodeURIComponent(room)}?focus=episode:${encodeURIComponent(ep.episode)}`,
     },
     fields: {
       [EPISODE_FIELD]: ep.episode,

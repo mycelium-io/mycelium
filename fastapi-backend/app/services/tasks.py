@@ -157,8 +157,7 @@ def episode_of(room: str, key: str) -> str | None:
     found = read_memory_file(get_room_dir(room), key)
     if found is None:
         return None
-    urn = system_meta(found[0]).get(EPISODE_META)
-    return message_format.canonical_urn(urn) if isinstance(urn, str) and urn else None
+    return system_meta(found[0]).get(EPISODE_META)
 
 
 def carry_thread(room: str, key: str) -> dict[str, str]:
@@ -185,10 +184,8 @@ def row_of_episode(room: str, episode: str) -> tuple[str, str] | None:
     rather than the thread's id. One scan of the room's files, for events that
     happen a few times per protocol step rather than per message.
     """
-    episode = message_format.canonical_urn(episode)
     for key, meta, content in list_memory_files(get_room_dir(room), limit=None):
-        urn = system_meta(meta).get(EPISODE_META)
-        if not isinstance(urn, str) or message_format.canonical_urn(urn) != episode:
+        if not message_format.same_episode(system_meta(meta).get(EPISODE_META), episode):
             continue
         first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
         return key, first.lstrip("# ").strip()
@@ -205,7 +202,7 @@ def bound_episodes(room: str) -> set[str]:
     for _key, meta, _content in list_memory_files(get_room_dir(room), limit=None):
         urn = system_meta(meta).get(EPISODE_META)
         if isinstance(urn, str) and urn:
-            urns.add(message_format.canonical_urn(urn))
+            urns.add(urn)
     return urns
 
 

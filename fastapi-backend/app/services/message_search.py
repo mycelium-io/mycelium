@@ -348,7 +348,6 @@ def search(
     sides = transcript_sides(room)
     rows = thread_rows(room)
     titles = {key: title for key, title in rows.values()}
-    live = message_format.live_episode_urn(room)
 
     named_types = {c.value.lower() for c in query.clauses if c.field == "type" and not c.negate}
     timeline = sorted(
@@ -359,7 +358,7 @@ def search(
     for m in timeline:
         if m.message_type not in PROSE_MESSAGE_TYPES and m.message_type.lower() not in named_types:
             continue
-        thread = m.episode if m.episode and m.episode != live else None
+        thread = m.episode if not message_format.is_live_episode(room, m.episode) else None
         row = rows.get(thread) if thread else None
         docs.append(
             Doc(

@@ -49,8 +49,8 @@ SUBPROTOCOL_MYCELIUM = "mycelium"
 EPISODE_URN_PREFIX = "urn:mycelium:episode:"
 #: How a room's topic URN starts: ``urn:mycelium:topic:{room}``.
 TOPIC_URN_PREFIX = "urn:mycelium:topic:"
-#: The prefixes rooms recorded before these, rewritten to the ones above by
-#: the ``mycelium-3.1-names`` migration and when a client still sends one.
+#: The prefixes a hub before 3.1 gave ids. Stored ids keep them; a comparison
+#: reads them as the ones above (:func:`same_episode`).
 LEGACY_URN_PREFIXES = {
     "urn:ioc:mycelium:episode:": EPISODE_URN_PREFIX,
     "urn:concept:mycelium:": TOPIC_URN_PREFIX,
@@ -176,11 +176,22 @@ def episode_urn(parent_room: str, session_id: str) -> str:
 
 def canonical_urn(urn: str) -> str:
     """``urn`` with a legacy prefix (:data:`LEGACY_URN_PREFIXES`) replaced by
-    the current one; any other string as it is."""
+    the current one; any other string as it is.
+
+    For comparing only. A stored id is never rewritten: a thread recorded
+    before 3.1 keeps its ``urn:ioc:`` id, and matches itself as written.
+    """
     for old, new in LEGACY_URN_PREFIXES.items():
         if urn.startswith(old):
             return new + urn[len(old) :]
     return urn
+
+
+def same_episode(a: str | None, b: str | None) -> bool:
+    """Whether ``a`` and ``b`` name the same episode, in either form."""
+    if a is None or b is None:
+        return a is b
+    return canonical_urn(a) == canonical_urn(b)
 
 
 def live_episode_urn(parent_room: str) -> str:

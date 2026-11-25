@@ -425,7 +425,7 @@ def record_episode(record: TranscriptRecord) -> str | None:
     episode = (
         (message_format.envelope_of(record.content).get("header") or {}).get("message") or {}
     ).get("episode")
-    return message_format.canonical_urn(episode) if isinstance(episode, str) and episode else None
+    return episode if isinstance(episode, str) and episode else None
 
 
 def read_id(record: TranscriptRecord) -> uuid.UUID:

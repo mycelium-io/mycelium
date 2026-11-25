@@ -102,9 +102,6 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     sender_handle = actor.bind_delegated_actor(
         request, base_room, payload.sender_handle, field="sender_handle"
     )
-    # A client from before 3.1 may still name a thread by its old id.
-    if payload.episode:
-        payload.episode = message_format.canonical_urn(payload.episode)
 
     # Prevent impersonation: only engines post as engine handles.
     reason = principals.post_rejection_reason(base_room, sender_handle, allow_unregistered=True)
@@ -261,7 +258,6 @@ async def list_messages(
     ),
 ):
     """List messages in a room (or coordination session), newest first."""
-    episode = message_format.canonical_urn(episode) if episode else episode
     channel, coord = _resolve_channel(room_name)
     now = datetime.now(UTC)
 
@@ -282,7 +278,7 @@ async def list_messages(
             continue
         if before and m.created_at >= before:
             continue
-        if episode and m.episode != episode:
+        if episode and not message_format.same_episode(m.episode, episode):
             continue
         if message and not str(m.id).startswith(message.strip().lower()):
             continue

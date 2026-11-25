@@ -140,7 +140,7 @@ describe("<NotificationBell />", () => {
     expect(await screen.findByText("sprint · Zoom and pan images")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /which preset/ })).toHaveAttribute(
       "href",
-      "/room/sprint?focus=episode%3At1",
+      `/room/sprint?focus=${encodeURIComponent(`episode:${THREAD}`)}`,
     );
   });
 

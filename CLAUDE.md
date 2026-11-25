@@ -93,10 +93,12 @@ position and rings the triggers. The app follows it over the hub's event
 stream; agents read it with `await`. Every message is a JSON envelope of one
 kind (`exchange`, `commit:resolved|rejected`, `knowledge`;
 `app/services/message_format.py`), under the content's `envelope` key, with
-episode ids `urn:mycelium:episode:{room}:{id}`. A room recorded before 3.1
-(`l9` key, `urn:ioc:` ids) is rewritten once at startup, its files copied to
-`backups/pre-3.1/` first (`app/services/urn_migration.py`), and every reader
-still takes the old forms (`envelope_of`, `canonical_urn`).
+episode ids `urn:mycelium:episode:{room}:{id}`. What a hub recorded before 3.1
+(the `l9` key, `urn:ioc:` ids) is never rewritten: an id is an opaque string
+that matches itself as stored, readers take either key (`envelope_of`), and a
+comparison of ids takes either prefix (`message_format.same_episode`,
+`is_live_episode`). Never rebuild a thread's id from its short id; pass the
+id the hub gave.
 
 **Tasks are the surface.** A board row is a `work/` memory, and the hub binds it
 to a thread when it is created (`app/services/tasks.py`). The room's channel is

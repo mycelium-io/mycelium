@@ -275,8 +275,6 @@ async def await_message(
     from app.services import metrics as _metrics
 
     _t0 = _time.monotonic()
-    # A client from before 3.1 may still name a thread by its old id.
-    episode = message_format.canonical_urn(episode) if episode else episode
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     # Draining a queue consumes it: the cursor advances, so a served turn is not
@@ -359,7 +357,7 @@ async def await_message(
         for i in range(read_from, end):
             record = records[i]
             ep = record_episode(record)
-            if scoped and ep != scoped:
+            if scoped and not message_format.same_episode(ep, scoped):
                 continue
             if not scoped and ep and not message_format.is_live_episode(room_name, ep):
                 # Already served to this handle via a --task-scoped read of this
@@ -494,8 +492,6 @@ async def confirm_delivery(room_name: str, body: ConfirmBody, request: Request):
         raise HTTPException(status_code=404, detail="Room not found")
     actor.authorize_handle(request, room_name, body.handle)
     persister = (await room_channels.manager.provision(room_name)).persister
-    if body.episode:
-        body.episode = message_format.canonical_urn(body.episode)
     if body.episode and not message_format.is_live_episode(room_name, body.episode):
         persister.advance_episode_cursor(body.handle, body.episode, body.position)
     else:
@@ -534,8 +530,6 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         raise HTTPException(status_code=403, detail=reason)
     managed = await room_channels.manager.provision(room_name)
     room_channels.manager.refresh_lease(room_name, handle)
-    if body.episode:
-        body.episode = message_format.canonical_urn(body.episode)
 
     payload_data, clean = _parse_marker(body.text)
     woke = _last_tick.get((room_name, handle)) or {}
@@ -559,7 +553,7 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # posted somewhere else is not an answer to that tick, and a causal
     # edge reaching across threads would put one thread's message in another's
     # chain — read back as a conversation that never happened.
-    answers_the_tick = tick_episode == episode
+    answers_the_tick = message_format.same_episode(tick_episode, episode)
     parents = [woke_msg["id"]] if answers_the_tick and woke_msg.get("id") else []
     recipients = (
         [tick_sender] if answers_the_tick and tick_sender else [message_format.SYSTEM_ACTOR_ID]

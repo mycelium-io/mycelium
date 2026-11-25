@@ -124,8 +124,9 @@ function mentionsHandle(text: string, handle: string): boolean {
 /** Where a mention opens: its task's thread, or the channel at the message. */
 export function mentionHref(n: Pick<StoredNotification, "room" | "id" | "episode">): string {
   const room = `/room/${encodeURIComponent(n.room)}`;
-  const short = threadShortId(n.episode);
-  const focus = short ? `episode:${short}` : `message:${n.id}`;
+  // The thread's full id, as the hub gave it: one from before 3.1 keeps its
+  // old prefix, so it can't be rebuilt from its short id.
+  const focus = threadShortId(n.episode) ? `episode:${n.episode}` : `message:${n.id}`;
   return `${room}?focus=${encodeURIComponent(focus)}`;
 }
 
