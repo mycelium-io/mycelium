@@ -370,7 +370,8 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
     try:
         from mycelium.client import typed_client
         from mycelium.config import MyceliumConfig
-        from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get
+        from mycelium.exceptions import HubError
+        from mycelium.rooms import list_rooms
         from mycelium_backend_client.models import RoomRead
 
         config = MyceliumConfig.load()
@@ -379,13 +380,10 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
             return _ROOM_LOOKUP_CACHE
 
         http = typed_client(config, timeout=2.0, raise_on_unexpected_status=False)
-        with http.with_headers({"Accept": "application/json"}) as http:
-            resp = list_rooms_api_rooms_get.sync_detailed(client=http)
-        if resp.status_code != 200:
-            _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
-            return _ROOM_LOOKUP_CACHE
-        rooms = resp.parsed
-        if not isinstance(rooms, list):
+        try:
+            with http.with_headers({"Accept": "application/json"}) as http:
+                rooms = list_rooms(http)
+        except HubError:
             _ROOM_LOOKUP_CACHE = (mas_to_name, name_to_mas)
             return _ROOM_LOOKUP_CACHE
         for r in rooms:

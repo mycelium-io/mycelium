@@ -23,6 +23,7 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+from mycelium import agents
 from mycelium.commands import agent as agent_cmd
 from mycelium.commands import engine as engine_cmd
 from mycelium.protocol import AgentManifest
@@ -147,7 +148,7 @@ def test_agent_ls_skips_notes_and_log_children(monkeypatch: pytest.MonkeyPatch) 
         ],
     )
 
-    assert [m.handle for m in agent_cmd._room_manifests("demo")] == ["echo"]
+    assert [m.handle for m in agents.room_manifests("demo")] == ["echo"]
 
 
 def test_agent_ls_says_none_only_when_the_hub_serves_none(
@@ -289,7 +290,7 @@ def test_agent_show_reports_a_missing_agent_the_hub_doesnt_have(
 def test_agent_invoke_resolves_the_handle_from_the_hub(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub(monkeypatch, MEMORY_GET_SYNC, _memory_read("agents/echo", _manifest_yaml("echo")))
     sends = _stub(monkeypatch, MESSAGE_SEND_SYNC, lambda **kw: posted(kw["body"]))
-    monkeypatch.setattr(agent_cmd, "_is_resident", lambda *_a, **_k: False)
+    monkeypatch.setattr(agents, "is_resident", lambda *_a, **_k: False)
 
     result = runner.invoke(
         agent_cmd.app, ["invoke", "echo", "ping", "--room", "demo", "--as", "tester"]
@@ -342,7 +343,7 @@ def test_load_owned_agents_spans_every_room_on_the_hub(monkeypatch: pytest.Monke
     }
     _stub(monkeypatch, MEMORY_LIST_SYNC, lambda **kw: per_room[kw["room_name"]])
 
-    owned = agent_cmd.load_owned_agents(owner="@Avery")
+    owned = agents.owned_agents(owner="@Avery")
     assert sorted(m.handle for _room_name, m in owned) == ["a1", "a2"]
     assert sorted(r for r, _m in owned) == ["alpha", "beta"]
 
@@ -351,7 +352,7 @@ def test_load_owned_agents_reports_owning_nothing_as_an_empty_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _stub(monkeypatch, ROOMS_LIST_SYNC, [])
-    assert agent_cmd.load_owned_agents(owner="avery") == []
+    assert agents.owned_agents(owner="avery") == []
 
 
 def test_load_owned_agents_propagates_an_unreachable_hub(
@@ -360,4 +361,4 @@ def test_load_owned_agents_propagates_an_unreachable_hub(
     """Owning nothing is an empty list; a dead hub is an error, not an empty list."""
     _stub(monkeypatch, ROOMS_LIST_SYNC, httpx.ConnectError("connection refused"))
     with pytest.raises(httpx.ConnectError):
-        agent_cmd.load_owned_agents(owner="avery")
+        agents.owned_agents(owner="avery")

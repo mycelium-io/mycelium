@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Filing a task, and claiming, releasing or resolving it, on the hub.
+"""A task on the hub: filing it, claiming, releasing or resolving it, writing
+its fields, and reading one row or what the board is waiting on.
 
-``mycelium board new|claim|release|resolve`` and :class:`mycelium.Room`'s
-``board`` send these. Each takes a generated client, so the CLI keeps its own
-session (and its own way of saying a hub is down) and the library its own.
+``mycelium board ...`` and :class:`mycelium.Room`'s ``board`` send these. Each
+takes a generated client, so the CLI keeps its own session (and its own way of
+saying a hub is down) and the library its own.
 """
 
 from __future__ import annotations
@@ -17,7 +18,13 @@ from mycelium.exceptions import HubError
 
 if TYPE_CHECKING:
     from mycelium_backend_client import Client
-    from mycelium_backend_client.models import AssignmentRead, MemoryRead
+    from mycelium_backend_client.models import (
+        AssignmentRead,
+        AssignmentWatchRead,
+        BoardEpic,
+        MemoryRead,
+        WaitingRead,
+    )
 
 
 class Held(HubError):
@@ -103,3 +110,73 @@ def change_assignment(client: Client, room: str, action: str, **fields: Any) -> 
     if not isinstance(resp.parsed, AssignmentRead):
         raise HubError(resp.status_code, resp.content)
     return resp.parsed
+
+
+def renew_leases(client: Client, room: str, handle: str) -> list[str]:
+    """Say ``handle`` is still here, for every row it holds; the keys renewed.
+
+    A lease still in its first half is left alone, and the writes this does
+    make broadcast nothing.
+    """
+    from mycelium.client import answered
+    from mycelium_backend_client.api.assignments import (
+        renew_assignments_api_rooms_room_name_assignments_renew_post as renew_api,
+    )
+    from mycelium_backend_client.models import AssignmentsRenewed, RenewBody
+
+    resp = renew_api.sync_detailed(room, client=client, body=RenewBody(handle=handle))
+    return [row.key for row in answered(resp, AssignmentsRenewed).renewed]
+
+
+def watch_lease(
+    client: Client, room: str, key: str, timeout: int, since: str | None = None
+) -> AssignmentWatchRead:
+    """One long-poll of up to ``timeout`` seconds on a row's lease: its state
+    once it changes from ``since``, or as it stands when the wait is up."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.assignments import (
+        await_assignment_api_rooms_room_name_assignments_await_get as watch_api,
+    )
+    from mycelium_backend_client.models import AssignmentWatchRead
+    from mycelium_backend_client.types import UNSET
+
+    resp = watch_api.sync_detailed(
+        room, client=client, key=key, timeout=timeout, since=since if since is not None else UNSET
+    )
+    return answered(resp, AssignmentWatchRead)
+
+
+def write_fields(client: Client, room: str, body: dict[str, Any]) -> None:
+    """Write fields onto a row: ``key``, ``handle`` and ``fields``, and
+    ``reassign`` to take it from whoever holds it (a 409 otherwise)."""
+    from mycelium_backend_client.api.fields import write_fields_api_rooms_room_name_fields_post
+    from mycelium_backend_client.models import WriteBody
+
+    resp = write_fields_api_rooms_room_name_fields_post.sync_detailed(
+        room, client=client, body=WriteBody.from_dict(body)
+    )
+    if resp.status_code >= 400:  # noqa: PLR2004
+        raise HubError(resp.status_code, resp.content)
+
+
+def read_row(client: Client, room: str, key: str) -> BoardEpic:
+    """One row as the board draws it: its parts, where it stands, and the
+    newest line said in its thread."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.board import read_board_row_api_rooms_room_name_board_key_get
+    from mycelium_backend_client.models import BoardEpic
+
+    resp = read_board_row_api_rooms_room_name_board_key_get.sync_detailed(room, key, client=client)
+    return answered(resp, BoardEpic)
+
+
+def waiting_on(client: Client, room: str, handle: str) -> WaitingRead:
+    """What is waiting on ``handle``: asks to answer, its turn in a flow, its tasks."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.board import read_waiting_api_rooms_room_name_waiting_get
+    from mycelium_backend_client.models import WaitingRead
+
+    resp = read_waiting_api_rooms_room_name_waiting_get.sync_detailed(
+        room, client=client, for_=handle
+    )
+    return answered(resp, WaitingRead)

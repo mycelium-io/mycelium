@@ -22,8 +22,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from collections.abc import Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +34,8 @@ from rich.table import Table
 from rich.text import Text
 
 from mycelium import chat
-from mycelium.board import LiveItem, assignment, attach_upstream, infer_schema, project_items
+from mycelium import memory as room_memory
+from mycelium.board import LiveItem, assignment, attach_upstream, infer_schema, project_items, tasks
 from mycelium.board import fields as board_fields
 from mycelium.board.activity import (
     DAILY_GOAL,
@@ -52,7 +52,6 @@ from mycelium.board.epics import epic_lines, epic_parts, where_it_stands
 from mycelium.board.model import (
     EPISODE_FIELD,
     KINDS,
-    LIVE_NAMESPACES,
     PRIORITIES,
     STATUSES,
     THREAD_REFUSALS,
@@ -60,6 +59,7 @@ from mycelium.board.model import (
     format_age,
 )
 from mycelium.board.schema import groupable_fields
+from mycelium.board.sources import HubHealth, read_sources
 from mycelium.cli_options import ROOM_HELP, acts_as, emits_json, in_room, paged
 from mycelium.client import typed_client
 from mycelium.commands.room import _resolve_room
@@ -70,7 +70,7 @@ from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 
 if TYPE_CHECKING:
-    from mycelium_backend_client.types import Response
+    pass
 
 app = typer.Typer(
     help="The room's coordination board: what needs you, what's in flight, what resolved.",
@@ -132,139 +132,13 @@ def _json_wanted(ctx: typer.Context) -> bool:
 # ── data ─────────────────────────────────────────────────────────────────────
 
 
-@dataclass
-class HubHealth:
-    """How the read went: which sources answered, which failed, and why.
-
-    Distinguishes a genuinely unreachable hub from an authenticated hub
-    refusing a request or a room that does not exist, so a partial or failed
-    read is reported as an error rather than drawn as a quiet, empty board.
-    """
-
-    #: Sources that answered with data, by name.
-    ok: list[str] = field(default_factory=list)
-    #: Sources that failed, name to the reason.
-    failed: dict[str, str] = field(default_factory=dict)
-    #: Sources the hub answered at all, whatever it said. A refusal is an answer:
-    #: it means the hub is running and the reader's problem is a credential, not
-    #: a network.
-    answered: list[str] = field(default_factory=list)
-
-    @property
-    def reachable(self) -> bool:
-        """Whether there is enough to draw anything."""
-        return bool(self.ok)
-
-    @property
-    def note(self) -> str | None:
-        """The one line worth printing above a board, or ``None`` when all is well."""
-        if not self.failed:
-            return None
-        if self.ok:
-            missing = ", ".join(sorted(self.failed))
-            total = len(self.ok) + len(self.failed)
-            return f"Incomplete: {len(self.failed)} of {total} sources failed ({missing})"
-        if self.answered:
-            # The hub is there and said no. Sending the reader to check their
-            # network here costs them the time it takes to rule it out.
-            reason = next(iter(self.failed.values()))
-            return f"Hub refused every request ({reason})"
-        return f"Hub unreachable: {next(iter(self.failed.values()))}"
-
-
-#: The most tasks one board namespace is read for.
-ROWS_PER_NAMESPACE = 1000
-
-
 def _fetch_raw(room: str | None, *, rows: bool = False) -> tuple[str, dict[str, Any], HubHealth]:
-    """Every source the log and the board share, read once.
-
-    The log's memories are the room's most recently changed, of any kind. The
-    board's (``rows``) are every memory in its namespaces, however long since
-    it changed: an open task nobody has touched lately is still open."""
+    """Every source the log and the board share, read once (``read_sources``)."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    health = HubHealth()
-
-    def get(read: Callable[..., Response[Any]], default, label: str, **params: Any):
-        try:
-            resp = read(name, client=client, **params)
-        except httpx.HTTPError as exc:
-            health.failed[label] = type(exc).__name__
-            return default
-        except (ValueError, KeyError, TypeError):
-            # The answer didn't parse as what the spec says this route returns.
-            health.answered.append(label)
-            health.failed[label] = "malformed response"
-            return default
-        # The hub answered, whatever it said. A refusal is a different problem
-        # from a hub that is not there, and the reader fixes it differently.
-        health.answered.append(label)
-        if resp.status_code >= 400:  # noqa: PLR2004
-            health.failed[label] = f"HTTP {resp.status_code}"
-            return default
-        health.ok.append(label)
-        # The projection, the log and ``--json`` read the hub's records as data,
-        # so each answer is handed on as its record: checked against the spec on
-        # the way in, then the wire's own shape.
-        parsed = resp.parsed
-        if isinstance(parsed, list):
-            return [item.to_dict() for item in parsed]
-        return parsed.to_dict() if hasattr(parsed, "to_dict") else parsed
-
-    from mycelium_backend_client.api.agents import list_agents_api_rooms_room_name_agents_get
-    from mycelium_backend_client.api.board import read_board_api_rooms_room_name_board_get
-    from mycelium_backend_client.api.episodes import (
-        list_episodes_api_rooms_room_name_episodes_get,
-    )
-    from mycelium_backend_client.api.memory import list_memories_api_rooms_room_name_memory_get
-    from mycelium_backend_client.api.messages import (
-        list_messages_api_rooms_room_name_messages_get,
-    )
-    from mycelium_backend_client.api.sessions import (
-        list_members_api_rooms_room_name_sessions_members_get,
-    )
-    from mycelium_backend_client.api.status import get_room_status_api_rooms_room_name_status_get
-
-    list_memories = list_memories_api_rooms_room_name_memory_get.sync_detailed
     with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-        episodes = get(list_episodes_api_rooms_room_name_episodes_get.sync_detailed, {}, "episodes")
-        if rows:
-            memories = []
-            for namespace in LIVE_NAMESPACES:
-                listed = get(
-                    list_memories, [], f"{namespace}/", prefix=f"{namespace}/",
-                    limit=ROWS_PER_NAMESPACE,
-                )  # fmt: skip
-                memories += listed if isinstance(listed, list) else []
-        else:
-            memories = get(list_memories, [], "memory", limit=50)
-        # What the tools the room points at say. A read never fetches hub-side,
-        # so this costs a cache lookup, not a round trip to GitHub.
-        upstream = get(get_room_status_api_rooms_room_name_status_get.sync_detailed, None, "status")
-        agents = get(list_agents_api_rooms_room_name_agents_get.sync_detailed, [], "agents")
-        members = get(
-            list_members_api_rooms_room_name_sessions_members_get.sync_detailed, {}, "members"
-        )
-        messages = get(
-            list_messages_api_rooms_room_name_messages_get.sync_detailed, {}, "messages", limit=300
-        )
-        # The epics, worked out by the hub, so this draws what the app draws.
-        epics = get(read_board_api_rooms_room_name_board_get.sync_detailed, None, "board")
-
-    return (
-        name,
-        {
-            "episodes": (episodes or {}).get("episodes", []) if isinstance(episodes, dict) else [],
-            "memories": memories if isinstance(memories, list) else [],
-            "agents": agents if isinstance(agents, list) else [],
-            "members": (members or {}).get("members", []) if isinstance(members, dict) else [],
-            "messages": (messages or {}).get("messages", []) if isinstance(messages, dict) else [],
-            "upstream": upstream if isinstance(upstream, dict) else None,
-            "board": epics if isinstance(epics, dict) else None,
-        },
-        health,
-    )
+        sources, health = read_sources(client, name, rows=rows)
+    return name, sources, health
 
 
 def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth, dict[str, Any] | None]:
@@ -603,26 +477,21 @@ def board_show(
         item = _row(name, key)
         found = board_fields.memory_key_of(item) if item is not None else None
         key = found or key
-    from mycelium_backend_client.api.board import read_board_row_api_rooms_room_name_board_key_get
-    from mycelium_backend_client.models import BoardEpic
-
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            resp = read_board_row_api_rooms_room_name_board_key_get.sync_detailed(
-                name, key, client=client
-            )
+            row = tasks.read_row(client, name, key)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code == 404:  # noqa: PLR2004
-        console.print(f"[dim]No board row '{row_id}' in {name}.[/dim]")
-        raise typer.Exit(1)
-    if not isinstance(resp.parsed, BoardEpic):
-        text = resp.content.decode(errors="replace")
-        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {text[:200]}")
-        raise typer.Exit(1)
+    except UnexpectedStatus as e:
+        if e.status_code == 404:  # noqa: PLR2004
+            console.print(f"[dim]No board row '{row_id}' in {name}.[/dim]")
+            raise typer.Exit(1) from None
+        text = e.content.decode(errors="replace")
+        console.print(f"[red]✗[/red] HTTP {e.status_code}: {text[:200]}")
+        raise typer.Exit(1) from None
     # The same record the board's own read hands ``epic_lines``.
-    epic = resp.parsed.to_dict()
+    epic = row.to_dict()
     if _json_wanted(ctx):
         sys.stdout.write(json.dumps(epic, indent=2) + "\n")
         return
@@ -851,24 +720,12 @@ def _memory_thread(room: str, key: str) -> tuple[bool, str | None]:
     Two answers, because the caller says something different about each: whether
     the room has this memory at all, and the thread on it if it does.
     """
-    from mycelium.client import sent_unparsed
-    from mycelium_backend_client.api.memory import get_memory_api_rooms_room_name_memory_key_get
-
     cfg = MyceliumConfig.load()
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            # Only its thread is read, so a memory a hub a version apart shapes
-            # differently is still this memory, never "not there".
-            resp = sent_unparsed(get_memory_api_rooms_room_name_memory_key_get, client, room, key)
+            return room_memory.thread_of(client, room, key)
     except httpx.HTTPError:
         return False, None
-    if resp.status_code >= 400:  # noqa: PLR2004
-        return False, None
-    try:
-        found = resp.json()
-    except ValueError:
-        return True, None
-    return True, (found.get(EPISODE_FIELD) if isinstance(found, dict) else None) or None
 
 
 def _thread(room: str, row_id: str) -> tuple[str, str]:
@@ -1004,28 +861,23 @@ def _write_fields(
     body: dict[str, Any] = {"key": key, "handle": actor, "fields": patch}
     if reassign:
         body["reassign"] = True
-    from mycelium_backend_client.api.fields import write_fields_api_rooms_room_name_fields_post
-    from mycelium_backend_client.models import WriteBody
-
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            resp = write_fields_api_rooms_room_name_fields_post.sync_detailed(
-                room, client=client, body=WriteBody.from_dict(body)
-            )
+            tasks.write_fields(client, room, body)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    if resp.status_code == 409:  # noqa: PLR2004
-        detail = json.loads(resp.content).get("detail", {})
-        held_by = detail.get("owner") if isinstance(detail, dict) else None
-        console.print(
-            f"[yellow]·[/yellow] {key} is held by @{held_by}. "
-            "[dim]Pass --reassign to take it from them; the room is told who it moved from.[/dim]"
-        )
-        raise typer.Exit(1)
-    if resp.status_code >= 400:  # noqa: PLR2004
-        console.print(f"[red]✗[/red] write failed: {resp.content.decode(errors='replace')}")
-        raise typer.Exit(1)
+    except UnexpectedStatus as e:
+        if e.status_code == 409:  # noqa: PLR2004
+            detail = json.loads(e.content).get("detail", {})
+            held_by = detail.get("owner") if isinstance(detail, dict) else None
+            console.print(
+                f"[yellow]·[/yellow] {key} is held by @{held_by}. "
+                "[dim]Pass --reassign to take it from them; the room is told who it moved from.[/dim]"
+            )
+            raise typer.Exit(1) from None
+        console.print(f"[red]✗[/red] write failed: {e.content.decode(errors='replace')}")
+        raise typer.Exit(1) from None
     rendered = " ".join(f"{k}={v}" for k, v in patch.items())
     console.print(f"[green]✓[/green] wrote [bold]{key}[/bold] → {rendered}")
 
@@ -1269,8 +1121,8 @@ def board_coordinate(
     memory where the flow saved what was agreed, and the thread state the
     board folds onto it.
     """
+    from mycelium import agents
     from mycelium.client import typed_client
-    from mycelium.commands.agent import _load_manifest_remote
 
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
@@ -1278,7 +1130,7 @@ def board_coordinate(
     target = engine.lstrip("@")
 
     with typed_client(cfg) as client:
-        manifest = _load_manifest_remote(client, name, target)
+        manifest = agents.load_manifest(client, name, target)
     if manifest is None:
         console.print(
             f"[red]Not found:[/red] no engine named '{target}' in room '{name}'.\n"

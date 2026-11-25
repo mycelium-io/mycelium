@@ -210,26 +210,24 @@ def hub_settings(
 
     import httpx
 
+    from mycelium import hub_check
     from mycelium.client import hub_error_detail, typed_client
-    from mycelium_backend_client.api.hub import hub_settings_api_hub_settings_get
-    from mycelium_backend_client.models import HubSettings
+    from mycelium.exceptions import HubError
 
     client = typed_client(base_url=hub, timeout=30, raise_on_unexpected_status=False)
     with client:
         try:
-            resp = hub_settings_api_hub_settings_get.sync_detailed(client=client)
+            settings = hub_check.settings(client)
         except httpx.HTTPError as exc:
             typer.secho(f"Couldn't reach the hub: {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(1) from None
-    if resp.status_code == 404:  # noqa: PLR2004
-        typer.secho("This hub is older and doesn't say what it's set up with.", err=True)
-        raise typer.Exit(1)
-    settings = resp.parsed
-    if not isinstance(settings, HubSettings):
-        typer.secho(
-            f"The hub said no: {hub_error_detail(resp.content)}", fg=typer.colors.RED, err=True
-        )
-        raise typer.Exit(1)
+        except HubError as exc:
+            if exc.status_code == 404:  # noqa: PLR2004
+                typer.secho("This hub is older and doesn't say what it's set up with.", err=True)
+            else:
+                said = hub_error_detail(exc.content)
+                typer.secho(f"The hub said no: {said}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from None
     if json_output:
         typer.echo(json.dumps(settings.to_dict()))
         return

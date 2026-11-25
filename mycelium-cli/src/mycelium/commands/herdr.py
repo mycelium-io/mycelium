@@ -93,9 +93,9 @@ _unknown_rooms: dict[str, float] = {}
 ROOM_NOT_FOUND = "Room not found"
 
 
-def _not_on_hub(room: str, resp: Response[Any] | httpx.Response) -> bool:
-    """Whether ``resp`` is the hub saying it has no such room; if so, leave it out
-    for a while.
+def _not_on_hub(room: str, resp: Response[Any] | httpx.Response | UnexpectedStatus) -> bool:
+    """Whether ``resp`` (or a refusal) is the hub saying it has no such room; if
+    so, leave it out for a while.
 
     Only the hub's own answer counts: a proxy or the app's address can answer
     404 for a path it isn't routing during a redeploy, and taking that for a
@@ -252,12 +252,9 @@ def herdr_enroll(
     """
     import os
 
+    from mycelium import agents
     from mycelium.client import typed_client
-    from mycelium.commands.agent import (
-        _load_manifest_remote,
-        _remote_memory_text,
-        _write_manifest,
-    )
+    from mycelium.commands.agent import _write_manifest
 
     def member(name: str) -> bool:
         """Whether the hub has anything at ``agents/<name>``, readable or not.
@@ -266,7 +263,7 @@ def herdr_enroll(
         the handle as free or as taken.
         """
         with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
-            return _remote_memory_text(client, room_name, f"agents/{name}") is not None
+            return agents.memory_text(client, room_name, f"agents/{name}") is not None
 
     try:
         room_name = str(room)
@@ -299,7 +296,7 @@ def herdr_enroll(
                 _write_manifest(config, room_name, manifest, created_by=writer)
             elif description or owner:
                 with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
-                    current = _load_manifest_remote(client, room_name, here.handle)
+                    current = agents.load_manifest(client, room_name, here.handle)
                 if current is None:
                     console.print(
                         f"[red]agents/{escape(here.handle)} in {escape(room_name)} isn't a "
@@ -400,17 +397,12 @@ def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | No
     from "couldn't ask." Best-effort, mirrors ``agent._is_resident``.
     """
     from mycelium.client import typed_client
-    from mycelium_backend_client.api.sessions import (
-        list_members_api_rooms_room_name_sessions_members_get as members_api,
-    )
-    from mycelium_backend_client.models import RoomPresenceRead
+    from mycelium.rooms import presence
 
     try:
         with typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as client:
-            present = members_api.sync(room_name, client=client)
-    except Exception:
-        return None
-    if not isinstance(present, RoomPresenceRead):
+            present = presence(client, room_name)
+    except Exception:  # noqa: BLE001
         return None
     return {m.handle.lstrip("@").lower(): m.kind or "?" for m in present.members}
 
@@ -686,13 +678,13 @@ def _manifest_on_hub(config: MyceliumConfig, room: str, handle: str) -> bool | N
     """
     import httpx
 
+    from mycelium import agents
     from mycelium.client import typed_client
-    from mycelium.commands.agent import _remote_memory_text
     from mycelium_backend_client.errors import UnexpectedStatus
 
     try:
         with typed_client(config, timeout=HUB_TIMEOUT_S) as client:
-            return _remote_memory_text(client, room, f"agents/{handle}") is not None
+            return agents.memory_text(client, room, f"agents/{handle}") is not None
     except (httpx.HTTPError, UnexpectedStatus):
         return None
 
@@ -998,10 +990,7 @@ def _push_presence(
     http: Client | None = None,
 ) -> bool:
     """POST one room's herdr liveness to the backend. Best-effort → ``bool`` ok."""
-    from mycelium_backend_client.api.sessions import (
-        push_herdr_presence_api_rooms_room_name_sessions_herdr_presence_post as presence_api,
-    )
-    from mycelium_backend_client.models import HerdrPresenceBody
+    from mycelium import rooms
 
     what = f"hub presence for {room}"
     started = time.monotonic()
@@ -1009,14 +998,13 @@ def _push_presence(
     if (source := sync_source()) is not None:
         body["source"] = source
     try:
-        with _calling(config, http) as client:
-            resp = presence_api.sync_detailed(
-                room, client=client, body=HerdrPresenceBody.from_dict(body)
-            )
-        if _not_on_hub(room, resp):
-            return False
-        if resp.status_code >= 400:  # noqa: PLR2004
-            raise UnexpectedStatus(resp.status_code, resp.content)
+        try:
+            with _calling(config, http) as client:
+                rooms.push_herdr_presence(client, room, body)
+        except UnexpectedStatus as refused:
+            if _not_on_hub(room, refused):
+                return False
+            raise
     except Exception as e:  # noqa: BLE001 - presence is best-effort; the next pass renews it
         failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
         return False
@@ -1053,28 +1041,19 @@ def fetch_wakes(
     asks only for the wakes of the agents its own push reported
     (:func:`sync_source`), so another machine's wakes wait for that machine.
     """
-    from mycelium.client import sent_unparsed
-    from mycelium_backend_client.api.sessions import (
-        drain_herdr_wakes_api_rooms_room_name_sessions_herdr_wakes_get as wakes_api,
-    )
+    from mycelium import rooms
     from mycelium_backend_client.models import HerdrWakeRead
-    from mycelium_backend_client.types import UNSET
 
     what = f"hub wakes for {room}"
     started = time.monotonic()
-    source = sync_source()
     try:
-        with _calling(config, http) as client:
-            # Unparsed as a whole: draining empties the queue, so a wake this
-            # machine's model can't read must cost only that wake, not the rest.
-            resp = sent_unparsed(
-                wakes_api, client, room, source=source if source is not None else UNSET
-            )
-        if _not_on_hub(room, resp):
-            return []
-        if resp.status_code >= 400:  # noqa: PLR2004
-            raise UnexpectedStatus(resp.status_code, resp.content)
-        drained = resp.json().get("wakes") or []
+        try:
+            with _calling(config, http) as client:
+                drained = rooms.drain_herdr_wakes(client, room, sync_source())
+        except UnexpectedStatus as refused:
+            if _not_on_hub(room, refused):
+                return []
+            raise
     except Exception as e:  # noqa: BLE001 - the queue keeps them for the next pass
         failing(_hub, what, f"{what} failed after {ms(started)}ms: {e}")
         return []
@@ -1114,22 +1093,14 @@ def report_wakes(
     Best-effort: a hub that can't be reached, or is from before the log, just
     records them as handed without a word from here.
     """
-    from mycelium_backend_client.api.sessions import (
-        report_herdr_wakes_api_rooms_room_name_sessions_herdr_wakes_outcomes_post as report_api,
-    )
-    from mycelium_backend_client.models import WakeOutcomes
+    from mycelium import rooms
 
     said = [o for o in outcomes if o]
     if not said:
         return
-    from mycelium.client import sent_unparsed
-
     try:
         with _calling(config, http) as client:
-            # Told once the hub takes it; what it counts back isn't read.
-            resp = sent_unparsed(report_api, client, room, body=WakeOutcomes(outcomes=said))
-        if resp.status_code >= 400:  # noqa: PLR2004
-            raise UnexpectedStatus(resp.status_code, resp.content)
+            rooms.report_wake_outcomes(client, room, said)
     except Exception as e:  # noqa: BLE001 - the log says "handed" without it
         _sync.info("couldn't report %d wake outcome(s) in %s: %s", len(said), room, e)
 

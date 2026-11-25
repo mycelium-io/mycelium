@@ -16,13 +16,13 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
+from mycelium.agents import manifest_from_yaml, memory_text
 from mycelium.cli import app
-from mycelium.commands.agent import _manifest_from_yaml, _remote_memory_text
 from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping, HerdrRegistry
 from tests.test_herdr_bridge import ScriptedRunner, _ok, _proc
 
 #: The real hub read, kept before any fixture stubs it out.
-REAL_READ = _remote_memory_text
+REAL_READ = memory_text
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -65,13 +65,13 @@ def herdr(monkeypatch: pytest.MonkeyPatch, isolated_home: Path) -> dict:
         "mycelium.client.typed_client", lambda *_a, **_k: contextlib.nullcontext(None)
     )
     monkeypatch.setattr(
-        "mycelium.commands.agent._remote_memory_text",
+        "mycelium.agents.memory_text",
         lambda _client, _room, key: state["hub"].get(key.removeprefix("agents/")),
     )
     monkeypatch.setattr(
-        "mycelium.commands.agent._load_manifest_remote",
+        "mycelium.agents.load_manifest",
         lambda _client, _room, handle: (
-            _manifest_from_yaml(handle, state["hub"][handle], handle)
+            manifest_from_yaml(handle, state["hub"][handle], handle)
             if handle in state["hub"]
             else None
         ),
@@ -198,7 +198,7 @@ def first_time(herdr: dict, monkeypatch: pytest.MonkeyPatch) -> list[str]:
             httpx_args={"transport": httpx.MockTransport(hub)},
         ),
     )
-    monkeypatch.setattr("mycelium.commands.agent._remote_memory_text", REAL_READ)
+    monkeypatch.setattr("mycelium.agents.memory_text", REAL_READ)
     return asked
 
 
@@ -225,7 +225,7 @@ def test_a_first_time_agent_is_enrolled_under_a_handle_given(
 def test_a_missing_memory_is_none_and_a_hub_error_still_raises() -> None:
     import httpx
 
-    from mycelium.commands.agent import _remote_memory_text
+    from mycelium.agents import memory_text
     from mycelium_backend_client import Client
     from mycelium_backend_client.errors import UnexpectedStatus
 
@@ -240,10 +240,10 @@ def test_a_missing_memory_is_none_and_a_hub_error_still_raises() -> None:
             },
         )
 
-    assert _remote_memory_text(client(404), "checkout", "agents/scribe") is None
+    assert memory_text(client(404), "checkout", "agents/scribe") is None
     # "Couldn't look" must never read as "not there".
     with pytest.raises(UnexpectedStatus):
-        _remote_memory_text(client(500), "checkout", "agents/scribe")
+        memory_text(client(500), "checkout", "agents/scribe")
 
 
 def test_outside_a_herdr_pane_it_says_so(herdr: dict, monkeypatch: pytest.MonkeyPatch) -> None:
