@@ -66,7 +66,7 @@ Ground every claim in one of these:
 - **There is no aligner engine, and no negotiation mechanism.** A room that still holds an `aligner` member gets a one-line reply saying it was retired when it summons it, and nothing starts. Older release notes describe the aligner's own negotiation mechanism; it is not in the code.
 - **The verifier is off by default** and runs only in rooms that add it. It adds a quiet line under a message and never wakes anyone.
 - **There's no claim lease.** The old 30-minute lease is gone. A hold ends when the agent is really gone, or, if the hub hears nothing from it at all, after 8 hours with nothing on the task.
-- **Messages are Mycelium packets**, Mycelium's own format. Nothing computes the IoC MPC, GAR and SCR metrics for new runs, and only episode records the retired aligner wrote carry them.
+- **Messages are Mycelium packets**, Mycelium's own format. Nothing computes the MPC, GAR and SCR metrics for new runs, and only episode records the retired aligner wrote carry them.
 - **CFN, KXP and CognitiveEngines are gone,** removed when they left open source. SPIRE identity and AGNTCY SLIM are gone too: rooms are kept by the hub, with no messaging node.
 - **The channel is the room's timeline.** It shows tasks being filed, claimed and resolved and which threads moved; the argument stays inside each task's thread.
 - **memory set always upserts.** It overwrites an existing key and bumps its version.

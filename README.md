@@ -271,7 +271,6 @@ Interactive API docs are at `http://localhost:8000/docs` when the backend is run
 Mycelium builds on OSS projects we found invaluable in this space:
 
 - [herdr](https://herdr.dev): the terminal sessions your agents run in
-- [IoC Layer 9](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model): the message envelope Mycelium packets grew out of
 - [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the hub and its on-device embeddings
 - [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)
 
