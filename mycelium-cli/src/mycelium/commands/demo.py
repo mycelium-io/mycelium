@@ -215,21 +215,22 @@ def _check_prereqs() -> tuple[Any, list[str]]:
     import httpx
 
     from mycelium.client import typed_client
-    from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get
+    from mycelium.exceptions import HubError
+    from mycelium.rooms import list_rooms
 
     api = config.server.api_url.rstrip("/")
     try:
         with typed_client(config, timeout=5.0, raise_on_unexpected_status=False) as http:
-            resp = list_rooms_api_rooms_get.sync_detailed(client=http)
+            list_rooms(http)
     except httpx.HTTPError:
         problems.append(f"Backend not reachable at {api}. Is the stack up? Try: mycelium status")
+    except HubError as e:
+        if e.status_code in (401, 403):
+            problems.append(f"The hub at {api} refused this computer. Try: mycelium login")
+        elif e.status_code >= 400:  # noqa: PLR2004
+            problems.append(f"The hub at {api} answered {e.status_code}.")
     except (KeyError, TypeError, ValueError):
         pass  # It answered 200; this asks whether it's there, not what it lists.
-    else:
-        if resp.status_code in (401, 403):
-            problems.append(f"The hub at {api} refused this computer. Try: mycelium login")
-        elif resp.status_code >= 400:  # noqa: PLR2004
-            problems.append(f"The hub at {api} answered {resp.status_code}.")
 
     return config, problems
 

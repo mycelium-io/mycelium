@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""What the CLI asks a hub about itself: how it is, and whether it takes a credential.
+"""What the CLI asks a hub about itself: how it is, what it's set up with, and
+whether it takes a credential.
 
 :func:`health` is every command's one way to ask a hub's health (``version``,
 ``status``, ``doctor``, ``install``, ``login``, ``network``, the desktop check
@@ -21,13 +22,25 @@ import httpx
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
+    from mycelium_backend_client import Client
     from mycelium_backend_client.models import (
         HealthAuth,
         HealthEmbedding,
         HealthLLM,
         HealthRead,
         HealthStorage,
+        HubSettings,
     )
+
+
+def settings(client: Client) -> HubSettings:
+    """What the hub is set up with. An older hub that doesn't say is a 404
+    :class:`~mycelium.exceptions.HubError`."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.hub import hub_settings_api_hub_settings_get
+    from mycelium_backend_client.models import HubSettings
+
+    return answered(hub_settings_api_hub_settings_get.sync_detailed(client=client), HubSettings)
 
 
 @dataclass(frozen=True)

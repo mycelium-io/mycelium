@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Writing, reading and searching a room's memory on the hub.
+"""A room's memory on the hub: writing, reading, listing, searching, its links
+and its knowledge graph.
 
-``mycelium memory set|get|search`` and :class:`mycelium.Room`'s ``memory``
-send these. Each request takes a generated client, so the CLI keeps its own
-session and the library its own.
+``mycelium memory ...`` and :class:`mycelium.Room`'s ``memory`` send these.
+Each request takes a generated client, so the CLI keeps its own session and
+the library its own. A refusal raises :class:`~mycelium.exceptions.HubError`.
 """
 
 from __future__ import annotations
@@ -18,7 +19,16 @@ from mycelium.exceptions import HubError
 
 if TYPE_CHECKING:
     from mycelium_backend_client import Client
-    from mycelium_backend_client.models import MemoryRead, MemorySearchResult
+    from mycelium_backend_client.models import (
+        ExpandedMemoryRead,
+        KnowledgeGraphRead,
+        KnowledgeRead,
+        LinkIntegrityRead,
+        MemoryLinksRead,
+        MemoryRead,
+        MemorySearchResult,
+        SubscriptionRead,
+    )
 
 
 def check_key(key: str) -> None:
@@ -150,3 +160,150 @@ def search_memories(
         search_api.sync_detailed(room_name=room, client=client, body=body), MemorySearchResponse
     )
     return list(found.results)
+
+
+def thread_of(client: Client, room: str, key: str) -> tuple[bool, str | None]:
+    """Whether the room has the memory ``key``, and the thread on it if it does.
+
+    Only its thread is read, so a memory a hub a version apart shapes
+    differently is still this memory, never "not there".
+    """
+    from mycelium.board.model import EPISODE_FIELD
+    from mycelium.client import sent_unparsed
+    from mycelium_backend_client.api.memory import get_memory_api_rooms_room_name_memory_key_get
+
+    resp = sent_unparsed(get_memory_api_rooms_room_name_memory_key_get, client, room, key)
+    if resp.status_code >= 400:  # noqa: PLR2004
+        return False, None
+    try:
+        found = resp.json()
+    except ValueError:
+        return True, None
+    return True, (found.get(EPISODE_FIELD) if isinstance(found, dict) else None) or None
+
+
+def list_memories(
+    client: Client, room: str, prefix: str | None = None, limit: int = 20
+) -> list[MemoryRead]:
+    """The room's memories, newest first, under ``prefix`` when given."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.memory import (
+        list_memories_api_rooms_room_name_memory_get as list_api,
+    )
+
+    return answered(
+        list_api.sync_detailed(room_name=room, client=client, prefix=prefix, limit=limit), list
+    )
+
+
+def changed_since(
+    client: Client, room: str, etag: str | None, limit: int = 1000
+) -> tuple[list[MemoryRead] | None, str | None]:
+    """Every memory in the room, unless nothing changed since ``etag``.
+
+    ``(None, etag)`` when the hub says nothing changed; otherwise the memories
+    and the hub's new etag.
+    """
+    from mycelium.client import answered
+    from mycelium_backend_client.api.memory import (
+        list_memories_api_rooms_room_name_memory_get as list_api,
+    )
+
+    headers = {"If-None-Match": etag} if etag else {}
+    resp = list_api.sync_detailed(room, client=client.with_headers(headers), limit=limit)
+    if resp.status_code == 304:  # noqa: PLR2004
+        return None, etag
+    return answered(resp, list), resp.headers.get("etag")
+
+
+def delete_memory(client: Client, room: str, key: str) -> None:
+    """Delete one memory: its file and its place in the search index."""
+    from mycelium_backend_client.api.memory import (
+        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
+    )
+
+    resp = delete_api.sync_detailed(room_name=room, key=key, client=client)
+    if resp.status_code >= 400:  # noqa: PLR2004
+        raise HubError(resp.status_code, resp.content)
+
+
+def subscribe(client: Client, room: str, pattern: str, handle: str) -> SubscriptionRead:
+    """Have ``handle`` told when a memory matching the glob ``pattern`` changes."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.memory import (
+        subscribe_api_rooms_room_name_memory_subscribe_post as sub_api,
+    )
+    from mycelium_backend_client.models import SubscriptionCreate, SubscriptionRead
+
+    body = SubscriptionCreate(key_pattern=pattern, subscriber=handle)
+    return answered(
+        sub_api.sync_detailed(room_name=room, client=client, body=body), SubscriptionRead
+    )
+
+
+# ── links ─────────────────────────────────────────────────────────────────────
+
+
+def expanded(client: Client, room: str, key: str) -> ExpandedMemoryRead:
+    """One memory with its transclusions pulled in."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.links import (
+        get_expanded_api_rooms_room_name_links_expand_get as expand_api,
+    )
+    from mycelium_backend_client.models import ExpandedMemoryRead
+
+    return answered(expand_api.sync_detailed(room, client=client, key=key), ExpandedMemoryRead)
+
+
+def integrity(client: Client, room: str) -> LinkIntegrityRead:
+    """Every link in the room that doesn't resolve, and every embed that can't expand."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.links import (
+        get_integrity_api_rooms_room_name_links_integrity_get as integrity_api,
+    )
+    from mycelium_backend_client.models import LinkIntegrityRead
+
+    return answered(integrity_api.sync_detailed(room, client=client), LinkIntegrityRead)
+
+
+def links(client: Client, room: str, key: str) -> MemoryLinksRead:
+    """What one memory links to, and what links to it."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.links import (
+        get_links_api_rooms_room_name_links_get as links_api,
+    )
+    from mycelium_backend_client.models import MemoryLinksRead
+
+    return answered(links_api.sync_detailed(room, client=client, key=key), MemoryLinksRead)
+
+
+# ── what the room learned ─────────────────────────────────────────────────────
+
+
+def knowledge(client: Client, room: str, task: str | None = None) -> KnowledgeGraphRead:
+    """The room's graph of what was learned, or one task's part of it."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.knowledge import (
+        read_knowledge_api_rooms_room_name_knowledge_get as read_api,
+    )
+    from mycelium_backend_client.models import KnowledgeGraphRead
+    from mycelium_backend_client.types import UNSET
+
+    return answered(
+        read_api.sync_detailed(room_name=room, client=client, task=task or UNSET),
+        KnowledgeGraphRead,
+    )
+
+
+def settle(client: Client, room: str, key: str, handle: str | None) -> KnowledgeRead:
+    """Mark a memory as holding: it's no longer open."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.knowledge import (
+        settle_knowledge_api_rooms_room_name_knowledge_settle_post as settle_api,
+    )
+    from mycelium_backend_client.models import KnowledgeRead, KnowledgeSettle
+
+    body = KnowledgeSettle(key=key, handle=(handle or "").lstrip("@") or None)
+    return answered(
+        settle_api.sync_detailed(room_name=room, client=client, body=body), KnowledgeRead
+    )

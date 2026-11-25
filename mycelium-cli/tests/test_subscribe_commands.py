@@ -41,11 +41,13 @@ def _home(isolated_home) -> None:
 def calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     seen: list[dict[str, Any]] = []
 
-    def fake(fn, **kwargs):
-        seen.append({"fn": fn.__module__.rsplit(".", 1)[-1], **kwargs})
-        if "list_subscriptions" in seen[-1]["fn"]:
+    def fake(fn, room, *args, **kwargs):
+        seen.append({"fn": fn.__name__, "room": room, **kwargs})
+        if fn.__name__ == "list_subscriptions":
+            seen[-1]["handle"] = args[0]
             return {"subscriptions": [SUB], "total": 1}
-        if "unsubscribe" in seen[-1]["fn"]:
+        if fn.__name__ == "unsubscribe":
+            seen[-1]["handle"], seen[-1]["id"] = args
             return {"removed": [SUB]}
         return SUB
 
@@ -60,8 +62,8 @@ def _run(*args: str):
 def test_a_task_subscription_sends_its_parts_and_says_it_ends_with_the_task(calls) -> None:
     result = _run("task", "work/release-3-1", "--parts")
     assert result.exit_code == 0, result.output
-    body = calls[0]["body"]
-    assert (calls[0]["room_name"], body.handle, body.kind.value, body.target, body.parts) == (
+    sent = calls[0]
+    assert (sent["room"], sent["handle"], sent["kind"], sent["target"], sent["parts"]) == (
         "ops",
         "coordinator",
         "task",
@@ -93,10 +95,10 @@ def test_a_task_subscription_sends_its_parts_and_says_it_ends_with_the_task(call
 def test_each_kind_sends_what_it_names(calls, args, kind, target, extra) -> None:
     result = _run(*args)
     assert result.exit_code == 0, result.output
-    body = calls[0]["body"]
-    assert (body.kind.value, body.target) == (kind, target)
+    sent = calls[0]
+    assert (sent["kind"], sent["target"]) == (kind, target)
     for field, value in extra.items():
-        assert getattr(body, field) == value
+        assert sent[field] == value
 
 
 def test_ls_lists_yours_and_all_lists_everyones(calls) -> None:

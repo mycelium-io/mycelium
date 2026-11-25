@@ -44,16 +44,13 @@ def _fetch_a2a(client: Client, room: str) -> dict | None:
     command down with it. Handed on as the hub's record: it's printed as told
     and passed through ``--json``.
     """
-    from mycelium_backend_client.api.a2a import a2a_state_api_rooms_room_name_a2a_state_get
-    from mycelium_backend_client.models import A2ABridgeState
+    from mycelium.exceptions import HubError
+    from mycelium.rooms import a2a_state
 
     try:
-        resp = a2a_state_api_rooms_room_name_a2a_state_get.sync_detailed(room, client=client)
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        state = a2a_state(client, room).to_dict()
+    except (httpx.HTTPError, HubError, ValueError, KeyError, TypeError):
         return None
-    if not isinstance(resp.parsed, A2ABridgeState):
-        return None
-    state = resp.parsed.to_dict()
     exposure = state.get("exposure") or {}
     touched = exposure.get("card_fetches") or exposure.get("messages")
     if not state.get("agents") and not state.get("exchanges") and not touched:

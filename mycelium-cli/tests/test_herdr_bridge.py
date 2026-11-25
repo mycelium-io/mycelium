@@ -325,8 +325,7 @@ def test_herdr_presence_defers_when_unmapped(
     # herdr reachable + agent list empty, but nothing is mapped for this handle.
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
     monkeypatch.setattr(
-        agent_cmd,
-        "_is_resident",
+        "mycelium.agents.is_resident",
         lambda *_: False,  # keep the fallback off the network
     )
     monkeypatch.setattr(
@@ -363,7 +362,7 @@ def test_herdr_presence_wakes_idle_over_stale_lease(
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
     monkeypatch.setattr("mycelium.integrations.herdr.HerdrBridge._default_runner", runner)
     # Stale lease: the backend would call this handle resident — herdr must win.
-    monkeypatch.setattr(agent_cmd, "_is_resident", lambda *_: True)
+    monkeypatch.setattr("mycelium.agents.is_resident", lambda *_: True)
 
     config = MyceliumConfig()
     config.herdr.autowake = True
@@ -390,7 +389,7 @@ def test_resolve_presence_reports_stale_mapping(
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
     monkeypatch.setattr("mycelium.integrations.herdr.HerdrBridge._default_runner", runner)
-    monkeypatch.setattr(agent_cmd, "_is_resident", lambda *_: True)
+    monkeypatch.setattr("mycelium.agents.is_resident", lambda *_: True)
 
     config = MyceliumConfig()
     config.herdr.autowake = True
@@ -650,7 +649,7 @@ def _member_pass(
             raise hub
         return cast("str | None", hub)
 
-    monkeypatch.setattr("mycelium.commands.agent._remote_memory_text", read)
+    monkeypatch.setattr("mycelium.agents.memory_text", read)
     monkeypatch.setattr(
         "mycelium.commands.agent._write_manifest",
         lambda config, room, manifest, created_by, **_kw: written.append(manifest),

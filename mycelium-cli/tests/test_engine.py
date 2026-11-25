@@ -122,8 +122,7 @@ def test_engine_invoke_of_an_old_aligner_says_what_to_run_instead(
     fake_cm.__exit__.return_value = None
     monkeypatch.setattr(engine_cmd, "_typed_client", lambda _c: fake_cm)
     monkeypatch.setattr(
-        engine_cmd,
-        "_load_manifest_remote",
+        "mycelium.agents.load_manifest",
         lambda *_a: AgentManifest(handle="aligner", adapter="engine", kind="aligner"),
     )
 

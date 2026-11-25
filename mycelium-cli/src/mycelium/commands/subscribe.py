@@ -23,10 +23,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import subscriptions
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room
 from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium.exceptions import HubError
 
 app = typer.Typer(
     help="Be woken for a task, a kind of notice, a member or a search, as well as for what asks you.",
@@ -37,20 +39,19 @@ console = Console()
 _FOR_HELP = "How long it lasts: 2h, 3d, or never (a member or search one lasts 24h unless told)"
 
 
-def _call(fn: Callable[..., Any], **kwargs: Any) -> Any:
-    """Call a typed-client endpoint; say the hub's reason and exit on a refusal."""
-    with typed_client() as client:
-        try:
-            resp = fn(client=client, **kwargs)
-        except httpx.HTTPError as exc:
-            url = MyceliumConfig.load().server.api_url
-            console.print(f"[red]Error:[/red] can't reach the hub at {url}: {exc}")
-            raise typer.Exit(1) from exc
-    if resp.status_code >= 400:
-        detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
+def _call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """Call one of ``mycelium.subscriptions``; say the hub's reason and exit on a refusal."""
+    try:
+        with typed_client() as client:
+            return fn(client, *args, **kwargs)
+    except httpx.HTTPError as exc:
+        url = MyceliumConfig.load().server.api_url
+        console.print(f"[red]Error:[/red] can't reach the hub at {url}: {exc}")
+        raise typer.Exit(1) from exc
+    except HubError as exc:
+        detail = hub_error_detail(exc.content) or f"HTTP {exc.status_code}"
         console.print(f"[red]Error:[/red] {detail}")
-        raise typer.Exit(1)
-    return json.loads(resp.content) if resp.content else None
+        raise typer.Exit(1) from None
 
 
 def _ends(raw: str | None) -> str:
@@ -77,21 +78,17 @@ def _subscribe(
     task: str | None = None,
     span: str | None = None,
 ) -> None:
-    from mycelium_backend_client.api.subscriptions import (
-        subscribe_api_rooms_room_name_subscriptions_post as subscribe_api,
-    )
-    from mycelium_backend_client.models import WakeSubscriptionCreate, WakeSubscriptionCreateKind
-
     assert room is not None
-    body = WakeSubscriptionCreate(
-        handle=(handle or "").lstrip("@"),
-        kind=WakeSubscriptionCreateKind(kind),
+    data = _call(
+        subscriptions.subscribe,
+        room,
+        handle=handle or "",
+        kind=kind,
         target=target,
         parts=parts,
         task=task,
         span=span,
     )
-    data = _call(subscribe_api.sync_detailed, room_name=room, body=body)
     if as_json:
         typer.echo(json.dumps(data, indent=2))
         return
@@ -217,13 +214,9 @@ def subscribe_ls(
     as_json: bool = False,
 ) -> None:
     """List subscriptions."""
-    from mycelium_backend_client.api.subscriptions import (
-        list_subscriptions_api_rooms_room_name_subscriptions_get as list_api,
-    )
-
     assert room is not None
     who = None if everyone else (handle or "").lstrip("@")
-    data = _call(list_api.sync_detailed, room_name=room, handle=who)
+    data = _call(subscriptions.list_subscriptions, room, who)
     items = data.get("subscriptions", [])
     if as_json:
         typer.echo(json.dumps(items, indent=2))
@@ -262,10 +255,6 @@ def subscribe_rm(
     as_json: bool = False,
 ) -> None:
     """Drop a subscription, or all of yours."""
-    from mycelium_backend_client.api.subscriptions import (
-        unsubscribe_api_rooms_room_name_subscriptions_delete as delete_api,
-    )
-
     assert room is not None
     if bool(sub_id) == everything:
         console.print("[red]Error:[/red] name one subscription's id, or pass --all")
@@ -273,7 +262,7 @@ def subscribe_rm(
     me = (handle or "").lstrip("@")
     if everything and not yes and not typer.confirm(f"Drop every subscription of @{me} in {room}?"):
         raise typer.Exit(0)
-    data = _call(delete_api.sync_detailed, room_name=room, handle=me, id=sub_id)
+    data = _call(subscriptions.unsubscribe, room, me, sub_id)
     gone = data.get("removed", [])
     if as_json:
         typer.echo(json.dumps(gone, indent=2))

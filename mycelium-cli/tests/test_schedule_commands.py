@@ -65,18 +65,18 @@ def _home(isolated_home) -> None:
 def calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     seen: list[dict[str, Any]] = []
 
-    def fake(fn, **kwargs):
-        seen.append({"fn": fn.__module__.rsplit(".", 1)[-1], **kwargs})
-        if "list_schedules" in seen[-1]["fn"]:
+    def fake(fn, *args, **kwargs):
+        seen.append({"fn": fn.__name__, "args": args, **kwargs})
+        if fn.__name__ == "list_schedules":
             return {"schedules": [SCHEDULE], "total": 1, "checks": {}}
-        if "run_schedule" in seen[-1]["fn"]:
+        if fn.__name__ == "run":
             return {
                 "at": "2026-10-08T12:00:00Z",
                 "result": "woke",
                 "trigger": "manual",
                 "found": ["@julia: are we shipping?"],
             }
-        if "delete_schedule" in seen[-1]["fn"]:
+        if fn.__name__ == "delete":
             return None
         return SCHEDULE
 
@@ -104,8 +104,8 @@ def test_add_sends_the_owner_timing_and_check(calls) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    body = calls[0]["body"]
-    assert (calls[0]["room_name"], body.owner, body.every, body.check) == (
+    room, body = calls[0]["args"]
+    assert (room, body["owner"], body["every"], body["check"]) == (
         "ops",
         "builder",
         "17m",
@@ -131,8 +131,8 @@ def test_add_wakes_whoever_is_acting_by_default(calls) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert calls[0]["body"].owner == "reviewer"
-    assert calls[0]["body"].cron == "0 9 * * 1-5"
+    assert calls[0]["args"][1]["owner"] == "reviewer"
+    assert calls[0]["args"][1]["cron"] == "0 9 * * 1-5"
 
 
 def test_ls_is_one_row_per_schedule(calls) -> None:
@@ -165,7 +165,7 @@ def test_pause_resume_and_renew_patch_only_what_they_change(calls) -> None:
     runner.invoke(schedule_cmd.app, ["pause", "board-check", "--room", "ops"])
     runner.invoke(schedule_cmd.app, ["resume", "board-check", "--room", "ops"])
     runner.invoke(schedule_cmd.app, ["renew", "board-check", "--days", "3", "--room", "ops"])
-    bodies = [c["body"].to_dict() for c in calls]
+    bodies = [{k: v for k, v in c["args"][2].items() if v is not None} for c in calls]
     assert bodies[0]["paused"] is True
     assert bodies[1]["paused"] is False
     assert (bodies[2]["renew"], bodies[2]["renew_days"]) == (True, 3.0)
@@ -175,7 +175,7 @@ def test_pause_resume_and_renew_patch_only_what_they_change(calls) -> None:
 def test_run_says_what_the_check_found(calls) -> None:
     result = runner.invoke(schedule_cmd.app, ["run", "board-check", "--wake", "--room", "ops"])
     assert result.exit_code == 0, result.output
-    assert calls[0]["body"].wake is True
+    assert calls[0]["wake"] is True
     assert "woke" in result.output
     assert "are we shipping?" in result.output
 
@@ -189,9 +189,12 @@ def test_rm_asks_first(calls) -> None:
 
 
 def test_a_refusal_says_the_hubs_reason(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Resp:
-        status_code = 422
-        content = b'{"detail": "every 1m is more often than the hub\'s minimum, 5m"}'
+    from mycelium.exceptions import HubError
+
+    said = b'{"detail": "every 1m is more often than the hub\'s minimum, 5m"}'
+
+    def refused(_client: object) -> None:
+        raise HubError(422, said)
 
     class _Client:
         def __enter__(self):
@@ -202,4 +205,4 @@ def test_a_refusal_says_the_hubs_reason(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr(schedule_cmd, "typed_client", lambda: _Client())
     with pytest.raises(typer.Exit):
-        schedule_cmd._call(lambda **_k: _Resp())
+        schedule_cmd._call(refused)

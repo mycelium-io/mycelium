@@ -23,7 +23,7 @@ import sys
 import typer
 
 from mycelium.cli_options import acts_as, emits_json, in_room
-from mycelium.client import answered, typed_client
+from mycelium.client import typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -155,8 +155,8 @@ def ask(
         raise typer.Exit(2)
     kind = kinds[0]
     try:
-        from mycelium_backend_client.api.asks import create_ask_api_rooms_room_name_asks_post
-        from mycelium_backend_client.models import AskCreate, AskOptionCreate, AskPosted
+        from mycelium import chat
+        from mycelium_backend_client.models import AskCreate, AskOptionCreate
         from mycelium_backend_client.types import UNSET
 
         config = MyceliumConfig.load()
@@ -177,12 +177,7 @@ def ask(
         with typed_client(
             config, timeout=30.0, handle=handle, raise_on_unexpected_status=False
         ) as client:
-            posted = answered(
-                create_ask_api_rooms_room_name_asks_post.sync_detailed(
-                    room_name, client=client, body=body
-                ),
-                AskPosted,
-            )
+            posted = chat.ask(client, room_name, body)
     except typer.Exit:
         raise
     except Exception as e:

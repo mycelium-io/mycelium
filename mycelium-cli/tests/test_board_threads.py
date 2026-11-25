@@ -365,7 +365,7 @@ class TestChatVerbs:
         _hub(monkeypatch, memories=[_unit()])
         sent = _chat(monkeypatch)
         monkeypatch.setattr(
-            "mycelium.commands.agent._load_manifest_remote",
+            "mycelium.agents.load_manifest",
             lambda *_a: SimpleNamespace(handle="conductor", adapter="engine", kind="conductor"),
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
@@ -383,7 +383,7 @@ class TestChatVerbs:
         _hub(monkeypatch, memories=[_unit()])
         sent = _chat(monkeypatch)
         monkeypatch.setattr(
-            "mycelium.commands.agent._load_manifest_remote",
+            "mycelium.agents.load_manifest",
             lambda *_a: SimpleNamespace(handle="aligner", adapter="engine", kind="aligner"),
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
@@ -400,7 +400,7 @@ class TestChatVerbs:
         _hub(monkeypatch, memories=[_unit()])
         sent = _chat(monkeypatch)
         monkeypatch.setattr(
-            "mycelium.commands.agent._load_manifest_remote",
+            "mycelium.agents.load_manifest",
             lambda *_a: SimpleNamespace(handle="sec", adapter="claude_code", kind=None),
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())

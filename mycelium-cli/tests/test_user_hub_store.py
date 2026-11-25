@@ -257,13 +257,13 @@ def test_whoami_rolls_up_an_unregistered_principal_from_room_manifests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A principal can own agents before it has a user record."""
-    from mycelium.commands import agent as agent_cmd
+    from mycelium import agents
 
     _stub(monkeypatch, USER_GET_SYNC, _not_found())
     monkeypatch.setattr(
-        agent_cmd,
-        "load_owned_agents",
-        lambda **_kw: [("alpha", agent_cmd.AgentManifest(handle="a1", cwd="/tmp", owner="avery"))],
+        agents,
+        "owned_agents",
+        lambda **_kw: [("alpha", agents.AgentManifest(handle="a1", cwd="/tmp", owner="avery"))],
     )
 
     result = runner.invoke(root_app, ["whoami"])

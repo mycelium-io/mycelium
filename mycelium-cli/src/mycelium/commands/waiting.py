@@ -39,23 +39,20 @@ console = Console()
 @emits_json()
 def waiting(ctx: typer.Context, room: str, handle: str) -> None:
     """Show what is waiting on you in the room."""
-    from mycelium_backend_client.api.board import read_waiting_api_rooms_room_name_waiting_get
-    from mycelium_backend_client.models import WaitingRead
+    from mycelium.board.tasks import waiting_on
+    from mycelium.exceptions import HubError
 
     cfg = MyceliumConfig.load()
     try:
         with typed_client(cfg, timeout=30, raise_on_unexpected_status=False) as client:
-            resp = read_waiting_api_rooms_room_name_waiting_get.sync_detailed(
-                room, client=client, for_=handle
-            )
+            read = waiting_on(client, room, handle)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
-    read = resp.parsed
-    if not isinstance(read, WaitingRead):
-        said = resp.content.decode(errors="replace")
-        console.print(f"[red]✗[/red] HTTP {resp.status_code}: {said[:200]}")
-        raise typer.Exit(1)
+    except HubError as e:
+        said = e.content.decode(errors="replace")
+        console.print(f"[red]✗[/red] HTTP {e.status_code}: {said[:200]}")
+        raise typer.Exit(1) from None
     if ctx.obj and ctx.obj.get("json"):
         sys.stdout.write(json.dumps(read.to_dict(), indent=2) + "\n")
         return

@@ -19,23 +19,16 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
-from mycelium import identity
+from mycelium import identity, rooms
+from mycelium import memory as room_memory
 from mycelium.cli_options import acts_as, confirms, emits_json, in_room, paged, room_or_exit
-from mycelium.client import answered, hub_error_detail, typed_client
+from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.filesystem import (
     get_room_dir,
     serialize_memory,
     write_hub_memories,
-)
-from mycelium.memory import (
-    check_key,
-    learned,
-    memory_item,
-    read_memory,
-    save_memory,
-    search_memories,
 )
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
@@ -222,7 +215,7 @@ def memory_set(
             --kind finding --derived-from payments/stripe-dedupes --task work/apple-pay
     """
     try:
-        check_key(key)
+        room_memory.check_key(key)
     except ValueError as e:
         console.print(f"[red]Error:[/red] {escape(str(e))}")
         raise typer.Exit(1) from e
@@ -237,8 +230,8 @@ def memory_set(
         frontmatter["expandable"] = True
     # What the team learned (the hub checks these, and refuses a bad one).
     derived = [k.strip() for k in derived_from.split(",") if k.strip()] if derived_from else None
-    frontmatter |= learned(kind, task, derived, still_open=still_open)
-    item = memory_item(
+    frontmatter |= room_memory.learned(kind, task, derived, still_open=still_open)
+    item = room_memory.memory_item(
         key,
         value,
         handle=handle,
@@ -250,7 +243,7 @@ def memory_set(
     # Write to hub (single store; spoke has no local copy)
     with _hub_session() as client:
         try:
-            saved = save_memory(client, room_name, item)
+            saved = room_memory.save_memory(client, room_name, item)
         except UnexpectedStatus as e:
             # A validation refusal, or nothing saved, is said here; any other
             # refusal is the session's to report.
@@ -266,18 +259,8 @@ def memory_set(
 
 def _knowledge(room_name: str, task: str | None = None) -> dict[str, Any]:
     """The room's knowledge graph from the hub, or one task's lens on it."""
-    from mycelium_backend_client.api.knowledge import (
-        read_knowledge_api_rooms_room_name_knowledge_get as read_api,
-    )
-    from mycelium_backend_client.models import KnowledgeGraphRead
-    from mycelium_backend_client.types import UNSET
-
     with _hub_session() as client:
-        found = answered(
-            read_api.sync_detailed(room_name=room_name, client=client, task=task or UNSET),
-            KnowledgeGraphRead,
-        )
-    return found.to_dict()
+        return room_memory.knowledge(client, room_name, task).to_dict()
 
 
 def _say_learned(room_name: str, key: str) -> None:
@@ -347,21 +330,9 @@ def memory_settle(
     as_json: bool = False,
 ) -> None:
     """Mark a memory as holding: it's no longer open."""
-    from mycelium_backend_client.api.knowledge import (
-        settle_knowledge_api_rooms_room_name_knowledge_settle_post as settle_api,
-    )
-    from mycelium_backend_client.models import KnowledgeRead, KnowledgeSettle
-
     room_name = _get_active_room(room)
     with _hub_session() as client:
-        settled = answered(
-            settle_api.sync_detailed(
-                room_name=room_name,
-                client=client,
-                body=KnowledgeSettle(key=key, handle=(handle or "").lstrip("@") or None),
-            ),
-            KnowledgeRead,
-        )
+        settled = room_memory.settle(client, room_name, key, handle)
     if as_json:
         _echo_json(settled.to_dict())
         return
@@ -397,7 +368,7 @@ def memory_get(
 
     with _hub_session() as client:
         try:
-            mem = read_memory(client, room_name, key)
+            mem = room_memory.read_memory(client, room_name, key)
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(f"[red]Not found:[/red] {key}")
@@ -447,18 +418,9 @@ def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[Memo
 
     Exits with a clear message when the room is unknown.
     """
-    from mycelium_backend_client.api.memory import (
-        list_memories_api_rooms_room_name_memory_get as list_api,
-    )
-
     with _hub_session() as client:
         try:
-            return answered(
-                list_api.sync_detailed(
-                    room_name=room_name, client=client, prefix=prefix, limit=limit
-                ),
-                list,
-            )
+            return room_memory.list_memories(client, room_name, prefix, limit)
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(
@@ -532,7 +494,7 @@ def memory_search(
     room_name = _get_active_room(room)
 
     with _hub_session() as client:
-        results = search_memories(client, room_name, query, limit)
+        results = room_memory.search_memories(client, room_name, query, limit)
 
         if as_json:
             _echo_json([r.to_dict() for r in results])
@@ -598,32 +560,18 @@ def _links_session(room_name: str) -> Iterator[Any]:
 
 
 def _expanded(room_name: str, key: str) -> ExpandedMemoryRead:
-    from mycelium_backend_client.api.links import (
-        get_expanded_api_rooms_room_name_links_expand_get as expand_api,
-    )
-
     with _links_session(room_name) as client:
-        return answered(
-            expand_api.sync_detailed(room_name, client=client, key=key), ExpandedMemoryRead
-        )
+        return room_memory.expanded(client, room_name, key)
 
 
 def _integrity(room_name: str) -> LinkIntegrityRead:
-    from mycelium_backend_client.api.links import (
-        get_integrity_api_rooms_room_name_links_integrity_get as integrity_api,
-    )
-
     with _links_session(room_name) as client:
-        return answered(integrity_api.sync_detailed(room_name, client=client), LinkIntegrityRead)
+        return room_memory.integrity(client, room_name)
 
 
 def _links(room_name: str, key: str) -> MemoryLinksRead:
-    from mycelium_backend_client.api.links import (
-        get_links_api_rooms_room_name_links_get as links_api,
-    )
-
     with _links_session(room_name) as client:
-        return answered(links_api.sync_detailed(room_name, client=client, key=key), MemoryLinksRead)
+        return room_memory.links(client, room_name, key)
 
 
 def _print_expanded(room_name: str, key: str) -> None:
@@ -779,10 +727,6 @@ def memory_rm(
     force: bool = False,
 ) -> None:
     """Delete a memory (removes both the file and search index)."""
-    from mycelium_backend_client.api.memory import (
-        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
-    )
-
     room_name = _get_active_room(room)
 
     if not force:
@@ -792,9 +736,7 @@ def memory_rm(
 
     # Delete on the hub, which owns the store (file + index). No local copy exists.
     with _hub_session() as client:
-        resp = delete_api.sync_detailed(room_name=room_name, key=key, client=client)
-        if resp.status_code >= 400:  # noqa: PLR2004
-            raise UnexpectedStatus(resp.status_code, resp.content)
+        room_memory.delete_memory(client, room_name, key)
         console.print(f"[green]Deleted:[/green] {key}")
 
 
@@ -828,14 +770,8 @@ def memory_reindex(
 def _reindex(cfg: MyceliumConfig, room_name: str) -> RoomReindexRead | None:
     """Have the hub rebuild the room's search index: what it did, or ``None``
     when it refused."""
-    from mycelium_backend_client.api.rooms import (
-        reindex_room_api_rooms_room_name_reindex_post as reindex_api,
-    )
-
     with typed_client(cfg, timeout=120) as client:
-        resp = reindex_api.sync_detailed(room_name, client=client)
-    # A validation refusal is the ``None`` above; any other refusal raises.
-    return None if resp.status_code == 422 else answered(resp, RoomReindexRead)  # noqa: PLR2004
+        return rooms.reindex(client, room_name)
 
 
 @doc_ref(
@@ -852,19 +788,11 @@ def memory_subscribe(
     handle: str | None = None,
 ) -> None:
     """Subscribe to memory change notifications."""
-    from mycelium_backend_client.api.memory import (
-        subscribe_api_rooms_room_name_memory_subscribe_post as sub_api,
-    )
-    from mycelium_backend_client.models import SubscriptionCreate, SubscriptionRead
-
     room_name = _get_active_room(room)
     handle = identity.resolve_actor(MyceliumConfig.load(), override=handle)
 
     with _get_client() as client:
-        body = SubscriptionCreate(key_pattern=pattern, subscriber=handle)
-        result = answered(
-            sub_api.sync_detailed(room_name=room_name, client=client, body=body), SubscriptionRead
-        )
+        result = room_memory.subscribe(client, room_name, pattern, handle)
         console.print(f"[green]Subscribed:[/green] {pattern} (id: {str(result.id)[:8]}...)")
 
 
@@ -997,32 +925,24 @@ def memory_sync(
     from mycelium.filesystem import get_mycelium_dir
 
     etag_file = get_mycelium_dir() / "rooms" / room_name / ".sync-etag"
-    headers = {}
-    if etag_file.exists():
-        headers["If-None-Match"] = etag_file.read_text().strip()
+    seen = etag_file.read_text().strip() if etag_file.exists() else None
 
     console.print(f"[dim]Syncing {room_name} from {cfg.server.api_url}...[/dim]")
 
-    from mycelium_backend_client.api.memory import (
-        list_memories_api_rooms_room_name_memory_get as list_api,
-    )
-
-    with typed_client(cfg, timeout=60, raise_on_unexpected_status=False) as client:
-        resp = list_api.sync_detailed(room_name, client=client.with_headers(headers), limit=1000)
-
-    if resp.status_code == 304:  # noqa: PLR2004
-        console.print("[dim]Already up to date[/dim]")
-        return
-
     try:
-        memories = answered(resp, list)
-    except UnexpectedStatus:
-        detail = hub_error_detail(resp.content) or f"HTTP {resp.status_code}"
+        with typed_client(cfg, timeout=60, raise_on_unexpected_status=False) as client:
+            memories, etag = room_memory.changed_since(client, room_name, seen)
+    except UnexpectedStatus as e:
+        detail = hub_error_detail(e.content) or f"HTTP {e.status_code}"
         console.print(f"[red]Error:[/red] {detail}")
         raise typer.Exit(1) from None
 
+    if memories is None:
+        console.print("[dim]Already up to date[/dim]")
+        return
+
     # Persist ETag for next sync
-    if etag := resp.headers.get("etag"):
+    if etag:
         etag_file.parent.mkdir(parents=True, exist_ok=True)
         etag_file.write_text(etag)
 

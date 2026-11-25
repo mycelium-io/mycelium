@@ -791,12 +791,11 @@ def status(ctx: typer.Context) -> None:
             backend_error = f"Backend at {said.url}: {said.error}"
 
         if backend_running:
-            from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get
+            from mycelium.rooms import list_rooms
 
             try:
                 with typed_client(config, timeout=30) as rooms_client:
-                    rooms = list_rooms_api_rooms_get.sync(client=rooms_client)
-                backend_room_count = len(rooms) if isinstance(rooms, list) else 0
+                    backend_room_count = len(list_rooms(rooms_client))
             except Exception:
                 pass
 

@@ -26,9 +26,9 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from mycelium import identity
+from mycelium import identity, users
 from mycelium.cli_options import acts_as, emits_json
-from mycelium.client import answered, current_token
+from mycelium.client import current_token
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -91,15 +91,7 @@ def _fetch_user(handle: str, *, client: Any = None) -> UserRead | None:
         with _typed_client(MyceliumConfig.load()) as own_client:
             return _fetch_user(handle, client=own_client)
 
-    from mycelium_backend_client.api.users import get_user_api_users_handle_get as get_api
-    from mycelium_backend_client.models import UserRead
-
-    try:
-        return answered(get_api.sync_detailed(handle=_norm_handle(handle), client=client), UserRead)
-    except UnexpectedStatus as exc:
-        if exc.status_code == 404:
-            return None
-        raise
+    return users.get_user(client, _norm_handle(handle))
 
 
 def load_user(handle: str) -> UserManifest | None:
@@ -114,11 +106,8 @@ def load_user(handle: str) -> UserManifest | None:
 
 def list_users() -> list[UserManifest]:
     """Every user registered on the hub."""
-    from mycelium_backend_client.api.users import list_users_api_users_get as list_api
-    from mycelium_backend_client.models import UserListResponse
-
     with _typed_client(MyceliumConfig.load()) as client:
-        result = answered(list_api.sync_detailed(client=client), UserListResponse)
+        result = users.list_users(client)
     return [u for u in (_manifest_from_read(r) for r in result.users) if u is not None]
 
 
@@ -128,18 +117,15 @@ def _write_user(user: UserManifest, created_by: str) -> None:
     The backend owns the write — versioning, the content-idempotent no-op on an
     unchanged record, and the frontmatter it lands in are all its business.
     """
-    from mycelium_backend_client.api.users import create_user_api_users_post as create_api
-    from mycelium_backend_client.models import UserCreate, UserRead
-
-    body = UserCreate(
-        handle=user.handle,
-        display_name=user.display_name,
-        teams=user.teams,
-        notify=user.notify,
-        created_by=created_by,
-    )
     with _typed_client(MyceliumConfig.load()) as client:
-        answered(create_api.sync_detailed(client=client, body=body), UserRead)
+        users.save_user(
+            client,
+            handle=user.handle,
+            display_name=user.display_name,
+            teams=user.teams,
+            notify=user.notify,
+            created_by=created_by,
+        )
 
 
 def align_identity(
@@ -388,9 +374,9 @@ def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, s
         read = _fetch_user(handle)
         if read is not None:
             return _manifest_from_read(read), _owned_lines(read)
-        from mycelium.commands.agent import load_owned_agents
+        from mycelium.agents import owned_agents
 
-        owned = load_owned_agents(owner=handle)
+        owned = owned_agents(owner=handle)
         return None, [(m.handle, m.adapter, room) for room, m in owned]
     except (httpx.HTTPError, UnexpectedStatus):
         return None
@@ -401,22 +387,17 @@ def _subscriptions_of(
 ) -> tuple[str, list[dict[str, Any]]] | None:
     """The room this resolves to and what ``handle`` is subscribed to there
     (``mycelium subscribe``), or ``None`` with no room or no hub."""
-    from mycelium import caller
-    from mycelium_backend_client.api.subscriptions import (
-        list_subscriptions_api_rooms_room_name_subscriptions_get as list_api,
-    )
+    from mycelium import caller, subscriptions
 
     room = caller.room(config).value
     if not room:
         return None
     try:
         with _typed_client() as client:
-            resp = list_api.sync_detailed(room_name=room, client=client, handle=handle)
-    except httpx.HTTPError:
+            found = subscriptions.list_subscriptions(client, room, handle)
+    except (httpx.HTTPError, UnexpectedStatus):
         return None
-    if resp.status_code != 200:
-        return None
-    return room, json_module.loads(resp.content).get("subscriptions", [])
+    return room, (found or {}).get("subscriptions", [])
 
 
 @doc_ref(
