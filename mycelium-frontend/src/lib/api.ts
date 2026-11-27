@@ -13,7 +13,6 @@ import { memorySummaryOf } from "@/lib/memory-preview";
 import { uiTokenHeaders } from "@/lib/ui-token";
 import type { RoomStatus } from "@/lib/board/upstream";
 import type { RoomFolders } from "@/lib/room-folders";
-import type { LockRecord, TallyRecord } from "@/lib/conductor-line";
 import { fromWire, type KnowledgeGraph, type KnowledgeTask, type KnowledgeWire } from "@/lib/knowledge";
 
 /**
@@ -1977,9 +1976,8 @@ export async function stopRunnerAgent(id: string, room: string, handle: string):
 
 // ── A2A bridge (the room's off-channel traffic) ──────────────────────────────
 //
-// A bridged agent is reached over HTTP by the hub, not over the room's SLIM
-// channel, so none of it shows up in the coordination telemetry above. This is
-// the read that makes a bridged turn legible next to SLIM traffic.
+// A bridged agent is a remote endpoint the hub calls over HTTP on the room's
+// behalf. This is the read that makes a bridged turn legible in the room.
 
 /** A room member the hub reaches over A2A instead of the room's channel. */
 export interface A2aBridgedAgent {
@@ -1991,8 +1989,8 @@ export interface A2aBridgedAgent {
   calls_ok: number;
   calls_failed: number;
   last_call_at: string | null;
-  /** Always true. A bridged A2A agent is proxied by the hub, holds no group
-   *  key, and is not a member of the room's MLS group. */
+  /** Always true. A bridged A2A agent is proxied: the hub calls it and posts
+   *  its replies under its handle. */
   proxied: boolean;
 }
 
@@ -2041,15 +2039,14 @@ export async function fetchA2aBridge(roomName: string): Promise<A2aBridgeState |
   });
 }
 
-export type PresenceKind = "slim" | "lease" | "herdr";
+export type PresenceKind = "lease" | "herdr";
 
 export interface PresenceMember {
   handle: string;
-  /** "slim" = active SLIM socket; "lease" = server-held await/reply (no socket);
-   *  "herdr" = alive in a herdr-managed pane but not joined (pushed by the host
-   *  `mycelium herdr sync` bridge). */
+  /** "lease" = server-held await/reply; "herdr" = alive in a herdr-managed
+   *  pane but not joined (pushed by the host `mycelium herdr sync` bridge). */
   kind: PresenceKind;
-  /** ISO wall-clock of a lease member's last poll; null for SLIM (always now). */
+  /** ISO wall-clock of a lease member's last poll; null when none is known. */
   last_seen: string | null;
   /** herdr live agent state (idle/working/blocked/done) when the handle is mapped
    *  to a live herdr pane; null otherwise. */
@@ -2112,7 +2109,7 @@ export interface RoomPresence {
   paused?: AgentPause[];
 }
 
-/** Live presence set for a room: SLIM-connected + server-held lease members,
+/** Live presence set for a room: server-held lease and herdr members,
  *  the floors held in its threads right now, what its agents subscribed to,
  *  and who is paused. */
 export async function fetchRoomMembers(roomName: string): Promise<RoomPresence> {
@@ -2460,8 +2457,8 @@ export async function fetchUsage(days = 30): Promise<UsageKpis | null> {
 // Episodes are the persisted, causally-linked message record of a coordination
 // session (one markdown file per session under `log/episodes/`). The episode
 // detail view and the metrics page read them for the causal chain and the
-// consensus metrics; wire envelopes carry empty `message.parents`, so the chain
-// lives here instead.
+// outcomes; wire envelopes carry empty `message.parents`, so the chain lives
+// here instead.
 
 export interface MessageActor {
   id: string;
@@ -2482,18 +2479,6 @@ export interface MyceliumMessage {
   payload?: { type?: string; data?: Record<string, unknown> };
 }
 
-export interface EpisodeMetrics {
-  mpc: number;
-  gar: number;
-  scr: number;
-  provenance_weight: number;
-  participants?: number;
-  /** A flow that picks (concord): each member's rating of the pick, out of 1. */
-  satisfaction?: Record<string, number>;
-  /** And the least happy member's. */
-  min_satisfaction?: number;
-}
-
 export interface EpisodeSummary {
   short_id: string;
   episode: string;
@@ -2501,7 +2486,6 @@ export interface EpisodeSummary {
   outcome: string;
   subkind: string | null;
   participants: string[];
-  metrics: EpisodeMetrics | null;
   assignments: Record<string, string> | null;
   /** Memory keys of the `work/` rows the agreement compiled into. */
   tasks: string[];
@@ -2521,37 +2505,18 @@ export interface EpisodeSummary {
 /** One step of an episode's interaction flow, as the record carries it. */
 export interface FlowStep {
   id: string;
-  /** `select` picks among the options by the ratings given, `tally` counts
-   *  the points or the words given so far, `lock` merges the points into a
-   *  shared summary and saves it; none of the three asks anybody. Absent
-   *  means an ordinary step that asks someone. */
-  kind?: "ask" | "select" | "tally" | "lock";
-  /** A role, or each / all / workers / bottleneck / contested (everyone who
-   *  gave a meaning to a word used in different senses). Absent on an end or
-   *  a step that asks nobody. */
+  /** Every step asks someone. */
+  kind?: "ask";
+  /** A role, or each / all / workers. Absent on an end. */
   to?: string | null;
   prompt?: string;
   wait?: "reply" | "none";
   rounds?: number;
-  /** What the replies add to the run: suggestions, ratings of them, ratings
-   *  of the two reference outcomes, the key terms, or pieces of the shared
-   *  summary (points and the meanings of words). */
-  collect?: "options" | "scores" | "anchors" | "keywords" | "pieces" | null;
   /** What every reply must carry; a reply without it is asked once more. */
-  require?: "stance" | "scores" | "pieces" | null;
-  /** A select step's bar, 0-1, and how many fixes it sends for. */
-  threshold?: number | null;
-  max_repairs?: number | null;
-  /** What a tally step counts, and how many times it may send back for more. */
-  of?: "points" | "terms" | null;
-  max_rounds?: number | null;
-  /** One step id, or a branch by stance (accept / reject / silent / default),
-   *  or, on a select, by how the pick went (feasible / infeasible / stuck),
-   *  on a tally of points by grew / settled / empty, on a tally of terms by
-   *  contested / clear, and on a lock by locked / empty. */
+  require?: "stance" | null;
+  /** One step id, or a branch by stance (accept / reject / silent / default). */
   next?: string | Record<string, string> | null;
-  /** `converged` is an agreement a select step certified. */
-  end?: "resolved" | "rejected" | "converged" | null;
+  end?: "resolved" | "rejected" | null;
 }
 
 /** The interaction flow an episode runs: the graph the conductor walks, plus
@@ -2575,18 +2540,6 @@ export interface FlowTraceEntry {
   asked?: string[];
   stances?: Record<string, string | null>;
   stance?: string | null;
-  /** A select step's pick: how it went, and who is short. */
-  select?: {
-    outcome: "feasible" | "infeasible" | "stuck" | "nothing";
-    pick: string | null;
-    lowest: number | null;
-    missing: string[];
-    least_happy: string | null;
-  };
-  /** A tally step's count, as its conductor line carries it. */
-  tally?: TallyRecord;
-  /** A lock step's shared summary, as its conductor line carries it. */
-  lock?: LockRecord;
   /** A second asking of the members who replied without what the step requires. */
   again?: boolean;
   next: string;
@@ -2617,46 +2570,7 @@ export async function fetchEpisode(
   );
 }
 
-// ── Network diagnostics (the `/health` coordination + identity + auth blocks) ─
-
-/** Per-room channel telemetry: present members (SLIM + server-held `await`
- *  leases), invites deferred by a live episode, episode state, and
- *  durable-inbox counters. */
-export interface CoordinationRoom {
-  room: string;
-  provisioned: boolean;
-  persister_alive: boolean;
-  members: string[];
-  deferred_invites: number;
-  episode_active: boolean;
-  reserves: number;
-  reserve_failures: number;
-  reserve_skipped: number;
-  receive_errors: number;
-  transient_errors: number;
-}
-
-/** The fabric-wide view: SLIM node endpoint, live-channel + provision counters,
- *  and one entry per provisioned room. */
-export interface CoordinationStatus {
-  endpoint: string;
-  slim_enabled: boolean;
-  channels_live: number;
-  provisions_ok: number;
-  provisions_failed: number;
-  invite_failures: number;
-  rooms: CoordinationRoom[];
-}
-
-/** The SLIM channel identity tier this hub runs on (`psk` / `signerjwt`).
- *  `status` carries the honest degrade: a selected tier with no resolvable
- *  signing key/roster is `degraded` (falling back to the PSK) or `error`
- *  (required, failing closed). */
-export interface IdentityStatus {
-  status: string;
-  mode: string;
-  message: string;
-}
+// ── Network diagnostics (the `/health` auth block and version) ───────────────
 
 /** The HTTP-API JWT gate: whether this hub is gated at all, and against what.
  *  `warnings` carries the backend's own configuration complaints (e.g. no
@@ -2669,12 +2583,9 @@ export interface AuthStatus {
   warnings?: string[];
 }
 
-/** The three `/health` blocks the connection settings read. They arrive in one
- *  response, so the deployment's posture (identity tier, auth gate) costs no
- *  extra call beyond the coordination telemetry the tab already polls. */
+/** The `/health` fields the connection settings read: the hub's auth gate
+ *  and its release. */
 export interface NetworkStatus {
-  coordination: CoordinationStatus | null;
-  identity: IdentityStatus | null;
   auth: AuthStatus | null;
   /** The hub's release, stamped from the tag it was built from (About reads it). */
   version?: string | null;
@@ -2685,8 +2596,6 @@ export interface NetworkStatus {
  *  the backend didn't report is null rather than fabricated. */
 export async function fetchNetworkStatus(): Promise<NetworkStatus | null> {
   const data = await apiFetch<{
-    coordination?: CoordinationStatus;
-    identity?: IdentityStatus;
     auth?: AuthStatus;
     version?: string;
   } | null>(`/api/health`, {
@@ -2695,8 +2604,6 @@ export async function fetchNetworkStatus(): Promise<NetworkStatus | null> {
   });
   if (!data) return null;
   return {
-    coordination: data.coordination ?? null,
-    identity: data.identity ?? null,
     auth: data.auth ?? null,
     version: data.version ?? null,
   };

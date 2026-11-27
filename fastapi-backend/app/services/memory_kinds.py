@@ -26,7 +26,7 @@ import yaml
 
 from app.services.filesystem import MANAGED_META
 
-Edit = Literal["body", "field", "none"]
+Edit = Literal["body", "none"]
 
 
 @dataclass(frozen=True)
@@ -34,8 +34,6 @@ class Kind:
     id: str
     patterns: tuple[str, ...]
     edit: Edit
-    #: The frontmatter field a ``field`` kind's body is drawn from.
-    source: str | None = None
     #: Frontmatter a person may not change.
     fixed: tuple[str, ...] = ()
     #: What's run on the written content.
@@ -83,8 +81,6 @@ KINDS: tuple[Kind, ...] = (
     _kind(
         "task", "work/**", "decisions/**", "status/**", "failed/**", edit="body", fixed=CLAIM_FIELDS
     ),
-    _kind("summary", "context/summary/**", edit="field", source="contract", checks=("summary",)),
-    _kind("decision", "context/decision/**", edit="field", source="decision", checks=("decision",)),
     _kind("synthesis", "context/synthesis", edit="body", fixed=("synthesized_through",)),
     _kind(
         "standing",
@@ -108,7 +104,6 @@ CODES: dict[str, int] = {
     "memory.fixed_field": 422,
     "memory.claim_field": 422,
     "memory.read_only": 409,
-    "memory.rendered_body": 409,
     "memory.yaml_invalid": 422,
     "memory.schema_invalid": 422,
     "memory.not_owner": 403,
@@ -148,24 +143,20 @@ def check(
     body: str,
     meta: dict[str, Any] | None,
     existing: tuple[dict[str, Any], str] | None,
-) -> str | None:
+) -> None:
     """Refuse a write from the memory route that ``key``'s kind doesn't allow.
 
     ``body`` and ``meta`` are what the write says; ``existing`` is the memory
-    on disk (frontmatter and body), if there is one. Returns the body to save
-    in place of ``body`` when the kind draws it from a field, else ``None``.
+    on disk (frontmatter and body), if there is one.
     """
     kind = kind_of(key)
     meta = meta or {}
-    old_meta, old_body = existing if existing else ({}, None)
+    old_meta = existing[0] if existing else {}
     if kind.edit == "none":
         raise Refused("memory.read_only", kind.says or f"{key} can't be edited.")
     _check_fields(key, kind, meta, old_meta)
     for name in kind.checks:
         _CHECKS[name](key, body, meta)
-    if kind.edit == "field" and kind.source:
-        return _drawn_body(key, kind, body, meta, old_meta, old_body)
-    return None
 
 
 def _changes(meta: dict[str, Any], old_meta: dict[str, Any], name: str) -> bool:
@@ -199,30 +190,6 @@ def _check_fields(key: str, kind: Kind, meta: dict[str, Any], old_meta: dict[str
             f"on {key} and can't be changed.",
             fields=fixed,
         )
-
-
-def _drawn_body(
-    key: str,
-    kind: Kind,
-    body: str,
-    meta: dict[str, Any],
-    old_meta: dict[str, Any],
-    old_body: str | None,
-) -> str | None:
-    """A summary's or a decision's body is drawn from its field: a write that
-    changes the field gets the body redrawn, and one that changes only the
-    body is refused, since the next redraw would lose it."""
-    assert kind.source is not None
-    if _changes(meta, old_meta, kind.source):
-        return _RENDER[kind.id](meta[kind.source])
-    if old_body is None or body.strip() != old_body.strip():
-        what = "summary" if kind.id == "summary" else "decision"
-        raise Refused(
-            "memory.rendered_body",
-            f"This text is made from the {what} in its `{kind.source}` field. "
-            f"Edit the {what} there and the text follows.",
-        )
-    return None
 
 
 # ── what's checked on the written content ────────────────────────────────────
@@ -287,58 +254,10 @@ def _skill_description(key: str, _body: str, meta: dict[str, Any]) -> None:
         )
 
 
-def _summary(key: str, _body: str, meta: dict[str, Any]) -> None:
-    if "contract" in meta:
-        _RENDER["summary"](meta["contract"], key=key)
-
-
-def _decision(key: str, _body: str, meta: dict[str, Any]) -> None:
-    if "decision" in meta:
-        _RENDER["decision"](meta["decision"], key=key)
-
-
 _CHECKS = {
     "yaml": _yaml,
     "agent_manifest": _agent_manifest,
     "protocol": _protocol,
     "setting": _setting,
     "skill_description": _skill_description,
-    "summary": _summary,
-    "decision": _decision,
 }
-
-
-# ── a body drawn from its field ──────────────────────────────────────────────
-
-
-def render_summary(made: Any, *, key: str = "the summary") -> str:
-    """The summary's text from its ``contract``, or a refusal when it can't be drawn."""
-    from app.services import frame
-
-    if not isinstance(made, dict):
-        raise Refused("memory.schema_invalid", f"{key}: `contract` has to be a mapping.")
-    try:
-        return frame.render(made)
-    except (KeyError, TypeError, ValueError, AttributeError) as e:
-        raise Refused(
-            "memory.schema_invalid",
-            f"{key}: `contract` is missing or mistyping a part the summary is drawn from ({e}).",
-        ) from e
-
-
-def render_decision(decided: Any, *, key: str = "the decision") -> str:
-    """The decision's text from its ``decision`` field, or a refusal."""
-    if not isinstance(decided, dict) or not isinstance(decided.get("text"), str):
-        raise Refused(
-            "memory.schema_invalid",
-            f"{key}: `decision` has to be a mapping with the decision as `text`.",
-        )
-    pick = decided.get("pick")
-    lines = ["# Decision", "", f"Going with {pick}: {decided['text']}" if pick else decided["text"]]
-    views = [v for v in decided.get("views") or [] if isinstance(v, str)]
-    if views:
-        lines += ["", "## How each member sees it", "", *(f"- {v}" for v in views)]
-    return "\n".join(lines) + "\n"
-
-
-_RENDER = {"summary": render_summary, "decision": render_decision}

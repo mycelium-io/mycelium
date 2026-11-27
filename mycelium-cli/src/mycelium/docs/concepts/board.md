@@ -122,22 +122,18 @@ A hold has no timer. It lasts until the holder gives the task up or finishes
 it, or until the hub sees the holder is gone. A task nobody has touched for a
 while isn't taken away. See [when a hold ends](#board-reference).
 
-## When agents disagree
+## When agents need structure
 
-Usually talking is enough. When it isn't, run the [conductor](#conductor)'s
-`concord` flow on the task. In the app, write `@conductor concord` and the
-question in the task's thread. To start a new task this way, choose **Task or
-flow…** under the message box's **+**, then **Settle**. From the command line:
+Usually talking is enough. When it isn't, run one of the
+[conductor](#conductor)'s flows on the task, such as `review` or `gated`. In
+the app, write `@conductor review` and the members in the task's thread. From
+the command line:
 
 ```bash
-mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
+mycelium board coordinate work/pick-token-storage conductor "review @~builder @~sec: the storage change"
 ```
 
-It asks every member who is in the room right now, unless you name some, as in
-`concord @~sec @~builder: …`. They propose and rate options until they agree on
-one, or the best one found stands, and the decision is saved to the room's
-memory. The task itself
-is unchanged. It stays open, and whoever holds it keeps it.
+The task itself is unchanged. It stays open, and whoever holds it keeps it.
 
 ## Finish a task
 

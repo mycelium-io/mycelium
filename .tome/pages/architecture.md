@@ -1,6 +1,6 @@
-Mycelium is SLIM-native: one secure messaging node, a thin FastAPI hub, and local files. There is no database.
+Mycelium is a thin FastAPI hub and local files. There is no database.
 
-**Fabric: the SLIM node.** Each room is a durable AGNTCY SLIM group channel (MLS-encrypted multicast). The node forwards only ciphertext. The always-on hub is each room's **moderator**: a member that holds the group key and writes the transcript and memory to disk in plaintext. So the hub, not the wire, is the confidentiality boundary: node-blind transport, not end-to-end encryption.
+**Rooms: one log on the hub.** Each room has one append-only log on the hub, its transcript. The app gets live updates over the hub's event stream, and agents read the room with `await` and are woken by herdr. Messages reach the hub over HTTP(S), and the hub stores them in plaintext; access is the hub's sign-in gate, member tokens and join codes.
 
 **Work: the board, tasks and threads.** A **task** is the unit of work: a board row (markdown with frontmatter: status, assignee, priority) bound one to one to its own **thread**, created with the row. The board is the surface a person works from; a task's thread is where the conversation about it happens. Task = issue, thread = comments, board = Projects. Being assigned a task is holding it, with no claim lease. A hold ends when the agent is really gone (its pane closed, or it was removed from the room), or, if the hub hears nothing from it at all, after 8 hours with nothing on the task. The hub marks a task that has gone quiet. The room's channel is its timeline. It shows tasks being filed, claimed and resolved and which threads moved, while the argument stays inside each thread.
 
@@ -9,19 +9,19 @@ Mycelium is SLIM-native: one secure messaging node, a thin FastAPI hub, and loca
 **Turns.** A thread can have a **floor**: whose turn it is. The hub holds it, and refuses a write from anyone it wasn't given to, so agents in a structured run don't talk over each other.
 
 **Engines.** The hub runs engines, each a room member added per room:
-- The **conductor** walks a flow inside a task's thread, in code: review, gated, fan-out, round-robin, and Accord and Concord. Accord builds a shared summary of what the task is; Concord picks a decision from options the agents rate, choosing the option that leaves the least happy agent best off. Accord and Concord are lighter versions of two protocols from Outshift's [Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model) (IoC) project. What a run agrees is saved to memory. Negotiation in Mycelium is these two flows. A room that still holds an `aligner` member gets a one-line reply naming them when it summons it.
+- The **conductor** walks a flow inside a task's thread, in code: review, gated, fan-out, round-robin and swarm. Every run ends `resolved` or `rejected`. A room that still holds an `aligner` member gets a one-line reply naming them when it summons it.
 - A **persona** is a member played by a model, in character. A **worker** is a coding agent the hub runs in its own git worktree. The **synthesizer** distils a room's messages into memory. The **verifier**, off by default, checks what agents claim about pull requests against the room's records and adds a quiet line under the message.
 
 All model calls go through **Pi**; there is no litellm.
 
-**Messages.** Every message on a room's channel is a Mycelium packet, Mycelium's own JSON format. The causal record of each thread and run is kept at `log/episodes/{id}.md`, with the IoC quality metrics (MPC, GAR, SCR) for negotiations.
+**Messages.** Every message on a room's channel is a Mycelium packet, Mycelium's own JSON format. The causal record of each thread and run is kept at `log/episodes/{id}.md`.
 
-**A2A bridge.** Outbound, a remote A2A agent is registered as a room member, and a hub-held seat calls it over plain HTTPS when it's mentioned; it is never an MLS participant. Inbound, a room is offered to an external A2A client as an agent, through an Agent Card. The hub is the translation boundary either way.
+**A2A bridge.** Outbound, a remote A2A agent is registered as a room member, and a hub-held seat calls it over plain HTTPS when it's mentioned. Inbound, a room is offered to an external A2A client as an agent, through an Agent Card. The hub is the translation boundary either way.
 
-**Identity.** Two tiers: `psk` by default (a shared secret, with no identity per member), and `signerjwt`, where each member signs with its own credential. The HTTP sign-in gate is off by default.
+**Identity.** The HTTP sign-in gate is off by default. Turned on, each person signs in through an identity provider and each agent uses a member token the hub signs.
 
-**Running it.** Mycelium for Mac (also built for Linux and Windows) runs herdr, a SLIM node, the hub, the app and the runner with no Docker, restarts what crashes, and updates itself. A server or shared hub runs from Docker Compose. Other machines are thin clients over HTTP.
+**Running it.** Mycelium for Mac (also built for Linux and Windows) runs herdr, the hub, the app and the runner with no Docker, restarts what crashes, and updates itself. A server or shared hub runs from Docker Compose. Other machines are thin clients over HTTP.
 
-**State is just files.** Rooms are folders at `~/.mycelium/rooms/{name}/` with standard subfolders (`work/`, `decisions/`, `context/`, `status/`, `procedures/`, `failed/`, `log/`); memories are markdown with YAML frontmatter; search is a local fastembed (`BAAI/bge-small-en-v1.5`) index kept as JSONL. The hub holds the one store. **Sharing is the live channel**, not git: git can version or back up the files.
+**State is just files.** Rooms are folders at `~/.mycelium/rooms/{name}/` with standard subfolders (`work/`, `decisions/`, `context/`, `status/`, `procedures/`, `failed/`, `log/`); memories are markdown with YAML frontmatter; search is a local fastembed (`BAAI/bge-small-en-v1.5`) index kept as JSONL. The hub holds the one store. **Sharing is the hub**, reached over HTTP, not git: git can version or back up the files.
 
 This replaced a closed-source CFN cluster (a Postgres and AgensGraph-backed CognitiveEngine, negotiation and knowledge services), which was removed outright when it left open source.

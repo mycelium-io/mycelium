@@ -226,8 +226,6 @@ export function FlowGraph({ flow, trace, currentStep, outcome, floor, direction,
         return (
           <g key={node.id} transform={`translate(${node.x} ${node.y})`}>
             <title>{`${node.id}: ${line}`}</title>
-            {/* A pick, a count or the shared summary is made in code and asks
-                nobody, so its box is dashed. */}
             <rect
               width={node.w}
               height={NODE_H}
@@ -235,7 +233,6 @@ export function FlowGraph({ flow, trace, currentStep, outcome, floor, direction,
               fill={t.fill}
               stroke={t.stroke}
               strokeWidth={state === "current" ? 2 : 1.2}
-              strokeDasharray={node.code ? "4 3" : undefined}
             />
             <clipPath id={`flow-clip-${node.id}`}>
               <rect x={0} y={0} width={node.w - 6} height={NODE_H} />

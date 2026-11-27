@@ -12,6 +12,6 @@
   ],
   "kinds": ["conductor", "hello", "persona", "synthesizer", "verifier", "worker"],
   "retired": {
-    "aligner": "The aligner was retired, so nothing started. To negotiate, run `mycelium board coordinate <row> conductor \"concord …\"` to help members agree, or `\"accord …\"` to get them on the same page."
+    "aligner": "The aligner was retired, so nothing started. To work it out in a task, run a conductor flow there, like `mycelium board coordinate <row> conductor \"review …\"`."
   }
 }

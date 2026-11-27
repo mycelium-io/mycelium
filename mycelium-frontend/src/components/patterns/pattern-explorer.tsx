@@ -472,14 +472,13 @@ const NOW_TONE: Record<string, { label: string; tone: string; box: string }> = {
   running: { label: "So far", tone: "text-accent", box: "border-accent/40" },
   yours: { label: "Waiting on you", tone: "text-yellow", box: "border-yellow/50 bg-yellow/5" },
   resolved: { label: "Done", tone: "text-green", box: "border-green/50 bg-green/5" },
-  converged: { label: "Agreed", tone: "text-green", box: "border-green/50 bg-green/5" },
   rejected: { label: "Ended without it", tone: "text-yellow", box: "border-yellow/50 bg-yellow/5" },
 };
 
 function BeforeAfter({ pattern, standing, state }: { pattern: PatternRead; standing: Standing | null; state: string }) {
   const before = pattern.scenario.before;
   if (!before && !pattern.scenario.after) return null;
-  const done = state === "resolved" || state === "converged" || state === "rejected";
+  const done = state === "resolved" || state === "rejected";
   const tone = NOW_TONE[state] ?? NOW_TONE.running;
   const headline = standing?.headline ?? (state === "idle" ? "Run it to see where they land" : "Waiting for the first step…");
   return (
@@ -536,16 +535,6 @@ function handoff(line: ConductorLine, me: string): string | null {
       if (line.stance === "accept") return `${line.who} accepted`;
       if (line.stance === "reject") return `${line.who} pushed back · back to ${line.next}`;
       return null;
-    case "select":
-      return line.select.pick ? `picked option ${line.select.pick}` : "no option cleared the bar";
-    case "tally":
-      if (line.tally.of === "points") {
-        if (line.tally.outcome === "empty") return "nobody gave any points";
-        return line.tally.outcome === "grew" ? `${line.tally.points} points so far` : "nobody added anything new";
-      }
-      return line.tally.outcome === "contested" ? "a word used in different senses" : null;
-    case "lock":
-      return line.lock.outcome === "locked" ? "shared summary written" : "nothing to put in a shared summary";
     case "close":
       return isSuccess(line.outcome) ? "done" : `ended · ${line.outcome}`;
   }

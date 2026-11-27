@@ -17,10 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from app.config import settings
 from app.services import message_format, room_channels, wake_digest, wake_log
 from app.services.persister import TranscriptRecord
-from tests.fakes import FakeSlimClient
 
 ROOM = "wakes-room"
 NOW = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
@@ -36,12 +34,8 @@ def room(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
 
 
 @pytest.fixture
-def manager(monkeypatch: pytest.MonkeyPatch) -> room_channels.RoomChannelManager:
-    monkeypatch.setattr(settings, "SLIM_ENABLED", True)
-    monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: True)
-    monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
-    monkeypatch.setattr(room_channels.RoomChannelManager, "_start_persister", lambda self, m: None)
-    return room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
+def manager() -> room_channels.RoomChannelManager:
+    return room_channels.RoomChannelManager()
 
 
 def _said(n: int, sender: str, text: str, minutes_ago: int) -> TranscriptRecord:
@@ -52,7 +46,7 @@ def _said(n: int, sender: str, text: str, minutes_ago: int) -> TranscriptRecord:
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": message_format.live_episode_urn(ROOM)},

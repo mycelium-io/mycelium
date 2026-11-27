@@ -8049,7 +8049,7 @@
           "sessions"
         ],
         "summary": "List Members",
-        "description": "Live presence: SLIM-socket members and server-held lease members.\n\nReturns every handle currently present in the room and how it's connected \u2014\n``\"slim\"`` for an active SLIM socket subscription, ``\"lease\"`` for a\nturn-based agent using ``await``/``reply`` (no persistent socket). Both\nkinds are first-class room members; the distinction surfaces liveness in the\nUI so you can tell a live connector from a polling agent at a glance.",
+        "description": "Live presence: every handle present in the room and how.\n\n``\"lease\"`` for a turn-based agent using ``await``/``reply``, ``\"herdr\"``\nfor one alive in a herdr pane that hasn't joined since, with herdr's state\nfor either when a pane reports it.",
         "operationId": "list_members_api_rooms__room_name__sessions_members_get",
         "parameters": [
           {
@@ -8476,7 +8476,7 @@
           "sessions"
         ],
         "summary": "Leave Room",
-        "description": "Remove a participant (agent leaves the room + the SLIM channel).",
+        "description": "Remove a participant (the agent leaves the room).",
         "operationId": "leave_room_api_rooms__room_name__sessions__session_id__delete",
         "parameters": [
           {
@@ -14572,7 +14572,7 @@
           "handle"
         ],
         "title": "A2aBridgedAgentRead",
-        "description": "A room member reached over A2A rather than the room's SLIM channel."
+        "description": "A room member reached over A2A, proxied by the hub."
       },
       "A2aExchangeRead": {
         "properties": {
@@ -17929,16 +17929,6 @@
             "type": "array",
             "title": "Participants"
           },
-          "metrics": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EpisodeMetricsRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "assignments": {
             "anyOf": [
               {
@@ -18050,68 +18040,6 @@
         ],
         "title": "EpisodeListResponse"
       },
-      "EpisodeMetricsRead": {
-        "properties": {
-          "mpc": {
-            "type": "number",
-            "title": "Mpc",
-            "default": 0.0
-          },
-          "gar": {
-            "type": "number",
-            "title": "Gar",
-            "default": 0.0
-          },
-          "scr": {
-            "type": "number",
-            "title": "Scr",
-            "default": 0.0
-          },
-          "provenance_weight": {
-            "type": "number",
-            "title": "Provenance Weight",
-            "default": 0.0
-          },
-          "participants": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Participants"
-          },
-          "satisfaction": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Satisfaction"
-          },
-          "min_satisfaction": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min Satisfaction"
-          }
-        },
-        "type": "object",
-        "title": "EpisodeMetricsRead"
-      },
       "EpisodeSummaryRead": {
         "properties": {
           "short_id": {
@@ -18147,16 +18075,6 @@
             },
             "type": "array",
             "title": "Participants"
-          },
-          "metrics": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/EpisodeMetricsRead"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "assignments": {
             "anyOf": [
@@ -18685,131 +18603,6 @@
         "title": "HealthAuth",
         "description": "The HTTP gate as configured (``app/services/auth.py``)."
       },
-      "HealthCoordination": {
-        "properties": {
-          "endpoint": {
-            "type": "string",
-            "title": "Endpoint",
-            "description": "The SLIM node the hub dials"
-          },
-          "slim_enabled": {
-            "type": "boolean",
-            "title": "Slim Enabled"
-          },
-          "channels_live": {
-            "type": "integer",
-            "title": "Channels Live"
-          },
-          "provisions_ok": {
-            "type": "integer",
-            "title": "Provisions Ok"
-          },
-          "provisions_failed": {
-            "type": "integer",
-            "title": "Provisions Failed"
-          },
-          "invite_failures": {
-            "type": "integer",
-            "title": "Invite Failures"
-          },
-          "rooms": {
-            "items": {
-              "$ref": "#/components/schemas/HealthCoordinationRoom"
-            },
-            "type": "array",
-            "title": "Rooms"
-          }
-        },
-        "type": "object",
-        "required": [
-          "endpoint",
-          "slim_enabled",
-          "channels_live",
-          "provisions_ok",
-          "provisions_failed",
-          "invite_failures",
-          "rooms"
-        ],
-        "title": "HealthCoordination",
-        "description": "The room channels this hub moderates, and its process counters."
-      },
-      "HealthCoordinationRoom": {
-        "properties": {
-          "room": {
-            "type": "string",
-            "title": "Room"
-          },
-          "provisioned": {
-            "type": "boolean",
-            "title": "Provisioned"
-          },
-          "persister_alive": {
-            "type": "boolean",
-            "title": "Persister Alive"
-          },
-          "members": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Members",
-            "description": "SLIM members and live `await` leases"
-          },
-          "deferred_invites": {
-            "type": "integer",
-            "title": "Deferred Invites"
-          },
-          "episode_active": {
-            "type": "boolean",
-            "title": "Episode Active"
-          },
-          "reserves": {
-            "type": "integer",
-            "title": "Reserves"
-          },
-          "reserve_failures": {
-            "type": "integer",
-            "title": "Reserve Failures"
-          },
-          "reserve_skipped": {
-            "type": "integer",
-            "title": "Reserve Skipped"
-          },
-          "receive_errors": {
-            "type": "integer",
-            "title": "Receive Errors"
-          },
-          "transient_errors": {
-            "type": "integer",
-            "title": "Transient Errors"
-          },
-          "knowledge_applied": {
-            "type": "integer",
-            "title": "Knowledge Applied"
-          },
-          "knowledge_conflicts": {
-            "type": "integer",
-            "title": "Knowledge Conflicts"
-          }
-        },
-        "type": "object",
-        "required": [
-          "room",
-          "provisioned",
-          "persister_alive",
-          "members",
-          "deferred_invites",
-          "episode_active",
-          "reserves",
-          "reserve_failures",
-          "reserve_skipped",
-          "receive_errors",
-          "transient_errors",
-          "knowledge_applied",
-          "knowledge_conflicts"
-        ],
-        "title": "HealthCoordinationRoom"
-      },
       "HealthEmbedding": {
         "properties": {
           "status": {
@@ -18833,30 +18626,6 @@
           "message"
         ],
         "title": "HealthEmbedding"
-      },
-      "HealthIdentity": {
-        "properties": {
-          "status": {
-            "type": "string",
-            "title": "Status"
-          },
-          "mode": {
-            "type": "string",
-            "title": "Mode",
-            "description": "The SLIM identity tier: psk or signerjwt"
-          },
-          "message": {
-            "type": "string",
-            "title": "Message"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status",
-          "mode",
-          "message"
-        ],
-        "title": "HealthIdentity"
       },
       "HealthLLM": {
         "properties": {
@@ -18988,16 +18757,6 @@
               }
             ]
           },
-          "identity": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/HealthIdentity"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "embedding": {
             "anyOf": [
               {
@@ -19012,16 +18771,6 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/HealthLLM"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "coordination": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/HealthCoordination"
               },
               {
                 "type": "null"
@@ -19051,7 +18800,7 @@
               }
             ],
             "title": "Issues",
-            "description": "What makes it degraded (storage, llm, coordination, latency)"
+            "description": "What makes it degraded (storage, llm, latency)"
           }
         },
         "type": "object",
@@ -22717,7 +22466,7 @@
           "kind": {
             "type": "string",
             "title": "Kind",
-            "description": "slim (a live socket), lease (an await/reply poll) or herdr (a pane only)"
+            "description": "lease (an await/reply poll) or herdr (a pane only)"
           },
           "last_seen": {
             "anyOf": [
@@ -22729,7 +22478,7 @@
               }
             ],
             "title": "Last Seen",
-            "description": "When a lease member last polled (ISO); none for a SLIM member"
+            "description": "When the member last polled or synced (ISO)"
           },
           "status": {
             "anyOf": [

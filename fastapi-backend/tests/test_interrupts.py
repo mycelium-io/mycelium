@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.config import settings
 from app.schemas import RunnerAgentRead, RunnerHello
 from app.services import (
     asks,
@@ -23,22 +22,17 @@ from app.services import (
     room_channels,
     wake_digest,
 )
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 from app.services.runners import RunnerRegistry
-from tests.fakes import FakeSlimClient
 
 ROOM = "room-a"
 NOW = datetime(2026, 10, 11, 9, 0, tzinfo=UTC)
 
 
 @pytest.fixture
-def manager(monkeypatch: pytest.MonkeyPatch) -> room_channels.RoomChannelManager:
-    monkeypatch.setattr(settings, "SLIM_ENABLED", True)
-    monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: True)
-    monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
-    monkeypatch.setattr(room_channels.RoomChannelManager, "_start_persister", lambda self, m: None)
-    return room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")
+def manager() -> room_channels.RoomChannelManager:
+    return room_channels.RoomChannelManager()
 
 
 @pytest.fixture

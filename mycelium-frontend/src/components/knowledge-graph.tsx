@@ -19,7 +19,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Ban, Info, Lightbulb, Vote, type LucideIcon } from "lucide-react";
+import { Ban, Info, Lightbulb, type LucideIcon } from "lucide-react";
 import type { Knowledge, KnowledgeKind, KnowledgeTask } from "@/lib/knowledge";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +33,6 @@ const KIND: Record<KnowledgeKind, { icon: LucideIcon; tone: string; label: strin
   fact: { icon: Info, tone: "text-muted-foreground", label: "Fact" },
   finding: { icon: Lightbulb, tone: "text-accent", label: "Finding" },
   "dead-end": { icon: Ban, tone: "text-red", label: "Dead end" },
-  decision: { icon: Vote, tone: "text-green", label: "Decision" },
 };
 
 interface Props {

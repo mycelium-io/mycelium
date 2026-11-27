@@ -42,16 +42,14 @@ _COMPOSE_PROJECT = "mycelium"
 
 # Every container the CLI is willing to stop and remove. `docker compose down`
 # only reaches its own project, so this is the net for containers started under
-# another project name or outside compose. The ioc-cfn entries are a separate
-# deployment the CLI can stop but does not define.
+# another project name or outside compose. ``mycelium-slim`` is the messaging
+# node an older install may have left running.
 _MANAGED_CONTAINERS = [
     "mycelium-slim",
     "mycelium-backend",
     "mycelium-frontend",
     "mycelium-collector",
     "mycelium-grafana",
-    "ioc-cfn-mgmt-plane-svc",
-    "ioc-cfn-svc",
 ]
 
 
@@ -544,8 +542,8 @@ def start(
     Start Mycelium services.
 
     Runs docker compose up -d using the bundled compose file and
-    ~/.mycelium/.env for configuration. The SLIM node, the backend and the
-    frontend all start; the OTLP collector and Grafana are opt-in.
+    ~/.mycelium/.env for configuration. The backend and the frontend
+    start; the OTLP collector and Grafana are opt-in.
 
     Examples:
         mycelium up              # start all services
@@ -1130,7 +1128,7 @@ def _check_data_dir() -> dict:
 def logs(
     ctx: typer.Context,
     service: str | None = typer.Argument(
-        None, help="Service name (e.g. mycelium-backend, ioc-cfn-mgmt-plane-svc)"
+        None, help="Service name (e.g. mycelium-backend, mycelium-frontend)"
     ),
     follow: bool = typer.Option(False, "--follow", "-f", help="Follow log output"),
     tail: int | None = typer.Option(None, "--tail", help="Number of lines to show from the end"),

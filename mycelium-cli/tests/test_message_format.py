@@ -1,29 +1,27 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the daemon-side lean message helpers (``mycelium.slim.message_format``).
+"""Unit tests for the CLI's lean message helpers (``mycelium.message_format``).
 
-These pin the wire contract the connector shares with the backend moderator: an
-``exchange`` envelope under the additive ``l9`` key, sender first / recipients
-after, parents threading causality. The *shape parity* with the backend's
-``message_format.envelope_to_dict`` is proven cross-package in the live integration slice;
-here we pin the accessors and the round trip.
+These pin the envelope shape the CLI shares with the backend: an ``exchange``
+envelope under the additive ``envelope`` key, sender first / recipients after,
+parents threading causality.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from mycelium.slim import message_format
+from mycelium import message_format
 
 
 def _inbound(**kw):
     return message_format.build_reply_content(
         sender=kw.get("sender", "human"),
         recipients=kw.get("recipients", ["agent-a"]),
-        episode=kw.get("episode", "urn:ioc:mycelium:episode:r:live"),
+        episode=kw.get("episode", "urn:mycelium:episode:r:live"),
         parents=kw.get("parents", []),
-        topic=kw.get("topic", "urn:concept:mycelium:r"),
+        topic=kw.get("topic", "urn:mycelium:topic:r"),
         text=kw.get("text", "hello"),
         message_id=kw.get("message_id", "m-1"),
     )
@@ -34,16 +32,16 @@ def test_build_reply_content_has_exchange_envelope() -> None:
     assert message_format.kind_of(content) == "exchange"
     assert message_format.sender_of(content) == "agent-a"
     assert message_format.recipients_of(content) == ["human"]
-    assert content["l9"]["header"]["message"]["parents"] == ["woke-1"]
+    assert content["envelope"]["header"]["message"]["parents"] == ["woke-1"]
     # subkind is omitted (never emitted) — always-valid exchange.
-    assert "subkind" not in content["l9"]["header"]
+    assert "subkind" not in content["envelope"]["header"]
 
 
 def test_participants_groups_is_explicit_null() -> None:
     # The backend restores an explicit null after exclude_none; a member must
     # emit the same or re-validation drops the key.
     content = _inbound()
-    assert content["l9"]["header"]["participants"]["groups"] is None
+    assert content["envelope"]["header"]["participants"]["groups"] is None
 
 
 def test_accessors_read_id_episode_topic() -> None:
@@ -53,17 +51,6 @@ def test_accessors_read_id_episode_topic() -> None:
     assert message_format.topic_of(content) == "topic-9"
 
 
-def test_serialize_parse_round_trip() -> None:
-    content = _inbound(text="ping")
-    restored = message_format.parse(message_format.serialize(content))
-    assert restored == content
-
-
-def test_parse_rejects_non_json_and_non_object() -> None:
-    assert message_format.parse(b"\xff\xfe not json") is None
-    assert message_format.parse(b"[1, 2, 3]") is None
-
-
 def test_human_text_prefers_content_field() -> None:
     content = _inbound(text="the body")
     assert message_format.human_text_of(content) == "the body"
@@ -71,17 +58,32 @@ def test_human_text_prefers_content_field() -> None:
 
 def test_human_text_falls_back_to_string_leaves() -> None:
     # A message whose text landed outside the canonical field still reaches the
-    # agent (every non-``l9`` string leaf, joined).
+    # agent (every string leaf outside the envelope, joined).
     content = _inbound(text="")
     content["note"] = "surfaced anyway"
     assert "surfaced anyway" in message_format.human_text_of(content)
+
+
+def test_accessors_read_the_older_envelope_key() -> None:
+    content = _inbound(message_id="m-9", episode="ep-9")
+    legacy = {"content": content["content"], "l9": content["envelope"]}
+    assert message_format.envelope_of(legacy) == content["envelope"]
+    assert message_format.message_id_of(legacy) == "m-9"
+    assert message_format.episode_of(legacy) == "ep-9"
+    assert message_format.envelope_of({"content": "hi"}) == {}
+
+
+def test_frame_kind_reads_both_spellings() -> None:
+    assert message_format.frame_kind("envelope_exchange") == "exchange"
+    assert message_format.frame_kind("l9_knowledge") == "knowledge"
+    assert message_format.frame_kind("broadcast") is None
 
 
 def test_no_topic_omits_context() -> None:
     content = message_format.build_reply_content(
         sender="a", recipients=[], episode="ep", parents=[], topic=None, text="x"
     )
-    assert "context" not in content["l9"]["header"]
+    assert "context" not in content["envelope"]["header"]
     assert message_format.topic_of(content) is None
 
 
@@ -98,15 +100,15 @@ def test_build_envelope_content_sets_kind_and_subkind() -> None:
         parents=["p-1"],
         payload_data={"assignments": {"cap": "30"}},
     )
-    assert content["l9"]["header"]["kind"] == "commit"
-    assert content["l9"]["header"]["subkind"] == "resolved"
-    assert content["l9"]["header"]["message"]["parents"] == ["p-1"]
-    assert content["l9"]["payload"]["data"] == {"assignments": {"cap": "30"}}
+    assert content["envelope"]["header"]["kind"] == "commit"
+    assert content["envelope"]["header"]["subkind"] == "resolved"
+    assert content["envelope"]["header"]["message"]["parents"] == ["p-1"]
+    assert content["envelope"]["payload"]["data"] == {"assignments": {"cap": "30"}}
 
 
 def test_build_envelope_content_omits_subkind_when_absent() -> None:
     content = message_format.build_envelope_content(kind="exchange", sender="avery", episode="ep-1")
-    assert "subkind" not in content["l9"]["header"]
+    assert "subkind" not in content["envelope"]["header"]
 
 
 def test_build_envelope_content_rejects_invalid_subkind() -> None:

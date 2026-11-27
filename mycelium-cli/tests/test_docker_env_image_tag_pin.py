@@ -35,8 +35,8 @@ from mycelium.docker_utils import (
 
 @pytest.fixture(autouse=True)
 def _own_home(isolated_home: Path) -> None:
-    """``write_env_file`` mints a SLIM secret for a fresh config and saves the
-    config to ``~/.mycelium/config.toml``, so each test needs a home of its own."""
+    """``write_env_file`` writes under ``~/.mycelium``, so each test needs a home
+    of its own."""
 
 
 def _parse_env(blob: str) -> dict[str, str]:

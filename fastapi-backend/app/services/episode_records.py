@@ -7,10 +7,8 @@ Each coordination session closes with a record written to the parent room's
 memory (see :func:`app.services.episode_state.write_episode_record`): a small
 markdown header plus the full causally-linked message chain as a ```jsonl```
 block. This module turns one of those files back into structured fields — kind/
-subkind, episode URN, participants, and the metrics the commit carried — for the
-episodes route and for cross-entity search. A conductor run's metrics are its
-members' ``satisfaction``; a record the retired aligner wrote carries MPC/GAR/SCR
-and ``assignments``, which still read so a room's history renders.
+subkind, episode URN, participants, and the assignments an older commit carried —
+for the episodes route and for cross-entity search.
 
 The structured fields are derived from the envelopes themselves (the source of
 truth), not the human-readable header; only ``tasks`` — which only those older
@@ -112,7 +110,6 @@ def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, A
     participants: list[str] = []
     outcome = "open"
     subkind: str | None = None
-    metrics: dict[str, Any] | None = None
     assignments: dict[str, Any] | None = None
 
     for env in envelopes:
@@ -133,8 +130,6 @@ def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, A
             subkind = header.get("subkind")
             outcome = str(subkind or "committed")
             data = _as_dict(_as_dict(env.get("payload")).get("data"))
-            if isinstance(data.get("metrics"), dict):
-                metrics = data["metrics"]
             if isinstance(data.get("assignments"), dict):
                 assignments = data["assignments"]
 
@@ -155,7 +150,6 @@ def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, A
         "outcome": outcome,
         "subkind": subkind,
         "participants": participants,
-        "metrics": metrics,
         "assignments": assignments,
         "tasks": tasks,
         "message_count": len(envelopes),
@@ -172,7 +166,7 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
     """Synthesize a summary for the episode currently *in progress*, if any.
 
     A closed episode lands as a ``log/episodes/*`` record; an open one exists only
-    in the moderator's in-memory lifecycle until it converges/rejects. Surfacing it
+    in the room channel's in-memory lifecycle until it ends. Surfacing it
     lets a caller show "in progress" (``outcome: "open"``) before the record is
     written, so a negotiation is visible while it runs, not only after it ends.
     """
@@ -188,7 +182,8 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
     message_count = 0
     if managed.persister is not None:
         for record in managed.persister.log.records:
-            message = record.content.get("l9", {}).get("header", {}).get("message", {})
+            header = message_format.envelope_of(record.content).get("header") or {}
+            message = header.get("message") or {}
             if message.get("episode") == urn:
                 message_count += 1
     return {
@@ -198,7 +193,6 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
         "outcome": "open",
         "subkind": None,
         "participants": participants,
-        "metrics": None,
         "assignments": None,
         "tasks": [],
         "message_count": message_count,

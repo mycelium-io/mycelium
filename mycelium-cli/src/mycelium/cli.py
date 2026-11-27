@@ -46,7 +46,6 @@ from mycelium.commands import (
     user,
     version,
     waiting,
-    wire,
 )
 from mycelium.commands import (
     login as login_cmd,
@@ -134,9 +133,8 @@ app.command(name="join")(join.join)
 app.command(name="leave")(join.leave)
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
-app.command(name="connect")(hub.connect)
 
-# Participation primitives: join a room's SLIM channel and reply, no daemon.
+# Participation primitives: wait for a turn in a room and reply, no daemon.
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
 app.command(name="waiting")(waiting.waiting)
@@ -171,10 +169,6 @@ app.add_typer(desktop.app, name="desktop")
 app.add_typer(openshell.app, name="openshell")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")
-
-# Hidden dev/testing plumbing: inject raw message/SLIM traffic (see commands/wire.py).
-app.add_typer(wire.message_app, name="message", hidden=True)
-app.add_typer(wire.slim_app, name="slim", hidden=True)
 
 
 if __name__ == "__main__":

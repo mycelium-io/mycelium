@@ -30,21 +30,21 @@ vi.mock("@/lib/api", () => ({
 import { EventStream } from "@/components/event-stream";
 
 const ROOM = "atlas";
-const LIVE = "urn:ioc:mycelium:episode:atlas:live";
-const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
+const LIVE = "urn:mycelium:episode:atlas:live";
+const THREAD = "urn:mycelium:episode:atlas:t3aa11bb";
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
 /** A message as the live stream carries it: prose inside an exchange envelope. */
 function said(text: string, episode: string | null, sender = "growth") {
   return {
     id: `m-${text.length}-${sender}`,
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     sender_handle: sender,
     created_at: CREATED,
     episode,
     content: JSON.stringify({
       content: text,
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { id: "m", parents: [], episode } },
       },
       payload: { type: "message", data: {} },
@@ -56,12 +56,12 @@ function said(text: string, episode: string | null, sender = "growth") {
 function ping(sender: string, message: string, episode = THREAD) {
   return {
     id: `ping-${message}`,
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     sender_handle: "system",
     created_at: CREATED,
     episode: LIVE,
     content: JSON.stringify({
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { id: `ping-${message}`, parents: [], episode: LIVE } },
         payload: { type: "ping", data: { episode, sender, message } },
       },
@@ -326,13 +326,13 @@ describe("<EventStream /> and the threads inside the room", () => {
     // Every other frame in that replay already reaches the feed as a message.
     const knowledge = {
       id: "k-1",
-      message_type: "l9_knowledge",
+      message_type: "envelope_knowledge",
       sender_handle: "system",
       created_at: CREATED,
       episode: LIVE,
       content: JSON.stringify({
         content: "memory updated → work/flip",
-        l9: { payload: { type: "extraction", data: { key: "work/flip" } } },
+        envelope: { payload: { type: "extraction", data: { key: "work/flip" } } },
       }),
     };
     vi.mocked(fetchMessages).mockResolvedValue({ messages: [knowledge] });

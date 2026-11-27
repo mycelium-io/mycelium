@@ -128,7 +128,7 @@ def test_a_saved_memory_is_one_quiet_line_not_a_message(monkeypatch: pytest.Monk
     from mycelium_backend_client.models import MessageListResponse
 
     saved = _make_messages()[:1]
-    saved[0].message_type = "l9_knowledge"
+    saved[0].message_type = "envelope_knowledge"
     saved[0].sender_handle = "system"
     saved[0].content = json.dumps({"content": "memory updated → work/speed-up-the-board"})
     _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=saved, total=1))
@@ -464,29 +464,29 @@ def test_protocol_records_print_as_their_line_not_json(monkeypatch: pytest.Monke
     stamp = datetime.datetime(2026, 10, 13, 20, 0)  # noqa: DTZ001
     commit = {
         "content": "Stopped by julia.",
-        "l9": {"header": {"kind": "commit", "subkind": "rejected"}},
+        "envelope": {"header": {"kind": "commit", "subkind": "rejected"}},
     }
-    bare = {"l9": {"header": {"kind": "commit", "subkind": "rejected"}}}
-    memory = {"l9": {"header": {"kind": "knowledge"}, "payload": {"data": {"key": "work/x"}}}}
+    bare = {"envelope": {"header": {"kind": "commit", "subkind": "rejected"}}}
+    memory = {"envelope": {"header": {"kind": "knowledge"}, "payload": {"data": {"key": "work/x"}}}}
     msgs = [
         MessageRead(
             id=uuid4(),
             sender_handle="conductor",
-            message_type="l9_commit",
+            message_type="envelope_commit",
             content=json.dumps(commit),
             created_at=stamp,
         ),
         MessageRead(
             id=uuid4(),
             sender_handle="system",
-            message_type="l9_commit",
+            message_type="envelope_commit",
             content=json.dumps(bare),
             created_at=stamp,
         ),
         MessageRead(
             id=uuid4(),
             sender_handle="system",
-            message_type="l9_knowledge",
+            message_type="envelope_knowledge",
             content=json.dumps(memory),
             created_at=stamp,
         ),
@@ -499,6 +499,6 @@ def test_protocol_records_print_as_their_line_not_json(monkeypatch: pytest.Monke
     assert "Stopped by julia." in result.output
     assert "Negotiation rejected." in result.output
     assert "Memory updated: work/x." in result.output
-    assert '"l9"' not in result.output
+    assert '"envelope"' not in result.output
     # Plain messages are untouched.
     assert chat.readable("broadcast", '{"looks": "like json"}') == '{"looks": "like json"}'

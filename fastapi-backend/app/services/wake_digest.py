@@ -209,7 +209,7 @@ def _short(title: str, limit: int) -> str:
 
 def _board_notice(record: Any) -> dict[str, Any] | None:
     """The notice ``record`` carries, when it is one about a task on the board."""
-    payload = (record.content.get("l9") or {}).get("payload") or {}
+    payload = message_format.envelope_of(record.content).get("payload") or {}
     if payload.get("type") != message_format.NOTICE_PAYLOAD_TYPE:
         return None
     data = payload.get("data") or {}
@@ -321,7 +321,7 @@ def upstream_line(data: dict[str, Any], when: datetime | None, now: datetime) ->
 
 def _upstream_notice(record: Any) -> dict[str, Any] | None:
     """The notice ``record`` carries, when it says a row's pull request changed."""
-    payload = (record.content.get("l9") or {}).get("payload") or {}
+    payload = message_format.envelope_of(record.content).get("payload") or {}
     if payload.get("type") != message_format.NOTICE_PAYLOAD_TYPE:
         return None
     data = payload.get("data") or {}
@@ -784,7 +784,7 @@ def _reactions_to(me: str, reacted: list[Any]) -> list[Any]:
     names nobody, and takes its earlier one with it."""
     latest: dict[tuple[str, str, str], Any] = {}
     for record in reacted:
-        header = record.content.get("l9", {}).get("header", {})
+        header = message_format.envelope_of(record.content).get("header") or {}
         found = reaction_of(
             record.subkind, header.get("message", {}).get("parents"), record.content
         )
@@ -801,7 +801,7 @@ def _reactions_to(me: str, reacted: list[Any]) -> list[Any]:
 
 def _reaction_line(room: str, record: Any, window: list[Any], now: datetime) -> str:
     """``@julia reacted 👍 · 2m · in the room, to: <the message's first line>``."""
-    header = record.content.get("l9", {}).get("header", {})
+    header = message_format.envelope_of(record.content).get("header") or {}
     target, emoji, _ = reaction_of(
         record.subkind, header.get("message", {}).get("parents"), record.content
     ) or ("", "", True)
@@ -1179,17 +1179,6 @@ def build(
         lines.append(f"         open now: {tally}")
     else:
         lines.append(f"Board:   {tally}")
-    # What the team agreed for the task it's about, so it works to that.
-    task_key = (
-        wake.get("key") if reason in ("assigned", "handback") else (where[0] if where else None)
-    )
-    if task_key:
-        from app.services import agreed
-
-        pointers = agreed.pointer(room, str(task_key))
-        if pointers:
-            lines.append(f"Agreed:  {pointers[0]}")
-            lines.extend(f"         {p}" for p in pointers[1:])
     # Who else is busy right now and on what, so it doesn't act across them:
     # a small members pane, set off on its own.
     if pane := members(room, me, now):

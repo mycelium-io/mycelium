@@ -35,7 +35,7 @@ capture that takes more than a few seconds prints the same hint.
 ## Screenshot the app
 
 ```bash
-# boot the mock frontend (no backend, SLIM or LLM needed) and shoot a route
+# boot the mock frontend (no backend or LLM needed) and shoot a route
 node shotkit/bin/shot.mjs app /room/checkout --mock
 
 # against an app you already have running

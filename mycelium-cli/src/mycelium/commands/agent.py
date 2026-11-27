@@ -290,74 +290,7 @@ def _persist_and_describe(
     )
     for line in impl.describe(manifest, room=room_name):
         console.print(line)
-    _provision_channel_identity(manifest, config.slim.identity)
     _prompt_for_credential(config, manifest)
-
-
-def _provision_channel_identity(manifest: AgentManifest, mode: str) -> None:
-    """Provision the agent's SLIM channel identity for the active mode (#589).
-
-    Registration is where ``@handle`` becomes a usable channel identity: under
-    ``signerjwt`` this mints+registers the local keypair (``kid = @handle``). Under
-    the ``psk`` default it is a silent no-op (off by default, #567); the try-it
-    path never sees identity machinery. A provisioning failure is a warning, not a
-    hard error: the manifest is already written and the agent still works on the PSK.
-
-    *mode* is the effective tier from ``config.slim.identity``. The runtime resolves
-    the mode from ``MYCELIUM_SLIM_IDENTITY`` (env-only), but a fresh CLI process
-    doesn't inherit that env, so registration must read the config the user actually
-    set, not just the environment.
-    """
-    from mycelium.slim import identity as slim_identity
-
-    try:
-        result = slim_identity.provision_channel_identity(manifest.handle, mode=mode)
-    except slim_identity.SlimIdentityError as exc:
-        console.print(f"[yellow]Could not provision channel identity: {exc}[/yellow]")
-        return
-
-    result_mode = result.get("mode")
-    if result_mode == slim_identity.MODE_SIGNERJWT:
-        console.print(
-            f"[green]SLIM channel identity ready[/green] "
-            f"[dim](signerjwt · kid {result['kid']})[/dim]"
-        )
-        console.print(f"[dim]Public JWK on the roster: {result['roster_path']}.[/dim]")
-    # psk: no per-agent identity, stay silent (off by default, #567).
-
-
-def _revoke_channel_identity(handle: str, mode: str) -> None:
-    """Revoke ``@handle``'s SLIM channel identity on ``agent rm`` (#590).
-
-    The deprovisioning inverse of :func:`_provision_channel_identity`: it removes the
-    per-agent credential so a removed member can't rejoin, *without re-keying the
-    room* (the payoff per-member identity has over the shared-secret PSK: @alice and
-    the rest keep working, no rotation). Dispatches by the effective tier
-    (``config.slim.identity``), best-effort: a failure warns rather than aborting,
-    since the manifest is already gone.
-
-    * ``signerjwt``: drop the member's JWK from the roster + delete its local key.
-    * ``psk``: no per-agent credential exists; note that rotating the shared secret
-      is the only (blunt, room-wide) lever this tier has.
-    """
-    from mycelium.slim import identity as slim_identity
-
-    try:
-        result = slim_identity.revoke_channel_identity(handle, mode=mode)
-    except OSError as exc:
-        console.print(f"[yellow]Could not revoke channel identity: {exc}[/yellow]")
-        return
-
-    if result["mode"] == slim_identity.MODE_SIGNERJWT and result["revoked"]:
-        console.print(
-            f"[dim]Revoked SLIM channel identity (signerjwt · dropped @{handle} from "
-            "the roster). Peers now reject its tokens (no room re-key).[/dim]"
-        )
-    elif result["mode"] == slim_identity.MODE_PSK:
-        console.print(
-            "[dim]psk has no per-agent revocation; to fully exclude a removed member "
-            "you must rotate MYCELIUM_SLIM_MASTER_SECRET (a room-wide re-key).[/dim]"
-        )
 
 
 def _prompt_for_credential(config: MyceliumConfig, manifest: AgentManifest) -> None:
@@ -1233,14 +1166,6 @@ def agent_rm(
         # 2. Delete the manifest (backend + local mirror).
         _delete_manifest(config, room_name, manifest)
 
-        # 3. Revoke the agent's per-agent channel credential for the active tier
-        # (#590): signerjwt drops its JWK from the roster + deletes its local key;
-        # psk notes the room-wide-rotation limitation.
-        # The key property: the removed member can't rejoin, and the others keep
-        # working with no re-key. Best-effort: a failure is a warning, not a hard
-        # error (the manifest is already gone).
-        _revoke_channel_identity(handle, config.slim.identity)
-
         action = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{action}:[/green] @{handle} from {room_name}")
     except typer.Exit:
@@ -1945,73 +1870,6 @@ def credential_rm(
             )
         else:
             console.print(f"[dim]@{handle} had no credential here; nothing to do.[/dim]")
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-        raise typer.Exit(1) from None
-
-
-@doc_ref(
-    usage="mycelium agent credential slim-key <handle>",
-    desc=(
-        "Mint an agent's SignerJwt SLIM channel identity: a local ES256 keypair "
-        "(0600) whose public JWK is registered on the room roster. The floor for "
-        "<code>slim.identity = signerjwt</code> (#476); the PSK default needs none."
-    ),
-    group="agent",
-)
-@credential_app.command("slim-key")
-@emits_json()
-def credential_slim_key(
-    ctx: typer.Context,
-    handle: str = typer.Argument(..., help="Agent handle the signing key belongs to"),
-) -> None:
-    """Generate + register the agent's SignerJwt-floor SLIM channel identity.
-
-    The SignerJwt analogue of ``credential set``: the private ES256 key stays
-    local (0600), and only the **public** JWK is registered (keyed by
-    ``kid = @handle``) into the roster the moderator assembles so peers can
-    verify this agent's self-signed tokens. Idempotent: an existing key is reused.
-    Only meaningful when the channel identity tier is ``signerjwt``; the PSK
-    default (off by default, #567) uses no per-agent key. Revoke by dropping the
-    roster JWK (per-agent, no room-wide rotation).
-    """
-    from mycelium.slim import identity as slim_identity
-
-    try:
-        json_output = ctx.obj.get("json", False) if ctx.obj else False
-        key_path, jwk = slim_identity.ensure_agent_keypair(handle)
-        roster_path = slim_identity.public_jwk_path(handle)
-        mode = slim_identity.resolve_identity_mode()
-
-        if json_output:
-            typer.echo(
-                json_module.dumps(
-                    {
-                        "handle": handle,
-                        "key": str(key_path),
-                        "jwk": str(roster_path),
-                        "kid": jwk["kid"],
-                    },
-                    indent=2,
-                )
-            )
-            return
-
-        console.print(
-            f"[green]SLIM signing key ready[/green] for [cyan]@{handle}[/cyan] "
-            f"[dim](kid: {jwk['kid']})[/dim]"
-        )
-        console.print(f"[dim]Private key: {key_path} (mode 0600).[/dim]")
-        console.print(f"[dim]Public JWK registered on the roster: {roster_path}.[/dim]")
-        if mode != slim_identity.MODE_SIGNERJWT:
-            console.print(
-                "\n[yellow]Channel identity is still 'psk'[/yellow]; this key is unused "
-                "until you set [cyan]slim.identity = signerjwt[/cyan] "
-                "(or MYCELIUM_SLIM_IDENTITY=signerjwt)."
-            )
-    except typer.Exit:
-        raise
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

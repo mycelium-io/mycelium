@@ -52,7 +52,7 @@ vi.mock("@/components/keymap-provider", () => ({
 
 import { ThreadView } from "@/components/thread-view";
 
-const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
+const THREAD = "urn:mycelium:episode:atlas:t3aa11bb";
 
 /** The backend answers newest-first; a conversation reads the other way. */
 const NEWEST_FIRST = {
@@ -243,7 +243,7 @@ describe("<ThreadView />", () => {
 
     await act(async () => {
       es.open();
-      es.emit({ message_type: "broadcast", sender_handle: "ops", content: "unrelated", episode: "urn:ioc:mycelium:episode:atlas:live" });
+      es.emit({ message_type: "broadcast", sender_handle: "ops", content: "unrelated", episode: "urn:mycelium:episode:atlas:live" });
     });
     expect(fetchMessages.mock.calls.length).toBe(reads);
 
@@ -369,11 +369,11 @@ describe("<ThreadView />", () => {
     await act(async () => {
       es.open();
       es.emit({
-        message_type: "l9_exchange",
+        message_type: "envelope_exchange",
         sender_handle: "system",
-        episode: "urn:ioc:mycelium:episode:atlas:live",
+        episode: "urn:mycelium:episode:atlas:live",
         content: JSON.stringify({
-          l9: { payload: { type: "ping", data: { episode: THREAD, sender: "risk", message: "m3" } } },
+          envelope: { payload: { type: "ping", data: { episode: THREAD, sender: "risk", message: "m3" } } },
         }),
       });
     });

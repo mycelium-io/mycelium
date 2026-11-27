@@ -30,11 +30,11 @@ describe("usage view", () => {
     expect(settle).toMatchObject({ from: "negotiation", wellWord: "converged" });
   });
 
-  it("counts an agreement as a flow that ended well", () => {
+  it("counts a flow that resolved as one that ended well", () => {
     const usage = usageKpis(30);
-    const ways = waysOf({ ...usage, flows: { concord: { converged: 3, rejected: 1 } } });
-    const agree = ways.find(w => w.name === "Help them agree");
-    expect(agree).toMatchObject({ runs: 4, wellWord: "agreed" });
-    expect(agree?.well).toBeCloseTo(3 / 4);
+    const ways = waysOf({ ...usage, flows: { gated: { resolved: 3, rejected: 1 } } });
+    const gated = ways.find(w => w.name === "Gated");
+    expect(gated).toMatchObject({ runs: 4, wellWord: "resolved" });
+    expect(gated?.well).toBeCloseTo(3 / 4);
   });
 });

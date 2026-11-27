@@ -35,9 +35,9 @@ def _frame(
     data: dict[str, Any] | None = None,
     role: str = "agent",
 ) -> dict[str, Any]:
-    urn = f"urn:ioc:mycelium:episode:{ROOM}:{episode}"
+    urn = f"urn:mycelium:episode:{ROOM}:{episode}"
     content: dict[str, Any] = {
-        "l9": {
+        "envelope": {
             "header": {
                 "message": {"episode": urn, "id": f"m{n}", "parents": []},
                 "participants": {"actors": [{"id": sender, "role": role}]},
@@ -50,7 +50,7 @@ def _frame(
     return {
         "id": f"m{n}",
         "sender_handle": sender,
-        "message_type": "l9_exchange",
+        "message_type": "envelope_exchange",
         "content": json.dumps(content),
         "created_at": (T0 + timedelta(minutes=n)).isoformat(),
         "room_name": ROOM,
@@ -108,7 +108,7 @@ ROW = memory_read(
     "work/fix-login",
     ROOM,
     content_text="Fix login\n\nThe body.",
-    episode=f"urn:ioc:mycelium:episode:{ROOM}:abc123",
+    episode=f"urn:mycelium:episode:{ROOM}:abc123",
     meta={"status": "open", "assignee": "coder"},
     created_by="julia",
     updated_by="julia",
@@ -195,7 +195,7 @@ def test_a_record_is_flat_and_says_who_where_and_what(tmp_path) -> None:
                     "subkind": "resolved",
                     "title": "Fix login",
                     "by": "coder",
-                    "episode": f"urn:ioc:mycelium:episode:{ROOM}:abc123",
+                    "episode": f"urn:mycelium:episode:{ROOM}:abc123",
                 },
             ),
             _frame(3, "conductor", text="round one", role="coordinator"),

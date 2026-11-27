@@ -42,7 +42,7 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "Set up Mycelium from nothing, one step at a time with screenshots: the desktop app, a room, two coding agents, the room's engines, and a task they work on together."),
     ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
      "CON-001", "CONCEPTS · ROOMS · BOARD · MEMORY · EPISODES",
-     "How Mycelium works: rooms, the board, memory, episodes, users and identity, and SLIM."),
+     "How Mycelium works: rooms, the board, memory, episodes, and users and identity."),
     ("engines", "engines.html", "Engines · mycelium", "Engines",
      "ENG-001", "ENGINES · CONDUCTOR · SYNTHESIZER · PERSONA · WORKER · VERIFIER",
      "The engines a room runs on the hub: the conductor, the synthesizer, personas, workers, the verifier and hello."),
@@ -71,7 +71,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("walkthrough/add-engines.md",    "walk-engines",       "walkthrough", "Walkthrough",  "4. Add the room's engines"),
     ("walkthrough/task.md",           "walk-task",          "walkthrough", "Walkthrough",  "5. Hand it a task"),
     ("walkthrough/thread.md",         "walk-thread",        "walkthrough", "Walkthrough",  "6. Watch it work"),
-    ("walkthrough/disagree.md",       "walk-disagree",      "walkthrough", "Walkthrough",  "7. When agents disagree"),
     ("walkthrough/next.md",           "walk-next",          "walkthrough", "Walkthrough",  "Where to go next"),
     # ── concepts (concepts.html): what everything else is built on ──
     ("concepts/rooms.md",             "rooms",              "concepts",    "Concepts",     "Rooms"),
@@ -79,7 +78,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/memory.md",            "memory",             "concepts",    "Concepts",     "Memory"),
     ("concepts/episodes.md",          "episodes",           "concepts",    "Concepts",     "Episodes"),
     ("concepts/principals.md",        "users",              "concepts",    "Concepts",     "Users & Identity"),
-    ("concepts/slim.md",              "slim",               "concepts",    "Concepts",     "SLIM"),
     # ── engines (engines.html), the overview, then one section per kind ──
     ("engines/engines.md",            "engines",            "engines",     "Engines",      "Overview"),
     ("engines/conductor.md",          "conductor",          "engines",     "Engines",      "Conductor"),
@@ -802,42 +800,6 @@ def _generate_config_reference() -> tuple[str, list[tuple[str, str]]]:
 
 DEPENDENCY_GROUPS: list[dict] = [
     {
-        "heading": "Messaging fabric (AGNTCY SLIM)",
-        "sidebar": "Messaging (SLIM)",
-        "intro": (
-            "Mycelium is SLIM-native: rooms are SLIM group channels. This is the "
-            "one deep coupling in the stack, so it comes first."
-        ),
-        "components": [
-            {
-                "name": "slim-bindings",
-                "version": ("dep", "cli", "slim-bindings"),
-                "role": "The client the CLI and backend use to join channels",
-                "upstream": ("agntcy/slim releases", "https://github.com/agntcy/slim/releases"),
-            },
-            {
-                "name": "agntcy/slim (node image)",
-                "display": "`ghcr.io/agntcy/slim`",
-                "version": ("image", "ghcr.io/agntcy/slim"),
-                "role": "The messaging node itself, a blind ciphertext forwarder",
-                "upstream": (
-                    "ghcr.io/agntcy/slim",
-                    "https://github.com/agntcy/slim/pkgs/container/slim",
-                ),
-            },
-        ],
-        # {slim} and {node} are filled from the resolved pins so the constraint
-        # text always names the versions actually in force.
-        "callout": (
-            "**Version lockstep.** The node image and the `slim-bindings` wheel "
-            "must move together. Today both sides pin `slim-bindings{slim}` and the "
-            "node image is `{node}`. Mixing versions fails the MLS handshake with "
-            "`public key length is invalid`, so bump both to the same 2.x line at "
-            "once. 2.1.x is the first MLS-with-external-identity stack, which is "
-            "what the identity tiers build on."
-        ),
-    },
-    {
         "heading": "Memory and search",
         "sidebar": "Memory & Search",
         "components": [
@@ -890,13 +852,13 @@ DEPENDENCY_GROUPS: list[dict] = [
             {
                 "name": "pyjwt[crypto]",
                 "version": ("dep", "backend", "pyjwt"),
-                "role": "JWT validation for the auth gate and SignerJwt identity",
+                "role": "JWT validation for the auth gate and member tokens",
                 "upstream": ("jpadilla/pyjwt", "https://github.com/jpadilla/pyjwt/releases"),
             },
             {
                 "name": "cryptography",
                 "version": ("dep", "cli", "cryptography"),
-                "role": "ES256 keypair and JWK for SLIM channel identity",
+                "role": "Signature checks for a runner's paired devices",
                 "upstream": ("pyca/cryptography", "https://github.com/pyca/cryptography/releases"),
             },
         ],
@@ -930,7 +892,7 @@ def _dep_version(deps: list[str], pkg: str) -> str:
 
 
 def _image_tag(compose_text: str, image: str) -> str:
-    """Extract the default tag for a compose image, e.g. 'ghcr.io/agntcy/slim' -> '2.1.0'."""
+    """Extract the default tag for a compose image, e.g. 'ghcr.io/org/image' -> '2.1.0'."""
     # Matches either `image:2.1.0` or `image:${VAR:-2.1.0}`.
     m = re.search(
         rf"{re.escape(image)}:(?:\$\{{[^:}}]+:-([^}}]+)\}}|([^\s${{}}]+))",
@@ -1001,19 +963,6 @@ def _generate_dependencies_reference() -> tuple[str, list[tuple[str, str]]]:
     """
     ctx = _load_pin_context()
 
-    # Lockstep invariant: the CLI and backend slim-bindings pins must be identical,
-    # or the shared node image can't match both. Surfacing this page while the two
-    # have silently diverged would document a broken state, so fail loudly.
-    cli_slim = _dep_version(ctx["cli"]["deps"], "slim-bindings")
-    backend_slim = _dep_version(ctx["backend"]["deps"], "slim-bindings")
-    if cli_slim != backend_slim:
-        raise SystemExit(
-            "slim-bindings pins have drifted: "
-            f"CLI '{cli_slim}' vs backend '{backend_slim}'. They must match "
-            "(see the version-lockstep note in compose.yml)."
-        )
-    node_tag = _image_tag(ctx["compose"], "ghcr.io/agntcy/slim")
-
     md: list[str] = [
         "# Dependencies & Compatibility",
         "",
@@ -1045,7 +994,7 @@ def _generate_dependencies_reference() -> tuple[str, list[tuple[str, str]]]:
         md.append("")
 
         if group.get("callout"):
-            md.append("> " + group["callout"].format(slim=cli_slim, node=node_tag))
+            md.append("> " + group["callout"])
             md.append("")
 
     md.append(DEPENDENCY_FOOTER)

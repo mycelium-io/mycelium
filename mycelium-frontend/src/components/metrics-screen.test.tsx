@@ -66,30 +66,6 @@ function backend(overrides: Partial<BackendMetrics> = {}): BackendMetrics {
 
 function network(): NetworkStatus {
   return {
-    coordination: {
-      endpoint: "http://mycelium-slim:46357",
-      slim_enabled: true,
-      channels_live: 1,
-      provisions_ok: 1,
-      provisions_failed: 0,
-      invite_failures: 0,
-      rooms: [
-        {
-          room: "atlas-migration",
-          provisioned: true,
-          persister_alive: true,
-          members: ["planner", "avery"],
-          deferred_invites: 0,
-          episode_active: true,
-          reserves: 3,
-          reserve_failures: 0,
-          reserve_skipped: 0,
-          receive_errors: 0,
-          transient_errors: 0,
-        },
-      ],
-    },
-    identity: { status: "ok", mode: "psk", message: "psk" },
     auth: { enabled: false, issuers: [], localhost_bypass: true, audience: null },
   };
 }
@@ -97,12 +73,11 @@ function network(): NetworkStatus {
 function episode(overrides: Partial<EpisodeSummary> = {}): EpisodeSummary {
   return {
     short_id: "ep-1",
-    episode: "urn:ioc:episode:ep-1",
+    episode: "urn:mycelium:episode:demo:ep-1",
     topic: "cutover window",
     outcome: "converged",
     subkind: "converged",
     participants: ["planner", "avery"],
-    metrics: { mpc: 0.82, gar: 0.75, scr: 0.1, provenance_weight: 0.68 },
     assignments: null,
     tasks: ["work/cutover", "work/rollback"],
     message_count: 14,
@@ -180,18 +155,6 @@ describe("<MetricsScreen />", () => {
     expect(within(cognition).getByText(/does not\s+report per-turn token usage/)).toBeInTheDocument();
   });
 
-  it("reports the coordination fabric room by room", async () => {
-    renderWithSWR(<MetricsScreen />);
-
-    await screen.findByText("Coordination fabric");
-    const fabric = panel("Coordination fabric");
-    expect(within(fabric).getByText("http://mycelium-slim:46357")).toBeInTheDocument();
-    expect(within(fabric).getByText("psk")).toBeInTheDocument();
-    expect(within(fabric).getByText("atlas-migration")).toBeInTheDocument();
-    expect(within(fabric).getByText("planner, avery")).toBeInTheDocument();
-    expect(within(fabric).getByText("active")).toBeInTheDocument();
-  });
-
   it("rolls every room's episodes up into how the negotiations ended", async () => {
     roomsRead.mockResolvedValue([room("atlas-migration"), room("pricing")]);
     episodesRead.mockImplementation(async (name: string) =>
@@ -203,7 +166,6 @@ describe("<MetricsScreen />", () => {
               topic: "list price floor",
               subkind: "rejected",
               outcome: "rejected",
-              metrics: null,
               tasks: [],
             }),
           ],
@@ -214,10 +176,10 @@ describe("<MetricsScreen />", () => {
     await screen.findByText("2 rooms");
     const negotiations = panel("Negotiations");
     expect(within(negotiations).getByText("2 rooms")).toBeInTheDocument();
-    // Two episodes, one of each outcome, and only the converged one is scored.
-    expect(within(negotiations).getByText("0.82")).toBeInTheDocument();
-    expect(within(negotiations).getByText(/averaged over the 1 episode\b/)).toBeInTheDocument();
+    // Two episodes from two rooms, one of each outcome, both in the recent list.
     expect(within(negotiations).getByText("cutover window")).toBeInTheDocument();
+    expect(within(negotiations).getByText("list price floor")).toBeInTheDocument();
+    expect(within(negotiations).getByText("2.0")).toBeInTheDocument();
   });
 
   it("says what would fill a panel rather than drawing zeros", async () => {
@@ -238,6 +200,6 @@ describe("<MetricsScreen />", () => {
     renderWithSWR(<MetricsScreen />);
 
     expect(await screen.findByText("Backend unreachable")).toBeInTheDocument();
-    expect(screen.queryByText("Coordination fabric")).toBeNull();
+    expect(screen.queryByText("Memory & retrieval")).toBeNull();
   });
 });

@@ -15,8 +15,8 @@ import pytest
 from app.routes.messages import _read_messages
 from app.services import in_memory_store, message_format, persister, wake_digest
 from app.services.filesystem import get_room_dir
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 from app.services.persister import TranscriptRecord
 
 NOW = datetime(2026, 11, 19, 18, 0, tzinfo=UTC)
@@ -39,7 +39,7 @@ def _record(
         parents=[on] if on else None,
         sender=sender,
         recipients=[],
-        topic="urn:concept:mycelium:r",
+        topic="urn:mycelium:topic:r",
         message_id=message_id,
         payload_type="message",
     )

@@ -3,6 +3,9 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  canonicalUrn,
+  envelopeOf,
+  frameType,
   isLiveEpisode,
   liveEpisodeUrn,
   noticeLabel,
@@ -13,11 +16,11 @@ import {
 } from "@/lib/threads";
 
 const ROOM = "atlas";
-const THREAD = "urn:ioc:mycelium:episode:atlas:t3aa11bb";
+const THREAD = "urn:mycelium:episode:atlas:t3aa11bb";
 
 function pingFrame(episode: string, sender?: string, message?: string) {
   return {
-    l9: {
+    envelope: {
       header: { kind: "exchange", message: { episode: liveEpisodeUrn(ROOM) } },
       payload: { type: "ping", data: { episode, ...(sender ? { sender } : {}), ...(message ? { message } : {}) } },
     },
@@ -41,10 +44,36 @@ describe("the room, and the threads inside it", () => {
     expect(isLiveEpisode(ROOM, liveEpisodeUrn("pricing"))).toBe(false);
   });
 
+  it("reads an episode id stored before 3.1 as the current one", () => {
+    expect(canonicalUrn("urn:ioc:mycelium:episode:atlas:t3aa11bb")).toBe(THREAD);
+    expect(canonicalUrn(THREAD)).toBe(THREAD);
+    expect(isLiveEpisode(ROOM, "urn:ioc:mycelium:episode:atlas:live")).toBe(true);
+  });
+
   it("names a thread by the tail of its URN, and the room by nothing", () => {
     expect(threadShortId(THREAD)).toBe("t3aa11bb");
     expect(threadShortId(liveEpisodeUrn(ROOM))).toBeNull();
     expect(threadShortId(null)).toBeNull();
+  });
+});
+
+describe("reading a recorded envelope", () => {
+  it("reads the envelope key, and the older l9 key a record may still carry", () => {
+    const env = { header: { kind: "exchange" } };
+    expect(envelopeOf({ envelope: env })).toBe(env);
+    expect(envelopeOf({ l9: env })).toBe(env);
+    expect(envelopeOf({ content: "hi" })).toBeNull();
+    expect(envelopeOf(null)).toBeNull();
+  });
+
+  it("reads an older hub's l9_<kind> frame type as envelope_<kind>", () => {
+    expect(frameType("l9_exchange")).toBe("envelope_exchange");
+    expect(frameType("envelope_knowledge")).toBe("envelope_knowledge");
+    expect(frameType("broadcast")).toBe("broadcast");
+  });
+
+  it("finds a ping under the older key", () => {
+    expect(pingOf({ l9: { payload: { type: "ping", data: { episode: THREAD } } } })?.episode).toBe(THREAD);
   });
 });
 
@@ -58,12 +87,12 @@ describe("reading a ping", () => {
   });
 
   it("is not a ping when the payload is a message", () => {
-    const frame = { content: "hello", l9: { payload: { type: "message", data: {} } } };
+    const frame = { content: "hello", envelope: { payload: { type: "message", data: {} } } };
     expect(pingOf(frame)).toBeNull();
   });
 
   it("refuses a ping that names no thread rather than inventing one", () => {
-    expect(pingOf({ l9: { payload: { type: "ping", data: {} } } })).toBeNull();
+    expect(pingOf({ envelope: { payload: { type: "ping", data: {} } } })).toBeNull();
   });
 
   it("survives a frame with no envelope at all", () => {
@@ -75,7 +104,7 @@ describe("reading a ping", () => {
 describe("reading a notice", () => {
   function noticeFrame(data: Record<string, unknown>) {
     return {
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { episode: liveEpisodeUrn(ROOM) } },
         payload: { type: "notice", data },
       },

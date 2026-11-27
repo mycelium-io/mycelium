@@ -54,8 +54,8 @@ def test_only_a_loud_mention_asks(case):
     # so a loud mention of one asks its parent too, right after it.
     from app.services import message_format
     from app.services.asks import asked
+    from app.services.message_format import serialize_content
     from app.services.message_models import Kind
-    from app.services.message_slim import serialize_content
 
     env = message_format.build_envelope(
         kind=Kind.exchange,

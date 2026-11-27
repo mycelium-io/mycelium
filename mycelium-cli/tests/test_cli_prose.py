@@ -119,8 +119,7 @@ _REAL = tree()
         ),
         (
             "mycelium room search has:links",
-            "mycelium room search query: has:links: has is one of "
-            "mention, link, memory, code, scores",
+            "mycelium room search query: has:links: has is one of mention, link, memory, code",
         ),
         (
             "mycelium room search apple --stance maybe",

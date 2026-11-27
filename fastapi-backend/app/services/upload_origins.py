@@ -46,7 +46,6 @@ def origins(room: str, uploaders: dict[str, str] | None = None) -> dict[str, Ori
     over an earlier one from someone else.
     """
     uploaders = uploaders or {}
-    live = message_format.live_episode_urn(room)
     rows = message_search.thread_rows(room)
     first: dict[str, Origin] = {}
     own: dict[str, Origin] = {}
@@ -56,7 +55,7 @@ def origins(room: str, uploaders: dict[str, str] | None = None) -> dict[str, Ori
         keys = [k for k in uploads.linked_keys(m.content or "") if k not in own]
         if not keys:
             continue
-        thread = m.episode if m.episode and m.episode != live else None
+        thread = m.episode if not message_format.is_live_episode(room, m.episode) else None
         row = rows.get(thread) if thread else None
         origin = Origin(
             message_id=str(m.id),

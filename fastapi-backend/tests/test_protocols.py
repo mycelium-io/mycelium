@@ -181,8 +181,8 @@ async def test_the_protocols_route_lists_each_flow_with_its_roles(client):
     by_name = {p["name"]: p for p in resp.json()}
     assert by_name["gated"]["roles"] == ["proposer", "guardian"]
     assert by_name["gated"]["source"] == "builtin"
-    assert by_name["concord"]["roles"] == []
-    assert by_name["accord"]["description"]
+    assert by_name["round-robin"]["roles"] == []
+    assert by_name["review"]["description"]
 
     missing = await client.get("/api/rooms/no-such-room/protocols")
     assert missing.status_code == 404
@@ -241,276 +241,56 @@ def test_spec_of_round_trips_through_the_memory_body():
         assert again == spec
 
 
-# ── picking: select steps, bottleneck, converged ──────────────────────────────
+# ── what a step can be ────────────────────────────────────────────────────────
+
+ASKS = {"id": "ask", "to": "all", "prompt": "go", "next": "done"}
+DONE = {"id": "done", "end": "resolved"}
 
 
-def _spec(*steps: dict, roles: list[str] | None = None) -> protocols.Protocol:
-    return protocols.Protocol.model_validate(
-        {"name": "t", "roles": roles or [], "steps": list(steps)}
+def _spec(*steps: dict) -> dict:
+    return {"name": "t", "steps": list(steps)}
+
+
+@pytest.mark.parametrize("kind", ["select", "tally", "lock", "vote"])
+def test_a_step_kind_other_than_ask_is_refused_by_name(kind: str):
+    step = {"id": "pick", "kind": kind, "next": {"feasible": "done"}}
+    with pytest.raises(
+        ValueError, match=f"step 'pick' has kind '{kind}', which is not a step kind"
+    ):
+        protocols.Protocol.model_validate(_spec(ASKS | {"next": "pick"}, step, DONE))
+
+
+@pytest.mark.parametrize("field", ["collect", "threshold", "max_repairs", "of", "max_rounds"])
+def test_a_field_no_step_takes_is_refused_rather_than_ignored(field: str):
+    with pytest.raises(ValueError, match=f"sets {field}, which no step takes"):
+        protocols.Protocol.model_validate(_spec(ASKS | {field: "scores"}, DONE))
+
+
+def test_a_run_ends_resolved_or_rejected_and_a_reply_can_require_only_a_stance():
+    with pytest.raises(ValueError, match="end"):
+        protocols.Protocol.model_validate(_spec(ASKS, {"id": "done", "end": "converged"}))
+    with pytest.raises(ValueError, match="require"):
+        protocols.Protocol.model_validate(_spec(ASKS | {"require": "scores"}, DONE))
+    spec = protocols.Protocol.model_validate(_spec(ASKS | {"require": "stance"}, DONE))
+    assert spec.step("ask").needs == "stance"
+
+
+def test_a_rooms_flow_with_a_step_kind_there_is_not_is_left_out_and_logged(caplog):
+    room = "old-flow-room"
+    body = yaml.safe_dump(
+        {
+            "steps": [
+                {"id": "rate", "to": "all", "prompt": "rate", "next": "pick"},
+                {"id": "pick", "kind": "select", "next": {"feasible": "done"}},
+                {"id": "done", "end": "resolved"},
+            ]
+        }
     )
+    write_memory_file(get_room_dir(room), "protocols/settle", body, created_by="julia")
 
+    with caplog.at_level("WARNING", logger=protocols.logger.name):
+        assert protocols.load_protocol(room, "settle") is None
 
-ASK = {"id": "ask", "to": "all", "collect": "scores", "prompt": "rate", "next": "pick"}
-PICK = {
-    "id": "pick",
-    "kind": "select",
-    "next": {"feasible": "ok", "infeasible": "ask", "stuck": "no"},
-}
-ENDS = ({"id": "ok", "end": "converged"}, {"id": "no", "end": "rejected"})
-
-
-def test_a_select_step_validates_and_fills_its_bar():
-    spec = _spec(ASK, PICK, *ENDS)
-    pick = spec.step("pick")
-    assert pick.threshold == protocols.DEFAULT_THRESHOLD
-    assert pick.max_repairs == protocols.DEFAULT_MAX_REPAIRS
-    # Collecting ratings requires them.
-    assert spec.step("ask").needs == "scores"
-
-
-@pytest.mark.parametrize(
-    "extra",
-    [{"to": "all"}, {"prompt": "hi"}, {"collect": "options"}, {"require": "stance"}],
-)
-def test_a_select_asks_nobody(extra: dict):
-    with pytest.raises(ValueError, match="asks nobody"):
-        _spec(ASK, PICK | extra, *ENDS)
-
-
-def test_a_select_branches_only_on_how_the_pick_went():
-    with pytest.raises(ValueError, match="branches on"):
-        _spec(ASK, PICK | {"next": {"feasible": "ok", "accept": "no"}}, *ENDS)
-    with pytest.raises(ValueError, match="branches by map"):
-        _spec(ASK, PICK | {"next": "ok"}, *ENDS)
-
-
-def test_a_bar_belongs_to_a_select_step():
-    with pytest.raises(ValueError, match="belong to a select"):
-        _spec(ASK | {"threshold": 0.5}, PICK, *ENDS)
-
-
-def test_the_bottleneck_is_asked_only_after_a_pick_on_every_path():
-    fix = {"id": "fix", "to": "bottleneck", "prompt": "fix it", "next": "ask"}
-    _spec(ASK, PICK | {"next": {"feasible": "ok", "infeasible": "fix", "stuck": "no"}}, fix, *ENDS)
-    with pytest.raises(ValueError, match="before any select"):
-        _spec(fix | {"next": "ask"}, ASK, PICK, *ENDS)
-    # A side path that skips the pick is refused too.
-    branch = {
-        "id": "vote",
-        "to": "all",
-        "prompt": "go?",
-        "next": {"accept": "ask", "reject": "fix"},
-    }
-    with pytest.raises(ValueError, match="before any select"):
-        _spec(branch, ASK, PICK, fix, *ENDS)
-
-
-def test_converged_is_reached_only_from_a_feasible_edge():
-    with pytest.raises(ValueError, match="only a select's feasible edge"):
-        _spec(
-            {"id": "ask", "to": "all", "prompt": "go", "next": "ok"},
-            {"id": "ok", "end": "converged"},
-        )
-    with pytest.raises(ValueError, match="only a select's feasible edge"):
-        _spec(ASK, PICK | {"next": {"feasible": "no", "infeasible": "ok"}}, *ENDS)
-
-
-def test_a_step_that_collects_ratings_cannot_require_a_stance():
-    with pytest.raises(ValueError, match="requires ratings, not a stance"):
-        _spec(ASK | {"require": "stance"}, PICK, *ENDS)
-
-
-def test_only_a_picks_infeasible_edge_leads_to_the_bottleneck():
-    fix = {"id": "fix", "to": "bottleneck", "prompt": "fix it", "next": "ask"}
-    with pytest.raises(ValueError, match="only its infeasible edge"):
-        _spec(ASK, PICK | {"next": {"feasible": "ok", "default": "fix"}}, fix, *ENDS)
-
-
-def test_nobody_can_play_the_bottleneck():
-    with pytest.raises(ValueError, match="cannot be named"):
-        _spec(ASK, PICK, *ENDS, roles=["bottleneck"])
-
-
-def test_spec_of_carries_what_the_app_needs_to_draw_a_pick():
-    concord = protocols.builtin("concord")
-    assert concord is not None
-    steps = {s["id"]: s for s in protocols.spec_of(concord)["steps"]}
-    assert steps["pick"] == {
-        "id": "pick",
-        "kind": "select",
-        "threshold": 0.6,
-        "max_repairs": 5,
-        "next": {
-            "feasible": "agreed",
-            "infeasible": "repair",
-            "stuck": "best",
-            "nothing": "no_deal",
-        },
-    }
-    assert steps["anchor"]["collect"] == "anchors"
-    assert steps["score"]["collect"] == "scores"
-    assert "kind" not in steps["score"], "an ask step's default is dropped"
-    accord = protocols.builtin("accord")
-    assert accord is not None
-    steps = {s["id"]: s for s in protocols.spec_of(accord)["steps"]}
-    assert steps["terms"]["collect"] == "keywords"
-    assert steps["frame"]["collect"] == "pieces"
-    assert steps["frame"]["require"] == "pieces"
-    assert steps["added"] == {
-        "id": "added",
-        "kind": "tally",
-        "of": "points",
-        "max_rounds": 2,
-        "next": {"grew": "more", "settled": "ground", "empty": "nothing"},
-    }
-    assert steps["words"]["of"] == "terms"
-    assert steps["restate"]["to"] == "contested"
-    assert steps["lock"] == {
-        "id": "lock",
-        "kind": "lock",
-        "next": {"locked": "locked", "empty": "nothing"},
-    }
-
-
-def test_describe_says_what_a_pick_does():
-    concord = protocols.builtin("concord")
-    assert concord is not None
-    text = protocols.describe(concord)
-    # The bar is said against the reference outcomes, never as a bare number.
-    assert (
-        "- pick: picks the option the least happy member is best off with; it has to be "
-        "at least 60% of the way from each member's bad outcome to its ideal (up to 5 fixes)"
-    ) in text
-    assert "- agreed: ends converged" in text
-    assert "- best: ends resolved" in text
-
-
-# ── a shared frame: tally steps, the contested, the lock ─────────────────────
-
-FRAME = {
-    "id": "frame",
-    "to": "all",
-    "collect": "pieces",
-    "require": "pieces",
-    "prompt": "frame it",
-    "next": "added",
-}
-TALLY = {
-    "id": "added",
-    "kind": "tally",
-    "of": "points",
-    "next": {"grew": "frame", "settled": "ground", "empty": "nothing"},
-}
-GROUND = {"id": "ground", "to": "all", "collect": "pieces", "prompt": "words", "next": "words"}
-WORDS = {
-    "id": "words",
-    "kind": "tally",
-    "of": "terms",
-    "next": {"contested": "restate", "clear": "lock"},
-}
-RESTATE = {
-    "id": "restate",
-    "to": "contested",
-    "collect": "pieces",
-    "prompt": "again",
-    "next": "words",
-}
-LOCK = {"id": "lock", "kind": "lock", "next": {"locked": "done", "empty": "nothing"}}
-FRAME_ENDS = ({"id": "done", "end": "resolved"}, {"id": "nothing", "end": "rejected"})
-
-
-def test_a_tally_validates_and_fills_its_round_cap():
-    spec = _spec(FRAME, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
-    assert spec.step("added").max_rounds == protocols.DEFAULT_MAX_ROUNDS["points"]
-    assert spec.step("words").max_rounds == protocols.DEFAULT_MAX_ROUNDS["terms"]
-    assert spec.step("frame").needs == "pieces"
-
-
-@pytest.mark.parametrize(
-    "extra",
-    [{"to": "all"}, {"prompt": "hi"}, {"collect": "pieces"}, {"require": "pieces"}],
-)
-def test_a_tally_and_a_lock_ask_nobody(extra: dict):
-    with pytest.raises(ValueError, match="asks nobody"):
-        _spec(FRAME, TALLY | extra, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
-    with pytest.raises(ValueError, match="asks nobody"):
-        _spec(FRAME, TALLY, GROUND, WORDS, RESTATE, LOCK | extra, *FRAME_ENDS)
-
-
-def test_a_tally_branches_only_on_what_it_reads():
-    with pytest.raises(ValueError, match="needs of"):
-        _spec(FRAME, {k: v for k, v in TALLY.items() if k != "of"}, LOCK, *FRAME_ENDS)
-    with pytest.raises(ValueError, match="branches on"):
-        _spec(FRAME, TALLY | {"next": {"grew": "frame", "contested": "lock"}}, LOCK, *FRAME_ENDS)
-    with pytest.raises(ValueError, match="branches by map"):
-        _spec(FRAME, TALLY | {"next": "lock"}, LOCK, *FRAME_ENDS)
-    with pytest.raises(ValueError, match="branches on"):
-        _spec(FRAME | {"next": "lock"}, LOCK | {"next": {"feasible": "done"}}, *FRAME_ENDS)
-
-
-def test_round_caps_belong_to_a_tally_and_labels_must_be_collected():
-    with pytest.raises(ValueError, match="belong to a tally"):
-        _spec(FRAME | {"max_rounds": 2}, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
-    with pytest.raises(ValueError, match="must collect them"):
-        _spec(FRAME | {"collect": None}, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS)
-    with pytest.raises(ValueError, match="belong to a select"):
-        _spec(FRAME, TALLY | {"threshold": 0.5}, LOCK, *FRAME_ENDS)
-
-
-def test_the_contested_are_asked_only_after_a_tally_of_words_on_every_path():
-    with pytest.raises(ValueError, match="before any tally of terms"):
-        _spec(RESTATE | {"next": "frame"}, FRAME, TALLY, GROUND, WORDS, LOCK, *FRAME_ENDS)
-    # A tally of points defines nobody contested.
-    with pytest.raises(ValueError, match="before any tally of terms"):
-        _spec(
-            FRAME,
-            TALLY | {"next": {"grew": "restate", "settled": "ground", "empty": "nothing"}},
-            RESTATE,
-            GROUND,
-            WORDS,
-            LOCK,
-            *FRAME_ENDS,
-        )
-    with pytest.raises(ValueError, match="only its contested edge"):
-        _spec(
-            FRAME,
-            TALLY,
-            GROUND,
-            WORDS | {"next": {"contested": "lock", "clear": "restate"}},
-            RESTATE,
-            LOCK,
-            *FRAME_ENDS,
-        )
-
-
-def test_nobody_can_play_the_contested():
-    with pytest.raises(ValueError, match="cannot be named"):
-        _spec(FRAME, TALLY, GROUND, WORDS, RESTATE, LOCK, *FRAME_ENDS, roles=["contested"])
-
-
-def test_accord_has_no_roles_and_cannot_converge():
-    accord = protocols.builtin("accord")
-    assert accord is not None
-    assert accord.roles == []
-    assert all(s.end != "converged" for s in accord.steps)
-
-
-def test_describe_says_what_a_tally_and_a_lock_do_in_plain_words():
-    accord = protocols.builtin("accord")
-    assert accord is not None
-    text = protocols.describe(accord)
-    assert (
-        "- added: sees whether the last round added a point, up to 2 rounds; new points: "
-        "more, nothing new: ground, nobody gave any: nothing"
-    ) in text
-    assert "- words: sees whether a word is used in different senses, at most 2 times" in text
-    assert "- restate: asks whoever means a word differently, then words" in text
-    assert "- lock: saves the shared summary; saved: locked, nothing to save: nothing" in text
-    assert "roles:" not in text
-
-
-def test_edge_line_says_nothing_for_a_step_that_asks_nobody():
-    accord = protocols.builtin("accord")
-    assert accord is not None
-    assert protocols.edge_line(accord.step("added"), None, "") is None
-    assert protocols.edge_line(accord.step("lock"), None, "") is None
+    (said,) = [r.getMessage() for r in caplog.records]
+    assert said.startswith(f"room {room}: flow protocols/settle is left out:")
+    assert "has kind 'select', which is not a step kind" in said

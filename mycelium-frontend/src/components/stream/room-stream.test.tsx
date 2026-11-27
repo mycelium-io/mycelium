@@ -7,7 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { layOut } from "@/test/scroll";
 
-const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
+const THREAD = "urn:mycelium:episode:sprint:t1";
 const at = (m: number) => `2026-10-11T20:${String(m).padStart(2, "0")}:00Z`;
 
 const history = [
@@ -16,10 +16,10 @@ const history = [
   {
     id: "n1",
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: at(1),
     content: JSON.stringify({
-      l9: { payload: { type: "notice", data: { subkind: "filed", key: "work/zoom", title: "Zoom and pan", episode: THREAD, by: "chat-buddy" } } },
+      envelope: { payload: { type: "notice", data: { subkind: "filed", key: "work/zoom", title: "Zoom and pan", episode: THREAD, by: "chat-buddy" } } },
     }),
   },
   { id: "m1", sender_handle: "alice", message_type: "broadcast", created_at: at(2), content: "morning all" },
@@ -27,7 +27,7 @@ const history = [
   {
     id: "k1",
     sender_handle: "system",
-    message_type: "l9_knowledge",
+    message_type: "envelope_knowledge",
     created_at: at(2),
     content: JSON.stringify({ content: "memory updated → uploads/shot.png" }),
   },
@@ -111,10 +111,10 @@ describe("<RoomStream /> jump to latest", () => {
       live.push({
         id: "n9",
         sender_handle: "system",
-        message_type: "l9_exchange",
+        message_type: "envelope_exchange",
         created_at: at(9),
         content: JSON.stringify({
-          l9: { payload: { type: "notice", data: { subkind: "claimed", key: "work/zoom", title: "Zoom and pan", episode: THREAD, by: "bob" } } },
+          envelope: { payload: { type: "notice", data: { subkind: "claimed", key: "work/zoom", title: "Zoom and pan", episode: THREAD, by: "bob" } } },
         }),
       });
     });

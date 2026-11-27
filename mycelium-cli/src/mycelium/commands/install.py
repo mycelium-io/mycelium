@@ -373,7 +373,8 @@ def _image_exists(image: str) -> bool:
 
 # Containers `mycelium up` creates with no profile flag. A stale copy of any of
 # them fails `compose up --force-recreate` on a name conflict, so install clears
-# them first.
+# them first. ``mycelium-slim`` is the messaging node an older install may have
+# left running; compose no longer declares it, so install removes it here.
 _KNOWN_CONTAINERS = [
     "mycelium-slim",
     "mycelium-backend",
@@ -643,7 +644,7 @@ def _run_telemetry_disclosure(api_url: str, *, compose_path: Path) -> None:  # n
     # so the running backend picks up the user's opt-in.
     from mycelium.docker_utils import write_env_file
 
-    env_path, _ = write_env_file(config)
+    env_path = write_env_file(config)
     typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
 
     if consent:
@@ -697,10 +698,8 @@ def _write_mycelium_config(
     config.save(config_path)
 
     # Derive .env from the canonical config.toml
-    env_path, secret_assigned = write_env_file(config)
+    env_path = write_env_file(config)
     typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
-    if secret_assigned:
-        typer.echo("  ✓ Generated [slim].master_secret (hub SLIM PSK)")
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ from mycelium.exceptions import MyceliumError
 from tests.conftest import StandInHub, install_stand_in_hub, memory_read
 
 OPENAPI = Path(__file__).resolve().parents[2] / "openapi.json"
-THREAD = "urn:ioc:mycelium:episode:demo:t1"
+THREAD = "urn:mycelium:episode:demo:t1"
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +46,7 @@ def _answers(request: httpx.Request) -> Any:
             "prompt": "@scout ready?",
             "sender": "lead",
             "episode": THREAD,
-            "topic": "urn:concept:mycelium:demo",
+            "topic": "urn:mycelium:topic:demo",
             "message_id": "m-0",
         }
     if path == "/api/rooms/demo/reply":

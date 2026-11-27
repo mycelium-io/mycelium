@@ -14,7 +14,7 @@ Two properties everything downstream reads off this module:
 **The container outlives what happens inside it.**  A task's episode is minted
 when the task is created, not when someone argues about it.  A negotiation
 inside a task is its own, later episode with its own lifecycle
-(:class:`~app.services.message_slim.EpisodeLifecycle`), and closing or aborting one
+(:class:`~app.services.episode_lifecycle.EpisodeLifecycle`), and closing or aborting one
 touches neither the row's custody nor its status.  A task can be created,
 claimed, worked and resolved with no negotiation ever opened.
 
@@ -185,7 +185,7 @@ def row_of_episode(room: str, episode: str) -> tuple[str, str] | None:
     happen a few times per protocol step rather than per message.
     """
     for key, meta, content in list_memory_files(get_room_dir(room), limit=None):
-        if system_meta(meta).get(EPISODE_META) != episode:
+        if not message_format.same_episode(system_meta(meta).get(EPISODE_META), episode):
             continue
         first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
         return key, first.lstrip("# ").strip()
@@ -261,7 +261,7 @@ def episode_write_rejection(
 
     A **container** — a task's thread — refuses none of these on its own, and
     that is deliberate rather than unfinished. Freezing membership is a negotiation's
-    policy, not an episode's (:class:`~app.services.message_slim.EpisodeLifecycle`):
+    policy, not an episode's (:class:`~app.services.episode_lifecycle.EpisodeLifecycle`):
     a task outlives what happens inside it, so an agent that claims a row after
     the thread opened must be able to speak in it.  The honest boundary: a task's
     thread is scoped to the room, not narrower.  Everyone who may write in the

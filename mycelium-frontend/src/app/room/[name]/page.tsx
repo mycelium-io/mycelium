@@ -54,7 +54,8 @@ function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string;
   const latest = episodes[0];
   const s = latest.subkind ?? latest.outcome;
   if (s === "rejected") return { text: "rejected", color: "var(--yellow)" };
-  return { text: "converged", color: "var(--green)" };
+  // A run ends resolved; an older record may say converged.
+  return { text: s === "converged" ? "converged" : "resolved", color: "var(--green)" };
 }
 
 /** `useSearchParams` suspends on the static prerender pass, so the room's body
@@ -215,11 +216,17 @@ function RoomWorkspace() {
     // The focus target is consumed here rather than derived: it has to outlive
     // the parameter, which is cleared as soon as it has been acted on.
     setFocus(target);
-    if (target.type === "episode") openThread(episodeUrn(roomName, target.id));
+    // A link names a thread by its full id. One that carries only a short id
+    // is looked up among the room's episodes: a thread from before 3.1 keeps
+    // its old id, so it can't be rebuilt from the short one.
+    if (target.type === "episode") {
+      const known = episodes?.find((ep) => ep.short_id === target.id)?.episode;
+      openThread(target.id.includes(":") ? target.id : (known ?? episodeUrn(roomName, target.id)));
+    }
     else if (target.type === "agent") openTab("agents");
     else if (target.type === "message") showView("channel");
     router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });
-  }, [focusParam, openMemory, openTab, openThread, showView, roomName, router]);
+  }, [focusParam, openMemory, openTab, openThread, showView, roomName, router, episodes]);
 
   // Room-scoped keybinds: the panes, the tabs, the inspector rails, and the
   // composer are all reachable without a pointer. The chat box focuses the

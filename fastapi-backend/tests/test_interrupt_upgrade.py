@@ -23,8 +23,8 @@ from app.services import (
     room_channels,
     wake_digest,
 )
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 from tests.test_interrupts import ROOM, _jobs, manager, runners  # noqa: F401 - fixtures
 
 MESSAGE = "@coder keep #504 and close #506, they fix the same bug. @scout review #504 only."
@@ -176,7 +176,6 @@ async def test_the_id_the_send_route_returned_finds_the_message(
         _send(hub, text, sender)  # recorded and rung, as the persister does
         return SimpleNamespace(message_id="m-001", unrecognized=[])
 
-    monkeypatch.setattr(hub, "is_live", lambda _channel: True)
     monkeypatch.setattr(hub, "publish_human", publish)
     sent = await client.post(
         f"/api/rooms/{ROOM}/messages",

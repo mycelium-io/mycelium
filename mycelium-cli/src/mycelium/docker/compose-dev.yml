@@ -13,12 +13,6 @@
 # Unset, compose stops with the message below rather than building from
 # "/fastapi-backend", which fails as a path that isn't found.
 services:
-  # The `slim` node service is defined in compose.yml with a pulled upstream
-  # image (ghcr.io/agntcy/slim) and inline node config. compose-dev.yml is an
-  # override layer always applied on top of compose.yml, so the node runs in the
-  # dev stack automatically — there is nothing dev-specific to build or override
-  # for it, so no `slim:` block is needed here.
-
   mycelium-backend:
     build:
       context: ${MYCELIUM_REPO_ROOT:?export MYCELIUM_REPO_ROOT=<the repo root> first}/fastapi-backend

@@ -7,8 +7,7 @@ Env-gated (``MYCELIUM_A2A_LIVE=1``) so CI stays hermetic. Unlike the unit tests,
 nothing here is mocked on the A2A side: it registers a real remote agent through
 the real backend route (which resolves its live Agent Card), then drives a real
 ``@``-mention through the responder so the live remote is actually called and its
-reply is posted back. The room channel is faked (no SLIM node needed); the A2A
-hop is real.
+reply is posted back. The room's log is faked; the A2A hop is real.
 
 The public echo agent returns "Hello World" for any input — enough to prove the
 whole outbound chat path end to end. Point it at a model-backed a2a-samples agent
@@ -22,7 +21,7 @@ import pytest
 
 from app.services import a2a_bridge, message_format, room_channels
 from app.services.message_models import Kind
-from tests.fakes import FakeChannel, FakeManaged, FakePersister
+from tests.fakes import FakeManaged, FakePersister
 
 pytestmark = pytest.mark.skipif(
     os.getenv("MYCELIUM_A2A_LIVE") != "1",
@@ -47,8 +46,7 @@ async def test_register_then_chat_with_a_live_a2a_agent(client, monkeypatch):
 
     # 2. @-mention it. The responder calls the LIVE agent and posts its reply.
     persister = FakePersister()
-    channel = FakeChannel(persister)
-    managed = FakeManaged(room=_ROOM, channel=channel, persister=persister)
+    managed = FakeManaged(room=_ROOM, persister=persister)
     monkeypatch.setattr(room_channels.manager, "get", lambda _r: managed)
 
     responder = a2a_bridge.A2aResponder(room_channels.manager)
@@ -65,5 +63,5 @@ async def test_register_then_chat_with_a_live_a2a_agent(client, monkeypatch):
     responder.handle_summon(_ROOM, "echo", env, [], "hello there")
     await asyncio.gather(*list(responder._tasks))
 
-    posted = [extra.get("content") for _env, extra in channel.sent if extra]
-    assert any("Hello World" in (p or "") for p in posted), posted
+    posted = persister.texts()
+    assert any("Hello World" in p for p in posted), posted

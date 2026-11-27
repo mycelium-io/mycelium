@@ -47,7 +47,7 @@ def _apply(config: Any, restart: bool) -> None:
     from mycelium.docker_utils import write_env_file
 
     config.save()
-    env_path, _ = write_env_file(config)
+    env_path = write_env_file(config)
     if not restart:
         console.print("[dim]Restart Mycelium to load it.[/]")
     elif _docker_backend_running():

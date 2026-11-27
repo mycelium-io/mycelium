@@ -6,9 +6,7 @@
 A memory can say what it is (``kind``: a ``fact``, a ``finding`` or a
 ``dead-end``), the task it was learned in (``task``, a board row's key), and
 what it came from (``derived-from``, a typed relation the link index keeps
-with backlinks, like ``part-of`` or ``relates-to``). A decision the conductor
-saved (``context/decision/<task>``) is one too, of kind ``decision``, in the
-task its ``relates-to`` names. A memory is **open** (``open: true``) while
+with backlinks, like ``part-of`` or ``relates-to``). A memory is **open** (``open: true``) while
 someone is still working on it, and **settled** once it holds.
 
 Together they are the room's knowledge graph: what the team learned, what each
@@ -35,10 +33,8 @@ OPEN_FIELD = "open"
 DERIVED_FROM = "derived-from"
 RELATES_TO = "relates-to"
 
-#: The kinds a memory can be given. A decision is the conductor's to save.
+#: The kinds a memory can be given.
 KINDS = ("fact", "finding", "dead-end")
-DECISION = "decision"
-DECISION_PREFIX = "context/decision/"
 
 
 class Refused(Exception):
@@ -61,19 +57,14 @@ def kind_of(key: str, meta: dict[str, Any]) -> str | None:
     kind = meta.get(KIND_FIELD)
     if kind in KINDS and not _is_task_key(key):
         return str(kind)
-    if key.startswith(DECISION_PREFIX):
-        return DECISION
     return None
 
 
-def task_of(key: str, meta: dict[str, Any]) -> str | None:
-    """The task a memory was learned in: its ``task``, or for a conductor's
-    decision, the board row its ``relates-to`` names."""
+def task_of(meta: dict[str, Any]) -> str | None:
+    """The task a memory was learned in: its ``task``."""
     task = meta.get(TASK_FIELD)
     if isinstance(task, str) and task.strip():
         return task.strip()
-    if key.startswith(DECISION_PREFIX):
-        return next((k for k in keys_of(meta.get(RELATES_TO)) if _is_task_key(k)), None)
     return None
 
 
@@ -133,7 +124,7 @@ def check(room: str, key: str, meta: dict[str, Any], old_meta: dict[str, Any]) -
     if not meta.get(TASK_FIELD) and not old_meta.get(TASK_FIELD):
         for source in keys_of(meta.get(DERIVED_FROM)):
             found = read_memory_file(base, source)
-            inherited = task_of(source, found[0]) if found else None
+            inherited = task_of(found[0]) if found else None
             if inherited:
                 return {**meta, TASK_FIELD: inherited}
     return meta
@@ -145,7 +136,7 @@ def _node(key: str, meta: dict[str, Any], content: str) -> dict[str, Any]:
         "kind": kind_of(key, meta),
         "title": title_of(key, content),
         "by": str(meta.get("created_by") or ""),
-        "task": task_of(key, meta),
+        "task": task_of(meta),
         "open": meta.get(OPEN_FIELD) is True,
         "derived_from": keys_of(meta.get(DERIVED_FROM)),
         "relates_to": [k for k in keys_of(meta.get(RELATES_TO)) if not _is_task_key(k)],

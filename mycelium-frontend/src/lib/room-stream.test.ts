@@ -16,9 +16,9 @@ import {
 } from "@/lib/room-stream";
 
 const ROOM = "mycelium-general";
-const T1 = `urn:ioc:mycelium:episode:${ROOM}:t1`;
-const T2 = `urn:ioc:mycelium:episode:${ROOM}:t2`;
-const LIVE = `urn:ioc:mycelium:episode:${ROOM}:live`;
+const T1 = `urn:mycelium:episode:${ROOM}:t1`;
+const T2 = `urn:mycelium:episode:${ROOM}:t2`;
+const LIVE = `urn:mycelium:episode:${ROOM}:live`;
 let n = 0;
 
 function frame(content: Record<string, unknown>, extra: Record<string, unknown> = {}) {
@@ -26,7 +26,7 @@ function frame(content: Record<string, unknown>, extra: Record<string, unknown> 
   return {
     id: `f${n}`,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: `2026-10-11T20:39:${String(n % 60).padStart(2, "0")}Z`,
     content: JSON.stringify(content),
     ...extra,
@@ -34,8 +34,8 @@ function frame(content: Record<string, unknown>, extra: Record<string, unknown> 
 }
 
 const message = (who: string, text: string, episode = LIVE) =>
-  frame({ content: text, l9: { header: { message: { episode } }, payload: { type: "message" } } }, { sender_handle: who });
-const notice = (data: Record<string, string>) => frame({ l9: { payload: { type: "notice", data } } });
+  frame({ content: text, envelope: { header: { message: { episode } }, payload: { type: "message" } } }, { sender_handle: who });
+const notice = (data: Record<string, string>) => frame({ envelope: { payload: { type: "notice", data } } });
 
 describe("streamEventOf", () => {
   it("reads a message in a thread and one in the channel", () => {
@@ -84,10 +84,10 @@ describe("streamEventOf", () => {
   });
 
   it("skips pings, floor changes and saves of board rows", () => {
-    expect(streamEventOf(frame({ l9: { payload: { type: "ping", data: { episode: T1 } } } }), ROOM)).toBeNull();
+    expect(streamEventOf(frame({ envelope: { payload: { type: "ping", data: { episode: T1 } } } }), ROOM)).toBeNull();
     expect(streamEventOf(notice({ subkind: "floor", key: "work/a" }), ROOM)).toBeNull();
     const save = (key: string) =>
-      frame({ content: `memory updated → ${key}`, l9: { header: { message: { episode: `urn:ioc:mycelium:episode:${ROOM}:knowledge` } } } }, { message_type: "l9_knowledge" });
+      frame({ content: `memory updated → ${key}`, envelope: { header: { message: { episode: `urn:mycelium:episode:${ROOM}:knowledge` } } } }, { message_type: "envelope_knowledge" });
     expect(streamEventOf(save("work/a"), ROOM)).toBeNull();
     expect(streamEventOf(save("uploads/shot.png"), ROOM)).toMatchObject({ kind: "saved", text: "uploads/shot.png", episode: null });
   });

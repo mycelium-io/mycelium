@@ -87,7 +87,7 @@ class RoomCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        """Keep a room name safe as one filesystem and SLIM namespace segment."""
+        """Keep a room name safe as one filesystem path segment."""
         if not value.strip():
             raise ValueError("Room name must not be blank")
         if value in {".", ".."}:
@@ -160,7 +160,7 @@ class MessageType(StrEnum):
 
 # The message types whose ``content`` is human-readable prose — real chat, and
 # the only part of a room's feed a reader can distill for meaning. Everything
-# else the feed carries is structured: the ``l9_*`` raise-up frames hold a
+# else the feed carries is structured: the ``envelope_*`` raise-up frames hold a
 # serialized envelope as their content, and the coordination/plan kinds are
 # lifecycle markers. A consumer that reads the transcript for what was *said*
 # (the synthesizer) filters on this table rather than sniffing payloads, so a
@@ -1876,10 +1876,9 @@ class RoomPersonAdd(BaseModel):
 
 # ── A2A bridge state (the Network views) ─────────────────────────────────────
 #
-# What the GUI's Network pane and `mycelium network` need to render the bridge
-# next to SLIM traffic: who is bridged, whether the room is discoverable as an
-# A2A agent, and the recent exchanges. The honest boundary — a bridged agent is
-# proxied by this hub, never a member of the room's MLS group — is carried by
+# What the GUI's Network pane and `mycelium network` need to render the bridge:
+# who is bridged, whether the room is discoverable as an A2A agent, and the
+# recent exchanges. That a bridged agent is proxied by this hub is carried by
 # `proxied` so both surfaces state it from the same field rather than each
 # inventing its own copy.
 
@@ -1902,7 +1901,7 @@ class A2aExchangeRead(BaseModel):
 
 
 class A2aBridgedAgentRead(BaseModel):
-    """A room member reached over A2A rather than the room's SLIM channel."""
+    """A room member reached over A2A, proxied by the hub."""
 
     handle: str
     description: str = ""
@@ -2015,20 +2014,6 @@ class EnvelopeRead(BaseModel):
     payload: EnvelopePayloadRead | None = None
 
 
-class EpisodeMetricsRead(BaseModel):
-    #: The SIEP scores a negotiation run by the retired aligner carried. Records
-    #: it wrote still have them; a conductor run doesn't.
-    mpc: float = 0.0
-    gar: float = 0.0
-    scr: float = 0.0
-    provenance_weight: float = 0.0
-    participants: int | None = None
-    #: Where each member placed the conductor's pick between its own bad and
-    #: ideal outcomes (0 to 1), and the least of those.
-    satisfaction: dict[str, float] | None = None
-    min_satisfaction: float | None = None
-
-
 class EpisodeSummaryRead(BaseModel):
     short_id: str
     episode: str
@@ -2036,7 +2021,6 @@ class EpisodeSummaryRead(BaseModel):
     outcome: str
     subkind: str | None = None
     participants: list[str] = Field(default_factory=list)
-    metrics: EpisodeMetricsRead | None = None
     assignments: dict[str, str] | None = None
     #: Memory keys of the ``work/`` rows the agreement compiled into.
     tasks: list[str] = Field(default_factory=list)
@@ -2258,11 +2242,9 @@ class PresentMemberRead(BaseModel):
     handle: str
     kind: str = Field(
         ...,
-        description="slim (a live socket), lease (an await/reply poll) or herdr (a pane only)",
+        description="lease (an await/reply poll) or herdr (a pane only)",
     )
-    last_seen: str | None = Field(
-        None, description="When a lease member last polled (ISO); none for a SLIM member"
-    )
+    last_seen: str | None = Field(None, description="When the member last polled or synced (ISO)")
     status: str | None = Field(
         None, description="herdr's live state (idle, working, blocked, done), when it has a pane"
     )
@@ -2718,12 +2700,6 @@ class HealthAuth(BaseModel):
     )
 
 
-class HealthIdentity(BaseModel):
-    status: str
-    mode: str = Field(..., description="The SLIM identity tier: psk or signerjwt")
-    message: str
-
-
 class HealthEmbedding(BaseModel):
     status: str = Field(..., description="ok, not_cached or stub")
     model: str
@@ -2749,34 +2725,6 @@ class HealthLLM(BaseModel):
     checked_at: str = Field(..., description="When this was checked, ISO 8601")
 
 
-class HealthCoordinationRoom(BaseModel):
-    room: str
-    provisioned: bool
-    persister_alive: bool
-    members: list[str] = Field(..., description="SLIM members and live `await` leases")
-    deferred_invites: int
-    episode_active: bool
-    reserves: int
-    reserve_failures: int
-    reserve_skipped: int
-    receive_errors: int
-    transient_errors: int
-    knowledge_applied: int
-    knowledge_conflicts: int
-
-
-class HealthCoordination(BaseModel):
-    """The room channels this hub moderates, and its process counters."""
-
-    endpoint: str = Field(..., description="The SLIM node the hub dials")
-    slim_enabled: bool
-    channels_live: int
-    provisions_ok: int
-    provisions_failed: int
-    invite_failures: int
-    rooms: list[HealthCoordinationRoom]
-
-
 class HealthLatency(BaseModel):
     status: str = Field(..., description="ok or degraded")
     signals: list[str] | None = Field(
@@ -2797,11 +2745,9 @@ class HealthRead(BaseModel):
     version: str
     storage: HealthStorage | None = None
     auth: HealthAuth | None = None
-    identity: HealthIdentity | None = None
     embedding: HealthEmbedding | None = None
     llm: HealthLLM | None = None
-    coordination: HealthCoordination | None = None
     latency: HealthLatency | None = None
     issues: list[str] | None = Field(
-        None, description="What makes it degraded (storage, llm, coordination, latency)"
+        None, description="What makes it degraded (storage, llm, latency)"
     )

@@ -15,19 +15,19 @@ import pytest
 from app.routes.messages import _read_messages
 from app.services import in_memory_store, message_format, persister
 from app.services.filesystem import get_room_dir
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 
 def _record(message_id: str, *, sender: str, text: str, amends: str | None = None):
     env = message_format.build_envelope(
         kind=Kind.exchange,
         subkind=message_format.AMEND_SUBKIND if amends else None,
-        episode="urn:ioc:mycelium:episode:r:s",
+        episode="urn:mycelium:episode:r:s",
         parents=[amends] if amends else None,
         sender=sender,
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        topic="urn:concept:mycelium:r",
+        topic="urn:mycelium:topic:r",
         message_id=message_id,
         payload_type="reply",
     )

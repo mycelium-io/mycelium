@@ -47,7 +47,7 @@ from app.services import message_format
 from app.services.engine_kinds import norm as _norm
 from app.services.engine_kinds import registered_engine_kind
 from app.services.engines_model import failed_turn
-from app.services.message_slim import serialize_content
+from app.services.message_format import serialize_content
 from app.services.synthesizer import _strip_fences
 
 if TYPE_CHECKING:
@@ -236,10 +236,4 @@ class ProbeEngine:
             topic=message_format.topic_urn(room),
             payload_type="message",
         )
-        content = serialize_content(env, extra={"content": text})
-        try:
-            await managed.channel.send(env, extra={"content": text})
-        except Exception:
-            logger.warning("hello failed to broadcast message on room %s", room)
-        if managed.persister is not None:
-            managed.persister.ingest_local(env, content)
+        managed.persister.record(env, serialize_content(env, extra={"content": text}))

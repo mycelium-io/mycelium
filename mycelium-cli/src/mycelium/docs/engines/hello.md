@@ -1,7 +1,7 @@
 # Hello
 
 Hello replies to whatever you send it, and that's all it does. It doesn't write
-memories, start negotiations or change the board. That makes it a good first
+memories, run flows or change the board. That makes it a good first
 check on a new hub. If hello answers, engines are working.
 
 ```bash

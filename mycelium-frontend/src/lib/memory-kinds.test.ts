@@ -13,16 +13,15 @@ import { kindOf, MEMORY_KINDS, notEditable } from "@/lib/memory-kinds";
 
 const contract = JSON.parse(
   readFileSync(path.resolve(__dirname, "../../../contracts/memory-kinds.json"), "utf-8"),
-) as { kinds: { id: string; patterns: string[]; edit: string; source?: string; says?: string }[] };
+) as { kinds: { id: string; patterns: string[]; edit: string; says?: string }[] };
 
 describe("memory kinds contract", () => {
   it("has every kind the hub has, in its order, with its patterns and what may be edited", () => {
     expect(MEMORY_KINDS).toEqual(
-      contract.kinds.map(({ id, patterns, edit, source, says }) => ({
+      contract.kinds.map(({ id, patterns, edit, says }) => ({
         id,
         patterns,
         edit,
-        ...(source ? { source } : {}),
         ...(says ? { says } : {}),
       })),
     );
@@ -35,13 +34,12 @@ describe("kindOf", () => {
     expect(kindOf("agents/builder").id).toBe("agent");
     expect(kindOf("agents/builder/notes").id).toBe("memory");
     expect(kindOf("work/ship-it/part").id).toBe("task");
-    expect(kindOf("context/summary/ship-it").id).toBe("summary");
+    expect(kindOf("log/episodes/abc123").id).toBe("episode_record");
     expect(kindOf("context/plan").id).toBe("memory");
   });
 
   it("says why a kind isn't edited here, and nothing for one that is", () => {
     expect(notEditable(kindOf("uploads/plan.md"))).toMatch(/Upload the file again/);
-    expect(notEditable(kindOf("context/summary/ship-it"))).toMatch(/in its contract field/);
     expect(notEditable(kindOf("context/plan"))).toBeNull();
   });
 });

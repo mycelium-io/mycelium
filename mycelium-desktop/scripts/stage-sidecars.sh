@@ -11,8 +11,6 @@
 # usr/bin, or the install folder):
 #
 #   herdr     pinned release; where agents run
-#   slimctl   pinned 2.1.x; the SLIM node. It has to match the slim-bindings
-#             the hub speaks, or the handshake fails
 #   node      runs the UI server and Pi
 #
 # Directories, into src-tauri/resources (Contents/Resources on a Mac,
@@ -30,14 +28,13 @@
 #   conpty/   Windows only: the console host herdr runs its panes in
 #
 # Usage: bash scripts/stage-sidecars.sh [step...]
-#   steps: herdr slimctl node mycelium hub models ui pi (default: all)
+#   steps: herdr node mycelium hub models ui pi (default: all)
 # Overrides: MYCELIUM_CLI_DIR (a prebuilt CLI directory build), NODE_BIN (a node to copy)
 
 set -euo pipefail
 
 # At least mycelium.integrations.herdr.bridge.MIN_VERSION.
 HERDR_TAG="v0.9.3"
-SLIMCTL_TAG="slimctl-v2.1.1"
 NODE_VERSION="24.22.1"
 PI_VERSION="0.87.1"
 EMBEDDING_MODEL="BAAI/bge-small-en-v1.5"
@@ -50,15 +47,15 @@ work="$here/src-tauri/target/stage"
 triple="$(rustc --print host-tuple)"
 mkdir -p "$bin" "$res" "$work"
 
-# Per target: herdr's and slimctl's release assets, node's build, and the
-# esbuild package Pi needs (esbuild names Windows win32, node names it win).
+# Per target: herdr's release asset, node's build, and the esbuild package Pi
+# needs (esbuild names Windows win32, node names it win).
 x=""
 case "$triple" in
-  aarch64-apple-darwin) os=mac; herdr_asset="herdr-macos-aarch64"; slim_asset="slimctl-darwin-arm64.tar.gz"; node_arch="darwin-arm64"; esbuild_arch="darwin-arm64" ;;
-  x86_64-apple-darwin) os=mac; herdr_asset="herdr-macos-x86_64"; slim_asset="slimctl-darwin-amd64.tar.gz"; node_arch="darwin-x64"; esbuild_arch="darwin-x64" ;;
-  x86_64-unknown-linux-gnu) os=linux; herdr_asset="herdr-linux-x86_64"; slim_asset="slimctl-linux-amd64-gnu.tar.gz"; node_arch="linux-x64"; esbuild_arch="linux-x64" ;;
-  aarch64-unknown-linux-gnu) os=linux; herdr_asset="herdr-linux-aarch64"; slim_asset="slimctl-linux-arm64-gnu.tar.gz"; node_arch="linux-arm64"; esbuild_arch="linux-arm64" ;;
-  x86_64-pc-windows-msvc) os=windows; x=".exe"; herdr_asset="herdr-windows-x86_64.zip"; slim_asset="slimctl-windows-amd64.zip"; node_arch="win-x64"; esbuild_arch="win32-x64" ;;
+  aarch64-apple-darwin) os=mac; herdr_asset="herdr-macos-aarch64"; node_arch="darwin-arm64"; esbuild_arch="darwin-arm64" ;;
+  x86_64-apple-darwin) os=mac; herdr_asset="herdr-macos-x86_64"; node_arch="darwin-x64"; esbuild_arch="darwin-x64" ;;
+  x86_64-unknown-linux-gnu) os=linux; herdr_asset="herdr-linux-x86_64"; node_arch="linux-x64"; esbuild_arch="linux-x64" ;;
+  aarch64-unknown-linux-gnu) os=linux; herdr_asset="herdr-linux-aarch64"; node_arch="linux-arm64"; esbuild_arch="linux-arm64" ;;
+  x86_64-pc-windows-msvc) os=windows; x=".exe"; herdr_asset="herdr-windows-x86_64.zip"; node_arch="win-x64"; esbuild_arch="win32-x64" ;;
   *) echo "no pinned builds for $triple" >&2; exit 1 ;;
 esac
 
@@ -78,8 +75,7 @@ unpack() {
   esac
 }
 
-# On a Mac, drop a program's debug symbols (a fifth of node, a sixth of
-# slimctl), then sign it ad hoc again: stripping breaks its signature, and
+# On a Mac, drop a program's debug symbols (a fifth of node), then sign it ad hoc again: stripping breaks its signature, and
 # macOS won't run an arm64 program without a valid one. package-mac.sh signs
 # it for real. Never the mycelium CLI: its code is an archive appended to the
 # program, which strip cuts off. Linux and Windows builds come stripped
@@ -102,13 +98,6 @@ stage_herdr() {
   fi
   place "$tmp/$herdr_asset" herdr
   strip_program herdr
-}
-
-stage_slimctl() {
-  fetch agntcy/slim "$SLIMCTL_TAG" "$slim_asset"
-  unpack "$slim_asset"
-  place "$(find "$tmp" -type f -name "slimctl$x" | head -n 1)" slimctl
-  strip_program slimctl
 }
 
 stage_node() {
@@ -214,7 +203,7 @@ stage_hub() {
       --python-option "X utf8" \
       --distpath "$work/hub-dist" --workpath "$work/hub-build" --specpath "$work" \
       "${unused[@]/#/--exclude-module=}" \
-      --collect-all fastembed --collect-all onnxruntime --collect-all slim_bindings \
+      --collect-all fastembed --collect-all onnxruntime \
       --collect-all tokenizers --collect-all sherpa_onnx \
       --collect-submodules app \
       --hidden-import uvicorn.logging --hidden-import uvicorn.loops.auto \
@@ -310,7 +299,7 @@ LAUNCHER
 }
 
 steps=("$@")
-[ ${#steps[@]} -eq 0 ] && steps=(herdr slimctl node mycelium hub models ui pi)
+[ ${#steps[@]} -eq 0 ] && steps=(herdr node mycelium hub models ui pi)
 for step in "${steps[@]}"; do
   "stage_$step"
 done

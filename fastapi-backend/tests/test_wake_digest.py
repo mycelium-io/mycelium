@@ -17,7 +17,7 @@ from app.services.room_channels import MemberPresence
 
 ROOM = "digest-room"
 NOW = datetime(2026, 10, 1, 10, 44, tzinfo=UTC)
-THREAD = "urn:ioc:mycelium:episode:digest-room:t1"
+THREAD = "urn:mycelium:episode:digest-room:t1"
 
 
 def _said(
@@ -31,7 +31,7 @@ def _said(
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": ep},
@@ -46,7 +46,10 @@ def _said(
 
 def _notice(n: int, minutes_ago: int, **data: str) -> TranscriptRecord:
     record = _said(n, "system", "", minutes_ago)
-    record.content["l9"]["payload"] = {"type": message_format.NOTICE_PAYLOAD_TYPE, "data": data}
+    record.content["envelope"]["payload"] = {
+        "type": message_format.NOTICE_PAYLOAD_TYPE,
+        "data": data,
+    }
     return record
 
 
@@ -472,44 +475,6 @@ def test_a_delivered_wake_says_its_agent_is_responding(monkeypatch, tmp_path):
     body = asyncio.run(sessions.drain_herdr_wakes(ROOM, anonymous))
     assert body["wakes"][0]["prompt"].startswith("mycelium wake for @builder")
     assert signals == [(ROOM, "builder", "responding")]
-
-
-def _summary(key: str, flags: list[str]) -> None:
-    write_memory_file(
-        get_room_dir(ROOM),
-        key,
-        "# Shared summary: Fix the receipt tax\n",
-        created_by="conductor",
-        extra_meta={
-            "contract": {"flags": [{"kind": "single", "text": t} for t in flags]},
-            "relates-to": "work/fix-the-receipt-tax",
-        },
-    )
-
-
-def test_a_wake_in_a_task_points_at_what_the_team_agreed_for_it():
-    _task_thread()
-    _summary(
-        "context/summary/fix-the-receipt-tax",
-        ["Only one person said this: p2 (hay)", "No answer from scout", "a", "b"],
-    )
-    records = [_said(1, "scout", "@builder can you take it?", 2, THREAD)]
-    digest = wake_digest.build(ROOM, {"handle": "builder", "from": "scout"}, records, NOW)
-    assert (
-        "Agreed:  context/summary/fix-the-receipt-tax (shared summary); read it: mycelium "
-        "memory get context/summary/fix-the-receipt-tax --room digest-room. Open items: "
-        "Only one person said this: p2 (hay); No answer from scout; a and 1 more"
-    ) in digest
-
-
-def test_a_wake_with_nothing_agreed_says_nothing_about_it():
-    digest = wake_digest.build(
-        ROOM,
-        {"handle": "builder", "reason": "assigned", "key": "work/never", "title": "Never"},
-        [],
-        NOW,
-    )
-    assert "Agreed:" not in digest
 
 
 def test_a_task_filed_for_the_agent_says_how_to_take_it():

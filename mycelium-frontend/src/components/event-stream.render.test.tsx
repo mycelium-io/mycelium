@@ -35,12 +35,12 @@ function exchangeMessage(
 ) {
   return {
     id,
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     sender_handle: sender,
     created_at: CREATED,
     content: JSON.stringify({
       content: text,
-      l9: {
+      envelope: {
         header: {
           kind: "exchange",
           ...(amends ? { subkind: "amend" } : {}),
@@ -72,10 +72,10 @@ describe("<EventStream /> live message rendering", () => {
 
     await user.pointer({ keys: "[MouseRight]", target: await screen.findByText("look under the hood") });
     await user.click(await screen.findByText("View raw message"));
-    expect(await screen.findByRole("dialog", { name: "Raw message" })).toHaveTextContent('"message_type": "l9_exchange"');
+    expect(await screen.findByRole("dialog", { name: "Raw message" })).toHaveTextContent('"message_type": "envelope_exchange"');
   });
 
-  it("renders an l9_exchange streamed over SSE as a chat message", async () => {
+  it("renders an envelope_exchange streamed over SSE as a chat message", async () => {
     renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
@@ -204,7 +204,7 @@ describe("<EventStream /> live message rendering", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders an l9_commit streamed over SSE as a consensus notice, not the unhandled fallback", async () => {
+  it("renders an envelope_commit streamed over SSE as a consensus notice, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
@@ -213,18 +213,18 @@ describe("<EventStream /> live message rendering", () => {
     await act(async () => {
       es.open();
       es.emit({
-        message_type: "l9_commit",
+        message_type: "envelope_commit",
         sender_handle: "conductor",
         created_at: CREATED,
         content: JSON.stringify({
           content: "consensus reached",
-          l9: {
+          envelope: {
             header: {
               kind: "commit",
               subkind: "converged",
-              message: { episode: "urn:ioc:mycelium:episode:sprint:s1" },
+              message: { episode: "urn:mycelium:episode:sprint:s1" },
             },
-            payload: { type: "consensus", data: { assignments: { stack: "next" }, metrics: { gar: 0.8 } } },
+            payload: { type: "consensus", data: { assignments: { stack: "next" } } },
           },
         }),
       });
@@ -232,12 +232,11 @@ describe("<EventStream /> live message rendering", () => {
 
     expect(await screen.findByText("Consensus")).toBeInTheDocument();
     expect(screen.getByText("1 issue agreed", { exact: false })).toBeInTheDocument();
-    expect(screen.getByText("GAR 0.80", { exact: false })).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 
-  it("lifts an l9_knowledge streamed over SSE into the rail, not the unhandled fallback", async () => {
+  it("lifts an envelope_knowledge streamed over SSE into the rail, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
@@ -246,12 +245,12 @@ describe("<EventStream /> live message rendering", () => {
     await act(async () => {
       es.open();
       es.emit({
-        message_type: "l9_knowledge",
+        message_type: "envelope_knowledge",
         sender_handle: "system",
         created_at: CREATED,
         content: JSON.stringify({
           content: "plan updated → work/plan-the-tasks",
-          l9: {
+          envelope: {
             header: { kind: "knowledge", subkind: "distillation" },
             payload: { type: "distillation", data: { key: "work/plan-the-tasks", updated_by: "conductor" } },
           },
@@ -276,12 +275,12 @@ describe("<EventStream /> live message rendering", () => {
     await act(async () => {
       es.open();
       es.emit({
-        message_type: "l9_knowledge",
+        message_type: "envelope_knowledge",
         sender_handle: "system",
         created_at: CREATED,
         content: JSON.stringify({
           content: "memory updated → context/decision/make-the-shares-add-up",
-          l9: { payload: { type: "extraction", data: { key: "context/decision/make-the-shares-add-up", updated_by: "conductor" } } },
+          envelope: { payload: { type: "extraction", data: { key: "context/decision/make-the-shares-add-up", updated_by: "conductor" } } },
         }),
       });
     });
@@ -299,16 +298,16 @@ describe("<EventStream /> live message rendering", () => {
     await act(async () => {
       es.open();
       es.emit({
-        message_type: "l9_commit",
+        message_type: "envelope_commit",
         sender_handle: "conductor",
         created_at: CREATED,
         content: JSON.stringify({
           content: "consensus reached",
-          l9: {
+          envelope: {
             header: {
               kind: "commit",
               subkind: "converged",
-              message: { episode: "urn:ioc:mycelium:episode:sprint:e4f1a2" },
+              message: { episode: "urn:mycelium:episode:sprint:e4f1a2" },
             },
             payload: { type: "consensus", data: { assignments: { stack: "next" } } },
           },
@@ -318,7 +317,7 @@ describe("<EventStream /> live message rendering", () => {
 
     // The notice names the episode by its short id; the name is the way in.
     await userEvent.click(await screen.findByRole("button", { name: /Open episode e4f1a2/ }));
-    expect(onOpenThread).toHaveBeenCalledWith("urn:ioc:mycelium:episode:sprint:e4f1a2");
+    expect(onOpenThread).toHaveBeenCalledWith("urn:mycelium:episode:sprint:e4f1a2");
   });
 
   it("leaves the episode tag inert when nothing is listening for it", async () => {
@@ -334,7 +333,7 @@ describe("<EventStream /> live message rendering", () => {
         created_at: CREATED,
         content: JSON.stringify({
           handle: "alice",
-          episode: "urn:ioc:mycelium:episode:sprint:e4f1a2",
+          episode: "urn:mycelium:episode:sprint:e4f1a2",
         }),
       });
     });

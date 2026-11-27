@@ -1096,7 +1096,7 @@ def board_coordinate(
         ...,
         help=(
             "What you're asking it to do; for the conductor, the flow first "
-            "(e.g. 'concord @~api @~sec: the budget split')"
+            "(e.g. 'gated @~api @~sec: rotate the key')"
         ),
     ),
     room: str | None = None,
@@ -1114,12 +1114,10 @@ def board_coordinate(
     the row or takes it off its holder. A task can be coordinated more than
     once, or never.
 
-    Negotiation is the conductor's: ``concord`` helps members agree and
-    ``accord`` gets them on the same page. The run walks in the row's thread,
-    holding its floor for whoever a step addresses, and keeps a record of its
-    own nested in the task. What comes back to the row is the outcome: the
-    memory where the flow saved what was agreed, and the thread state the
-    board folds onto it.
+    The conductor walks a flow (``gated``, ``review``, ``fan-out``, ...) in the
+    row's thread, holding its floor for whoever a step addresses, and keeps a
+    record of its own nested in the task. What comes back to the row is the
+    outcome and the thread state the board folds onto it.
     """
     from mycelium import agents
     from mycelium.client import typed_client

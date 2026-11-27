@@ -64,7 +64,7 @@ SORTS: tuple[str, ...] = ("newest", "oldest", "relevance")
 CLOSED_VALUES: dict[str, tuple[str, ...]] = {
     "in": ("channel", "thread"),
     "is": ("edited", "conductor"),
-    "has": ("mention", "link", "memory", "code", "scores"),
+    "has": ("mention", "link", "memory", "code"),
     "stance": ("accept", "reject"),
 }
 

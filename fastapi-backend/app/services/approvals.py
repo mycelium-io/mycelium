@@ -42,8 +42,8 @@ from typing import TYPE_CHECKING, Any
 
 from app.services import message_format, principals, tasks
 from app.services.agent_registry import norm_handle
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content, serialize_envelope
 from app.services.persister import read_id, record_episode
 
 if TYPE_CHECKING:
@@ -79,7 +79,7 @@ def _norm(handle: object) -> str:
 
 
 def _data(record: TranscriptRecord) -> dict[str, Any]:
-    data = ((record.content.get("l9") or {}).get("payload") or {}).get("data") or {}
+    data = (message_format.envelope_of(record.content).get("payload") or {}).get("data") or {}
     return data if isinstance(data, dict) else {}
 
 
@@ -242,8 +242,6 @@ async def _post(
     from app.services import room_channels
 
     managed = await room_channels.manager.provision(room)
-    if managed is None or managed.persister is None:
-        raise Refused(503, "No live channel for room")
     envelope = message_format.build_envelope(
         kind=Kind.exchange,
         episode=episode,
@@ -257,16 +255,7 @@ async def _post(
     )
     extra = {"content": text}
     before = len(managed.persister.log.records)
-    managed.persister.ingest_local(
-        envelope, serialize_content(envelope, extra=extra), list_write=True
-    )
-    if not await room_channels.manager.send_as_custodian(
-        room, sender, serialize_envelope(envelope, extra=extra)
-    ):
-        try:
-            await managed.channel.send(envelope, extra=extra)
-        except Exception:
-            pass
+    managed.persister.record(envelope, serialize_content(envelope, extra=extra), list_write=True)
     message_id = envelope.header.message.id if envelope.header.message else None
     await room_channels.manager.raise_ping(
         room, episode=episode, sender=sender, message_id=message_id

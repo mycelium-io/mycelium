@@ -1,53 +1,42 @@
 # Backend tests
 
-Unit tests run against local files + temp dirs — **no SLIM node, no Pi binary, no
-live LLM, no backend server.** `conftest.py` isolates every test (a temp
-`MYCELIUM_DATA_DIR`, a reset in-memory `in_memory_store`); `fakes.py` gives you the
-fake coordination stack.
+Unit tests run against local files + temp dirs: **no Pi binary, no live LLM, no
+backend server.** `conftest.py` isolates every test (a temp
+`MYCELIUM_DATA_DIR`, a reset in-memory `in_memory_store`); `fakes.py` gives you a
+fake room.
 
 ## Test a feature without a live stack
 
 Import the fakes you need from `tests.fakes` and wire them into the service under
-test. There is exactly one of each fake — don't re-declare them per file.
+test. There is exactly one of each fake, so don't re-declare them per file.
 
 | You're testing… | Import | It stands in for |
 | --- | --- | --- |
-| An engine posting and asking members over a room's channel | `FakeChannel`, `FakePersister`, `FakeManaged`, `FakeManager` | the SLIM channel + persister + `RoomChannelManager` |
-| `room_channels` provisioning / membership | `FakeSlimClient`, `FakeSession` | `slim_client.SlimClient` (the `slim_bindings` transport) |
+| An engine posting into a room and asking its members | `FakePersister`, `FakeManaged`, `FakeManager` | the room's persister + `ManagedRoomChannel` + `RoomChannelManager` |
 | `PiSession.__call__` without spawning `pi` | `patch_pi_run(monkeypatch, stdout=…)` | `subprocess.run` / `shutil.which` |
 
-### Example — put a turn to a member and get its answer, node-free
+A room's real channel needs nothing either: `room_channels.manager.get(room)`
+opens it for any room whose folder exists, over the room's transcript on disk.
+
+### Example: put a turn to a member and get its answer
 
 ```python
 from app.services import turns
-from tests.fakes import FakeChannel, FakePersister, FakeManaged
+from tests.fakes import FakeManaged, FakePersister
 
-persister = FakePersister()
-channel = FakeChannel(persister, reply_conf=0.9)   # every prompt draws a reply
-managed = FakeManaged("room", "mycelium", channel, persister)
+persister = FakePersister(reply_conf=0.9)   # every prompt draws a reply
+managed = FakeManaged("room", persister)
 
 prose = await turns.addressed_turn(managed, persister, sender="conductor", handle="growth", ...)
+persister.texts()   # what the engine posted
 ```
 
 `tests/test_turns.py` has the full call, and `tests/test_conductor.py` drives
-whole flows with a scripted channel.
+whole flows with scripted replies (a listener on the persister).
 
-### Example — provision a room channel against a fake node
+## Live-LLM slices
 
-```python
-from app.services import room_channels
-from tests.fakes import FakeSlimClient
-
-monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
-monkeypatch.setattr(room_channels, "node_reachable", lambda _e: True)
-monkeypatch.setattr(room_channels, "to_channel_name", lambda *a: object())
-monkeypatch.setattr(room_channels, "to_slim_name", lambda *a: object())
-```
-
-## Live-node / live-LLM slices
-
-The SLIM roundtrip slices need a reachable node and **skip** without one — set
-`MYCELIUM_SLIM_ENDPOINT`. Live-LLM tests are guarded by `MYCELIUM_LLM_TESTS=1`.
+Live-LLM tests are guarded by `MYCELIUM_LLM_TESTS=1`.
 
 ## Commands
 

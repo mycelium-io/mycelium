@@ -391,7 +391,7 @@ def _next_step(room: str) -> str:
 
 
 def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | None:
-    """The backend's live presence for a room: ``{handle: kind}`` (``slim``/``lease``).
+    """The backend's live presence for a room: ``{handle: kind}`` (``lease``/``herdr``).
 
     ``None`` if the backend is unreachable — so ``ls`` can distinguish "no lease"
     from "couldn't ask." Best-effort, mirrors ``agent._is_resident``.
@@ -410,18 +410,18 @@ def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | No
 def _reconcile_note(mycelium_kind: str | None, herdr_status: str | None) -> tuple[str, str]:
     """The three-way verdict for one binding → ``(text, color)``.
 
-    ``mycelium_kind`` is the backend presence kind (``slim``/``lease``/``None``);
+    ``mycelium_kind`` is the backend presence kind (``lease``/``herdr``/``None``);
     ``herdr_status`` is the live pane state (``None`` = pane empty / herdr blind).
     Flags the two disagreements that matter: a lease with no live pane (stale
     lease — the Finding-2 false positive) and a live pane the backend doesn't
     list (a herdr agent that isn't participating).
     """
     herdr_live = herdr_status in {"idle", "working", "blocked", "done"}
-    if mycelium_kind in {"slim", "lease"} and not herdr_live:
+    if mycelium_kind == "lease" and not herdr_live:
         return ("⚠ stale lease", "red")
     if mycelium_kind is None and herdr_live:
         return ("herdr-only (not joined)", "yellow")
-    if mycelium_kind in {"slim", "lease"} and herdr_live:
+    if mycelium_kind == "lease" and herdr_live:
         return ("✓ in sync", "green")
     return ("-", "dim")
 
@@ -439,7 +439,7 @@ def herdr_ls(
     room: str | None = None,
 ) -> None:
     """Reconcile each binding across three views: the registry, the backend's
-    presence (``slim``/``lease``), and herdr's live agent list.
+    presence (``lease``/``herdr``), and herdr's live agent list.
 
     The backend runs containerized and is herdr-blind, so its presence lease can
     outlive an agent that has stopped looping ``await``. This is the one place

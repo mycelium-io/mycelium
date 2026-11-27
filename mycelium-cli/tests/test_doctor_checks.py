@@ -13,8 +13,6 @@ from __future__ import annotations
 import pytest
 
 from mycelium.commands import doctor
-from mycelium.config import MyceliumConfig
-from mycelium.slim import naming
 from tests.conftest import install_stand_in_hub
 
 
@@ -116,33 +114,4 @@ def test_check_http_auth_gate_ok_on_localhost_ungated(monkeypatch: pytest.Monkey
     _ungated_hub(monkeypatch)
 
     result = doctor._check_http_auth_gate(api_url="http://localhost:8000")
-    assert result.status == "ok"
-
-
-def test_check_hub_slim_psk_skipped_on_spoke() -> None:
-    assert doctor._check_hub_slim_psk(local_backend=False) is None
-
-
-def test_check_hub_slim_psk_warns_on_dev_secret(isolated_home) -> None:
-    myc = isolated_home / ".mycelium"
-    myc.mkdir(parents=True, exist_ok=True)
-    config = MyceliumConfig()
-    config.slim.master_secret = naming._DEV_MASTER_SECRET
-    config.save(myc / "config.toml")
-
-    result = doctor._check_hub_slim_psk(local_backend=True)
-    assert result is not None
-    assert result.status == "warning"
-    assert "public dev" in result.message
-
-
-def test_check_hub_slim_psk_ok_with_private_secret(isolated_home) -> None:
-    myc = isolated_home / ".mycelium"
-    myc.mkdir(parents=True, exist_ok=True)
-    config = MyceliumConfig()
-    config.slim.master_secret = "my-private-hub-secret-0123456789abcd"
-    config.save(myc / "config.toml")
-
-    result = doctor._check_hub_slim_psk(local_backend=True)
-    assert result is not None
     assert result.status == "ok"

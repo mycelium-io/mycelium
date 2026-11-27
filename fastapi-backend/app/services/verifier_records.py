@@ -231,13 +231,14 @@ def _same(claim: Ref, other: Ref, records: _Records, *, strict: bool) -> bool:
 
 def episode_of(record: TranscriptRecord) -> str | None:
     """The episode (thread or room channel) a record was said in."""
-    message = ((record.content.get("l9") or {}).get("header") or {}).get("message") or {}
+    header = message_format.envelope_of(record.content).get("header") or {}
+    message = header.get("message") or {}
     episode = message.get("episode")
     return episode if isinstance(episode, str) else None
 
 
 def _payload(record: TranscriptRecord) -> tuple[str | None, dict[str, Any]]:
-    payload = (record.content.get("l9") or {}).get("payload") or {}
+    payload = message_format.envelope_of(record.content).get("payload") or {}
     return payload.get("type"), payload.get("data") or {}
 
 

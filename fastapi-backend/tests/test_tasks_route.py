@@ -45,7 +45,7 @@ async def test_a_created_unit_comes_with_its_thread(client):
     assert resp.status_code == 201
     task = resp.json()
     assert task["key"] == "work/ship-passkey-login"
-    assert task["episode"].startswith(f"urn:ioc:mycelium:episode:{ROOM}:")
+    assert task["episode"].startswith(f"urn:mycelium:episode:{ROOM}:")
     # On the row itself, not only in the answer: the board reads the file.
     found = read_memory_file(get_room_dir(ROOM), task["key"])
     assert found is not None
@@ -125,7 +125,7 @@ async def test_a_task_is_filed_with_its_body_under_its_title(client):
     assert "Keep passwords as a fallback" in task["content_text"]
     assert [link.target for link in links.outbound(ROOM, task["key"])] == ["context/auth-plan"]
     # And the thread is minted as ever.
-    assert task["episode"].startswith(f"urn:ioc:mycelium:episode:{ROOM}:")
+    assert task["episode"].startswith(f"urn:mycelium:episode:{ROOM}:")
 
 
 @pytest.mark.asyncio

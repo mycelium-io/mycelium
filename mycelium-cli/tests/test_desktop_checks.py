@@ -29,7 +29,6 @@ def setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     path = tmp_path / "desktop.json"
     monkeypatch.setattr(checks, "SETTINGS", path)
     for fn in (
-        "slim_node",
         "hub",
         "hubs_here",
         "ui",
@@ -91,7 +90,6 @@ def test_a_hub_mac_checks_everything_it_runs(setting):
     names = _names(checks.desktop_checks())
     assert names == [
         "Desktop app",
-        "slim_node",
         "hub",
         "hubs_here",
         "ui",
@@ -106,7 +104,6 @@ def test_a_hub_mac_checks_everything_it_runs(setting):
 def test_a_client_mac_skips_what_runs_elsewhere(setting):
     setting({"mode": "client", "hubUrl": "https://hub.example.com", "roots": []})
     names = _names(checks.desktop_checks())
-    assert "slim_node" not in names
     assert "embedding_model" not in names
     # The app's own UI runs here in both modes: a joined hub is reached through it.
     assert "ui" in names

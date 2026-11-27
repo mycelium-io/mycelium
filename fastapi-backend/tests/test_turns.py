@@ -3,7 +3,7 @@
 
 """One addressed turn: ask one handle, wake only it, take only its answer.
 
-Node-free, over the shared fakes. This is the primitive the aligner brokers
+Over the shared fakes. This is the primitive the aligner brokers
 with and a protocol step will ask with; the tests hold its contract rather
 than either caller's.
 """
@@ -15,7 +15,7 @@ import asyncio
 import pytest
 
 from app.services import message_format, turns
-from tests.fakes import DEFAULT_ROOM, FakeChannel, FakeManaged, FakePersister, position_record
+from tests.fakes import DEFAULT_ROOM, FakeManaged, FakePersister, position_record
 
 EPISODE = message_format.episode_urn(DEFAULT_ROOM, "e1")
 TOPIC = message_format.topic_urn(DEFAULT_ROOM)
@@ -42,9 +42,8 @@ async def _turn(managed, persister, *, handle="a", prompt="@a your move; @b is w
 
 
 def _wired(reply_conf: float | None = 0.9):
-    persister = FakePersister()
-    channel = FakeChannel(persister, reply_conf=reply_conf)
-    return FakeManaged(channel=channel, persister=persister), persister, channel
+    persister = FakePersister(reply_conf=reply_conf)
+    return FakeManaged(persister=persister), persister
 
 
 def test_neutralizing_keeps_the_names_and_drops_the_sigil():
@@ -55,55 +54,54 @@ def test_neutralizing_keeps_the_names_and_drops_the_sigil():
 async def test_one_recipient_and_the_prose_as_written():
     # The caller writes a bare @ only for who it asks; a name it doesn't ask
     # it writes @~, and the turn posts what it was given.
-    managed, persister, channel = _wired()
+    managed, persister = _wired()
     await _turn(managed, persister, prompt="@a your move; @~b is waiting")
 
-    env, extra = channel.sent[0]
+    env, content = persister.recorded[0]
     assert [a.id for a in env.header.participants.actors] == ["mediator", "a"]
-    assert extra == {"content": "@a your move; @~b is waiting"}
     assert env.payload.type == "tick"
-    # The prompt is in the transcript, so the room can follow along.
-    assert persister.ingested[0][1]["content"] == "@a your move; @~b is waiting"
+    # The prompt is recorded as written, so the room can follow along.
+    assert content["content"] == "@a your move; @~b is waiting"
 
 
 @pytest.mark.asyncio
 async def test_mention_puts_the_handle_in_front_once():
-    managed, persister, channel = _wired()
+    managed, persister = _wired()
     await _turn(managed, persister, prompt="your move", mention=True)
     await _turn(managed, persister, prompt="@a your move", mention=True)
-    assert [extra["content"] for _env, extra in channel.sent] == ["@a your move", "@a your move"]
+    assert persister.texts() == ["@a your move", "@a your move"]
 
 
 @pytest.mark.asyncio
 async def test_the_addressed_handles_reply_comes_back():
-    managed, persister, _channel = _wired()
+    managed, persister = _wired()
     assert await _turn(managed, persister) == "a position"
 
 
 @pytest.mark.asyncio
 async def test_payload_type_and_data_ride_the_tick():
-    managed, persister, channel = _wired()
+    managed, persister = _wired()
     await _turn(managed, persister, payload_type="review", payload_data={"step": "gate"})
-    env, _extra = channel.sent[0]
+    env, _content = persister.recorded[0]
     assert env.payload.type == "review"
     assert env.payload.data == {"step": "gate"}
 
 
 @pytest.mark.asyncio
 async def test_silence_yields_nothing():
-    managed, persister, _channel = _wired(reply_conf=None)
+    managed, persister = _wired(reply_conf=None)
     assert await _turn(managed, persister, timeout_s=0.05) == ""
 
 
 @pytest.mark.asyncio
 async def test_another_handles_reply_is_not_the_answer():
-    managed, persister, _channel = _wired(reply_conf=None)
+    managed, persister = _wired(reply_conf=None)
 
     async def _b_speaks_then_a():
         await asyncio.sleep(0.02)
-        persister.log.record(position_record("b", prose="b butting in"), delivered_to=set())
+        persister.log.record(position_record("b", prose="b butting in"))
         await asyncio.sleep(0.02)
-        persister.log.record(position_record("a", prose="a, at last"), delivered_to=set())
+        persister.log.record(position_record("a", prose="a, at last"))
 
     task = asyncio.create_task(_b_speaks_then_a())
     assert await _turn(managed, persister) == "a, at last"
@@ -112,11 +110,11 @@ async def test_another_handles_reply_is_not_the_answer():
 
 @pytest.mark.asyncio
 async def test_a_reply_the_predicate_rejects_is_skipped():
-    managed, persister, _channel = _wired(reply_conf=None)
-    persister.log.record(position_record("a", role="human", prose="human a"), delivered_to=set())
+    managed, persister = _wired(reply_conf=None)
+    persister.log.record(position_record("a", role="human", prose="human a"))
 
     def only_agents(record) -> bool:
-        actors = record.content["l9"]["header"]["participants"]["actors"]
+        actors = record.content["envelope"]["header"]["participants"]["actors"]
         return actors[0].get("role") != "human"
 
     out = await turns.addressed_turn(
@@ -135,12 +133,12 @@ async def test_a_reply_the_predicate_rejects_is_skipped():
 
 
 @pytest.mark.asyncio
-async def test_a_failed_send_is_a_silent_turn():
-    class _Down:
-        async def send(self, _env, *, extra=None):
-            raise RuntimeError("node away")
+async def test_a_failed_record_is_a_silent_turn():
+    class _Broken(FakePersister):
+        def record(self, envelope, content, *, list_write=False):
+            raise OSError("disk full")
 
-    persister = FakePersister()
-    managed = FakeManaged(channel=_Down(), persister=persister)
+    persister = _Broken(reply_conf=0.9)
+    managed = FakeManaged(persister=persister)
     assert await _turn(managed, persister) == ""
-    assert persister.ingested == []
+    assert persister.recorded == []

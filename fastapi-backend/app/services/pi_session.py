@@ -5,7 +5,7 @@
 
 The seam: every engine's LLM session is a **persistent, optionally
 OpenShell-sandboxed Pi session** — the engines have no stateless per-call
-fallback; Pi is their runtime. This touches neither the SLIM/HTTP drive nor any
+fallback; Pi is their runtime. This touches neither the room's channel nor any
 *user* agent's runtime — Pi is the runtime for our own cognition engines only;
 participant agents keep whatever framework they already run.
 

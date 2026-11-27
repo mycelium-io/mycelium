@@ -32,7 +32,7 @@ def _message_record(
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": kind,
                     "message": {"id": message_id, "parents": [], "episode": "urn:x:1"},
@@ -57,12 +57,13 @@ async def test_message_history_replays_frames_with_envelope(client) -> None:
     assert len(rows) == 1
 
     frame = rows[0]
-    # The bus frame shape the channel and Stream read: l9_<kind> + the full envelope in content.
-    assert frame["message_type"] == "l9_exchange"
+    # The bus frame shape the channel and Stream read: envelope_<kind> + the full envelope in
+    # content.
+    assert frame["message_type"] == "envelope_exchange"
     assert frame["sender_handle"] == "avery"
     content = json.loads(frame["content"])
-    assert content["l9"]["header"]["kind"] == "exchange"
-    assert content["l9"]["payload"]["data"] == {"round": 1}
+    assert content["envelope"]["header"]["kind"] == "exchange"
+    assert content["envelope"]["payload"]["data"] == {"round": 1}
 
 
 @pytest.mark.asyncio
@@ -77,7 +78,7 @@ async def test_a_frame_names_the_id_the_history_read_gives_its_message(client) -
         subkind=None,
         content={
             "content": "cap at 30%",
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {
@@ -107,7 +108,7 @@ async def test_message_history_orders_oldest_first_and_limits(client) -> None:
 
     rows = (await client.get("/api/rooms/wire/messages/wire?limit=3")).json()
     # Last 3 records, oldest-first.
-    ids = [json.loads(r["content"])["l9"]["header"]["message"]["id"] for r in rows]
+    ids = [json.loads(r["content"])["envelope"]["header"]["message"]["id"] for r in rows]
     assert ids == ["m2", "m3", "m4"]
 
 

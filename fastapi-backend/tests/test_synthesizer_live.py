@@ -19,9 +19,9 @@ import pytest
 
 from app.services import message_format, persister, synthesizer
 from app.services.filesystem import get_room_dir, read_memory_file
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
-from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
+from tests.fakes import FakeManaged, FakeManager
 
 _ROOM = "synth-live"
 _T0 = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
@@ -70,7 +70,7 @@ async def test_synthesize_live(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     _say("m-4", sender="growth", text="Scheduling the production flip Thursday.", minute=3)
 
-    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    managed = FakeManaged(_ROOM)
     engine = synthesizer.SynthesizerEngine(FakeManager(managed, []))  # type: ignore[arg-type]
 
     summary = await engine.synthesize(_ROOM)

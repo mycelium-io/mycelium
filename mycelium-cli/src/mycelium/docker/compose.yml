@@ -1,65 +1,14 @@
-# Inline SLIM node config (Compose `configs.content`, no external file to ship).
-# Minimal single standalone hub: one dataplane server on :46357, TLS disabled
-# for local dev (the SLIM node is a blind ciphertext forwarder — identity is
-# app-level MLS identity, so the node itself never inspects it).
-configs:
-  slim-node-config:
-    content: |
-      tracing:
-        log_level: info
-      runtime:
-        n_cores: 0
-        thread_name: "slim-data-plane"
-        drain_timeout: 10s
-      services:
-        slim/0:
-          node_id: mycelium-slim
-          dataplane:
-            servers:
-              - endpoint: "0.0.0.0:46357"
-                tls:
-                  insecure: true
-            clients: []
-
 networks:
   mycelium:
     driver: bridge
 
 services:
 
-  # ── SLIM node (always started) ───────────────────────────────────────────────
-  #
-  # The secure messaging fabric — one stateless Rust binary that routes/fans out
-  # messages by name. This is the only heavy thing in the target stack (no DB).
-  # Rooms become SLIM group channels in Step 3; for now the node just runs and
-  # nothing is wired to it. `mycelium hub host` brings up this service alone.
-
-  slim:
-    # Pinned to 2.1.x: the node's link-negotiation handshake must match the
-    # `slim-bindings` wheel the backend/daemon use (`>=2.1,<2.2` in both
-    # pyprojects). Mixing versions fails the handshake with "public key length
-    # is invalid", so node + bindings move in lockstep. 2.1.x is the first
-    # MLS-with-external-identity-capable stack, the prereq for #476.
-    # Node 2.2.0 exists but has no matching PyPI bindings yet — stay on 2.1.x
-    # until 2.2.x bindings publish, then bump both in lockstep.
-    image: ghcr.io/agntcy/slim:${SLIM_IMAGE_TAG:-2.1.0}
-    pull_policy: always
-    container_name: mycelium-slim
-    restart: unless-stopped
-    command: ["/slim", "--config", "/slim-config.yaml"]
-    configs:
-      - source: slim-node-config
-        target: /slim-config.yaml
-    networks:
-      - mycelium
-    ports:
-      - "${MYCELIUM_SLIM_PORT:-46357}:46357"
-
   # ── Mycelium Core (always started) ───────────────────────────────────────────
   #
   # The backend is a thin local process over markdown files + a local JSONL
-  # search index — no database (SLIM-native rebuild). Room/memory state lives on
-  # the host under MYCELIUM_DATA_DIR, bind-mounted below.
+  # search index, with no database. Room/memory state lives on the host under
+  # MYCELIUM_DATA_DIR, bind-mounted below.
 
   mycelium-backend:
     image: ghcr.io/mycelium-io/mycelium-backend:${MYCELIUM_IMAGE_TAG:-latest}
@@ -73,11 +22,6 @@ services:
       API_BASE_URL: http://mycelium-backend:8000
       # How this hub runs, for its usage events (the desktop app says "desktop").
       MYCELIUM_HUB_MODE: docker
-      # The SLIM node's in-network address. The backend is the room-channel
-      # moderator (room_channels.py), so it must reach the node by its compose
-      # service name — the default 127.0.0.1:46357 resolves to the backend
-      # container itself, which silently no-ops every channel provision.
-      SLIM_NODE_ENDPOINT: http://mycelium-slim:46357
       # IN-CONTAINER path the backend writes rooms/memory/plans to. MUST match
       # the bind-mount target below — otherwise writes land in the container's
       # overlay FS and are lost on recreate. (The host-side MYCELIUM_DATA_DIR

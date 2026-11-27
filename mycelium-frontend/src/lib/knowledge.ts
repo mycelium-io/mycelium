@@ -5,14 +5,14 @@
  * What a room's team learned, as the app reads it.
  *
  * The hub's knowledge graph (`GET /rooms/{room}/knowledge`,
- * `services/knowledge.py`): memories with a `kind` (a fact, a finding, a dead
- * end, or a decision the conductor saved), the task each was learned in, and
+ * `services/knowledge.py`): memories with a `kind` (a fact, a finding or a
+ * dead end), the task each was learned in, and
  * `derived-from`, the relation that says what each came from. A memory is open
  * while someone is still working on it and settled once it holds. A task is a
  * lens on the same graph.
  */
 
-export type KnowledgeKind = "fact" | "finding" | "dead-end" | "decision";
+export type KnowledgeKind = "fact" | "finding" | "dead-end";
 
 export interface KnowledgeTask {
   key: string;

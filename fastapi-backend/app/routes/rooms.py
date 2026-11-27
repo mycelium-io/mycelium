@@ -76,9 +76,8 @@ async def create_room(room: RoomCreate, request: Request):
     if room.name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room.name}' is a reserved system name")
     if room_exists(room.name):
-        # Idempotent: re-creating an existing room is a no-op on disk but
-        # (re)ensures its SLIM channel, so a caller can recover a channel-less
-        # room without a full backend restart. Metadata is left untouched.
+        # Idempotent: re-creating an existing room is a no-op on disk and
+        # leaves its metadata untouched.
         await room_channels.manager.provision(room.name)
         existing = _room_read(room.name)
         if existing is None:
@@ -115,10 +114,7 @@ async def make_room(room: RoomCreate, owner: str | None, members: list[str]) -> 
     logger.info("Created room directory: %s", room_dir)
     room_people.start(room.name, owner, members)
 
-    # Room = SLIM channel: provision the group channel with the backend
-    # as moderator. Best-effort — a missing/unreachable node leaves the room a
-    # pure memory namespace rather than failing creation.
-    await room_channels.manager.provision(room.name, workspace=room.workspace_id)
+    await room_channels.manager.provision(room.name)
 
     result = _room_read(room.name)
     assert result is not None  # just created

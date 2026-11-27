@@ -47,7 +47,7 @@ def _said(
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {"kind": "exchange", "message": {"episode": episode}},
                 "payload": {"type": "message"},
             },
@@ -58,7 +58,7 @@ def _said(
 
 def _upstream(n: int, change: str, ref: str, minutes_ago: float) -> TranscriptRecord:
     record = _said(n, "status", "", minutes_ago)
-    record.content["l9"]["payload"] = {
+    record.content["envelope"]["payload"] = {
         "type": message_format.NOTICE_PAYLOAD_TYPE,
         "data": {
             "subkind": "upstream",
@@ -441,7 +441,7 @@ async def test_the_hook_checks_an_agents_message_when_on(engine, monkeypatch) ->
 
 def _check_notice(n: int, flag: dict[str, Any]) -> TranscriptRecord:
     record = _said(n, "verifier", "", 0)
-    record.content["l9"]["payload"] = {
+    record.content["envelope"]["payload"] = {
         "type": message_format.NOTICE_PAYLOAD_TYPE,
         "data": {"subkind": "check", "about": flag["about"], "flag_id": flag["flag_id"]},
     }

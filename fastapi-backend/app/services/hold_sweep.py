@@ -158,7 +158,7 @@ def last_activity(room: str, key: str, meta: dict) -> datetime | None:
         if episode and record_episode(record) == episode:
             stamps.append(parse_recorded_at(record.recorded_at))
             break
-        payload = (record.content.get("l9") or {}).get("payload") or {}
+        payload = message_format.envelope_of(record.content).get("payload") or {}
         data = payload.get("data") or {}
         if (
             payload.get("type") == message_format.NOTICE_PAYLOAD_TYPE

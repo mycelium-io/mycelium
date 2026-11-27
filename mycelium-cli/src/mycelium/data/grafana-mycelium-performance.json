@@ -356,71 +356,6 @@
           }
         }
       },
-      "panel-8": {
-        "kind": "Panel",
-        "spec": {
-          "id": 8,
-          "title": "SLIM provision p95 (ms)",
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "refId": "A",
-                    "query": {
-                      "group": "prometheus",
-                      "kind": "DataQuery",
-                      "version": "v0",
-                      "spec": {
-                        "expr": "histogram_quantile(0.95, sum(mycelium_slim_provision_duration_milliseconds_bucket) by (le))",
-                        "legendFormat": "p95"
-                      }
-                    }
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "vizConfig": {
-            "group": "timeseries",
-            "kind": "VizConfig",
-            "version": "13.2.0",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "palette-classic"
-                  },
-                  "custom": {
-                    "drawStyle": "line",
-                    "lineWidth": 1,
-                    "fillOpacity": 5,
-                    "showPoints": "auto",
-                    "spanNulls": false
-                  },
-                  "unit": "ms"
-                },
-                "overrides": []
-              },
-              "options": {
-                "legend": {
-                  "displayMode": "list",
-                  "placement": "bottom",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "mode": "multi",
-                  "sort": "desc"
-                }
-              }
-            }
-          }
-        }
-      },
       "panel-9": {
         "kind": "Panel",
         "spec": {
@@ -505,72 +440,6 @@
                       "version": "v0",
                       "spec": {
                         "expr": "sum(increase(mycelium_llm_call_duration_milliseconds_count[1h]))"
-                      }
-                    }
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "vizConfig": {
-            "group": "stat",
-            "kind": "VizConfig",
-            "version": "13.2.0",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                "overrides": []
-              },
-              "options": {
-                "colorMode": "value",
-                "graphMode": "area",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "reduceOptions": {
-                  "calcs": [
-                    "lastNotNull"
-                  ],
-                  "fields": "",
-                  "values": false
-                },
-                "textMode": "auto",
-                "wideLayout": true
-              }
-            }
-          }
-        }
-      },
-      "panel-13": {
-        "kind": "Panel",
-        "spec": {
-          "id": 13,
-          "title": "SLIM provisions",
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "refId": "A",
-                    "query": {
-                      "group": "prometheus",
-                      "kind": "DataQuery",
-                      "version": "v0",
-                      "spec": {
-                        "expr": "sum(mycelium_slim_provision_duration_milliseconds_count)"
                       }
                     }
                   }
@@ -887,24 +756,11 @@
             "spec": {
               "element": {
                 "kind": "ElementReference",
-                "name": "panel-8"
+                "name": "panel-9"
               },
               "x": 0,
               "y": 16,
-              "width": 12,
-              "height": 7
-            }
-          },
-          {
-            "kind": "GridLayoutItem",
-            "spec": {
-              "element": {
-                "kind": "ElementReference",
-                "name": "panel-9"
-              },
-              "x": 12,
-              "y": 16,
-              "width": 12,
+              "width": 24,
               "height": 7
             }
           },
@@ -917,20 +773,7 @@
               },
               "x": 0,
               "y": 23,
-              "width": 6,
-              "height": 4
-            }
-          },
-          {
-            "kind": "GridLayoutItem",
-            "spec": {
-              "element": {
-                "kind": "ElementReference",
-                "name": "panel-13"
-              },
-              "x": 6,
-              "y": 23,
-              "width": 6,
+              "width": 8,
               "height": 4
             }
           },
@@ -941,9 +784,9 @@
                 "kind": "ElementReference",
                 "name": "panel-14"
               },
-              "x": 12,
+              "x": 8,
               "y": 23,
-              "width": 6,
+              "width": 8,
               "height": 4
             }
           },
@@ -954,9 +797,9 @@
                 "kind": "ElementReference",
                 "name": "panel-15"
               },
-              "x": 18,
+              "x": 16,
               "y": 23,
-              "width": 6,
+              "width": 8,
               "height": 4
             }
           },

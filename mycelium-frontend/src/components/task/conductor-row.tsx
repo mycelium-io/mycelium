@@ -5,22 +5,8 @@
 
 import { useState } from "react";
 import { ChevronRight, Workflow } from "lucide-react";
-import {
-  isSuccess,
-  lockSummary,
-  named,
-  optionNames,
-  pickSummary,
-  placedOf,
-  standings,
-  stepVerb,
-  tallySummary,
-  type ConductorLine,
-  type PickRecord,
-} from "@/lib/conductor-line";
+import { isSuccess, type ConductorLine } from "@/lib/conductor-line";
 import { MessageBody } from "@/components/message-body";
-import { MemoryKeyLink } from "@/components/markdown-content";
-import { SatisfactionBars } from "@/components/task/satisfaction-bars";
 import { AgentCardHover } from "@/components/agent-card";
 
 interface Props {
@@ -43,22 +29,6 @@ function Handle({ children }: { children: string }) {
   );
 }
 
-/** Where a run saved what it settled to, as a link to the memory, or that it
- *  could not be saved (`null`). Nothing when the run saved nothing. It never
- *  shrinks: the row wraps it under the summary instead. */
-function Saved({ memory, onOpenMemory }: { memory: string | null | undefined; onOpenMemory?: (key: string) => void }) {
-  if (memory === undefined) return null;
-  if (memory === null) return <span className="flex-shrink-0 text-faint">could not be saved</span>;
-  return (
-    // In a thread too narrow even for the key, it breaks across lines rather
-    // than being cut, so it can still be read whole.
-    <span className="flex min-w-0 max-w-full flex-shrink-0 items-baseline gap-1 text-faint [overflow-wrap:anywhere] [&>*]:min-w-0 [&>*]:max-w-full">
-      <span className="flex-shrink-0">saved as</span>
-      <MemoryKeyLink memoryKey={memory} onClick={onOpenMemory} />
-    </span>
-  );
-}
-
 /**
  * One conductor post, drawn from its structured line rather than its prose.
  *
@@ -72,9 +42,6 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
   const expandable = line.event === "turn" || line.event === "open";
 
   let body: React.ReactNode;
-  // Where the run saved its result, drawn beside the line rather than inside
-  // it, so a narrow thread cuts the summary and never the link to it.
-  let saved: string | null | undefined;
   switch (line.event) {
     case "open":
       body = (
@@ -102,21 +69,7 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
       break;
     case "turn": {
       const who = members ?? [line.to];
-      // Concord's and accord's steps say what the members are doing; any
-      // other flow names its step and who it went to.
-      const verb = stepVerb(line.protocol, line.step, who.length);
-      body = verb ? (
-        <>
-          {who.map((m, i) => (
-            <span key={m}>
-              {i > 0 && (i === who.length - 1 ? " and " : ", ")}
-              <Handle>{m}</Handle>
-            </span>
-          ))}
-          <span> {verb}</span>
-          {line.again && <span className="text-faint"> (asked again)</span>}
-        </>
-      ) : (
+      body = (
         <>
           <span className="font-medium text-accent">{line.step}</span>
           <span> {line.tell ? "told" : "→"} </span>
@@ -155,56 +108,20 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
       );
       break;
     }
-    case "select":
-      // A pick everyone clears is its name; the bars under it say how
-      // satisfied each member is. One somebody falls short of says who.
-      body = line.select.pick ? (
-        <>
-          <span className="font-medium text-accent">Picked</span>{" "}
-          <span>
-            {line.select.outcome === "feasible"
-              ? named(line.select.pick, line.select.text, optionNames(line.select.options))
-              : pickSummary(line.select)}
-          </span>
-        </>
-      ) : (
-        <span>{pickSummary(line.select)}</span>
-      );
-      break;
-    case "tally":
-      body = <span>{tallySummary(line.tally)}</span>;
-      break;
-    case "lock":
-      body = <span>{lockSummary(line.lock)}</span>;
-      saved = line.lock.outcome !== "locked" ? undefined : line.lock.saved ? line.lock.memory : null;
-      break;
     case "close": {
       const good = isSuccess(line.outcome);
-      // A run that picked says what it went with, or that it couldn't get there.
-      const said = line.pick
-        ? line.outcome === "converged"
-          ? `Picked ${line.pick}`
-          : line.outcome === "resolved"
-            ? `Best found, below the bar for some: ${line.pick}`
-            : `Couldn't get everyone there. Best was ${line.pick}`
-        : `${line.protocol} ${good ? "done" : line.outcome}`;
       body = (
         <>
           <span className="font-medium" style={{ color: good ? "var(--green)" : "var(--yellow)" }}>
-            {good ? "✓" : "✗"} {said}
+            {good ? "✓" : "✗"} {line.protocol} {good ? "done" : line.outcome}
           </span>
-          {line.pick && line.text ? (
-            <span className="text-text">: {line.text}</span>
-          ) : (
-            <span className="text-faint">
-              {" · "}
-              {line.steps} step{line.steps === 1 ? "" : "s"}
-              {!good && line.reason ? ` · ${line.reason}` : ""}
-            </span>
-          )}
+          <span className="text-faint">
+            {" · "}
+            {line.steps} step{line.steps === 1 ? "" : "s"}
+            {!good && line.reason ? ` · ${line.reason}` : ""}
+          </span>
         </>
       );
-      saved = line.memory;
       break;
     }
   }
@@ -215,13 +132,7 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
         <span className="flex h-[1lh] w-7 flex-shrink-0 items-center justify-center" aria-hidden>
           <Workflow className="size-3.5" />
         </span>
-        {/* The summary at its full width first; where it and the saved key
-            don't both fit, the key drops to a line of its own, whole, since
-            it's what people click and look for later in Memory. */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
-          <span className="min-w-0 flex-auto truncate">{body}</span>
-          <Saved memory={saved} onOpenMemory={onOpenMemory} />
-        </div>
+        <span className="min-w-0 flex-1 truncate">{body}</span>
         {expandable && text.trim() && (
           <button
             type="button"
@@ -239,108 +150,6 @@ export function ConductorRow({ line, text, onOpenMemory, members }: Props) {
           <MessageBody content={text} onOpenMemory={onOpenMemory} />
         </div>
       )}
-      {line.event === "select" && <Scorecard record={line.select} />}
-    </div>
-  );
-}
-
-/**
- * A pick, as how satisfied each member is with it: a bar each, most satisfied
- * first, with why beside it. Every option's numbers are a click away for
- * anyone checking the arithmetic.
- */
-export function Scorecard({ record }: { record: PickRecord }) {
-  const [numbers, setNumbers] = useState(false);
-  if (!record.pick) return null;
-  return (
-    <div className="ml-9 mt-1 text-micro">
-      <PickBars record={record} />
-      <button
-        type="button"
-        onClick={() => setNumbers((n) => !n)}
-        aria-expanded={numbers}
-        className="mt-0.5 flex items-center gap-0.5 rounded px-1 text-faint transition-colors hover:text-text"
-      >
-        <ChevronRight className={`size-3 transition-transform ${numbers ? "rotate-90" : ""}`} />
-        numbers
-      </button>
-      {numbers && <Numbers record={record} />}
-    </div>
-  );
-}
-
-/** Each member's satisfaction with the pick, least satisfied last. */
-export function PickBars({ record }: { record: PickRecord }) {
-  if (!record.pick) return null;
-  return (
-    <SatisfactionBars
-      label={`How satisfied each member is with ${record.pick}`}
-      bar={record.threshold / 100}
-      rows={standings(record, record.pick).map((s) => ({ key: s.member, label: s.member, placed: s.placed, why: s.why }))}
-    />
-  );
-}
-
-/**
- * Every option's ratings: options down the side, members across, each cell a
- * member's rating on its own scale with how far that is from its bad outcome
- * to its ideal, `?` where a member gave none, the pick marked, and anything
- * under the bar drawn so it shows. A cell's reason is its tooltip.
- */
-function Numbers({ record }: { record: PickRecord }) {
-  const bar = record.threshold;
-  return (
-    <div className="mt-1 overflow-x-auto">
-      <table className="text-micro tabular" aria-label={`Ratings, bar ${bar}%`}>
-        <thead>
-          <tr className="text-faint">
-            <th className="py-0.5 pr-3 text-left font-normal">option</th>
-            {record.cast.map((h) => (
-              <th key={h} className="px-2 py-0.5 text-right font-normal">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {record.options.map((o) => {
-            const picked = o.label === record.pick;
-            return (
-              <tr key={o.label} className={picked ? "bg-accent-soft" : undefined}>
-                <th
-                  scope="row"
-                  title={o.text}
-                  // The thread pane is narrow and every member needs a column,
-                  // so an option's text gives way; the whole of it is the tooltip.
-                  className="max-w-[9rem] truncate py-0.5 pr-3 text-left font-normal text-muted-foreground"
-                >
-                  <span className={`font-mono ${picked ? "font-semibold text-accent" : "text-text"}`}>{o.label}</span>{" "}
-                  {o.text}
-                </th>
-                {record.cast.map((h) => {
-                  const r = record.table[o.label]?.[h];
-                  const at = placedOf(record, o.label, h);
-                  const short = at !== undefined && at * 100 < bar;
-                  return (
-                    <td
-                      key={h}
-                      title={record.reasons?.[o.label]?.[h]}
-                      className="whitespace-nowrap px-2 py-0.5 text-right"
-                      style={{ color: r === undefined ? "var(--faint)" : short ? "var(--yellow)" : "var(--text)" }}
-                    >
-                      {r === undefined ? "?" : `${r} (${Math.round((at ?? 0) * 100)}%)`}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <p className="mt-0.5 text-micro text-faint">
-        Each rating is on the member&apos;s own scale; in brackets, how far it is from their bad outcome
-        to their ideal. The bar is {bar}%.
-      </p>
     </div>
   );
 }

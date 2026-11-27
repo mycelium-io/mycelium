@@ -3,8 +3,8 @@
 
 """The answer a room gets when it summons the aligner, which was retired.
 
-Negotiation is the conductor's now (its ``concord`` and ``accord`` flows). A
-room made before that can still hold an ``agents/aligner`` manifest, and a
+A task's members work things out in it with a conductor flow. A room made
+before the aligner was retired can still hold an ``agents/aligner`` manifest, and a
 summon of it would otherwise start nothing and say nothing. This handler sits
 on the same summon seam as the engines and says, where it was asked, what to
 run instead.
@@ -30,9 +30,8 @@ logger = logging.getLogger(__name__)
 RETIRED_KIND = "aligner"
 
 RETIRED_TEXT = (
-    "The aligner was retired, so nothing started. To negotiate, run "
-    '`mycelium board coordinate <row> conductor "concord …"` to help members '
-    'agree, or `"accord …"` to get them on the same page.'
+    "The aligner was retired, so nothing started. To work it out in a task, run a "
+    'conductor flow there, like `mycelium board coordinate <row> conductor "review …"`.'
 )
 
 

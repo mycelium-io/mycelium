@@ -95,7 +95,6 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -107,7 +106,6 @@
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
-        <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
     </div>
     <div class="nav-page-group">
@@ -204,7 +202,6 @@
           <a href="#config-worker" class="nav-link sub">worker</a>
           <a href="#config-board" class="nav-link sub">board</a>
           <a href="#config-rooms" class="nav-link sub">rooms</a>
-          <a href="#config-slim" class="nav-link sub">slim</a>
           <a href="#config-engine" class="nav-link sub">engine</a>
           <a href="#config-ui" class="nav-link sub">ui</a>
           <a href="#config-voice" class="nav-link sub">voice</a>
@@ -225,7 +222,6 @@
       <div class="nav-group" data-nav-group="reference:dependencies">
         <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
         <div class="nav-group-items">
-          <a href="#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
           <a href="#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
           <a href="#dependencies-cognition" class="nav-link sub">Cognition</a>
           <a href="#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
@@ -278,8 +274,8 @@
             </tr>
             <tr>
               <td>Runs</td>
-              <td>The hub, the app, a SLIM node, herdr and the runner, as processes</td>
-              <td>The hub, the app and a SLIM node, as containers</td>
+              <td>The hub, the app, herdr and the runner, as processes</td>
+              <td>The hub and the app, as containers</td>
             </tr>
             <tr>
               <td>Reachable from</td>
@@ -296,7 +292,7 @@
       </div>
       <p>Every other machine is a <strong>spoke</strong>. A spoke runs the CLI or the desktop app pointed at the hub, along with its own agents and a runner. It keeps no copy of the hub&#x27;s data. Every <code>memory</code>, <code>room</code>, <code>await</code> and <code>respond</code> call goes to the hub over HTTP, so there&#x27;s nothing to sync and nothing to go stale.</p>
       <h2 id="architecture-stack">Stack</h2>
-      <p>The hub is one SLIM node and a FastAPI backend. There&#x27;s no database, message broker or vector store.</p>
+      <p>The hub is a FastAPI backend. There&#x27;s no database, message broker or vector store.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -309,8 +305,8 @@
           <tbody>
             <tr>
               <td>Messaging</td>
-              <td>one <a href="concepts.html#slim">SLIM</a> node (MLS group channels)</td>
-              <td>each room&#x27;s encrypted channel, between the backend and the node</td>
+              <td>one log per room on the hub, with live updates over the hub&#x27;s event stream</td>
+              <td>each room&#x27;s messages, read by the app and by <code>await</code></td>
             </tr>
             <tr>
               <td>State</td>
@@ -324,8 +320,8 @@
             </tr>
             <tr>
               <td>Messages</td>
-              <td>JSON <a href="#messages">messages</a> over SLIM</td>
-              <td>turns (<code>exchange</code>), outcomes (<code>commit:*</code>), memory writes (<code>knowledge</code>)</td>
+              <td>JSON <a href="#messages">messages</a> in the room&#x27;s log</td>
+              <td>turns (<code>exchange</code>), outcomes (<code>commit:*</code>)</td>
             </tr>
             <tr>
               <td>Engines</td>
@@ -358,11 +354,11 @@
       <p>For an agent in herdr, the <a href="guides.html#machines">runner</a> makes it call <code>await</code>. The runner connects out to the hub, and when the agent is asked something or assigned a task, it types a wake-up into the agent&#x27;s terminal that says why.</p>
       <p>An agent can also loop on <code>mycelium await --loop</code> itself. For an agent with no interactive session, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs <code>&lt;cmd&gt;</code> for each message and passes the message as JSON on stdin. <code>&lt;cmd&gt;</code> should keep its context between turns, as an Agent SDK session does, because a fresh process each turn forgets everything.</p>
       <p><code>await --lease &lt;task&gt;</code> also returns when that task changes hands.</p>
-      <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="A turn-based CLI agent using await and respond over HTTP, with the backend as the only thing talking to SLIM" loading="lazy">
+      <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="A turn-based CLI agent using await and respond over HTTP, with the backend recording each message in the room&#x27;s log" loading="lazy">
         <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
       </figure>
       <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
-      <p>A <a href="concepts.html#board">task</a> is a memory under <code>work/</code>. Each task has a <strong>thread</strong>, which is its own conversation within the room&#x27;s channel with its own id. A thread isn&#x27;t a separate encrypted group. Everyone in the room can read every thread.</p>
+      <p>A <a href="concepts.html#board">task</a> is a memory under <code>work/</code>. Each task has a <strong>thread</strong>, which is its own conversation within the room with its own id. Everyone in the room can read every thread.</p>
       <p><strong>Every board row keeps one thread for good.</strong> The hub gives every memory a thread the first time it&#x27;s written, however it was written. No command can change the thread id, so a task can&#x27;t be pointed at someone else&#x27;s conversation. <code>board new</code> (<code>POST /api/rooms/{room}/tasks</code>) files a task and returns its thread id.</p>
       <p>A conductor run on a task is an <a href="concepts.html#episodes">episode</a> inside the task&#x27;s thread. Its state shows on the task&#x27;s row as read-only fields (<code>thread_state</code>, <code>participants</code>). It never changes the task&#x27;s own status or holder.</p>
       <p>A thread&#x27;s conversation stays in the thread. The room&#x27;s chat shows two kinds of short update:</p>
@@ -468,6 +464,27 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">settings</span> [<span class="flag">--hub</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--json</span>]</code>
+        </div>
+        <div class="cmd-ref-body">What the hub is set up with (model, experiences, usage stats). Read-only; no key is shown.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Interactive installer: Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">init</span> [<span class="flag">--api-url</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.</div>
@@ -506,41 +523,6 @@
           <code><span class="bin">mycelium</span> <span class="cmd">pull</span> [<span class="flag">--version</span> <span class="arg">&lt;tag&gt;</span>] [<span class="flag">--no-restart</span>]</code>
         </div>
         <div class="cmd-ref-body">Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span></code>
-        </div>
-        <div class="cmd-ref-body">Start the SLIM node and print the address peers connect to.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="arg">&lt;address&gt;</span></code>
-        </div>
-        <div class="cmd-ref-body">Store the SLIM node endpoint to connect to (self- or mycelium-hosted).</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">settings</span> [<span class="flag">--hub</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--json</span>]</code>
-        </div>
-        <div class="cmd-ref-body">What the hub is set up with (model, experiences, usage stats). Read-only; no key is shown.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Interactive installer: Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
       </div>
 
       <div class="cmd-ref">
@@ -911,13 +893,6 @@
           <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> rm <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Forget an agent's credential on this machine.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> slim-key <span class="arg">&lt;handle&gt;</span></code>
-        </div>
-        <div class="cmd-ref-body">Mint an agent's SignerJwt SLIM channel identity: a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for <code>slim.identity = signerjwt</code> (#476); the PSK default needs none.</div>
       </div>
 
       <div class="cmd-ref">
@@ -1300,18 +1275,6 @@
 <span class="comment"># Currently active room name</span>
 <span class="arg">active</span> = <span class="str">&quot;&quot;</span>
 
-<span class="comment"># SLIM messaging-fabric connection configuration.</span>
-<span class="cmd" id="config-slim">[slim]</span>
-
-<span class="comment"># SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357</span>
-<span class="arg">node_endpoint</span> = <span class="str">&quot;http://127.0.0.1:46357&quot;</span>
-
-<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives (zero infra, no per-agent identity). &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. Selecting &#x27;signerjwt&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
-<span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
-
-<span class="comment"># Hub-only SLIM PSK master secret. Auto-generated on first ``mycelium config apply`` / install when unset; rendered to ``MYCELIUM_SLIM_MASTER_SECRET`` in ~/.mycelium/.env for the backend container. Spokes do not need this. Override with ``mycelium config set slim.master_secret …`` to rotate.</span>
-<span class="arg">master_secret</span> = <span class="str">&quot;&quot;</span>
-
 <span class="comment"># First-party Cognition Engine runtime configuration.</span>
 <span class="cmd" id="config-engine">[engine]</span>
 
@@ -1523,38 +1486,6 @@
     <section class="doc-section" id="dependencies">
       <h1>Dependencies &amp; Compatibility</h1>
       <p>Mycelium is assembled from a small set of upstream components. This page lists every notable runtime dependency, the version pinned, what it&#x27;s for, and where to check what changed upstream. The versions are read from the pins in <code>pyproject.toml</code> and <code>compose.yml</code>, so they match what ships.</p>
-      <h2 id="dependencies-messaging-fabric-agntcy-slim">Messaging fabric (AGNTCY SLIM)</h2>
-      <p>Mycelium is SLIM-native: rooms are SLIM group channels. This is the one deep coupling in the stack, so it comes first.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Component</th>
-              <th>Pinned version</th>
-              <th>Role</th>
-              <th>Upstream</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>slim-bindings</code></td>
-              <td><code>&gt;=2.1,&lt;2.2</code></td>
-              <td>The client the CLI and backend use to join channels</td>
-              <td><a href="https://github.com/agntcy/slim/releases">agntcy/slim releases</a></td>
-            </tr>
-            <tr>
-              <td><code>ghcr.io/agntcy/slim</code></td>
-              <td><code>2.1.0</code></td>
-              <td>The messaging node itself, a blind ciphertext forwarder</td>
-              <td><a href="https://github.com/agntcy/slim/pkgs/container/slim">ghcr.io/agntcy/slim</a></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Version lockstep.</strong> The node image and the <code>slim-bindings</code> wheel must move together. Today both sides pin <code>slim-bindings&gt;=2.1,&lt;2.2</code> and the node image is <code>2.1.0</code>. Mixing versions fails the MLS handshake with <code>public key length is invalid</code>, so bump both to the same 2.x line at once. 2.1.x is the first MLS-with-external-identity stack, which is what the identity tiers build on.</div>
-      </div>
       <h2 id="dependencies-memory-and-search">Memory and search</h2>
       <div class="table-wrap">
         <table>
@@ -1630,13 +1561,13 @@
             <tr>
               <td><code>pyjwt[crypto]</code></td>
               <td><code>&gt;=2.10,&lt;3</code></td>
-              <td>JWT validation for the auth gate and SignerJwt identity</td>
+              <td>JWT validation for the auth gate and member tokens</td>
               <td><a href="https://github.com/jpadilla/pyjwt/releases">jpadilla/pyjwt</a></td>
             </tr>
             <tr>
               <td><code>cryptography</code></td>
               <td><code>&gt;=50.0.2,&lt;51</code></td>
-              <td>ES256 keypair and JWK for SLIM channel identity</td>
+              <td>Signature checks for a runner&#x27;s paired devices</td>
               <td><a href="https://github.com/pyca/cryptography/releases">pyca/cryptography</a></td>
             </tr>
           </tbody>
@@ -1666,7 +1597,7 @@
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/auth-spike <span class="str">&quot;@sec keychain?&quot;</span>   # post in a task&#x27;s thread
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/auth-spike   # read a task&#x27;s thread
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/auth-spike conductor <span class="str">&quot;concord: agree on token storage&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/auth-spike conductor <span class="str">&quot;review @~builder @~sec: the token storage&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike      # take a task nobody was given
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike <span class="flag">--force</span>   # even one still waiting on another
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">assign</span> work/auth-spike @sec   # give it to someone; they hold it
@@ -1862,7 +1793,7 @@ steps:
     next: {accept: done, reject: draft, default: draft}
   - id: done
     end: resolved</code></pre>
-      <p>The conductor treats a flow that doesn&#x27;t make sense as if it weren&#x27;t there, even one saved under a built-in&#x27;s name. For example, a step might lead nowhere or there might be no end step. <code>mycelium engine invoke conductor &quot;list&quot;</code> shows the flows the room can run, so a flow missing from it has a mistake in it. Each run keeps its own copy of the flow. Editing the memory changes future runs but not past records.</p>
+      <p>The conductor treats a flow that doesn&#x27;t make sense as if it weren&#x27;t there, even one saved under a built-in&#x27;s name. For example, a step might lead nowhere or there might be no end step. <code>mycelium engine invoke conductor &quot;list&quot;</code> shows the flows the room can run, so a flow missing from it has a mistake in it. The hub&#x27;s log names the room, the flow and what was wrong. Each run keeps its own copy of the flow. Editing the memory changes future runs but not past records.</p>
       <h2 id="flows-steps">Steps</h2>
       <p>Each step has an <code>id</code>. A step either asks someone (<code>to</code>) and says where to go next (<code>next</code>), or it ends the flow (<code>end: resolved</code> or <code>end: rejected</code>).</p>
       <p><code>to</code> can be:</p>
@@ -1871,8 +1802,6 @@ steps:
         <li><code>each</code>: every member taking part, one at a time</li>
         <li><code>all</code>: every member taking part, at once</li>
         <li><code>workers</code>: every member taking part that isn&#x27;t bound to a role, at once</li>
-        <li><code>bottleneck</code>: the member the last pick left least happy (only after a pick)</li>
-        <li><code>contested</code>: everyone who means something different by a word (only after a check of the words)</li>
       </ul>
       <p><code>next</code> is either a step id or a map that picks the next step from the answer. The map&#x27;s keys are <code>accept</code>, <code>reject</code>, <code>silent</code> (no answer in time) and <code>default</code>.</p>
       <p>Other options:</p>
@@ -1880,25 +1809,8 @@ steps:
         <li><code>rounds: 2</code> repeats an <code>each</code> or <code>all</code> step.</li>
         <li><code>wait: none</code> asks without waiting for an answer.</li>
         <li><code>max_steps</code> limits how many steps a run can take. A step counts once however many members it asks. The thread&#x27;s &quot;turn 2 of 6&quot; counts the same steps.</li>
-        <li><code>collect: options</code> makes each reply an option, with its <code>why:</code> line. <code>collect: scores</code> records each reply&#x27;s ratings and their reasons. <code>collect: anchors</code> records the ratings of the two ends. <code>collect: keywords</code> records the key terms members name. <code>collect: pieces</code> merges each reply&#x27;s labeled points, terms and checks into the shared summary being built.</li>
-        <li><code>require: stance</code>, <code>require: scores</code> or <code>require: pieces</code> asks once more for a reply that&#x27;s missing it. A stance still missing after that counts as a rejection. A reply that still has no labels is kept as written.</li>
+        <li><code>require: stance</code> asks once more for a reply that has no stance. A stance still missing after that counts as a rejection.</li>
       </ul>
-      <h2 id="flows-steps-that-ask-nobody">Steps that ask nobody</h2>
-      <p>A <strong>pick</strong> is a step with <code>kind: select</code>. It chooses among the options members suggested, using the ratings they gave. It takes a <code>threshold</code> and <code>max_repairs</code> (<code>bar=70</code> and <code>fixes=3</code> in the summon). A threshold of 0.6 means the pick passes only if it&#x27;s 60% of the way from each member&#x27;s bad outcome to their ideal. Its <code>next</code> map picks the next step by how the pick went:</p>
-      <ul>
-        <li><code>feasible</code>: everyone rated the pick and it meets the threshold for each.</li>
-        <li><code>infeasible</code>: someone is short of it. The least happy can be asked for a fix (<code>to: bottleneck</code>).</li>
-        <li><code>stuck</code>: a fix can&#x27;t help. Either the only problem is members who gave no rating, or <code>max_repairs</code> fixes have already been tried.</li>
-        <li><code>nothing</code>: there are no options to pick from.</li>
-        <li><code>default</code>.</li>
-      </ul>
-      <p>A step with <code>end: converged</code> is only allowed right after a pick, as its <code>feasible</code> next step. <code>show concord</code> prints one in full.</p>
-      <p><code>accord</code> is built from two more kinds of step. <code>show accord</code> prints it.</p>
-      <ul>
-        <li><code>kind: tally</code> looks at what&#x27;s been gathered so far. With <code>of: points</code>, its <code>next</code> map uses <code>grew</code> when the last round added a point, <code>settled</code> when it added none, and <code>empty</code> when nobody has given any. With <code>of: terms</code>, it uses <code>contested</code> when two people mean different things by a word, and <code>clear</code> otherwise. <code>max_rounds</code> is how many times it can run before it moves on.</li>
-        <li><code>kind: lock</code> puts the shared summary together and saves it to the room&#x27;s memory. Its <code>next</code> map uses <code>locked</code>, or <code>empty</code> when there&#x27;s nothing to save.</li>
-      </ul>
-      <p>To have everyone approve the summary before it&#x27;s saved, save your own <code>protocols/accord</code> with an ask step before the lock that requires a stance.</p>
       <h2 id="flows-placeholders">Placeholders</h2>
       <p>Prompts can use these:</p>
       <div class="table-wrap">
@@ -1937,42 +1849,6 @@ steps:
             <tr>
               <td><code>{round}</code>, <code>{rounds}</code></td>
               <td>The current round and the total.</td>
-            </tr>
-            <tr>
-              <td><code>{options}</code>, <code>{rating_lines}</code></td>
-              <td>Every option so far, and the lines to rate them with, such as <code>A (Ship on Friday): &lt;0-100&gt; - &lt;why&gt;</code>.</td>
-            </tr>
-            <tr>
-              <td><code>{new_options}</code>, <code>{new_rating_lines}</code></td>
-              <td>The same, for the options no one has rated yet.</td>
-            </tr>
-            <tr>
-              <td><code>{pick}</code>, <code>{scores}</code></td>
-              <td>The best option so far, and the last pick&#x27;s scorecard.</td>
-            </tr>
-            <tr>
-              <td><code>{standing}</code>, <code>{objections}</code>, <code>{shortfall}</code></td>
-              <td>How each member sees the best option, the reasons of those short of the bar, and where the least happy member stands.</td>
-            </tr>
-            <tr>
-              <td><code>{bad}</code>, <code>{ideal}</code>, <code>{bar_said}</code></td>
-              <td>The two ends, and the bar said in terms of them.</td>
-            </tr>
-            <tr>
-              <td><code>{frame}</code></td>
-              <td>The points gathered so far, each with its id, kind and how many stated it.</td>
-            </tr>
-            <tr>
-              <td><code>{key_terms}</code>, <code>{term_lines}</code>, <code>{terms}</code></td>
-              <td>The key terms, the lines to define them with, and the meanings given, any used in different senses side by side.</td>
-            </tr>
-            <tr>
-              <td><code>{checks}</code></td>
-              <td>The checks members gave, with the points each covers.</td>
-            </tr>
-            <tr>
-              <td><code>{agreed}</code></td>
-              <td>What the team already agreed for this task (its summary and decision), or nothing.</td>
             </tr>
           </tbody>
         </table>
@@ -2016,22 +1892,6 @@ steps:
               <td>How sure the agent is, from 0 to 1. Can be combined: <code>confidence=0.8 stance=accept</code>.</td>
             </tr>
             <tr>
-              <td><code>[[mycelium: A=82 B=41]]</code></td>
-              <td>Rating options from 0 to 100, in <code>concord</code>.</td>
-            </tr>
-            <tr>
-              <td><code>[[mycelium: objective]] …</code></td>
-              <td>Labeling the line that follows as a point, in <code>accord</code>. The labels are <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> and <code>out_of_scope</code>, with an optional <code>about=&lt;subject&gt;</code>.</td>
-            </tr>
-            <tr>
-              <td><code>[[mycelium: term=renewal]] …</code></td>
-              <td>Saying what a word means, in <code>accord</code>.</td>
-            </tr>
-            <tr>
-              <td><code>[[mycelium: check covers=p1,p2]] …</code></td>
-              <td>Saying how points will be checked, in <code>accord</code>. The point numbers are the ones the thread shows.</td>
-            </tr>
-            <tr>
               <td><code>[[new: &lt;title&gt; -&gt; @member]]</code></td>
               <td>A <a href="engines.html#worker">worker</a> filing a child task under the current one. Only workers&#x27; replies are read for this.</td>
             </tr>
@@ -2042,38 +1902,14 @@ steps:
           </tbody>
         </table>
       </div>
-      <p><code>concord</code> and <code>accord</code> ask for the same things as plain lines, such as <code>A (name): 82 - why</code>; see <a href="engines.html#conductor-helping-members-agree">Helping members agree</a> and <a href="engines.html#conductor-getting-on-the-same-page">Getting on the same page</a>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span></code></pre>
       <p>An agent accepting only to move things along should say so in its reply:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> builder \
   &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @reviewer. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
       <p>Deferring doesn&#x27;t change whether the agents agreed. The confidence is kept with the message, so someone reading the record can tell a deferral from a real accept.</p>
-      <h2 id="messages-reading-the-score">Reading the score</h2>
-      <p>A <code>concord</code> run that picks an option records how each member sees the pick in its closing commit, under <code>metrics</code>:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Metric</th>
-              <th>What it tells you</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>satisfaction</code></td>
-              <td>For each member, where the pick sits between that member&#x27;s bad outcome (0) and its ideal (1).</td>
-            </tr>
-            <tr>
-              <td><code>min_satisfaction</code></td>
-              <td>The lowest of those, which is the number the bar is checked against.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>Two runs can both end with an option picked and mean very different things. A <code>min_satisfaction</code> of 0.8 is a pick everyone can live with. A <code>min_satisfaction</code> of 0.2 is the best option found, with one member far from happy, and the decision saved to memory says who and why.</p>
       <h2 id="messages-the-record">The record</h2>
-      <p>Every conductor run is saved at <code>log/episodes/{id}.md</code> whether it agreed or not. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. The run&#x27;s full id looks like <code>urn:ioc:mycelium:episode:{room}:{id}</code>.</p>
+      <p>Every conductor run is saved at <code>log/episodes/{id}.md</code> however it ended. See <a href="concepts.html#episodes">episodes</a>. In the record, each message points to the ones it answers. The run&#x27;s full id looks like <code>urn:mycelium:episode:{room}:{id}</code>.</p>
       <h2 id="messages-message-types">Message types</h2>
       <p>These are the kinds a message can have, and what you&#x27;ll see when reading raw messages:</p>
       <div class="table-wrap">
@@ -2092,10 +1928,6 @@ steps:
             <tr>
               <td><code>exchange</code></td>
               <td>A turn.</td>
-            </tr>
-            <tr>
-              <td><code>commit:converged</code></td>
-              <td>An agreement, from a flow that picks an option, such as <code>concord</code>.</td>
             </tr>
             <tr>
               <td><code>commit:resolved</code></td>
@@ -2146,7 +1978,7 @@ steps:
           <tbody>
             <tr>
               <td><strong>Usage</strong></td>
-              <td>What the hub is used for: tasks filed and resolved, flows and negotiations finished, agents joined</td>
+              <td>What the hub is used for: tasks filed and resolved, flows finished, agents joined</td>
               <td>Recorded on the hub, always. Sent on only if the hub shares usage stats</td>
             </tr>
             <tr>
@@ -2198,11 +2030,6 @@ steps:
               <td>the flow (<code>review</code>, <code>gated</code>, <code>fan-out</code>, ... or <code>custom</code>), outcome, steps</td>
             </tr>
             <tr>
-              <td><code>mycelium.negotiation_completed</code></td>
-              <td>A conductor flow that picks an option, such as <code>concord</code>, finishes</td>
-              <td>outcome, rounds (how many picks it made)</td>
-            </tr>
-            <tr>
               <td><code>mycelium.agent_joined</code></td>
               <td>An agent is added to a room</td>
               <td>its adapter (<code>claude_code</code>, <code>cursor</code>, <code>engine</code> or <code>a2a</code>)</td>
@@ -2210,7 +2037,7 @@ steps:
           </tbody>
         </table>
       </div>
-      <p>Every event also carries the release, the time and the hub&#x27;s id, which is a random UUID. Resolved tasks, finished flows and finished negotiations carry <code>work_count</code>, which is how much work this hub has finished so far.</p>
+      <p>Every event also carries the release, the time and the hub&#x27;s id, which is a random UUID. Resolved tasks and finished flows carry <code>work_count</code>, which is how much work this hub has finished so far.</p>
       <p><strong>Never recorded:</strong> names, handles, emails, rooms, task titles or text, prompts, replies, IPs or hostnames. A room&#x27;s own flow is counted as <code>custom</code>, because its name belongs to the room.</p>
       <p>The Usage tab&#x27;s figures are also at <code>GET /api/observability/usage?days=30</code>. The events themselves are in <code>$MYCELIUM_DATA_DIR/usage/events.jsonl</code>, one JSON object per line.</p>
       <h3 id="metrics-sharing-usage-stats">Sharing usage stats</h3>
@@ -2220,7 +2047,7 @@ steps:
       <p>No destination is set by default, so turning sharing on sends nothing until one is set. Events are POSTed as JSON, or in Loki&#x27;s push format when the address contains <code>/loki/</code>. The destination must be HTTPS, or plain HTTP to this machine.</p>
       <h2 id="metrics-backend-metrics">Backend metrics</h2>
       <p>The backend records memory writes and searches, embeddings, index runs and model calls, with how long each took. Read them as JSON at <code>GET /api/observability</code>. Model calls go through <code>pi</code>, which doesn&#x27;t report token usage, so their cost isn&#x27;t recorded.</p>
-      <p><code>GET /health</code> says whether messaging, storage, embeddings and the model are working. This is what <code>mycelium doctor</code> checks. When a latency p95 passes its threshold, <code>/health</code> reports <code>degraded</code>:</p>
+      <p><code>GET /health</code> says whether storage, embeddings and the model are working. This is what <code>mycelium doctor</code> checks. When a latency p95 passes its threshold, <code>/health</code> reports <code>degraded</code>:</p>
       <div class="table-wrap">
         <table>
           <thead>

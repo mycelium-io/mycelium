@@ -2,43 +2,27 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Backend-as-room-infrastructure: the persister / durable inbox.
+A room's log on the hub: every message recorded, and who has read how far.
 
-The backend runs as moderator on the room's SLIM group channel and consumes it.
-This module is that consumer, and it does four things as each message flows past:
+Each message the room records passes through :meth:`RoomPersister.record`,
+which does three things:
 
-1. **Persister.** Appends each message to the room's transcript
-   (``log/transcript.jsonl``, one JSON record per line) so it survives, is
-   git-shareable, and is written O(1) per message — a *distinct* artifact from
-   the episode-scoped ``log/episodes/*`` records ``episode_state`` writes.
+1. **Persists.** Appends the message to the room's transcript
+   (``log/transcript.jsonl``, one JSON record per line), written O(1) per
+   message, a *distinct* artifact from the episode-scoped ``log/episodes/*``
+   records ``episode_state`` writes.
 
-2. **Durable inbox.** SLIM keeps **no** messages for an offline member: a
-   broadcast that happened while a member was gone is never replayed on rejoin.
-   So mycelium tracks each agent's delivery position (:class:`DeliveryLog`)
-   and, when an agent **reconnects**, **re-serves** the tail it missed — targeted
-   point-to-point (not a broadcast), so the rest of the room is untouched.
+2. **Keeps read positions.** Each agent's position in the transcript
+   (:class:`DeliveryLog`, and per thread :class:`EpisodeCursors`) survives a
+   restart, so ``await`` hands an agent exactly what it hasn't read.
 
-3. **Trigger-watcher.** Recognizes ``@``-summon tokens in a message and calls a
-   summon hook (defaulting to a log when no engine is wired).
-
-4. **Memory-sync receiver.** On a ``knowledge`` envelope — from a real SLIM
-   arrival or the sender's own :meth:`RoomPersister.ingest_local` loopback
-   alike — it applies the carried write to this backend's local store via
-   :func:`app.services.memory_sync.apply_knowledge`, closing the loop the
-   emit side (``_broadcast_memory_write``) opens. Unlike the summon hook this
-   isn't a pluggable engine seam: the applier is stateless and
-   version-idempotent, so it always runs.
-
-The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
-detection) carry no SLIM dependency and are unit-tested without a node;
-:class:`RoomPersister` is the thin async loop that drives them over a live
-:class:`~app.services.message_slim.MessageChannel`.
+3. **Watches triggers.** Who the message asks (``@``-mentions, turns,
+   interrupts) goes to the summon and asked hooks, and the record to the app's
+   live stream and the recorded hook.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
 import logging
 import os
@@ -52,19 +36,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import MessageType
-from app.services import memory_sync, message_format
-from app.services.message_slim import ChannelReceiveTimeout
+from app.services import message_format
 
 # Stable namespace so a transcript record maps to the same synthetic
 # ``StoredMessage.id`` on every read (the envelope id is the seed).
 _MESSAGE_ID_NS = uuid.UUID("6f1d2c3b-4a59-6e7d-8c9b-0a1b2c3d4e5f")
 
 if TYPE_CHECKING:
-    import slim_bindings
-
     from app.services.in_memory_store import StoredMessage
     from app.services.message_models import MyceliumMessage
-    from app.services.message_slim import MessageChannel
 
 logger = logging.getLogger(__name__)
 
@@ -285,11 +265,9 @@ class DeliveryLog:
     """A room's ordered transcript plus a per-agent delivery position.
 
     The transcript is the ordered list of recorded messages. Each *known* handle
-    carries a cursor: the count of leading records already delivered to it. A
-    present member's cursor advances as records are recorded (SLIM delivered them
-    live); an offline member's cursor freezes, so the messages recorded while it
-    was gone become its **undelivered tail** — exactly what the durable inbox
-    re-serves on reconnect.
+    carries a cursor: the count of leading records already delivered to it,
+    advanced as its ``await`` reads them. The messages recorded past it are its
+    **undelivered tail**, which its next ``await`` hands it.
     """
 
     def __init__(
@@ -332,19 +310,16 @@ class DeliveryLog:
         self,
         record: TranscriptRecord,
         *,
-        delivered_to: Iterable[str],
+        delivered_to: Iterable[str] = (),
         recipients: Iterable[str] = (),
     ) -> None:
-        """Append ``record``; advance the cursor of every present member.
+        """Append ``record``; move the cursor of each handle in ``delivered_to``
+        to the new end.
 
-        A present member received the broadcast live, so its cursor moves to the
-        new end. Absent members (not in ``delivered_to``) are left behind.
-
-        An addressed ``recipient`` that is absent AND not yet tracked (e.g. an
-        ``@``-mentioned agent this very message is inviting) has its cursor started
-        *at* this message, so its first wake replays the mention that summoned it.
-        Without this a first-join tracks at the transcript end and the triggering
-        mention is silently skipped.
+        An addressed ``recipient`` that is not yet tracked (an ``@``-mentioned
+        agent reading the room for the first time) has its cursor started *at*
+        this message, so its first ``await`` hands it the mention that asked
+        for it rather than starting past it.
         """
         start = len(self._records)
         self._records.append(record)
@@ -362,12 +337,7 @@ class DeliveryLog:
         return self._records[pos:]
 
     def position(self, handle: str) -> int:
-        """``handle``'s delivery cursor — the transcript end if never tracked.
-
-        The same cursor the durable inbox re-serves from, so server-held
-        ``await`` (a pull) and reconnect re-serve (a push) share one persisted
-        delivery position instead of the process-local one ``await`` used to keep.
-        """
+        """``handle``'s delivery cursor: the transcript end if never tracked."""
         return self._cursors.get(handle, len(self._records))
 
     def advance(self, handle: str, pos: int) -> None:
@@ -383,10 +353,6 @@ class DeliveryLog:
         current = self._cursors.get(handle)
         if current is None or clamped > current:
             self._cursors[handle] = clamped
-
-    def mark_caught_up(self, handle: str) -> None:
-        """Advance ``handle`` to the transcript end (after a re-serve)."""
-        self._cursors[handle] = len(self._records)
 
     def rename(self, old: str, new: str) -> None:
         """Carry ``old``'s position to ``new`` (the further one wins), so a
@@ -456,7 +422,9 @@ def rename_positions(positions: dict[str, int], old: str, new: str) -> dict[str,
 
 def record_episode(record: TranscriptRecord) -> str | None:
     """The episode URN a transcript record rode under, if it carries one."""
-    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    episode = (
+        (message_format.envelope_of(record.content).get("header") or {}).get("message") or {}
+    ).get("episode")
     return episode if isinstance(episode, str) and episode else None
 
 
@@ -621,12 +589,12 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
 
 
 # message record kinds promoted into the room chat view on a cold read, mirroring the
-# frontend's ``L9_RAISE_UP_TYPES`` (contracts/channel-surface.json): ``knowledge`` (a
+# frontend's ``RAISE_UP_TYPES`` (contracts/channel-surface.json): ``knowledge`` (a
 # memory push, e.g. a distilled extraction) and ``commit`` (a negotiation's
 # outcome). Chat itself (an ``exchange`` with a ``message``/``reply``
 # payload) is projected as a plain broadcast above; these ride as their
-# ``l9_<kind>`` frame instead — the exact shape the live SSE bus pushes
-# (:func:`l9_bus_frame`), so the frontend decodes a refresh identically to the
+# ``envelope_<kind>`` frame instead — the exact shape the live SSE bus pushes
+# (:func:`bus_frame`), so the frontend decodes a refresh identically to the
 # live stream instead of dropping the row (the "temporary" raise-up rows bug).
 _RAISE_UP_KINDS = frozenset({"knowledge", "commit"})
 
@@ -639,10 +607,10 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
     reaction isn't chat either: it is read as the emoji on another message
     (:func:`reaction_text`).
     """
-    l9 = content.get("l9", {})
-    if l9.get("header", {}).get("subkind") == message_format.REACTION_SUBKIND:
+    envelope = message_format.envelope_of(content)
+    if (envelope.get("header") or {}).get("subkind") == message_format.REACTION_SUBKIND:
         return None
-    payload_type = l9.get("payload", {}).get("type")
+    payload_type = (envelope.get("payload") or {}).get("type")
     text = content.get("content")
     if payload_type not in ("message", "reply") or not isinstance(text, str) or not text:
         return None
@@ -651,8 +619,8 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
 
 def reaction_text(content: dict[str, Any]) -> str | None:
     """A reaction record's text (``@~author 👍``), or None if it isn't one."""
-    l9 = content.get("l9", {})
-    if l9.get("header", {}).get("subkind") != message_format.REACTION_SUBKIND:
+    envelope = message_format.envelope_of(content)
+    if (envelope.get("header") or {}).get("subkind") != message_format.REACTION_SUBKIND:
         return None
     text = content.get("content")
     return text if isinstance(text, str) and text else None
@@ -815,20 +783,21 @@ def stored_message_from_record(
         content = text
     elif record.kind in _RAISE_UP_KINDS:
         # A promoted system frame (memory push / consensus): carry the whole
-        # envelope as the ``l9_<kind>`` frame the live stream uses, so the cold
-        # read reproduces the live view instead of dropping it on refresh.
-        message_type = f"l9_{record.kind}"
+        # envelope as the ``envelope_<kind>`` frame the live stream uses, so the
+        # cold read reproduces the live view instead of dropping it on refresh.
+        message_type = message_format.frame_type(record.kind)
         content = json.dumps(record.content)
     else:
         return None
-    header = record.content.get("l9", {}).get("header", {})
+    envelope = message_format.envelope_of(record.content)
+    header = envelope.get("header") or {}
     episode = header.get("message", {}).get("episode")
     # A conductor post carries a structured line beside its prose (see
     # ``conductor.LINE_KEY``). The chat projection keeps only prose, so the line
     # rides the message's metadata, and a reload draws the run as the live
     # stream did rather than as the prompts behind it. An ask and its answer
     # (``approvals``) ride the same way, so the app draws the card.
-    data = (record.content.get("l9", {}).get("payload") or {}).get("data") or {}
+    data = (envelope.get("payload") or {}).get("data") or {}
     lifted = (
         {k: data[k] for k in ("conductor", "ask", "answer") if isinstance(data.get(k), dict)}
         if isinstance(data, dict)
@@ -974,7 +943,7 @@ def room_conversation(room: str) -> list[StoredMessage]:
 def prose_messages(room: str) -> list[StoredMessage]:
     """The room's chat, oldest first — what was actually *said*, by type.
 
-    :func:`room_conversation` is the whole feed: chat, the promoted ``l9_*``
+    :func:`room_conversation` is the whole feed: chat, the promoted ``envelope_*``
     frames (whose content is a serialized envelope) and the coordination
     lifecycle rows. A reader that wants the conversation itself selects on
     :data:`~app.schemas.PROSE_MESSAGE_TYPES` — the type the projection already
@@ -990,19 +959,20 @@ def prose_messages(room: str) -> list[StoredMessage]:
 def bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     """Project a transcript record into the wire frame the SSE bus carries.
 
-    The single shape the frontend's channel and Stream read (``l9_<kind>`` + the full
-    ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
-    and the history replay (:func:`l9_wire_history`) so backfilled and live frames
+    The single shape the frontend's channel and Stream read (``envelope_<kind>`` + the
+    full ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
+    and the history replay (:func:`wire_history`) so backfilled and live frames
     are byte-identical.
     """
-    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    header = message_format.envelope_of(record.content).get("header") or {}
+    episode = (header.get("message") or {}).get("episode")
     return {
         "id": record.message_id,
         # The id the room's history read gives the same message, so a client
         # holding both copies can tell they're one.
         "read_id": str(read_id(record)),
         "sender_handle": record.sender or message_format.SYSTEM_ACTOR_ID,
-        "message_type": f"l9_{record.kind}",
+        "message_type": message_format.frame_type(record.kind),
         "content": json.dumps(record.content),
         "created_at": record.recorded_at,
         "room_name": room,
@@ -1122,137 +1092,45 @@ SummonHook = Callable[[str, "MyceliumMessage", list[str], str], None]
 # ``turn`` or ``interrupt``; :mod:`app.services.asks` is the rule): what rings
 # the herdr doorbell, and how a persona or a worker hears a turn put to it.
 AskedHook = Callable[[str, str, "MyceliumMessage", str], None]
-# Called with the handle of a member that dropped off the channel, so the
-# moderator can update its membership — presence, not a fatal error.
-MemberLeftHook = Callable[[str], None]
 #: Fired once per recorded message with the record as stored (the verifier reads
 #: agents' prose off it). Runs after the record is durable and on the bus.
 RecordedHook = Callable[["TranscriptRecord"], None]
-
-# Consecutive genuine transport failures before the loop gives up — keeps a
-# torn-down channel from spinning a hot loop while tolerating transient hiccups.
-_MAX_CONSECUTIVE_FAILURES = 3
-
-# Substring SLIM puts in the SessionError when a group member drops. This is a
-# membership change, not a transport fault: the session is still alive and the
-# loop must keep serving the remaining members.
-_PARTICIPANT_LEFT_MARKER = "participant disconnected"
-
-# Substrings SLIM puts in a SessionError when the group session is momentarily
-# torn down and recreated — the normal churn of rapid invite/remove cycles (a new
-# member re-keys the MLS group). These are transient, NOT a transport fault: the
-# channel recovers on the next receive, so they must not spend the fatal
-# give-up budget the way a real fault does. Bounded separately (below) so a
-# session that is *permanently* closed still eventually gives up.
-_TRANSIENT_SESSION_MARKERS = (
-    "session closed",
-    "session is closed",
-    "session not found",
-    "no active session",
-    "session deleted",
-    "connection closed",
-)
-# A generous budget for back-to-back transient churn errors (with a short backoff
-# between them) before concluding the session is permanently gone. Normal churn is
-# a handful; this absorbs a storm while still bounding a dead session.
-_MAX_CONSECUTIVE_TRANSIENT = 40
-_CHURN_BACKOFF_S = 0.25
-
-
-def _classify_receive_error(exc: Exception) -> str:
-    """Classify a receive-loop error: ``participant_left`` | ``transient`` | ``fatal``.
-
-    SLIM raises a generic ``SessionError`` for everything, distinguished only by
-    message text, so membership churn (a member leaving, a session re-keyed on a
-    join) reads the same as a real transport fault until we look at the string.
-    """
-    text = str(exc).lower()
-    if _PARTICIPANT_LEFT_MARKER in text:
-        return "participant_left"
-    if any(marker in text for marker in _TRANSIENT_SESSION_MARKERS):
-        return "transient"
-    return "fatal"
-
-
-def _handle_from_disconnect(message: str) -> str | None:
-    """Parse the leaving handle out of a 'participant disconnected: ws/room/handle/inst' error."""
-    _, _, tail = message.partition(_PARTICIPANT_LEFT_MARKER)
-    name = tail.split(":", 1)[-1].strip() if ":" in tail else tail.strip()
-    parts = [p for p in name.split("/") if p]
-    # ws/room/handle[/instance] — the handle is the third segment.
-    return parts[2] if len(parts) >= 3 else None
 
 
 def _default_summon_hook(
     handle: str, envelope: MyceliumMessage, co_summons: list[str], message_text: str = ""
 ) -> None:
-    logger.info("summon hook (skeleton): @%s summoned", handle)
+    logger.info("@%s summoned, with no engine to answer", handle)
 
 
 class RoomPersister:
-    """Consumes one room's channel: persists, re-serves, and watches triggers.
-
-    ``members_provider`` returns the handles currently on the channel (the
-    moderator's authoritative membership from
-    :class:`~app.services.room_channels.RoomChannelManager`), so the persister
-    knows who received each broadcast live. The hooks are skeletons wired to real
-    behavior in later steps.
-    """
+    """One room's log: records each message, keeps read positions, and calls
+    the trigger hooks."""
 
     def __init__(
         self,
         room: str,
-        channel: MessageChannel,
         *,
-        members_provider: Callable[[], Iterable[str]],
         on_summon: SummonHook | None = None,
-        on_member_left: MemberLeftHook | None = None,
         on_asked: AskedHook | None = None,
         on_recorded: RecordedHook | None = None,
         feed_bus: bool = True,
     ) -> None:
         self.room = room
-        self._channel = channel
-        self._members_provider = members_provider
         self.on_summon = on_summon or _default_summon_hook
         self.on_asked = on_asked
         self.on_recorded = on_recorded
-        self.on_member_left = on_member_left
         self._feed_bus = feed_bus
-        # Resume from disk so re-serve survives a backend restart: the transcript
-        # supplies the records, and the persisted cursors supply each agent's
-        # delivery position — so a member that was offline at shutdown is still
-        # recognized as a reconnect and re-served exactly its missed tail.
+        # Resumed from disk: the transcript supplies the records, and the
+        # persisted cursors each agent's read position, so a restart hands no
+        # one the room again from the start.
         self.log = DeliveryLog(load_transcript(room), cursors=load_cursors(room))
         # The same resume, for a thread-scoped ``await``: a per-(handle, thread)
-        # position over the transcript above, so waking on one task never
-        # re-serves what it already served across a restart.
+        # position over the transcript above.
         self.episode_cursors = EpisodeCursors(load_episode_cursors(room))
-        # handle -> most recent inbound MessageContext, for targeted re-serve.
-        self._contexts: dict[str, slim_bindings.MessageContext] = {}
-        # Message ids ingested this process lifetime, so a message the backend
-        # publishes itself (the human proxy) is recorded/fed to the bus exactly
-        # once even if SLIM loops the broadcast back to the moderator.
+        # Message ids recorded this process lifetime, so a message recorded
+        # twice (a retried request) lands once.
         self._ingested_ids: set[str] = set()
-        # Strong refs to in-flight knowledge-apply tasks (apply_knowledge does file
-        # IO + reindexing, so it can't run inline in the sync ``_ingest`` call);
-        # without this the task could be GC'd mid-flight.
-        self._knowledge_tasks: set[asyncio.Task[None]] = set()
-        # Health counters surfaced via RoomChannelManager.status(). ``receive_errors``
-        # is genuine (fatal) transport faults; ``transient_errors`` is recoverable
-        # membership-churn receive errors (retried, not lost) — split so the health
-        # surface distinguishes "the channel is faulting" from "the channel is
-        # churning". ``reserve_failures``/``reserve_skipped`` make the two ways a
-        # missed-message re-serve fails to land visible instead of log-only.
-        # ``knowledge_applied``/``knowledge_conflicts`` are the memory-sync receiver's
-        # equivalent: how many inbound writes converged vs. lost to a stale base.
-        self.reserves = 0
-        self.receive_errors = 0
-        self.transient_errors = 0
-        self.reserve_failures = 0
-        self.reserve_skipped = 0
-        self.knowledge_applied = 0
-        self.knowledge_conflicts = 0
 
     def _persist_cursors(self) -> None:
         """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
@@ -1283,218 +1161,37 @@ class RoomPersister:
         self._persist_cursors()
 
     def rename_handle(self, old: str, new: str) -> None:
-        """Move ``old``'s room and thread positions, and its reply context, to ``new``."""
+        """Move ``old``'s room and thread positions to ``new``."""
         self.log.rename(old, new)
         self.episode_cursors.rename(old, new)
-        if old in self._contexts:
-            self._contexts[new] = self._contexts.pop(old)
         self._persist_cursors()
         self._persist_episode_cursors()
 
-    # -- membership signals (driven by RoomChannelManager) --
-
-    def note_join(self, handle: str) -> bool:
-        """Record a membership add; return True if it is a **reconnect**.
-
-        A handle the persister has never seen is a fresh join — it missed nothing
-        that preceded it, so it is tracked caught-up and this returns False. A
-        handle seen before is a reconnect: caller should :meth:`reserve` its
-        missed tail.
-        """
-        if self.log.knows(handle):
-            return True
-        self.log.track(handle, caught_up=True)
-        self._persist_cursors()
-        return False
-
-    async def reserve(self, handle: str) -> int:
-        """Re-serve ``handle`` the messages it missed while offline, in order.
-
-        Targeted (point-to-point) so the rest of the room is untouched. Requires
-        a cached reply context for ``handle`` (from an earlier message it sent);
-        without one there is no route to re-serve to, so it is a no-op until the
-        connector holds its own identity. Returns the count re-served.
-        """
-        missed = self.log.undelivered(handle)
-        if not missed:
-            return 0
-        context = self._contexts.get(handle)
-        if context is None:
-            # First-wake race: on a handle's FIRST join the moderator has never
-            # received a message from it, so there's no point-to-point route to
-            # re-serve the tail that triggered the invite — the first wake is
-            # silently dropped. WARN so it's visible.
-            logger.warning(
-                "cannot re-serve %d missed message(s) to %s in room %s: no reply context yet "
-                "(first-wake race)",
-                len(missed),
-                handle,
-                self.room,
-            )
-            self.reserve_skipped += 1
-            return 0
-        served = 0
-        for record in missed:
-            try:
-                await self._channel.send_content_to(context, record.content)
-                served += 1
-            except Exception:
-                logger.exception("re-serve to %s failed at message %s", handle, record.message_id)
-                self.reserve_failures += 1
-                break
-        if served:
-            self.reserves += served
-            self.log.mark_caught_up(handle)
-            self._persist_cursors()
-            logger.info(
-                "re-served %d missed message(s) to %s in room %s", served, handle, self.room
-            )
-        return served
-
-    # -- the loop --
-
-    async def run(self) -> None:
-        """Pull from the channel forever, recording and dispatching each message."""
-        failures = 0  # consecutive genuine transport faults
-        churn = 0  # consecutive transient membership-churn errors
-        while True:
-            try:
-                released, arrived, context = await self._channel.receive_with_context()
-            except ChannelReceiveTimeout:
-                # A benign idle tick — the receive machinery is alive, no message
-                # arrived within the window. Not a fault: reset the runs so a quiet
-                # room's channel is never torn down.
-                failures = churn = 0
-                continue
-            except Exception as exc:
-                if isinstance(exc, asyncio.CancelledError):
-                    raise
-                kind = _classify_receive_error(exc)
-                if kind == "participant_left":
-                    # A member dropping off is a membership change, not a fault: the
-                    # session is alive and still serving everyone else. Update
-                    # presence and keep going without spending any budget — a member
-                    # leaving must never zombie the room.
-                    left = _handle_from_disconnect(str(exc))
-                    logger.info("participant left room %s: %s", self.room, left or "?")
-                    if left and self.on_member_left is not None:
-                        with contextlib.suppress(Exception):
-                            self.on_member_left(left)
-                    failures = churn = 0
-                    continue
-                if kind == "transient":
-                    # The group session was momentarily torn down and recreated —
-                    # normal rapid invite/remove churn. It recovers on the next
-                    # receive, so back off briefly and keep going rather than
-                    # spending the fatal budget. Bounded so a permanently-closed
-                    # session still eventually gives up instead of looping forever.
-                    failures = 0
-                    churn += 1
-                    self.transient_errors += 1
-                    if churn >= _MAX_CONSECUTIVE_TRANSIENT:
-                        logger.error(
-                            "persister for room %s STOPPING after %d consecutive transient "
-                            "session errors — the channel appears permanently closed",
-                            self.room,
-                            churn,
-                        )
-                        return
-                    logger.info(
-                        "transient session churn on room %s (%d/%d): %s",
-                        self.room,
-                        churn,
-                        _MAX_CONSECUTIVE_TRANSIENT,
-                        exc,
-                    )
-                    await asyncio.sleep(_CHURN_BACKOFF_S)
-                    continue
-                # A genuine transport fault: spend the give-up budget quickly.
-                churn = 0
-                failures += 1
-                self.receive_errors += 1
-                logger.warning(
-                    "persister receive error on room %s (%d/%d): %s",
-                    self.room,
-                    failures,
-                    _MAX_CONSECUTIVE_FAILURES,
-                    exc,
-                )
-                if failures >= _MAX_CONSECUTIVE_FAILURES:
-                    logger.error(
-                        "persister for room %s STOPPING after %d repeated errors — channel is now "
-                        "a zombie (no re-serve/record) until re-provisioned",
-                        self.room,
-                        failures,
-                    )
-                    return
-                continue
-            failures = churn = 0
-            # Cache the arrived sender's reply context for future re-serve.
-            sender = envelope_sender(arrived)
-            if sender is not None:
-                first_context = sender not in self._contexts
-                self._contexts[sender] = context
-                # First-wake race: the @-mention that triggered a member's
-                # invite is recorded undelivered for it, but reserve() at invite
-                # time was a no-op — the member hadn't spoken yet, so there was no
-                # point-to-point route. Its first message (the join hello) gives us
-                # that route; re-serve the missed tail now so the first wake isn't
-                # silently dropped. reserve() marks caught-up, so this can't
-                # double-deliver against the invite-time/reconnect re-serve.
-                if first_context and self.log.undelivered(sender):
-                    await self.reserve(sender)
-            for envelope, content in released:
-                self._ingest(envelope, content)
-
-    def ingest_local(
+    def record(
         self, envelope: MyceliumMessage, content: dict[str, Any], *, list_write: bool = False
     ) -> None:
-        """Ingest a message the moderator published itself (locally originated).
-
-        The backend records the message into the transcript directly, so the
-        transcript and UI bus see it regardless of whether SLIM delivers a
-        broadcast back to its own sender. :meth:`_ingest` de-dupes by message id,
-        so a loopback of the same broadcast is a no-op.
+        """Record a message in the room: transcript, read positions, the app's
+        live stream, and the trigger hooks. A message id already recorded this
+        process lifetime is a no-op.
 
         ``list_write`` controls whether the message is also written to the
-        in-memory list store: the human-proxy broadcast path pre-writes nothing to
+        in-memory list store: a person's message pre-writes nothing to
         ``in_memory_store`` (the transcript is its record, read back by
         :func:`conversational_messages`), while ``respond`` (``/reply``) passes
-        ``list_write=True`` so an agent's turn is visible live, before it's flushed
-        to the durable transcript — otherwise ``respond`` and ``room send`` would
-        land in different stores.
-
-        Also marks the message delivered in the channel's causal buffer: a locally
-        ingested message never passes through ``receive_with_context``, so without
-        this an agent reply parented on it (``build_reply`` threads
-        ``parents=[woke_id]``) is held in the buffer forever and never recorded.
+        ``list_write=True`` so an agent's turn is visible live, before a cold
+        read re-projects the transcript.
         """
-        self._channel.note_delivered(envelope)
-        self._ingest(envelope, content, list_write=list_write)
-
-    def _ingest(
-        self, envelope: MyceliumMessage, content: dict[str, Any], *, list_write: bool = True
-    ) -> None:
-        # Keepalive pings exist only to reset a member's SLIM liveness (which the
-        # datapath already did before this message reached us), so they carry no
-        # transcript value. Drop them here — otherwise a member's ~20s keepalive
-        # would append to the durable transcript forever (log spam + cursor churn).
-        if content.get("l9", {}).get("payload", {}).get("type") == "keepalive":
-            return
         mid = envelope_message_id(envelope)
         if mid is not None:
             if mid in self._ingested_ids:
                 return
             self._ingested_ids.add(mid)
         record = record_from(envelope, content)
-        present = set(self._members_provider())
-        self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))
+        self.log.record(record, recipients=envelope_recipients(envelope))
         append_transcript(self.room, record)
         self._persist_cursors()
         # The list store is the live/fast view; the durable transcript is the read
-        # path's source of truth. SLIM arrivals (agent replies) and ``respond`` write
-        # here so they're visible immediately; the human-proxy broadcast skips it
-        # (``list_write=False``) since the transcript already carries it.
+        # path's source of truth.
         if list_write:
             self._record_to_list_store(record)
         if self._feed_bus:
@@ -1525,45 +1222,12 @@ class RoomPersister:
                     self.on_asked(handle, why, envelope, message_text)
                 except Exception:
                     logger.exception("asked hook failed for @%s", handle)
-        if memory_sync.is_knowledge(envelope):
-            self._schedule_knowledge_apply(envelope)
-
-    def _schedule_knowledge_apply(self, envelope: MyceliumMessage) -> None:
-        """Apply an inbound ``knowledge`` write off the ingest path.
-
-        Fires for a real SLIM arrival and for the sender's own
-        :meth:`ingest_local` loopback alike — ``apply_knowledge`` is
-        version-idempotent (see :mod:`app.services.memory_sync`), so re-applying
-        a write this store already holds is a silent no-op, not a double-write.
-        Scheduled as a tracked background task since ``_ingest`` is sync but the
-        applier does file IO + reindexing; never re-broadcasts, so this cannot
-        loop with the emit side (``_broadcast_memory_write``).
-        """
-        write = memory_sync.knowledge_write_from_envelope(envelope)
-        if write is None:
-            logger.warning("malformed knowledge envelope on room %s; not applied", self.room)
-            return
-        task = asyncio.create_task(self._apply_knowledge(write))
-        self._knowledge_tasks.add(task)
-        task.add_done_callback(self._knowledge_tasks.discard)
-
-    async def _apply_knowledge(self, write: memory_sync.KnowledgeWrite) -> None:
-        try:
-            result = await memory_sync.apply_knowledge(self.room, write)
-        except Exception:
-            logger.exception("apply_knowledge failed for %s/%s", self.room, write.key)
-            return
-        if result.conflict:
-            self.knowledge_conflicts += 1
-        elif result.applied:
-            self.knowledge_applied += 1
 
     def _publish_to_bus(self, record: TranscriptRecord) -> None:
         """Feed the recorded message to the in-process bus so the SSE UI sees it.
 
-        The bus (``routes/stream.py``) is the frontend's live feed; agent messages
-        arrive over SLIM, not HTTP, so the persister is what keeps that feed fed.
-        Best-effort — never fail a record over a UI push.
+        The bus (``routes/stream.py``) is the frontend's live feed. Best-effort:
+        never fail a record over a UI push.
         """
         try:
             from app.bus import bus, room_channel

@@ -27,251 +27,33 @@ def test_parse_ignores_what_it_cannot_read():
     assert payload == {}
 
 
+def test_parse_lifts_only_confidence_and_stance():
+    payload, clean = markers.parse_marker(
+        "[[mycelium: constraint]] At most 15% off. [[mycelium: A=82 stance=accept]]"
+    )
+    assert payload == {"action": "accept"}
+    assert clean == "At most 15% off."
+
+
 def test_stance_prefers_the_payload_the_reply_route_wrote():
     content = {
         "content": "sure [[mycelium: stance=reject]]",
-        "l9": {"payload": {"type": "reply", "data": {"action": "accept"}}},
+        "envelope": {"payload": {"type": "reply", "data": {"action": "accept"}}},
     }
     assert markers.stance_of(content) == "accept"
 
 
 def test_stance_falls_back_to_a_marker_left_in_the_prose():
-    content = {"content": "Blocked: no rollback plan. [[mycelium: stance=block]]", "l9": {}}
+    content = {"content": "Blocked: no rollback plan. [[mycelium: stance=block]]", "envelope": {}}
     assert markers.stance_of(content) == "reject"
 
 
 def test_no_stance_is_none():
-    assert markers.stance_of({"content": "thinking about it", "l9": {}}) is None
+    assert markers.stance_of({"content": "thinking about it", "envelope": {}}) is None
     assert markers.stance_of({}) is None
 
 
-# ── option ratings ────────────────────────────────────────────────────────────
-
-
-def test_a_capital_letter_is_an_options_rating():
-    payload, clean = markers.parse_marker("A is fine, B costs too much. [[mycelium: A=82 B=41]]")
-    assert payload == {"scores": {"A": 82, "B": 41}}
-    assert clean == "A is fine, B costs too much."
-
-
-def test_a_lowercase_letter_is_not_a_rating():
-    payload, _ = markers.parse_marker("[[mycelium: a=82 stance=accept]]")
-    assert payload == {"action": "accept"}
-
-
-def test_a_rating_out_of_range_or_not_whole_is_dropped_never_clamped():
-    payload, _ = markers.parse_marker("[[mycelium: A=101 B=-1 C=8.5 D=70]]")
-    assert payload == {"scores": {"D": 70}}
-
-
-def test_ratings_ride_beside_the_stance_and_a_list_comma_is_not_part_of_one():
-    payload, _ = markers.parse_marker("[[mycelium: A=82, B=41 stance=accept confidence=0.6]]")
-    assert payload == {"scores": {"A": 82, "B": 41}, "action": "accept", "confidence": 0.6}
-
-
-def test_scores_are_read_off_the_payload_first_then_the_prose():
-    lifted = {"l9": {"payload": {"data": {"scores": {"A": 90}}}}, "content": "[[mycelium: A=10]]"}
-    assert markers.scores_of(lifted) == {"A": 90}
-    left_in_prose = {"l9": {}, "content": "B works for me [[mycelium: B=75]]"}
-    assert markers.scores_of(left_in_prose) == {"B": 75}
-    assert markers.scores_of({"content": "I like B a lot", "l9": {}}) == {}
-    assert markers.scores_of({}) == {}
-
-
-# ── labels: a marker that says what the text after it is ─────────────────────
-
-
-def test_a_label_lifts_the_text_after_it_and_leaves_that_text_in_place():
-    payload, clean = markers.parse_marker(
-        "[[mycelium: constraint]] Refunds above 5000 need a person's approval.\n"
-        "[[mycelium: out_of_scope]] Negotiating the price itself."
-    )
-    assert payload == {
-        "pieces": [
-            {"label": "constraint", "text": "Refunds above 5000 need a person's approval."},
-            {"label": "out_of_scope", "text": "Negotiating the price itself."},
-        ]
-    }
-    assert clean == ("Refunds above 5000 need a person's approval.\nNegotiating the price itself.")
-
-
-def test_labelled_text_stops_at_a_blank_line():
-    pieces = markers.labelled(
-        "[[mycelium: objective]] Renew Acme.\nOn good terms.\n\nSome other remark."
-    )
-    assert pieces == [{"label": "objective", "text": "Renew Acme.\nOn good terms."}]
-
-
-def test_a_same_line_names_the_points_to_fold_the_last_one_kept():
-    pieces = markers.plain_pieces(
-        "same: p6 = p1\n- **Same**: P11 = p6 = p1, p9 = p2\nsame: p3\nthe same: nothing"
-    )
-    assert pieces == [
-        {"label": "same", "points": ["p6", "p1"], "text": "p6 = p1"},
-        {"label": "same", "points": ["p11", "p6", "p1"], "text": "P11 = p6 = p1"},
-        {"label": "same", "points": ["p9", "p2"], "text": "p9 = p2"},
-    ]
-
-
-def test_words_checks_and_what_a_point_is_about():
-    pieces = markers.labelled(
-        '[[mycelium: term="hand off"]] Passing the account to the next owner.\n'
-        "[[mycelium: check covers=P2, p4]] Finance signs off the limits first.\n"
-        "[[mycelium: constraint about=pricing]] At most 15% off.\n"
-        "[[mycelium: Out-Of-Scope]] Changing the tier."
-    )
-    assert pieces == [
-        {"label": "term", "term": "hand off", "text": "Passing the account to the next owner."},
-        {"label": "check", "covers": ["p2", "p4"], "text": "Finance signs off the limits first."},
-        {"label": "constraint", "about": "pricing", "text": "At most 15% off."},
-        {"label": "out_of_scope", "text": "Changing the tier."},
-    ]
-
-
-def test_a_label_repeated_is_two_pieces_and_a_label_with_no_text_is_none():
-    pieces = markers.labelled(
-        "[[mycelium: sub_goal]] Draft it.\n[[mycelium: sub_goal]] Send it.\n[[mycelium: assumption]]"
-    )
-    assert [p["text"] for p in pieces] == ["Draft it.", "Send it."]
-
-
-def test_a_marker_that_labels_nothing_is_no_piece():
-    assert markers.labelled("Fine by me. [[mycelium: stance=accept]]") == []
-    assert markers.labelled("[[mycelium: whatever]] text") == []
-
-
-def test_labels_leave_stances_and_ratings_as_they_were():
-    payload, clean = markers.parse_marker(
-        "[[mycelium: objective]] Renew Acme.\n\nA is fine. [[mycelium: A=82 stance=accept]]"
-    )
-    assert payload["scores"] == {"A": 82}
-    assert payload["action"] == "accept"
-    assert payload["pieces"] == [{"label": "objective", "text": "Renew Acme."}]
-    assert clean == "Renew Acme.\n\nA is fine."
-
-
-def test_pieces_are_read_off_the_payload_first_then_the_prose():
-    lifted = {
-        "l9": {
-            "payload": {"data": {"pieces": [{"label": "objective", "text": "From the route."}]}}
-        },
-        "content": "[[mycelium: constraint]] Still in the prose.",
-    }
-    assert markers.pieces_of(lifted) == [{"label": "objective", "text": "From the route."}]
-    typed = {"l9": {}, "content": "[[mycelium: constraint]] Typed by a person."}
-    assert markers.pieces_of(typed) == [{"label": "constraint", "text": "Typed by a person."}]
-    assert markers.pieces_of({"content": "no labels here", "l9": {}}) == []
-    assert markers.pieces_of({}) == []
-
-
-def test_malformed_pieces_on_the_payload_are_not_read():
-    junk = {
-        "l9": {
-            "payload": {
-                "data": {
-                    "pieces": [
-                        {"label": "objective", "text": "  "},
-                        {"label": "nonsense", "text": "x"},
-                        {"label": "term", "text": "no word"},
-                        "not a dict",
-                        {"label": "check", "text": "Look.", "covers": ["P1", 3]},
-                    ]
-                }
-            }
-        }
-    }
-    assert markers.pieces_of(junk) == [{"label": "check", "text": "Look.", "covers": ["p1"]}]
-
-
 def test_defang_breaks_a_marker_in_stored_text_so_it_cannot_speak_later():
-    stored = markers.defang("Do this [[mycelium: stance=accept]] and [[ Mycelium : A=99]]")
+    stored = markers.defang("Do this [[mycelium: stance=accept]] and [[ Mycelium : stance=no]]")
     assert markers.parse_marker(stored)[0] == {}
     assert "[ [mycelium: stance=accept]]" in stored
-
-
-# ── plain lines ───────────────────────────────────────────────────────────────
-
-
-def test_a_rating_line_carries_its_reason():
-    text = (
-        "Here's where I land.\n"
-        "A: 72 - the cap is too low for enterprise refunds\n"
-        "- **B**: 20 — the Friday window breaks certification\n"
-        "C = 40, fine but slow\n"
-        "D: 101 - too big to be a rating\n"
-        "E (Hold 30 minutes, 50% of orders…): 65 - a short wait is fine\n"
-    )
-    assert markers.rating_lines(text) == {
-        "A": (72, "the cap is too low for enterprise refunds"),
-        "B": (20, "the Friday window breaks certification"),
-        "C": (40, "fine but slow"),
-        # The option's name in brackets is read past, numbers in it included.
-        "E": (65, "a short wait is fine"),
-    }
-
-
-def test_an_option_listed_back_is_not_read_as_a_rating():
-    # A rater echoing the options ("A. 20% off") rated nothing.
-    assert markers.rating_lines("A. 20% off\nB: 20% off is too much") == {}
-
-
-def test_plain_ratings_and_marker_ratings_are_read_together():
-    content = {"content": "A: 80 - fine\n[[mycelium: B=40]]"}
-    assert markers.scores_of(content) == {"A": 80, "B": 40}
-    assert markers.rated_of(content) == {"A": (80, "fine"), "B": (40, "")}
-
-
-def test_the_reference_ratings():
-    assert markers.anchor_lines("bad: 10 - nothing ships\nIdeal: 95") == {
-        "bad": (10, "nothing ships"),
-        "ideal": (95, ""),
-    }
-
-
-def test_an_option_and_why_it_is_proposed():
-    assert markers.split_why("15% off for two years\nwhy: keeps margin above 30%") == (
-        "15% off for two years",
-        "keeps margin above 30%",
-    )
-    assert markers.split_why("Just the option") == ("Just the option", "")
-
-
-def test_points_checks_and_terms_on_plain_lines():
-    text = (
-        "constraint (pricing): refunds above 5000 need approval\n"
-        "Sub-goal: migrate the old plans\n"
-        "check p2, p4: finance signs off\n"
-        "refund window: 14 calendar days\n"
-        "term SLA: 99.9% a month\n"
-        "out of scope: the mobile app\n"
-    )
-    assert markers.plain_pieces(text, ["refund window"]) == [
-        {"label": "constraint", "text": "refunds above 5000 need approval", "about": "pricing"},
-        {"label": "sub_goal", "text": "migrate the old plans"},
-        {"label": "check", "covers": ["p2", "p4"], "text": "finance signs off"},
-        {"label": "term", "term": "refund window", "text": "14 calendar days"},
-        {"label": "term", "term": "SLA", "text": "99.9% a month"},
-        {"label": "out_of_scope", "text": "the mobile app"},
-    ]
-
-
-def test_plain_pieces_are_read_beside_lifted_marker_pieces():
-    content = {
-        "content": "constraint: no weekend deploys\nrefund window: 14 days",
-        "l9": {"payload": {"data": {"pieces": [{"label": "objective", "text": "renew Acme"}]}}},
-    }
-    assert [p["label"] for p in markers.pieces_of(content, ["refund window"])] == [
-        "objective",
-        "constraint",
-        "term",
-    ]
-
-
-def test_named_terms_and_conflicts():
-    assert markers.term_names("term: refund window\nterm: `SLA`\nsomething else") == [
-        "refund window",
-        "SLA",
-    ]
-    assert markers.conflict_lines(
-        "Done.\nconflict: the build needs 30 days, the summary says 14"
-    ) == ["the build needs 30 days, the summary says 14"]

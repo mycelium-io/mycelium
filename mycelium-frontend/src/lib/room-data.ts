@@ -118,7 +118,7 @@ const POLL = {
   // change about as often as its skills.
   protocols: 60_000,
   episodes: 5_000,
-  coordination: 20_000,
+  network: 20_000,
   // The hub answers a status read from cache and refreshes behind it, so this
   // is how often a resolved answer reaches the board, not how often GitHub is
   // asked. Polling harder would not make anything fresher.
@@ -333,7 +333,7 @@ export function useRoomAgents(room: string, opts: RoomQueryOptions = {}) {
   return { agents: data, loading, refresh };
 }
 
-/** Live presence: SLIM-connected members plus server-held `await` leases, and
+/** Live presence: server-held `await` leases and herdr members, and
  *  the floors held in the room's threads right now. */
 export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
@@ -932,11 +932,11 @@ export function useA2aBridge(room: string, opts: RoomQueryOptions = {}) {
   return { bridge: data, loading, refresh };
 }
 
-/** Fabric-wide `/health` diagnostics — SLIM telemetry plus the hub's identity
- *  tier and auth gate — as one read shared by every reader. */
+/** The hub's `/health` auth gate and version, as one read shared by every
+ *  reader. */
 export function useNetworkStatus(opts: RoomQueryOptions = {}) {
   const { data, isLoading } = useSWR<NetworkStatus | null>("network-status", fetchNetworkStatus, {
-    refreshInterval: opts.refreshInterval ?? POLL.coordination,
+    refreshInterval: opts.refreshInterval ?? POLL.network,
   });
   return { network: data ?? null, loading: isLoading };
 }

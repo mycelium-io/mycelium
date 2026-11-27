@@ -128,9 +128,7 @@ jobs:
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
 
-    # No database service: the SLIM-native rebuild removed Postgres/AgensGraph
-    # (memory is markdown + a local JSONL index). The live-node SLIM slices run
-    # in the `integration-slim` job below.
+    # No database service: memory is markdown + a local JSONL index.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -172,9 +170,9 @@ jobs:
           print("openapi.json matches the backend.")
           PY
 
-      # Fast gate: the core protocol (a conductor's concord run, from summon to
-      # a converged commit and a saved decision) over the fake stack — no node,
-      # no LLM. Runs first so a
+      # Fast gate: the core protocol (a conductor run, from summon to its
+      # closing commit) over the fake stack, with no node and no LLM. Runs
+      # first so a
       # broken happy path fails in seconds, ahead of the full suite.
       - name: Smoke (fake stack)
         working-directory: fastapi-backend
@@ -226,8 +224,6 @@ jobs:
         working-directory: mycelium-cli
         run: uv run ty check .
 
-      # Unit suite (guarded live-node slices skip without a node; those run in
-      # the integration-slim job). Previously the CLI had no test step in CI.
       - name: Unit tests
         if: needs.changes.outputs.code == 'true'
         working-directory: mycelium-cli
@@ -321,8 +317,8 @@ jobs:
           docker run --rm --entrypoint python mycelium-collector:ci -m mycelium.collector_main --help
 
   build-backend:
-    # Smoke-build the backend image, which ships `pi` (every engine's model calls),
-    # `slim-bindings` and the embedding model. Path-filtered, so it costs
+    # Smoke-build the backend image, which ships `pi` (every engine's model calls)
+    # and the embedding model. Path-filtered, so it costs
     # nothing on a PR that doesn't touch its inputs.
     name: Backend docker build
     needs: changes
@@ -366,20 +362,18 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
-      # The backend has no fallback for either of these: an image missing `pi`
-      # or slim-bindings starts cleanly and fails at the first summon. `pi` is
-      # looked up the way pi_brain.py looks it up, so a failure here means what
-      # a failure at runtime would.
+      # The backend has no fallback for `pi`: an image missing it starts cleanly
+      # and fails at the first summon. `pi` is looked up the way pi_brain.py
+      # looks it up, so a failure here means what a failure at runtime would.
       - name: Smoke-test the runtime the backend has no fallback for
         if: steps.changed.outputs.run == 'true'
         run: |
           docker run --rm --entrypoint python3 mycelium-backend:ci -c '
           import shutil, sys
-          import slim_bindings           # the fabric
           import app.main                # every route + service imports cleanly
           if shutil.which("pi") is None:
               sys.exit("pi is not on PATH: engine summons would fail in this image")
-          print("slim-bindings, app.main and pi all resolve")
+          print("app.main and pi resolve")
           '
 
   build-frontend:
@@ -543,80 +537,6 @@ jobs:
         if: steps.changed.outputs.run == 'true'
         run: python3 scripts/check_docs_links.py
 
-  integration-slim:
-    # Debt D12: the guarded live-node slices are the real regression guard for the
-    # SLIM coordination path, but they used to run only manually (skip-if-no-node),
-    # so CI proved nothing about the live path. Stand up a slim node and execute
-    # them per-PR — by file, since running a whole suite against a live node would
-    # also re-run no-node unit tests that assume the fabric is down.
-    name: Live-node integration slices (SLIM)
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # GitHub `services:` containers can't override the command or mount a config
-      # file, so run the node with `docker run`. Config mirrors the compose one
-      # (single standalone dataplane hub on :46357, TLS off for CI).
-      - name: Start SLIM node
-        run: |
-          cat > "$RUNNER_TEMP/slim-config.yaml" <<'EOF'
-          tracing:
-            log_level: info
-          runtime:
-            n_cores: 0
-            thread_name: "slim-data-plane"
-            drain_timeout: 10s
-          services:
-            slim/0:
-              node_id: mycelium-slim
-              dataplane:
-                servers:
-                  - endpoint: "0.0.0.0:46357"
-                    tls:
-                      insecure: true
-                clients: []
-          EOF
-          docker run -d --name mycelium-slim -p 46357:46357 \
-            -v "$RUNNER_TEMP/slim-config.yaml:/slim-config.yaml" \
-            ghcr.io/agntcy/slim:2.1.0 /slim --config /slim-config.yaml
-          for _ in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/46357) 2>/dev/null; then
-              exec 3>&-
-              echo "SLIM node is up on :46357"
-              break
-            fi
-            sleep 1
-          done
-
-      - name: Install uv
-        uses: ./.github/actions/setup-uv
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Backend deps
-        working-directory: fastapi-backend
-        run: uv sync --group dev
-
-      - name: Backend live-node slices
-        working-directory: fastapi-backend
-        env:
-          MYCELIUM_SLIM_ENDPOINT: http://127.0.0.1:46357
-          MYCELIUM_STUB_EMBEDDINGS: "1"
-        run: >-
-          uv run pytest -q
-          tests/test_slim_roundtrip.py
-          tests/test_message_over_slim_roundtrip.py
-
-      # The CLI has no live-node slices: `await`/`respond` are pure HTTP (the
-      # SLIM member connector that needed a node was removed with the daemon).
-
-      - name: SLIM node logs (on failure)
-        if: failure()
-        run: docker logs mycelium-slim || true
-
   timing:
     # Reports what the run cost, per job, against .github/ci-budgets.json. It
     # runs last because it reads the other jobs' durations back from the API,
@@ -640,7 +560,6 @@ jobs:
       - test-frontend-1
       - test-frontend-2
       - build-frontend-image
-      - integration-slim
     permissions:
       contents: read
       actions: read   # list this run's jobs

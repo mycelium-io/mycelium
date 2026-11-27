@@ -66,20 +66,16 @@ export function waysOf(usage: UsageKpis): Way[] {
     gated: "Gated",
     "fan-out": "Fan-out",
     "round-robin": "Round robin",
-    concord: "Help them agree",
-    accord: "Get on the same page",
     custom: "Custom flows",
   };
   for (const [flow, outcomes] of Object.entries(usage.flows).sort((a, b) => sum(b[1]) - sum(a[1]))) {
     const runs = sum(outcomes);
-    // An agreement a pick certified ends `converged`: a success, like `resolved`.
-    const good = (outcomes.resolved ?? 0) + (outcomes.converged ?? 0);
     ways.push({
       name: named[flow] ?? flow,
       from: `flow ${flow}`,
       runs,
-      well: runs ? good / runs : null,
-      wellWord: flow === "review" ? "passed" : flow === "concord" ? "agreed" : "resolved",
+      well: runs ? (outcomes.resolved ?? 0) / runs : null,
+      wellWord: flow === "review" ? "passed" : "resolved",
     });
   }
   const negotiations = sum(usage.negotiations);

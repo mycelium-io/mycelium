@@ -43,11 +43,11 @@ async def test_includes_activity_from_a_room_that_predates_the_connection(client
 
         bus.publish(
             room_channel("eng-room"),
-            {"room_name": "eng-room", "message_type": "l9_exchange", "content": "{}"},
+            {"room_name": "eng-room", "message_type": "envelope_exchange", "content": "{}"},
         )
         frame = await _next_data_frame(gen)
         assert frame["room_name"] == "eng-room"
-        assert frame["message_type"] == "l9_exchange"
+        assert frame["message_type"] == "envelope_exchange"
     finally:
         await gen.aclose()
 

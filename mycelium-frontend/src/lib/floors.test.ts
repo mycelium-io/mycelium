@@ -7,7 +7,7 @@ import type { RoomFloor } from "@/lib/api";
 
 const floor = (over: Partial<RoomFloor> = {}): RoomFloor => ({
   thread: "t3aa11bb",
-  episode: "urn:ioc:mycelium:episode:atlas:t3aa11bb",
+  episode: "urn:mycelium:episode:atlas:t3aa11bb",
   key: null,
   title: null,
   holder: "conductor",

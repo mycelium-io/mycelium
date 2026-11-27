@@ -13,9 +13,9 @@
  * who wrote, and the message's id. Deliberately no prose — a thread exists so
  * an argument inside a task does not become the room's problem, and echoing it
  * here would undo that. The backend produces the ping
- * (`room_channels.raise_ping`) and the CLI reads it (`slim.message_format.ping_of`); this
+ * (`room_channels.raise_ping`) and the CLI reads it (`message_format.ping_of`); this
  * is the third reader, so the constants below are frozen in
- * `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`.
+ * `contracts/message-wire.json` and asserted by `threads.contract.test.ts`.
  */
 
 /** The session literal naming a room's own channel among its episodes. */
@@ -28,17 +28,55 @@ export const PING_PAYLOAD_TYPE = "ping";
 export const PING_PAYLOAD_FIELDS = ["episode", "sender", "message"] as const;
 
 /**
+ * The envelope inside a message's content, or null when it carries none.
+ *
+ * Content carries it under `envelope`; a record from before the key was
+ * renamed carries it under `l9`, so both are read.
+ */
+export function envelopeOf(raw: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  const envelope = raw?.envelope ?? raw?.l9 ?? null;
+  return envelope && typeof envelope === "object" ? (envelope as Record<string, unknown>) : null;
+}
+
+/** How a frame carrying a whole recorded envelope names its type: `envelope_<kind>`. */
+export const ENVELOPE_FRAME_PREFIX = "envelope_";
+const LEGACY_ENVELOPE_FRAME_PREFIX = "l9_";
+
+/**
+ * A frame's `message_type` in its current spelling: an older hub's
+ * `l9_<kind>` reads as `envelope_<kind>`, anything else is returned as is.
+ */
+export function frameType(messageType: string): string {
+  return messageType.startsWith(LEGACY_ENVELOPE_FRAME_PREFIX)
+    ? ENVELOPE_FRAME_PREFIX + messageType.slice(LEGACY_ENVELOPE_FRAME_PREFIX.length)
+    : messageType;
+}
+
+/**
  * The normalized type a ping wears once parsed.
  *
- * A ping arrives as an `l9_exchange` like any other message, so it would
+ * A ping arrives as an `envelope_exchange` like any other message, so it would
  * otherwise render as a chat row from `system` with nothing in it. Naming it
  * here is what lets the feed render it as the notice it is.
  */
 export const PING_TYPE = "thread_ping";
 
+/** How an episode's URN starts. */
+export const EPISODE_URN_PREFIX = "urn:mycelium:episode:";
+
+/** The prefix a hub before 3.1 gave episodes, read as {@link EPISODE_URN_PREFIX}. */
+export const LEGACY_EPISODE_URN_PREFIX = "urn:ioc:mycelium:episode:";
+
 /** The URN of a room episode, from the room and the session (short id) it tags. */
 export function episodeUrn(room: string, session: string): string {
-  return `urn:ioc:mycelium:episode:${room}:${session}`;
+  return `${EPISODE_URN_PREFIX}${room}:${session}`;
+}
+
+/** `urn` with the legacy prefix replaced by the current one; anything else as it is. */
+export function canonicalUrn(urn: string): string {
+  return urn.startsWith(LEGACY_EPISODE_URN_PREFIX)
+    ? EPISODE_URN_PREFIX + urn.slice(LEGACY_EPISODE_URN_PREFIX.length)
+    : urn;
 }
 
 /** The URN of a room's own channel — where a message with no thread lands. */
@@ -53,7 +91,7 @@ export function liveEpisodeUrn(room: string): string {
  * reading them as a thread would empty the channel of its own history.
  */
 export function isLiveEpisode(room: string, episode: string | null | undefined): boolean {
-  return !episode || episode === liveEpisodeUrn(room);
+  return !episode || canonicalUrn(episode) === liveEpisodeUrn(room);
 }
 
 /** The short id a thread is named by — the tail of its URN. */
@@ -78,7 +116,7 @@ export interface Ping {
  * about in its payload, so the two answer different questions.
  */
 export function pingOf(raw: Record<string, unknown> | null | undefined): Ping | null {
-  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const envelope = envelopeOf(raw);
   const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
   if (!payload || payload.type !== PING_PAYLOAD_TYPE) return null;
   const data = (payload.data ?? {}) as Record<string, unknown>;
@@ -98,7 +136,7 @@ export const NOTICE_PAYLOAD_TYPE = "notice";
 export const NOTICE_TYPE = "notice";
 
 /** What a board event did to a task — the closed set the backend raises, frozen
- *  in `contracts/slim-wire.json` and asserted by `threads.contract.test.ts`. */
+ *  in `contracts/message-wire.json` and asserted by `threads.contract.test.ts`. */
 export const NOTICE_SUBKINDS = [
   "filed",
   "claimed",
@@ -189,7 +227,7 @@ export interface Notice {
  * "resolved" in sequence with the chat and open the same thread the row does.
  */
 export function noticeOf(raw: Record<string, unknown> | null | undefined): Notice | null {
-  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const envelope = envelopeOf(raw);
   const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
   if (!payload || payload.type !== NOTICE_PAYLOAD_TYPE) return null;
   const data = (payload.data ?? {}) as Record<string, unknown>;

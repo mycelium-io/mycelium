@@ -131,15 +131,6 @@ export const CHECKOUT_KNOWLEDGE: Knowledge[] = [
     at: "1d ago",
   },
   {
-    key: "context/decision/double-charge-refunds",
-    kind: "decision",
-    title: "Refund under $50 on its own",
-    by: "conductor",
-    task: DOUBLE,
-    derivedFrom: ["payments/double-charges-last-month", "payments/retries-reuse-key"],
-    at: "1d ago",
-  },
-  {
     key: "payments/two-captures-in-2s",
     kind: "finding",
     title: "A double charge is two captures in 2s",

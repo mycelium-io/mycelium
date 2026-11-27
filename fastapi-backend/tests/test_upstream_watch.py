@@ -33,7 +33,7 @@ from app.services.status.types import (
 
 NOW = datetime(2026, 10, 10, 9, 0, tzinfo=UTC)
 ROOM = "shop"
-THREAD = "urn:ioc:mycelium:episode:shop:t1"
+THREAD = "urn:mycelium:episode:shop:t1"
 
 
 # ── what GitHub changes read as ──────────────────────────────────────────────
@@ -289,9 +289,9 @@ def test_a_link_said_in_the_rows_thread_counts(shop, monkeypatch):
         "work/refunds",
         "# Refunds\n\nNo link here.",
         created_by="hay",
-        extra_meta={"episode": "urn:ioc:mycelium:episode:shop:t2"},
+        extra_meta={"episode": "urn:mycelium:episode:shop:t2"},
     )
-    said = _record("builder", "PR is up: PR-7", "urn:ioc:mycelium:episode:shop:t2")
+    said = _record("builder", "PR is up: PR-7", "urn:mycelium:episode:shop:t2")
     log = SimpleNamespace(records=[said])
     monkeypatch.setattr(
         manager, "get", lambda room: SimpleNamespace(persister=SimpleNamespace(log=log))
@@ -316,12 +316,12 @@ def test_a_link_written_as_code_in_the_thread_does_not_count(shop, monkeypatch):
         "work/refunds",
         "# Refunds\n\nShipped in `see PR-3 here`",
         created_by="hay",
-        extra_meta={"episode": "urn:ioc:mycelium:episode:shop:t2"},
+        extra_meta={"episode": "urn:mycelium:episode:shop:t2"},
     )
     said = _record(
         "reviewer",
         "Rendered as `CI went red on PR-8 4m ago`\n\n```\nPR-9\n```\nPR is up: PR-7",
-        "urn:ioc:mycelium:episode:shop:t2",
+        "urn:mycelium:episode:shop:t2",
     )
     log = SimpleNamespace(records=[said])
     monkeypatch.setattr(
@@ -350,7 +350,7 @@ def _record(sender: str, text: str, episode: str, minutes_ago: int = 1) -> Trans
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {"kind": "exchange", "message": {"episode": episode}},
                 "payload": {"type": "message"},
             },
@@ -363,7 +363,7 @@ def _upstream(
     key: str, title: str, change: str, minutes_ago: int, **extra: str
 ) -> TranscriptRecord:
     record = _record("system", "", message_format.live_episode_urn(ROOM), minutes_ago)
-    record.content["l9"]["payload"] = {
+    record.content["envelope"]["payload"] = {
         "type": message_format.NOTICE_PAYLOAD_TYPE,
         "data": {"subkind": "upstream", "key": key, "title": title, "change": change,
                  "ref": "acme/shop#12", **extra},

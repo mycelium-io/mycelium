@@ -7,7 +7,7 @@ Committed PNGs of the real frontend, for the docs site (`docs/`), the splash
 repo (`mycelium-io.github.io/`) and the themes repo (`themes/`). Conceptually a sibling of `docs/generate_docs.py`:
 both regenerate published artifacts from a source of truth. This one's source of
 truth is the UI itself, captured in **mock mode** (`pnpm dev:mock`,
-`MYCELIUM_UI_MOCK=1`) so every state renders with no backend, SLIM node, or LLM.
+`MYCELIUM_UI_MOCK=1`) so every state renders with no backend or LLM.
 
 ```
 pnpm screenshots            # boot dev:mock, capture every shot, write PNGs

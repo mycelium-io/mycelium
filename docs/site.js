@@ -577,7 +577,7 @@
   // to it. Without JS nothing is hidden: every section shows, stacked.
   //
   // Only pages the generator built have pagers. Hand-written pages that load
-  // this file (l9-integration.html, omnigent-integration.html) have sections
+  // this file (omnigent-integration.html) have sections
   // but no way between them, so they keep scrolling as one page.
   const pagedSections = Array.prototype.slice.call(document.querySelectorAll('.main .doc-section[id]'));
   const pagers = document.querySelectorAll('.doc-pager[data-pager-for]');

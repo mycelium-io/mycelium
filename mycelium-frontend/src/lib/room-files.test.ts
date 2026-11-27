@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Upload } from "@/lib/api";
 import { NO_FILTER, dayLabel, filterFiles, groupByDay, originLabel, postersIn, tasksIn } from "@/lib/room-files";
 
-const THREAD = "urn:ioc:mycelium:episode:r:t1";
+const THREAD = "urn:mycelium:episode:r:t1";
 
 function file(name: string, at: string, extra: Partial<Upload> = {}): Upload {
   return {

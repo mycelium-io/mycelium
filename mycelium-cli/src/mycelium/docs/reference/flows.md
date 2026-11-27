@@ -34,8 +34,8 @@ steps:
 The conductor treats a flow that doesn't make sense as if it weren't there,
 even one saved under a built-in's name. For example, a step might lead nowhere
 or there might be no end step. `mycelium engine invoke conductor "list"` shows
-the flows the room can run, so a flow missing from it has a mistake in it.
-Each run keeps its own copy of the flow. Editing the memory changes future runs but not
+the flows the room can run, so a flow missing from it has a mistake in it. The
+hub's log names the room, the flow and what was wrong. Each run keeps its own copy of the flow. Editing the memory changes future runs but not
 past records.
 
 ## Steps
@@ -49,9 +49,6 @@ next (`next`), or it ends the flow (`end: resolved` or `end: rejected`).
 - `each`: every member taking part, one at a time
 - `all`: every member taking part, at once
 - `workers`: every member taking part that isn't bound to a role, at once
-- `bottleneck`: the member the last pick left least happy (only after a pick)
-- `contested`: everyone who means something different by a word (only after a
-  check of the words)
 
 `next` is either a step id or a map that picks the next step from the answer.
 The map's keys are `accept`, `reject`, `silent` (no answer in time) and
@@ -63,48 +60,8 @@ Other options:
 - `wait: none` asks without waiting for an answer.
 - `max_steps` limits how many steps a run can take. A step counts once however
   many members it asks. The thread's "turn 2 of 6" counts the same steps.
-- `collect: options` makes each reply an option, with its `why:` line.
-  `collect: scores` records each reply's ratings and their reasons.
-  `collect: anchors` records the ratings of the two ends. `collect: keywords`
-  records the key terms members name. `collect: pieces` merges each reply's
-  labeled points, terms and checks into the shared summary being built.
-- `require: stance`, `require: scores` or `require: pieces` asks once more for a
-  reply that's missing it. A stance still missing after that counts as a
-  rejection. A reply that still has no labels is kept as written.
-
-## Steps that ask nobody
-
-A **pick** is a step with `kind: select`. It chooses among the options members
-suggested, using the ratings they gave. It takes a `threshold` and
-`max_repairs` (`bar=70` and `fixes=3` in the summon). A threshold of 0.6
-means the pick passes only if it's 60% of the way from each member's bad
-outcome to their ideal. Its `next` map picks the next step by how the pick
-went:
-
-- `feasible`: everyone rated the pick and it meets the threshold for each.
-- `infeasible`: someone is short of it. The least happy can be asked for a fix
-  (`to: bottleneck`).
-- `stuck`: a fix can't help. Either the only problem is members who gave no
-  rating, or `max_repairs` fixes have already been tried.
-- `nothing`: there are no options to pick from.
-- `default`.
-
-A step with `end: converged` is only allowed right after a pick, as its
-`feasible` next step. `show concord` prints one in full.
-
-`accord` is built from two more kinds of step. `show accord` prints it.
-
-- `kind: tally` looks at what's been gathered so far. With `of: points`, its
-  `next` map uses `grew` when the last round added a point, `settled` when it
-  added none, and `empty` when nobody has given any. With `of: terms`, it uses
-  `contested` when two people mean different things by a word, and `clear`
-  otherwise. `max_rounds` is how many times it can run before it moves on.
-- `kind: lock` puts the shared summary together and saves it to the room's
-  memory. Its `next` map uses `locked`, or `empty` when there's nothing to
-  save.
-
-To have everyone approve the summary before it's saved, save your own
-`protocols/accord` with an ask step before the lock that requires a stance.
+- `require: stance` asks once more for a reply that has no stance. A stance
+  still missing after that counts as a rejection.
 
 ## Placeholders
 
@@ -119,12 +76,3 @@ Prompts can use these:
 | `{replies}` | Every member's latest answer, one per line. |
 | `{handles}` | The members taking part. |
 | `{round}`, `{rounds}` | The current round and the total. |
-| `{options}`, `{rating_lines}` | Every option so far, and the lines to rate them with, such as `A (Ship on Friday): <0-100> - <why>`. |
-| `{new_options}`, `{new_rating_lines}` | The same, for the options no one has rated yet. |
-| `{pick}`, `{scores}` | The best option so far, and the last pick's scorecard. |
-| `{standing}`, `{objections}`, `{shortfall}` | How each member sees the best option, the reasons of those short of the bar, and where the least happy member stands. |
-| `{bad}`, `{ideal}`, `{bar_said}` | The two ends, and the bar said in terms of them. |
-| `{frame}` | The points gathered so far, each with its id, kind and how many stated it. |
-| `{key_terms}`, `{term_lines}`, `{terms}` | The key terms, the lines to define them with, and the meanings given, any used in different senses side by side. |
-| `{checks}` | The checks members gave, with the points each covers. |
-| `{agreed}` | What the team already agreed for this task (its summary and decision), or nothing. |

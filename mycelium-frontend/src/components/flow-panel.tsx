@@ -16,7 +16,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { EpisodeSummary, FlowStep, FlowTraceEntry, RoomFloor } from "@/lib/api";
-import { lockSummary, tallySummary } from "@/lib/conductor-line";
 import { FlowGraph } from "@/components/flow-graph";
 
 // The graph is tall, and a thread is opened to read the conversation, so the
@@ -40,7 +39,7 @@ function writeShown(shown: boolean): void {
 }
 
 function outcomeTone(outcome: string): string {
-  if (outcome === "resolved" || outcome === "converged") return "var(--green)";
+  if (outcome === "resolved") return "var(--green)";
   if (outcome === "rejected") return "var(--yellow)";
   return "var(--accent)";
 }
@@ -53,29 +52,14 @@ function takesStance(step: FlowStep | undefined): boolean {
 }
 
 /** One step taken, as the trace line reads it. A step that takes no stance
- *  (Accord's, Concord's) never reads "no stance". */
+ *  never reads "no stance"; a second asking says so. */
 function TraceRow({ entry, stanced }: { entry: FlowTraceEntry; stanced: boolean }) {
   const who = entry.asked?.join(", ") ?? "";
-  // A pick says what it picked and how that went, a count or the shared
-  // summary what it found; a second asking says so.
-  const picked = entry.select;
-  const stance = picked
-    ? `${picked.pick ?? "nothing"} · ${picked.outcome}`
-    : entry.tally
-      ? tallySummary(entry.tally)
-      : entry.lock
-        ? lockSummary(entry.lock)
-        : entry.again
-          ? "asked again"
-          : (entry.stance ?? (stanced && entry.asked?.length ? "no stance" : ""));
-  const good =
-    entry.stance === "accept" || picked?.outcome === "feasible" || (entry.lock?.outcome === "locked" && entry.lock.saved);
-  const bad =
-    entry.stance === "reject" ||
-    (picked && picked.outcome !== "feasible") ||
-    entry.tally?.outcome === "empty" ||
-    (entry.lock && !(entry.lock.outcome === "locked" && entry.lock.saved));
-  const stanceTone = good ? "var(--green)" : bad ? "var(--yellow)" : "var(--muted-foreground)";
+  const stance = entry.again
+    ? "asked again"
+    : (entry.stance ?? (stanced && entry.asked?.length ? "no stance" : ""));
+  const stanceTone =
+    entry.stance === "accept" ? "var(--green)" : entry.stance === "reject" ? "var(--yellow)" : "var(--muted-foreground)";
   return (
     <div className="flex items-baseline gap-2 border-b border-border/60 py-1 last:border-b-0 font-mono text-micro">
       <span className="w-4 text-right tabular text-faint">{entry.turn}</span>

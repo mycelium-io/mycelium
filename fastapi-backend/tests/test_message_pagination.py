@@ -16,8 +16,8 @@ import pytest
 
 from app.services import message_format, persister
 from app.services.filesystem import get_room_dir
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 ROOM = "paging-room"
 START = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
@@ -27,10 +27,10 @@ def _record(index: int):
     """One transcript line, a minute after the one before it."""
     env = message_format.build_envelope(
         kind=Kind.exchange,
-        episode=f"urn:ioc:mycelium:episode:{ROOM}:live",
+        episode=f"urn:mycelium:episode:{ROOM}:live",
         sender="julia",
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        topic=f"urn:concept:mycelium:{ROOM}",
+        topic=f"urn:mycelium:topic:{ROOM}",
         message_id=f"m-{index:03d}",
         payload_type="reply",
     )

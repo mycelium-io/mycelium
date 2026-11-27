@@ -3,10 +3,10 @@
 
 """In-process record of a room's A2A bridge traffic, for the Network views.
 
-The bridge is the one hop that does not ride SLIM: an outbound call to a remote
+The bridge is the one hop that leaves the hub: an outbound call to a remote
 agent's endpoint, or an inbound message arriving at the room's own Agent Card.
-Neither leaves a trace on the channel telemetry the Network pane reads, so a
-bridged turn would otherwise be invisible next to SLIM traffic. This module is
+Neither leaves a trace on the room's channel, so a bridged turn would
+otherwise be invisible in the Network pane. This module is
 the seam that makes it legible: the responder records each remote call, the
 inbound server records each delivered message and card fetch, and the a2a state
 route projects both.

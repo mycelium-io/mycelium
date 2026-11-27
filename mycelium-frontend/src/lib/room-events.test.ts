@@ -32,7 +32,7 @@ describe("unwrapContent", () => {
   });
 
   it("falls back rather than throwing on a malformed blob", () => {
-    const msg = { message_type: "l9_exchange", content: "{not json" };
+    const msg = { message_type: "envelope_exchange", content: "{not json" };
     expect(unwrapContent(msg)).toBe(msg);
   });
 
@@ -92,18 +92,17 @@ describe("parseEvent", () => {
     expect(ev.content).toBe("growth joined: argue for the phased cutover");
   });
 
-  it("summarizes a consensus with assignments, compiled rows and GAR", () => {
+  it("summarizes a consensus with assignments and compiled rows", () => {
     const ev = parseEvent({
       message_type: "coordination_consensus",
       sender_handle: "conductor",
       content: JSON.stringify({
         assignments: { cutover: "phased", owner: "growth" },
         tasks: ["t1", "t2"],
-        metrics: { gar: 1 },
       }),
       created_at: CREATED,
     });
-    expect(ev.content).toBe("cutover=phased, owner=growth · compiled → 2 rows · GAR 1.00");
+    expect(ev.content).toBe("cutover=phased, owner=growth · compiled → 2 rows");
   });
 
   it("reads memory_changed fields from the message itself when there is no content", () => {
@@ -117,9 +116,9 @@ describe("parseEvent", () => {
     expect(ev.content).toBe("decisions/scope v3 by conductor");
   });
 
-  it("unwraps a live l9_exchange back into the chat shape a refresh would show", () => {
+  it("unwraps a live envelope_exchange back into the chat shape a refresh would show", () => {
     const ev = parseEvent({
-      message_type: "l9_exchange",
+      message_type: "envelope_exchange",
       sender_handle: "growth",
       content: JSON.stringify({ content: "dual-write is live" }),
       created_at: CREATED,
@@ -130,31 +129,31 @@ describe("parseEvent", () => {
 
   it("names a ping for its thread and writer, not the system that raised it", () => {
     const ev = parseEvent({
-      message_type: "l9_exchange",
+      message_type: "envelope_exchange",
       sender_handle: "system",
       content: JSON.stringify({
-        l9: { payload: { type: "ping", data: { episode: "urn:ioc:mycelium:episode:atlas:abc123", sender: "growth", message: "m9" } } },
+        envelope: { payload: { type: "ping", data: { episode: "urn:mycelium:episode:atlas:abc123", sender: "growth", message: "m9" } } },
       }),
       created_at: CREATED,
     });
     expect(ev.type).toBe(PING_TYPE);
-    expect(ev.thread).toBe("urn:ioc:mycelium:episode:atlas:abc123");
+    expect(ev.thread).toBe("urn:mycelium:episode:atlas:abc123");
     expect(ev.pingSenders).toEqual(["growth"]);
   });
 
   it("reads a board notice as a notice, with the task's thread to open", () => {
     const ev = parseEvent({
-      message_type: "l9_exchange",
+      message_type: "envelope_exchange",
       sender_handle: "system",
       content: JSON.stringify({
-        l9: {
+        envelope: {
           payload: {
             type: "notice",
             data: {
               key: "work/cache-sweep",
               subkind: "resolved",
               title: "cache sweep",
-              episode: "urn:ioc:mycelium:episode:atlas:t1",
+              episode: "urn:mycelium:episode:atlas:t1",
               by: "growth",
             },
           },
@@ -164,19 +163,19 @@ describe("parseEvent", () => {
     });
     expect(ev.type).toBe(NOTICE_TYPE);
     expect(ev.content).toBe("cache sweep");
-    expect(ev.thread).toBe("urn:ioc:mycelium:episode:atlas:t1");
+    expect(ev.thread).toBe("urn:mycelium:episode:atlas:t1");
     expect(ev.raw.taskKey).toBe("work/cache-sweep");
     expect(ev.raw.by).toBe("growth");
   });
 
-  it("normalizes an l9_commit into the coordination_consensus shape", () => {
+  it("normalizes an envelope_commit into the coordination_consensus shape", () => {
     const ev = parseEvent({
-      message_type: "l9_commit",
+      message_type: "envelope_commit",
       sender_handle: "conductor",
       content: JSON.stringify({
-        l9: {
+        envelope: {
           header: { subkind: "converged", message: { episode: "urn:e:s1" } },
-          payload: { data: { assignments: { scope: "mvp" }, metrics: { gar: 0.5 } } },
+          payload: { data: { assignments: { scope: "mvp" } } },
         },
       }),
       created_at: CREATED,
@@ -184,15 +183,14 @@ describe("parseEvent", () => {
     expect(ev.type).toBe("coordination_consensus");
     expect(ev.raw.broken).toBe(false);
     expect(ev.raw.assignments).toEqual({ scope: "mvp" });
-    expect(ev.raw.metrics).toEqual({ gar: 0.5 });
     expect(ev.raw.episode).toBe("urn:e:s1");
   });
 
   it("marks a rejected commit as broken", () => {
     const ev = parseEvent({
-      message_type: "l9_commit",
+      message_type: "envelope_commit",
       sender_handle: "conductor",
-      content: JSON.stringify({ l9: { header: { subkind: "rejected" } } }),
+      content: JSON.stringify({ envelope: { header: { subkind: "rejected" } } }),
       created_at: CREATED,
     });
     expect(ev.raw.broken).toBe(true);
@@ -200,10 +198,10 @@ describe("parseEvent", () => {
 
   it("reads a conductor run that reached its end as done, not a timeout", () => {
     const ev = parseEvent({
-      message_type: "l9_commit",
+      message_type: "envelope_commit",
       sender_handle: "conductor",
       content: JSON.stringify({
-        l9: {
+        envelope: {
           header: { subkind: "resolved", message: { episode: "urn:e:t1" } },
           payload: { data: { protocol: "fan-out", steps: 2 } },
         },
@@ -216,7 +214,22 @@ describe("parseEvent", () => {
     expect(ev.raw.steps).toBe(2);
   });
 
-  it("reads an l9_knowledge push as its own notice with the memory fields kept", () => {
+  it("reads an envelope_knowledge push as its own notice with the memory fields kept", () => {
+    const ev = parseEvent({
+      message_type: "envelope_knowledge",
+      sender_handle: "synthesizer",
+      content: JSON.stringify({
+        envelope: { payload: { data: { key: "context/synthesis", updated_by: "synthesizer", version: 2 } } },
+      }),
+      created_at: CREATED,
+    });
+    expect(ev.type).toBe("envelope_knowledge");
+    expect(ev.content).toBe("context/synthesis updated");
+    expect(ev.raw.key).toBe("context/synthesis");
+    expect(ev.raw.version).toBe(2);
+  });
+
+  it("reads a frame from an older hub, typed l9_<kind> with its envelope under l9", () => {
     const ev = parseEvent({
       message_type: "l9_knowledge",
       sender_handle: "synthesizer",
@@ -225,10 +238,8 @@ describe("parseEvent", () => {
       }),
       created_at: CREATED,
     });
-    expect(ev.type).toBe("l9_knowledge");
-    expect(ev.content).toBe("context/synthesis updated");
+    expect(ev.type).toBe("envelope_knowledge");
     expect(ev.raw.key).toBe("context/synthesis");
-    expect(ev.raw.version).toBe(2);
   });
 
   it("reads the episode off the message or the envelope header", () => {
@@ -237,7 +248,7 @@ describe("parseEvent", () => {
     ).toBe("urn:e:1");
     expect(
       parseEvent({
-        message_type: "l9_exchange",
+        message_type: "envelope_exchange",
         sender_handle: "a",
         content: JSON.stringify({ content: "hi", header: { message: { episode: "urn:e:2" } } }),
       }).episode,
@@ -247,11 +258,11 @@ describe("parseEvent", () => {
 
   it("reads an amendment's target off the message header, and a folded edit off edited_at", () => {
     const amendment = parseEvent({
-      message_type: "l9_exchange",
+      message_type: "envelope_exchange",
       sender_handle: "growth",
       content: JSON.stringify({
         content: "actually, Friday",
-        l9: { header: { subkind: "amend", message: { parents: ["m42"] } } },
+        envelope: { header: { subkind: "amend", message: { parents: ["m42"] } } },
       }),
       created_at: CREATED,
     });
@@ -269,12 +280,12 @@ describe("parseEvent", () => {
 
   it("reads a live reaction off the header, and a read's folded reactions off the message", () => {
     const reaction = parseEvent({
-      message_type: "l9_exchange",
+      message_type: "envelope_exchange",
       sender_handle: "julia",
       content: JSON.stringify({
         content: "@~builder 🎉",
         reaction: { emoji: "🎉", on: true, message: "r42" },
-        l9: { header: { subkind: "reaction", message: { parents: ["m42"] } } },
+        envelope: { header: { subkind: "reaction", message: { parents: ["m42"] } } },
       }),
       created_at: CREATED,
     });
@@ -334,11 +345,11 @@ describe("a conductor post", () => {
 
   it("carries its line off the live stream, where it rides the envelope", () => {
     const ev = parseEvent({
-      message_type: "l9_exchange",
+      message_type: "envelope_exchange",
       sender_handle: "conductor",
       content: JSON.stringify({
         content: "fan-out · gather · …",
-        l9: { header: { kind: "exchange" }, payload: { type: "message", data: { conductor: line } } },
+        envelope: { header: { kind: "exchange" }, payload: { type: "message", data: { conductor: line } } },
       }),
       created_at: "2026-09-23T13:31:32Z",
     });

@@ -49,9 +49,9 @@ def _body(tmp_path: Path) -> str:
 
 
 def test_write_episode_record(tmp_path):
-    episode_state.write_episode_record(_episode(), outcome="converged", metrics=None)
+    episode_state.write_episode_record(_episode(), outcome="converged")
     body = _body(tmp_path)
-    assert "urn:ioc:mycelium:episode:sprint:abc123" in body
+    assert "urn:mycelium:episode:sprint:abc123" in body
     assert "- outcome: **converged**" in body
     assert "- participants: a1, a2" in body
     # One JSONL line per envelope: the intent and the reply.
@@ -61,24 +61,18 @@ def test_write_episode_record(tmp_path):
 
 def test_episode_record_carries_a_thread_of_its_own():
     # Episode records get their own thread binding on write.
-    episode_state.write_episode_record(_episode(), outcome="converged", metrics=None)
+    episode_state.write_episode_record(_episode(), outcome="converged")
 
     from app.services.tasks import episode_of
 
     assert episode_of("sprint", "log/episodes/abc123")
 
 
-def test_episode_record_renders_satisfaction(tmp_path):
-    metrics = {"min_satisfaction": 0.33, "satisfaction": {"a1": 0.33, "a2": 0.8}}
-    episode_state.write_episode_record(_episode(), outcome="converged", metrics=metrics)
-    assert "- satisfaction: min 0.33 (least-happy of 2 members)" in _body(tmp_path)
-
-
 def test_episode_record_says_where_it_sits_and_what_it_saved(tmp_path):
     ep = _episode()
-    ep.within = "urn:ioc:mycelium:episode:sprint:t3"
+    ep.within = "urn:mycelium:episode:sprint:t3"
     ep.memory = "context/decision/ship"
-    episode_state.write_episode_record(ep, outcome="converged", metrics=None)
+    episode_state.write_episode_record(ep, outcome="converged")
     body = _body(tmp_path)
-    assert "- within: `urn:ioc:mycelium:episode:sprint:t3`" in body
+    assert "- within: `urn:mycelium:episode:sprint:t3`" in body
     assert "- memory: `context/decision/ship`" in body

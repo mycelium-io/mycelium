@@ -10,7 +10,7 @@
  * nobody has to know an engine's name or its grammar to use it.
  */
 
-export type IntentId = "task" | "review" | "settle" | "catch-up";
+export type IntentId = "task" | "review" | "catch-up";
 
 export interface IntentRole {
   /** The role's name in the summon, in order. */
@@ -34,7 +34,6 @@ export interface Intent {
   summon: (picks: { roles: Record<string, string>; group: string[] }, note: string) => string;
 }
 
-const handles = (list: string[]) => list.map(h => `@${h}`).join(" ");
 const colon = (note: string) => (note.trim() ? `: ${note.trim()}` : "");
 
 export const INTENTS: Intent[] = [
@@ -60,15 +59,6 @@ export const INTENTS: Intent[] = [
     minGroup: 0,
     summon: ({ roles }, note) =>
       `@conductor review @${roles.author} @${roles.reviewer}${colon(note) || ": the task above"}`,
-  },
-  {
-    id: "settle",
-    label: "Settle",
-    when: "Agents want different things and need to agree on one.",
-    then: "Each agent suggests an option and rates the others. The least happy one suggests a fix, until everyone is satisfied or the best option so far stands.",
-    roles: [],
-    minGroup: 2,
-    summon: ({ group }, note) => `@conductor concord ${handles(group)}${colon(note) || ": the task above"}`,
   },
   {
     id: "catch-up",

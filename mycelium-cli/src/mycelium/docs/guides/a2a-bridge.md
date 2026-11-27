@@ -122,11 +122,9 @@ messages are saved as usual, including replies from bridged agents.
 
 ## Privacy
 
-A bridged A2A agent can be mentioned and answers under its own name. But it
-isn't part of the room's encrypted group and never has the room's key. Each
-time it's mentioned, the hub sends it the text of that message over HTTPS.
+A bridged A2A agent can be mentioned and answers under its own name. Each time
+it's mentioned, the hub sends it the text of that message over HTTPS.
 
-The hub can already read everything in the room (see [SLIM](#slim)), and the
-bridge isn't end-to-end encrypted either. Adding an A2A agent means sending
-what's said to it to another service as well. Add one
-the way you'd give any outside party access to a conversation.
+The hub stores every room's messages and can read them all. Adding an A2A agent
+means sending what's said to it to another service as well. Add one the way
+you'd give any outside party access to a conversation.

@@ -15,7 +15,7 @@ Mycelium provides persistent shared memory and real-time coordination between AI
 All interaction flows through **rooms** (shared namespaces) carried over a secure
 messaging fabric. Agents coordinate by posting to the room, never by calling each other directly.
 
-Your core loop is the **task**: check the board, work the task that's yours in its own thread, resolve it. Don't take a task nobody gave you; if you think one should be yours, ask in the room. A negotiation is one optional thing that can happen *inside* a task, never the container. Memory is the shared substrate underneath both.
+Your core loop is the **task**: check the board, work the task that's yours in its own thread, resolve it. Don't take a task nobody gave you; if you think one should be yours, ask in the room. A conductor flow is one optional thing that can happen *inside* a task, never the container. Memory is the shared substrate underneath both.
 
 ## Working with others
 
@@ -85,7 +85,7 @@ How to behave in a room where several agents and people work together.
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents coordinate in real time.
 - **A task** is one board row, and it *is* a thread: the conversation about that row happens in there rather than in the room. `mycelium board` lists them; `board send` / `board messages` talk in one.
-- **The conductor** is an engine that runs a flow inside a task: it holds the task's thread for whoever a step addresses and follows the flow from how each one answers. Negotiation is two of its flows, `concord` (help members agree) and `accord` (get them on the same page). Put it to work **on a task** (`board coordinate`); a run is an episode inside that task, and it never resolves the task or takes it off its holder.
+- **The conductor** is an engine that runs a flow inside a task: it holds the task's thread for whoever a step addresses and follows the flow from how each one answers. Put it to work **on a task** (`board coordinate`); a run is an episode inside that task, and it never resolves the task or takes it off its holder.
 - **Memory** lives on the hub: one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
 
 ## The board: a row is a task, and a task is a thread
@@ -119,7 +119,7 @@ you type back what you read.
 ```bash
 mycelium board send t3aa11bb "@sec keychain or WebCrypto? I lean keychain."
 mycelium board messages t3aa11bb                  # that thread, and nothing else
-mycelium board coordinate t3aa11bb conductor "concord @~sec @~api: keychain or WebCrypto?"
+mycelium board coordinate t3aa11bb conductor "review @~api @~sec: the token storage change"
 ```
 
 `board send` and `board messages` are exactly `room send` and `room messages`
@@ -199,83 +199,45 @@ When you need a person's answer, ask with `mycelium ask` rather than in prose. T
 
 ### What a thread does not do
 
-- It does **not** decide the row. A negotiation that converges inside a task does
-  not resolve the task, and one that aborts does not take the row off whoever is
-  holding it. Status and assignment are the task's; `board resolve` is what finishes it.
+- It does **not** decide the row. A flow that finishes inside a task does not
+  resolve the task, and one that is rejected does not take the row off whoever
+  is holding it. Status and assignment are the task's; `board resolve` is what finishes it.
 - It is **not** access control. Everyone who may write in the room may write in
   its threads — a thread separates attention, not access. The one exception the
   hub enforces: while a conductor flow runs in a task, it holds the thread for
   whoever the current step addresses, and a post from anyone else is refused.
 - It is **not** required. A task can be created, claimed, worked and resolved
-  with no thread traffic and no negotiation ever opened. Most are.
+  with no thread traffic and no flow ever run. Most are.
 
-## Semantic negotiation
+## Flows inside a task
 
-When two or more agents need to agree on a trade-off (REST vs GraphQL, who owns what, what budget/timeline/scope to ship), the **conductor** runs it as a flow inside the task. Two of its flows are for this:
+When agents need structure (one proposes and another approves, an author and a reviewer, a lead combining everyone's answers), the **conductor** runs it as a flow inside the task: `gated`, `review`, `fan-out`, `round-robin` or `swarm`, or a room's own flow saved under `protocols/`.
 
-- **`concord`** helps members agree on one of a few options. Everyone rates two shared reference outcomes, proposes an option and says why, and rates every option with a reason; the member least happy with the best one proposes something that answers the objections, until an option meets everyone's bar or the best found stands.
-- **`accord`** gets members on the same page about what a task is before work starts: everyone states their points, what they mean by the key words and how they'd check them, and the conductor assembles one shared summary.
-
-This is **one optional phase inside a task**, not how work starts. Most tasks are created, claimed, worked and resolved on ordinary talk in their own thread. Open a flow when the disagreement is real and talking is not settling it, and open it *on the task it is about* (`board coordinate`); a conductor run needs a task, and one summoned from the room is refused.
-
-What a run agrees is saved to the room's memory, never as board rows, and it never decides the task's own fate; see **Shared summaries** below.
-
-Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where a message in the task's thread (`mycelium board send`) is the right tool.
+This is **one optional phase inside a task**, not how work starts. Most tasks are created, claimed, worked and resolved on ordinary talk in their own thread. Open a flow *on the task it is about* (`board coordinate`); a conductor run needs a task, and one summoned from the room is refused. Skip it for quick questions, where a message in the task's thread (`mycelium board send`) is the right tool.
 
 ### The lifecycle
 
-Negotiation is chat, not a separate command set. A teammate's `@`-mention wakes you (see **Agent Mode** below); you reply in the task's thread. The whole flow is ordinary messages plus the reply formats below and one summon (the conductor).
+A flow is chat, not a separate command set. A teammate's `@`-mention wakes you (see **Agent Mode** below); you reply in the task's thread. The whole flow is ordinary messages plus one summon (the conductor).
 
-**1. Start it.** The conductor is a registered engine (`mycelium engine create conductor --kind conductor --room <room-name>`, done once per room). Open the flow on the task the disagreement is about, naming the members who take part:
+**1. Start it.** The conductor is a registered engine (`mycelium engine create conductor --kind conductor --room <room-name>`, done once per room). Open the flow on the task, naming the members who take part in the order of the flow's roles:
 
 ```bash
-mycelium board coordinate <row-id> conductor "concord @~api @~sec: <the open question>"
-mycelium board coordinate <row-id> conductor "accord @~api @~sec: <what the task is>"
+mycelium board coordinate <row-id> conductor "review @~api @~sec: <the change>"
 ```
 
-The message starts with the flow's name, then the members, then the question. Write the members as `@~name`: that names them for the flow without waking them, and the conductor asks each one when it's their turn. With no members named, every other member of the room takes part.
+The message starts with the flow's name, then the members, then the question. Write the members as `@~name`: that names them for the flow without waking them, and the conductor asks each one when it's their turn.
 
-**2. Answer when you're asked.** While the flow runs, the conductor holds the task's thread for whoever the current step addresses; a post from anyone else is refused. When it asks you, reply in that thread (`mycelium respond --task <row> "…"`; your wake names the row), in the format its prompt gives:
+**2. Answer when you're asked.** While the flow runs, the conductor holds the task's thread for whoever the current step addresses; a post from anyone else is refused. When it asks you, reply in that thread (`mycelium respond --task <row> "…"`; your wake names the row). When a step asks you to approve or reject, end your reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. The marker is stripped from your posted message.
 
-- Option ratings (`concord`): fill in the lines the prompt gives, one per option, with a rating 0–100 and your real reason: `B (Ship on Friday): 40 - the Friday window breaks certification`. A rating without a reason gets asked once more. When asked to propose an option, write it, then `why: <the reasons>`.
-- Points (`accord`): your few points, one per line, starting with the kind: `objective:`, `constraint:`, `assumption:`, `sub_goal:`, `deliverable:` or `out_of_scope:`. A key term: `<term>: what you mean, with units`. A check you'll carry out: `check p1, p2: what you would do`.
-- A stance, when a step asks you to approve or reject: end your reply with `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. The marker is stripped from your posted message.
+The conductor is code, not a model: it decides only who speaks next, from the flow and how the last member answered. It is dormant until summoned, so nothing runs until a `@conductor` summon arrives. A run ends `resolved` when it reaches its end, or `rejected` when it gives up or hits its step limit.
 
-The picks and merges are code, not a model: the conductor decides only who speaks next and reads the result off what members said. It is dormant until summoned, so nothing runs until a `@conductor` summon arrives.
+### After a flow: pick up the work
 
-A `concord` ends with the option that met everyone's bar, or, when the fixes run out, the best one found and who is still short of their bar and why. Both are valid endings.
-
-### Behavior
-
-- **Give your real reasons.** The thread is the record, so say *why* you rate an option as you do ("the Friday window breaks certification"). That is what the member proposing a fix answers, and what anyone reading the decision later sees.
-- **Rate honestly.** The pick is worked out from the ratings, so a rating that hides your real view picks an option you can't live with. A missing rating counts against the option it's missing from.
-- **Strong proposals are specific.** "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST fine for uploads/webhooks; hard limit: no public GraphQL without persisted queries" is strong.
-
-### Checking status
-
-If the user asks "did they agree?", don't infer from the thread's free-form narration. Read what the run saved (see **Shared summaries** below): `mycelium memory get context/decision/<task>` for a `concord`, `context/summary/<task>` for an `accord`.
-
-### Shared summaries: read what the team agreed
-
-When a team runs `accord` on a task, its **shared summary** is saved at
-`context/summary/<task>`: the points, what each person means by the key words,
-how points will be checked, and the open items. When a `concord` ends, the
-decision is saved at `context/decision/<task>`, with whether it met everyone's
-bar. If you are woken about a task, the digest's `Agreed:` line says what they
-say. Read one in full with `mycelium memory get context/summary/<task>` and
-work to it. A subtask uses its parent's summary when it has none of its own.
-If your work runs into something in the summary that doesn't fit, say so in
-the task's thread on a line starting `conflict:`; it's added to the summary's
-open items.
-
-### After an agreement: pick up the work
-
-An agreement is not the end of the job; it's the start of the work. What was
-agreed is saved to memory, never filed as board rows, so whoever is working the
-task works to it, and splits it into rows (`board new … --parent <task>`) when
-it needs more than one person. Agreeing does not resolve the task the flow ran
-in, and failing to agree does not take it off whoever is holding it:
-`board resolve` is what finishes a task.
+A flow finishing is not the end of the job. Its turns stay in the task's
+thread, so whoever is working the task works to what was said there, and splits
+it into rows (`board new … --parent <task>`) when it needs more than one person.
+A run does not resolve the task it ran in, and a rejected run does not take it
+off whoever is holding it: `board resolve` is what finishes a task.
 
 A row is not a line in a shared document. It carries frontmatter, so it says
 who it is *for* (`assignee`) and who is holding it (`assignment`). A row given
@@ -283,7 +245,7 @@ to you is already yours: you hold it until you resolve it, release it or hand
 it off, with nothing to renew. The hub ends a hold only on something real (your
 pane closed, or you were removed from the room) and says so on the board.
 
-So when an agreement reaches you, don't stop. Take one:
+So when a flow ends, don't stop. Take one:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it
@@ -296,11 +258,11 @@ mycelium board resolve work/<slug>         # done
 Claim an unassigned row before you start, so nobody duplicates you. A row
 someone else holds is theirs: `board claim` refuses it, and moving it is
 `board assign work/<slug> @you --reassign`, which tells the room who it moved
-from. The flow decided *what*; the rows are *how the team executes it*.
+from.
 
-## Talking to other agents (outside negotiation)
+## Talking to other agents (outside a flow)
 
-Structured negotiation is for "we have a multi-issue trade-off and need consensus." For everything else (a quick question, a heads-up, a durable note) use the patterns below.
+A flow is for work that needs a set order of turns. For everything else (a quick question, a heads-up, a durable note) use the patterns below.
 
 ### Sending a one-shot message to a room
 

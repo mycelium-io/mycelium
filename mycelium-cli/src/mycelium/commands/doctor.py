@@ -487,22 +487,6 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
     )
 
 
-def _read_env_master_secret() -> str | None:
-    """Return ``MYCELIUM_SLIM_MASTER_SECRET`` from ``~/.mycelium/.env`` if set."""
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return None
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, _, val = stripped.partition("=")
-        if key.strip() == "MYCELIUM_SLIM_MASTER_SECRET":
-            cleaned = val.strip().strip('"').strip("'")
-            return cleaned or None
-    return None
-
-
 def _check_http_auth_gate(*, api_url: str) -> CheckResult:
     """Warn when the hub HTTP API is reachable but auth is off on a remote URL."""
     host = (urlparse(api_url).hostname or "").lower()
@@ -535,7 +519,6 @@ def _check_http_auth_gate(*, api_url: str) -> CheckResult:
                     "HTTP JWT gate is off — peers can read/write memory and post as any @handle"
                 ),
                 details=[
-                    "Spokes use the HTTP API (:8000), not SLIM PSK.",
                     "Enable auth on the hub:",
                     "  mycelium config set auth.enabled true  (on the hub)",
                     "  mycelium config apply --restart         (restarts the backend to activate it)",
@@ -553,54 +536,6 @@ def _check_http_auth_gate(*, api_url: str) -> CheckResult:
             message=f"Could not check auth status: {type(exc).__name__}",
             details=[str(exc)],
         )
-
-
-def _hub_slim_master_secret() -> str | None:
-    """Return the hub SLIM master secret from config.toml, falling back to .env."""
-    try:
-        from mycelium.config import MyceliumConfig
-
-        secret = MyceliumConfig.load().slim.master_secret
-        if secret:
-            return secret
-    except Exception:
-        pass
-    return _read_env_master_secret()
-
-
-def _check_hub_slim_psk(*, local_backend: bool) -> CheckResult | None:
-    """Hub-only: warn when SLIM keys derive from the public dev master secret."""
-    if not local_backend:
-        return None
-    from mycelium.slim import naming
-
-    secret = _hub_slim_master_secret()
-    if secret and secret != naming._DEV_MASTER_SECRET:
-        return CheckResult(
-            name="SLIM PSK (hub)",
-            status="ok",
-            message="Private slim.master_secret configured",
-        )
-    if not secret:
-        return CheckResult(
-            name="SLIM PSK (hub)",
-            status="warning",
-            message="No hub SLIM master secret in config.toml",
-            details=[
-                "Run: mycelium config apply  (generates [slim].master_secret)",
-                "PSK gates native SLIM group join on the hub — spokes do not use it.",
-            ],
-        )
-    return CheckResult(
-        name="SLIM PSK (hub)",
-        status="warning",
-        message="Hub uses the public dev SLIM master secret",
-        details=[
-            "PSK gates native SLIM group join on the hub — spokes do not use it.",
-            "Run: mycelium config apply  (generates a private [slim].master_secret)",
-            "For spokes on a network, enable auth.enabled (HTTP JWT gate).",
-        ],
-    )
 
 
 # Keys that should match between ~/.mycelium/.env and config.toml. Each entry
@@ -867,10 +802,6 @@ def doctor(
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
         service_checks.append(_check_http_auth_gate(api_url=api_url))
-        if local:
-            psk_check = _check_hub_slim_psk(local_backend=local)
-            if psk_check is not None:
-                service_checks.append(psk_check)
         service_checks.append(_check_llm_connectivity())
         if local:
             service_checks.append(_check_engine_pi_binary())

@@ -11,7 +11,7 @@ function exchangeMessage(text: string, opts: Partial<Record<string, unknown>> = 
     id: "msg-1",
     room_name: "sprint",
     sender_handle: "alice",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: CREATED,
     content: JSON.stringify({ content: text }),
     ...opts,
@@ -44,15 +44,15 @@ describe("classify", () => {
     expect(n).toMatchObject({ kind: "direct", needsMe: true });
   });
 
-  it("rings a converged l9_commit only when its text mentions you", () => {
+  it("rings a converged envelope_commit only when its text mentions you", () => {
     const raw = {
       room_name: "sprint",
       sender_handle: "conductor",
-      message_type: "l9_commit",
+      message_type: "envelope_commit",
       created_at: CREATED,
       content: JSON.stringify({
         content: "consensus reached",
-        l9: {
+        envelope: {
           header: {
             subkind: "converged",
             participants: { actors: [{ id: "conductor" }, { id: "urn:agent:bob" }] },
@@ -66,11 +66,11 @@ describe("classify", () => {
     expect(classify(named, "bob")).toMatchObject({ kind: "consensus", needsMe: true });
   });
 
-  it("badges a room for an l9_knowledge update but never rings", () => {
+  it("badges a room for an envelope_knowledge update but never rings", () => {
     const raw = {
       room_name: "sprint",
       sender_handle: "system",
-      message_type: "l9_knowledge",
+      message_type: "envelope_knowledge",
       created_at: CREATED,
       content: JSON.stringify({ content: "plan updated → plan/tasks.md" }),
     };

@@ -17,7 +17,8 @@ silently breaking the wire.
 - `src/mycelium/integrations/` — one package per agent runtime family, each with
   its install/registration code and an `assets/` bundle of the instructions that
   teach that runtime how to participate.
-- `src/mycelium/slim/` — the CLI's copy of the SLIM + message wire primitives.
+- `src/mycelium/message_format.py` — the CLI's reader and builder for the
+  message envelope the hub records.
 - `src/mycelium/docs/` — markdown that is the **source of truth** for the docs
   site; the HTML in `docs/` is generated from it. A topic is addressed by
   filename stem (`mycelium docs rooms`) whichever subdirectory holds it.

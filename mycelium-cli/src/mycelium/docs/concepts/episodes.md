@@ -16,11 +16,9 @@ can read them. When it ends, the task stays open.
 In a task's thread in the app, mention the conductor with the flow's name, as
 in `@conductor review @~builder @~reviewer: the storage change`. To start a new
 task with a flow, choose **Task or flow…** under the message box's **+**, then
-**Review** (the `review` flow) or **Settle** (the `concord` flow). From the
-command line:
+**Review** (the `review` flow). From the command line:
 
 ```bash
-mycelium board coordinate work/pick-token-storage conductor "concord: keychain, or WebCrypto?"
 mycelium board coordinate work/pick-token-storage conductor "review @~builder @~reviewer: the storage change"
 ```
 
@@ -30,10 +28,10 @@ The conductor has to be in the room first. Add it with
 ## What an episode doesn't change
 
 - **It doesn't resolve the task.** `board resolve` does.
-- **It doesn't change who holds the task.** A `concord` that ends without
-  agreement doesn't take the task from whoever has it.
-- **It doesn't edit the task.** What it agrees is saved separately. A
-  `concord` or `accord` result goes to the room's memory under `context/`.
+- **It doesn't change who holds the task.** A run that ends `rejected`
+  doesn't take the task from whoever has it.
+- **It doesn't edit the task.** The run's turns stay in the thread and its
+  record.
 
 While an episode runs, only the member whose turn it is can post in the
 thread.
@@ -44,5 +42,3 @@ Every run is saved in the room's memory at `log/episodes/{id}.md`, whether it
 succeeded or not. The record says who took
 part, what was said and how it ended. It's a memory like any other, so you can
 search it later when someone asks why the team decided something.
-
-A `concord` record also says how satisfied each member is with the pick. See [Messages](#messages-reading-the-score).

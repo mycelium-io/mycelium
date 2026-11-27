@@ -15,7 +15,7 @@ from a2a.client import A2ACardResolver
 
 from app.services import room_channels
 from app.services.filesystem import get_room_dir, write_memory_file
-from tests.fakes import FakeChannel, FakeManaged, FakePersister
+from tests.fakes import FakeManaged, FakePersister
 
 _CARD_PATH = "/api/rooms/portfolio/.well-known/agent-card.json"
 
@@ -63,10 +63,9 @@ async def test_missing_room_card_is_404(client):
 async def test_message_send_delivers_into_the_room(client, monkeypatch):
     await _make_room(client)
 
-    # Route the room injection at a fake channel so we can assert delivery.
+    # Route the room injection at a fake log so we can assert delivery.
     persister = FakePersister()
-    channel = FakeChannel(persister)
-    managed = FakeManaged(room="portfolio", channel=channel, persister=persister)
+    managed = FakeManaged(room="portfolio", persister=persister)
     monkeypatch.setattr(room_channels.manager, "get", lambda _r: managed)
 
     rpc = {
@@ -88,8 +87,8 @@ async def test_message_send_delivers_into_the_room(client, monkeypatch):
     result = resp.json()["result"]
     ack = "".join(p.get("text", "") for p in result["parts"])
     assert "Delivered to room" in ack
-    # the message actually reached the room channel
-    assert any(extra and extra.get("content") == "hello room" for _env, extra in channel.sent)
+    # the message was actually recorded in the room
+    assert "hello room" in persister.texts()
     # …and the Network views can see the inbound turn (#739)
     state = (await client.get("/api/rooms/portfolio/a2a/state")).json()
     assert state["exposure"]["messages"] == 1
@@ -126,29 +125,26 @@ def _send_rpc(text: str = "ping") -> dict:
     }
 
 
-def _wire_room(monkeypatch, room: str = "portfolio") -> FakeChannel:
-    """Point the room's channel at a fake so the sender is assertable."""
+def _wire_room(monkeypatch, room: str = "portfolio") -> list:
+    """Point the room's log at a fake so the sender is assertable; returns what
+    was recorded, as ``(envelope, content)``."""
     persister = FakePersister()
-    channel = FakeChannel(persister)
-    monkeypatch.setattr(
-        room_channels.manager,
-        "get",
-        lambda _r: FakeManaged(room=room, channel=channel, persister=persister),
-    )
-    return channel
+    managed = FakeManaged(room=room, persister=persister)
+    monkeypatch.setattr(room_channels.manager, "get", lambda _r: managed)
+    return persister.recorded
 
 
 @pytest.mark.asyncio
 async def test_authenticated_caller_posts_under_its_own_handle(client, monkeypatch, as_principal):
     """A gated hub already proved the caller; the room says who it was (#798)."""
     await _make_room(client)
-    channel = _wire_room(monkeypatch)
+    recorded = _wire_room(monkeypatch)
     as_principal("claude-web")
 
     resp = await client.post("/api/rooms/portfolio/a2a", json=_send_rpc())
     assert resp.status_code == 200, resp.text
 
-    env, _extra = channel.sent[-1]
+    env, _extra = recorded[-1]
     assert [a.id for a in env.header.participants.actors] == ["claude-web"]
     # …and the Network views name the caller too, not a shared guest.
     state = (await client.get("/api/rooms/portfolio/a2a/state")).json()
@@ -159,13 +155,13 @@ async def test_authenticated_caller_posts_under_its_own_handle(client, monkeypat
 async def test_anonymous_caller_falls_back_to_the_guest_handle(client, monkeypatch, as_principal):
     """An ungated hub has no verified identity to name, so nothing changes."""
     await _make_room(client)
-    channel = _wire_room(monkeypatch)
+    recorded = _wire_room(monkeypatch)
     as_principal(None)
 
     resp = await client.post("/api/rooms/portfolio/a2a", json=_send_rpc())
     assert resp.status_code == 200, resp.text
 
-    env, _extra = channel.sent[-1]
+    env, _extra = recorded[-1]
     assert [a.id for a in env.header.participants.actors] == ["a2a-guest"]
     state = (await client.get("/api/rooms/portfolio/a2a/state")).json()
     assert state["exchanges"][-1]["handle"] == "a2a-guest"
@@ -175,12 +171,12 @@ async def test_anonymous_caller_falls_back_to_the_guest_handle(client, monkeypat
 async def test_two_callers_are_distinguishable_in_the_room(client, monkeypatch, as_principal):
     """The point of the change: the room can tell external agents apart."""
     await _make_room(client)
-    channel = _wire_room(monkeypatch)
+    recorded = _wire_room(monkeypatch)
 
     for handle in ("claude-web", "atlas-agent"):
         as_principal(handle)
         resp = await client.post("/api/rooms/portfolio/a2a", json=_send_rpc(f"from {handle}"))
         assert resp.status_code == 200, resp.text
 
-    senders = [env.header.participants.actors[0].id for env, _extra in channel.sent]
+    senders = [env.header.participants.actors[0].id for env, _extra in recorded]
     assert senders == ["claude-web", "atlas-agent"]

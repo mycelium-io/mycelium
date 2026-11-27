@@ -33,12 +33,6 @@ flows a room can run, use `mycelium engine invoke conductor "list"`.
 | `review` | author, reviewer | The author does the work. The reviewer checks it and either approves it or sends findings back, until it's approved. The app's **Review** runs this. |
 | `fan-out` | lead | Every other member named gets the question at the same time. The lead gets all the answers and combines them into one. |
 | `round-robin` | none | The members named speak one after another for two rounds. Each one sees what the others said. |
-| `concord` | none | Helps members agree on one of a few options. See below. |
-| `accord` | none | Gets everyone to the same understanding of the task before work starts. See below. |
-
-`concord` and `accord` are simplified versions of two protocols from the
-[Internet of Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)
-L9 work.
 
 Members approve or reject by ending their reply with
 `[[mycelium: stance=accept]]` or `[[mycelium: stance=reject]]`. A reply with no
@@ -49,68 +43,6 @@ a stance counts as a reject. Every marker is listed under
 [Markers](#messages-markers).
 
 To change a built-in flow or add your own, see [Writing flows](#flows).
-
-## Helping members agree
-
-Sometimes members disagree about how to do a task and there are a few clear
-options. `concord` gets them to one they can all live with:
-
-```bash
-mycelium board coordinate decisions/double-charge-refunds conductor \
-  "concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?"
-```
-
-1. **Rate the two ends.** Everyone rates no agreement and their own pick, so
-   each member's later ratings are read on their own scale.
-2. **Propose.** Everyone proposes one option, with a `why:` line.
-3. **Rate.** Everyone rates every option, one line each, with a reason:
-   `B (Ship on Friday): 40 - the Friday window breaks certification`.
-4. **Pick.** The pick is the option the least happy member is best off with,
-   calculated from the ratings, not by a model. It has to be 60% of the way
-   from no agreement to each member's own pick (`bar=70` sets another).
-5. **Fix, if needed.** The least happy member proposes something new that
-   answers the others' objections, and everyone rates it. After 5 fixes
-   (`fixes=3` sets another), the best option found stands.
-
-The thread shows how each member sees the pick and why, with the numbers a
-click away. The result is saved under `context/decision/`, named after the
-task without its `work/` prefix, saying who is short of the bar and why. A
-missing rating counts against the option it's missing from.
-## Getting on the same page
-
-Before work starts, `accord` gets everyone to the same understanding of the
-task:
-
-```bash
-mycelium board coordinate work/acme-renewal conductor \
-  "accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount"
-```
-
-1. **Key terms.** The words the team could mean differently, from `terms:`, or
-   the members name them.
-2. **Say what the task is.** Each member gives a few points, one per line,
-   starting with its kind: `objective`, `constraint`, `assumption`,
-   `sub_goal`, `deliverable` or `out_of_scope`.
-
-   ```
-   objective: Renew Acme on terms finance can sign.
-   constraint (pricing): A discount of at most 15%.
-   ```
-
-3. **Merge.** Points that say the same thing are combined, keeping who said
-   them, and everyone adds what's missing, once. The same point in different
-   words is combined when a member says so, with a line like `same: p6 = p1`,
-   and the summary records who said they match.
-4. **Terms and checks.** Everyone says what each key term means, with units,
-   and how they'd confirm points (`check p1, p2: Finance signs the order
-   form.`). Each check belongs to its writer. A term meant two ways is
-   restated once, and both meanings are kept.
-5. **Save.** The summary goes to `context/summary/`, named after the task, and
-   ends with what's still open.
-
-Later work in the task is told what the summary says. A line starting
-`conflict:` in the task's thread adds to its open items. Running `accord` again
-updates it.
 
 ## Who can take part
 
@@ -140,8 +72,7 @@ shows the path taken so far.
 ## How a flow ends
 
 A flow ends as `resolved` when it reaches the end. It ends as `rejected` when
-it gives up or hits its step limit. A `concord` run that everyone agrees on
-ends as `converged`. These describe the flow, not the task. Finishing a flow
+it gives up or hits its step limit. These describe the flow, not the task. Finishing a flow
 leaves the task open. Resolve the task as usual with `mycelium board resolve`.
 
 Each run is saved as an [episode](#episodes) under `log/episodes/`. The record

@@ -373,7 +373,7 @@ class TestProjection:
         episodes = [
             {
                 "short_id": "e4f1",
-                "topic": "urn:concept:mycelium:atlas",
+                "topic": "urn:mycelium:topic:atlas",
                 "subkind": "rejected",
                 "participants": ["growth", "risk"],
                 "updated_at": ago(10),

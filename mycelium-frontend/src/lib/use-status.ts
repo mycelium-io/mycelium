@@ -54,9 +54,7 @@ export interface HubHealth {
   version?: string | null;
   embedding?: (HealthPart & { model?: string | null }) | null;
   storage?: (HealthPart & { path?: string | null; host_path?: string | null }) | null;
-  identity?: (HealthPart & { mode?: string | null }) | null;
   auth?: { enabled?: boolean | null } | null;
-  coordination?: { channels_live?: number | null } | null;
 }
 
 /** One `/health` read, shared by every caller. Resolves to `null` when the hub

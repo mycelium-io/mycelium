@@ -37,8 +37,8 @@ from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
 from mycelium.identity import resolve_actor
+from mycelium.message_format import envelope_of, frame_kind, is_room_episode
 from mycelium.names import who
-from mycelium.slim.message_format import room_episode
 from mycelium.text_input import takes_text
 from mycelium_backend_client.errors import UnexpectedStatus
 
@@ -59,7 +59,7 @@ RAISE_UP_TYPES = frozenset(
     {
         "coordination_join",
         "coordination_consensus",
-        "l9_knowledge",
+        "envelope_knowledge",
     }
 )
 
@@ -412,28 +412,6 @@ def _resolve_room(config: MyceliumConfig, channel: str | None = None) -> str:
     return resolve_room(config, channel)
 
 
-def _fmt_metric(value: object) -> str:
-    """Format a metric value: 2 decimals for numbers, str() otherwise."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return f"{value:.2f}"
-    return str(value)
-
-
-def _consensus_quality_line(data: dict, indent: str) -> str | None:
-    """Render the optional consensus ``metrics`` block as a human-readable line.
-
-    Example: ``quality: MPC 0.82 · GAR 0.75 · SCR 0.25``
-    """
-    metrics = data.get("metrics")
-    if not isinstance(metrics, dict):
-        return None
-    return (
-        f"{indent}quality: MPC {_fmt_metric(metrics.get('mpc'))} "
-        f"· GAR {_fmt_metric(metrics.get('gar'))} "
-        f"· SCR {_fmt_metric(metrics.get('scr'))}"
-    )
-
-
 def _agent_owner_map(room_name: str) -> dict[str, str]:
     """Map each agent handle to its owner, for agents that declare one.
 
@@ -456,8 +434,9 @@ def frame_episode(mtype: str, msg: dict, data: dict) -> str | None:
     carries it in the header — so the question "which conversation is this?" has
     to be asked of both shapes to be worth asking at all.
     """
-    if mtype == "l9_exchange":
-        episode = ((data.get("l9", {}).get("header", {})).get("message", {})).get("episode")
+    if frame_kind(mtype) == "exchange":
+        header = envelope_of(data).get("header") or {}
+        episode = (header.get("message") or {}).get("episode")
     else:
         episode = msg.get("episode") or data.get("episode")
     return episode if isinstance(episode, str) and episode else None
@@ -474,7 +453,7 @@ def in_a_thread(room: str, mtype: str, msg: dict, data: dict) -> bool:
     A frame with no episode at all predates threading and is the room's.
     """
     episode = frame_episode(mtype, msg, data)
-    return episode is not None and episode != room_episode(room)
+    return episode is not None and not is_room_episode(room, episode)
 
 
 def _ping_line(data: dict, stamp: str) -> str | None:
@@ -489,7 +468,7 @@ def _ping_line(data: dict, stamp: str) -> str | None:
     a line that has already scrolled past is what this surface declines to do
     for an amendment too.
     """
-    from mycelium.slim.message_format import ping_of
+    from mycelium.message_format import ping_of
 
     ping = ping_of(data)
     if ping is None:
@@ -512,13 +491,13 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
     tail is a tail: it shows the amendment as it lands rather than rewriting a line
     that already scrolled past, but marks it an edit and names what it revises.
     """
-    if mtype == "l9_exchange":
+    if frame_kind(mtype) == "exchange":
         if ping := _ping_line(data, stamp):
             return ping
         content = data.get("content", "")
         if not content:
             return None  # presence/control payloads carry no prose
-        header = data.get("l9", {}).get("header", {})
+        header = envelope_of(data).get("header") or {}
         if header.get("subkind") == "amend":
             parents = header.get("message", {}).get("parents") or []
             revises = f" [dim]{parents[0][:8]}[/]" if parents else ""
@@ -549,13 +528,13 @@ def _thread_line(view: "LiveView", msg: dict, data: dict) -> str | None:
     """A thread's message or a board notice, as ``view`` draws it. A message
     read back from history carries its text bare, where the stream carries the
     whole envelope, so it's handed over the way the stream would."""
-    streamed = data is not msg and msg.get("message_type") == "l9_exchange"
+    streamed = data is not msg and frame_kind(str(msg.get("message_type") or "")) == "exchange"
     frame = (
         msg
         if streamed
         else {
             **msg,
-            "message_type": "l9_exchange",
+            "message_type": "envelope_exchange",
             "content": json_module.dumps({"content": str(msg.get("content") or "")}),
         }
     )
@@ -576,7 +555,7 @@ def _watch_room(
     from rich.table import Table
     from rich.text import Text
 
-    from mycelium.slim.message_format import payload_type_of
+    from mycelium.message_format import payload_type_of
 
     console = Console()
     owners = _agent_owner_map(room_name)
@@ -614,7 +593,7 @@ def _watch_room(
             return f"\n  {ts()}  [bold cyan]session started[/] ({n} agents joined)\n"
 
         if mtype == "coordination_tick":
-            # SSTP envelope: action fields live under data["payload"]
+            # An envelope: action fields live under data["payload"]
             if "payload" in data and isinstance(data["payload"], dict):
                 data = data["payload"]
             round_num = data.get("round", "?")
@@ -628,13 +607,10 @@ def _watch_room(
                 lines.append(f"              [dim]work:[/] {', '.join(tasks)}")
             for handle, task in assignments.items():
                 lines.append(f"              [cyan]{handle}[/]: {task}")
-            quality_line = _consensus_quality_line(data, "              ")
-            if quality_line:
-                lines.append(f"[dim]{quality_line}[/]")
             return "\n".join(lines)
 
-        if mtype == "l9_knowledge":
-            message_payload = data.get("l9", {}).get("payload", {}).get("data", {})
+        if frame_kind(mtype) == "knowledge":
+            message_payload = (envelope_of(data).get("payload") or {}).get("data") or {}
             key = message_payload.get("key", "memory")
             by = message_payload.get("updated_by")
             text = data.get("content") or f"{key} updated"
@@ -652,7 +628,7 @@ def _watch_room(
             content = msg.get("content", "")
             return f"  {ts()}  [magenta]{escape(who(sender))}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
 
-        if mtype in ("l9_exchange", "direct", "broadcast", "announce"):
+        if frame_kind(mtype) == "exchange" or mtype in ("direct", "broadcast", "announce"):
             if view is not None:
                 kind = payload_type_of(data) if isinstance(data, dict) else None
                 if kind == "notice":

@@ -43,7 +43,7 @@
   "closed_values": {
     "in": ["channel", "thread"],
     "is": ["edited", "conductor"],
-    "has": ["mention", "link", "memory", "code", "scores"],
+    "has": ["mention", "link", "memory", "code"],
     "stance": ["accept", "reject"]
   }
 }

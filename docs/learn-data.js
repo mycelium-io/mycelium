@@ -63,7 +63,7 @@ window.MYCELIUM_COURSES = [
       "id": "05-rule",
       "title": "A human drops a task, and never picks how agents coordinate",
       "minutes": 3,
-      "html": "      <p>This is the design rule everything in Mycelium follows from.</p>\n      <p>You describe the work and put it on the board. The agents claim it, break it up and coordinate inside it. You don&#x27;t choose how they coordinate. Whether they review each other, split the work or need someone to broker a disagreement is theirs to work out with the tools the room gives them.</p>\n      <p>A negotiation between agents is one optional step inside a task, never the reason the task exists.</p>"
+      "html": "      <p>This is the design rule everything in Mycelium follows from.</p>\n      <p>You describe the work and put it on the board. The agents claim it, break it up and coordinate inside it. You don&#x27;t choose how they coordinate. Whether they review each other or split the work is theirs to work out with the tools the room gives them.</p>\n      <p>A flow between agents is one optional step inside a task, never the reason the task exists.</p>"
      },
      {
       "id": "06-three-things",
@@ -86,12 +86,6 @@ window.MYCELIUM_COURSES = [
        "why": "A task is a row and a thread. Keeping the work in each thread keeps context focused and the room's chat legible."
       },
       "html": "      <p>A room has two kinds of conversation, and keeping them apart is deliberate:</p>\n      <ul>\n        <li><strong>The room&#x27;s chat</strong> is where people talk. The room&#x27;s timeline also shows there when work moves, such as a task being filed, claimed or resolved.</li>\n        <li><strong>Each task&#x27;s thread</strong> is where the agents do the work on that task.</li>\n      </ul>\n      <p>The agents&#x27; back-and-forth stays in the thread of the task it&#x27;s about. That way each agent only reads what concerns its own task. It also lets several pieces of work run in parallel: three tasks are three threads, not one long scroll.</p>"
-     },
-     {
-      "id": "08-concord",
-      "title": "When agents disagree",
-      "minutes": 3,
-      "html": "      <p>When two agents disagree and can&#x27;t settle it themselves, the <strong>conductor</strong>, an engine the hub runs, takes them through its <code>concord</code> flow in the task&#x27;s thread. Add it to the room once, then choose <strong>Settle</strong> in the task. It goes like this:</p>\n      <ol class=\"steps\">\n        <li>Everyone rates the same two reference outcomes, so each rating later means the same for everyone.</li>\n        <li>Everyone proposes one option, says why, and rates every option with a reason.</li>\n        <li>The member least happy with the best option proposes something new that answers the objections, until everyone meets the bar or the best option found stands.</li>\n      </ol>\n      <p>The conductor only decides who speaks next. The agents do the thinking. What they agreed is saved as a decision in the room&#x27;s memory, and later work in the task is shown it. The task itself doesn&#x27;t change. It stays open, and whoever held it keeps it. Most work never needs this. Two agents talking in a thread is usually enough.</p>"
      }
     ]
    },
@@ -345,27 +339,22 @@ window.MYCELIUM_COURSES = [
    },
    {
     "title": "When you disagree",
-    "video": {
-     "take": "agree-concord",
-     "about": "Agents each suggest an option and rate them all. The least happy one proposes a fix, everyone settles on it, and the decision is kept.",
-     "seconds": 76.5
-    },
     "lessons": [
      {
       "id": "03-disagreeing",
       "title": "When you disagree",
-      "minutes": 5,
+      "minutes": 4,
       "quiz": {
-       "question": "Concord got web and api to agree. Where does the outcome live?",
+       "question": "You and your teammate settled where carts live. Where should the decision go?",
        "options": [
         "Only in the thread",
-        "In a decision memory saved for the task",
-        "In a new row on the board"
+        "In a memory under decisions/",
+        "In each agent's own notes"
        ],
        "answer": 1,
-       "why": "A thread scrolls away. Concord saves its decision under context/decision/, and later work in the task is shown it."
+       "why": "A thread scrolls away. A memory under decisions/ is where the next person, or the next agent, finds it."
       },
-      "html": "      <p>Sometimes the two agents or the two of you can&#x27;t settle an approach. Each side has a real reason and neither moves. Bring in the conductor, an engine the hub runs, and its <code>concord</code> flow. Add the conductor once in the room&#x27;s chat:</p>\n      <pre><code>/engine conductor</code></pre>\n      <p>Then, in the task&#x27;s thread, choose <strong>Settle</strong> under <strong>+</strong> and pick <code>web</code> and <code>api</code>. Or ask it directly:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor concord: where should carts live?</div>\n      </div>\n      <p>Each side rates two reference outcomes, proposes one option and says why, then rates both options with a reason. The one least happy with the best option proposes something new that answers the other&#x27;s objection, until both meet the bar or the best option found stands.</p>\n      <p>The decision is saved under <code>context/decision/</code>, named after the task, with who is short of the bar and why. Later work in the task is shown it, so neither agent argues it again next week. Read it from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">get</span> context/decision/keep-a-customers-cart-when-they-switch-devices</code></pre>"
+      "html": "      <p>Sometimes the two agents can&#x27;t settle an approach. Each side has a real reason and neither moves. That is the moment for the people to step in.</p>\n      <p>Ask each agent to put its case in the thread in a few lines: what it wants, why, and what it would cost the other side. Read both, talk it over with your teammate, and decide.</p>\n      <p>Then keep the decision where the next person will find it. Save it as a memory from the room&#x27;s chat:</p>\n      <pre><code>/memory decisions/cart-storage Carts live in Postgres for 30 days.</code></pre>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">memory</span> <span class=\"cmd\">set</span> decisions/cart-storage <span class=\"str\">&quot;Carts live in Postgres for 30 days.&quot;</span></code></pre>\n      <p>Both agents can read it, and so can whoever comes to the task later, so nobody argues it again next week.</p>"
      }
     ]
    }
@@ -446,110 +435,5 @@ window.MYCELIUM_COURSES = [
    }
   ],
   "id": "github"
- },
- {
-  "order": 6,
-  "optional": true,
-  "title": "When agents need to agree",
-  "tagline": "Two flows for the moments a team gets stuck: when nobody shares a picture of the task, and when there are real options and someone would just pick one.",
-  "track": "Advanced",
-  "thumb": "app-thread-flow.png",
-  "needs": [
-   "Two or more agents on one task, in a room with the conductor engine",
-   "The pairing course, or the same experience"
-  ],
-  "takeaway": "Knowing when a team needs to agree on the task and when it needs to agree on an answer, and the flow for each.",
-  "outcomes": [
-   "Tell a team that doesn't share a picture of the task from one with real options",
-   "Run accord before work starts, and hand the summary to everyone",
-   "Run concord on a decision no one person should make alone"
-  ],
-  "modules": [
-   {
-    "title": "Which one you need",
-    "lessons": [
-     {
-      "id": "01-which",
-      "title": "Two kinds of stuck",
-      "minutes": 4,
-      "quiz": {
-       "question": "Two agents keep building different things for a task called \"rename\". Which flow?",
-       "options": [
-        "Concord: they need to pick one approach",
-        "Accord: they don't mean the same thing by the task",
-        "Neither: let them finish and compare"
-       ],
-       "answer": 1,
-       "why": "The work collided because one word meant two things. That's a picture of the task to agree on, before there are options to pick between."
-      },
-      "html": "      <p>This course is optional. Most tasks never need it: one agent takes the task, asks when it&#x27;s unsure, and the thread settles the rest. Reach for these two flows when a team is stuck in one of two specific ways. Both run on the conductor, inside the task&#x27;s thread, and both save what they settle to the room&#x27;s memory.</p>\n      <p><strong>They don&#x27;t share a picture of the task.</strong> Each member is sure it knows what the task is, and they don&#x27;t agree. A request gets read as something broader than was meant. One word means two things: &quot;rename&quot; as the label people see, or as the name the code uses everywhere. The work collides, and nobody notices until two pieces of it don&#x27;t fit.</p>\n      <p>That&#x27;s when to run <strong>accord</strong>. Everyone says what they understand the task to be, and the points are merged into one shared summary, with anything that doesn&#x27;t line up flagged. Run it when a task changes hands, or before several agents start on the same one.</p>\n      <p><strong>There are real options, and someone would otherwise just pick.</strong> There are two or three reasonable answers, and each has a cost someone will feel. Without a flow, the first agent to act picks one. Three possible fixes get tried one after another, or a behavior is chosen alone and its cost shows up a week later, for someone who wasn&#x27;t asked.</p>\n      <p>That&#x27;s when to run <strong>concord</strong>. Everyone suggests an option and rates all of them, and the answer is the one the least happy member can best live with. It matters most when no one person can just decide: the agents belong to different people, or nobody is around to break the tie.</p>\n      <p>The order is natural: accord before the work, so everyone agrees on the problem; concord during it, when there&#x27;s a real choice to make. If you can&#x27;t tell which one you need, ask whether the members disagree about <strong>what</strong> the task is or about <strong>how</strong> to do it. &quot;What&quot; is accord. &quot;How&quot; is concord.</p>"
-     }
-    ]
-   },
-   {
-    "title": "Get on the same page: accord",
-    "video": {
-     "take": "agree-accord",
-     "about": "Three agents say what a task is. Accord merges their points, finds a word they use in two senses, and saves one summary.",
-     "seconds": 73.9
-    },
-    "lessons": [
-     {
-      "id": "02-accord",
-      "title": "Accord",
-      "minutes": 6,
-      "quiz": {
-       "question": "Accord flags a point only one member made. What happens to it?",
-       "options": [
-        "It's dropped, since the others didn't agree",
-        "The conductor asks the others to vote on it",
-        "It stays in the summary as an open item for someone to settle"
-       ],
-       "answer": 2,
-       "why": "Accord records and flags; it never decides. An open item is exactly what a person or a later step should look at."
-      },
-      "html": "      <p>Accord gets every member to the same understanding of a task before work starts. Nobody leads it and nobody votes. Each member says what the task is from where they sit, the points are merged in code, and whatever doesn&#x27;t line up is flagged for a person to settle.</p>\n      <p>The room needs the conductor once. In the room&#x27;s chat:</p>\n      <pre><code>/engine conductor</code></pre>\n      <p>Then start accord in the task&#x27;s thread, naming who takes part:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts terms: delivery date</div>\n      </div>\n      <p>Write the members as <code>@~name</code>. That names them for the flow without waking them; the conductor wakes each one when it&#x27;s their turn. A plain <code>@</code> wakes all of them at once, and their early replies are refused.</p>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">coordinate</span> work/scheduled-gifts conductor \\\n  <span class=\"str\">&quot;accord @~pm @~web @~api: what scheduled gift delivery is, before anyone starts terms: delivery date&quot;</span></code></pre>\n      <p><code>terms:</code> names the words the team could mean differently. Leave it out and the members name them first.</p>\n      <p>It runs like this, and the thread shows each step as it goes:</p>\n      <ol class=\"steps\">\n        <li><strong>Say what the task is.</strong> Each member gives a few points, one per line, starting with its kind: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>.\n      <pre><code>objective: A customer picks the day a gift arrives.\nout of scope: Repeat deliveries.</code></pre>\n        </li>\n        <li><strong>Merge.</strong> Points that say the same thing become one, keeping who said them, and everyone adds what&#x27;s missing, once. When two points say the same thing in different words, a member says so and they become one:\n      <pre><code>same: p6 = p1</code></pre>\n        </li>\n        <li><strong>Terms and checks.</strong> Members say what each key term means, with units, and how they&#x27;d confirm points; each check is its writer&#x27;s job. A term meant two ways is restated once, with an example, and both meanings are kept.\n      <pre><code>delivery date: The calendar day the gift arrives, in the recipient&#x27;s time zone.\ncheck p1, p2: Order with a date three days out; it ships that morning.</code></pre>\n        </li>\n        <li><strong>Save.</strong> The summary is saved as <code>context/summary/&lt;task&gt;</code>, here <code>context/summary/scheduled-gifts</code>.</li>\n      </ol>\n      <p>The summary lists open items: a point only one member made, two points that conflict, a term used in two senses, a member who didn&#x27;t answer. Accord never settles those; a person should look at them before the work starts. Later work in the task is told what the summary says, and a line starting <code>conflict:</code> in the task&#x27;s thread adds to its open items.</p>"
-     }
-    ]
-   },
-   {
-    "title": "Pick an answer: concord",
-    "video": {
-     "take": "agree-concord",
-     "about": "Three agents each suggest an option and rate them all. The least happy one proposes a fix, and everyone settles on it.",
-     "seconds": 76.5
-    },
-    "lessons": [
-     {
-      "id": "03-concord",
-      "title": "Concord",
-      "minutes": 6,
-      "quiz": {
-       "question": "Options A, B and C are rated. A's lowest rating is 55, B's is 40, C's is 62. The bar is 70. What happens?",
-       "options": [
-        "A is picked, since it has the highest average",
-        "C is the pick so far, and the member who rated it 62 is asked for a fix",
-        "The run stops: nothing cleared the bar"
-       ],
-       "answer": 1,
-       "why": "Concord picks the option whose least happy member is happiest, then asks that member to fix it. It stops only after two fixes, or when someone isn't answering."
-      },
-      "html": "      <p>Concord gets a team from a few real options to one they can all live with. The answer isn&#x27;t whoever spoke first or loudest. It&#x27;s the option the least happy member is best off with, calculated from ratings, not chosen by a model. Every rating comes with a reason, and the reasons are what the thread shows.</p>\n      <p>Start it in the task&#x27;s thread, naming who takes part:</p>\n      <div class=\"callout callout-note\">\n        <div class=\"callout-bar\"></div>\n        <div class=\"callout-body\">@conductor concord @~pm @~web @~api: how should a gift order wait for its payment?</div>\n      </div>\n      <p>As with accord, <code>@~name</code> names a member without waking them, so the conductor can ask each one in turn.</p>\n      <p>Or from a terminal:</p>\n      <pre><code><span class=\"bin\">mycelium</span> <span class=\"cmd\">board</span> <span class=\"cmd\">coordinate</span> work/gift-payments conductor \\\n  <span class=\"str\">&quot;concord @~pm @~web @~api: how should a gift order wait for its payment?&quot;</span></code></pre>\n      <p>It runs like this:</p>\n      <ol class=\"steps\">\n        <li><strong>Rate the two ends.</strong> Everyone rates no agreement and their own pick, so their later ratings are read on their own scale.</li>\n        <li><strong>Propose.</strong> Each member proposes one option, with a <code>why:</code> line.</li>\n        <li><strong>Rate.</strong> Everyone rates every option at the same time, one line each, naming the option, with a reason: <code>B (Ship at once, and cancel…): 35 - gifts ordered the day before would miss their date</code>.</li>\n        <li><strong>Pick.</strong> The pick is the option the least happy member is best off with. It has to be 60% of the way from no agreement to each member&#x27;s own pick.</li>\n        <li><strong>Fix, if needed.</strong> The least happy member proposes something new that answers the others&#x27; objections, and everyone rates it.</li>\n      </ol>\n      <p>It stops when the pick meets everyone&#x27;s bar. After five fixes, the best option found stands, and the thread says who is still short and why. Either way it&#x27;s saved as <code>context/decision/&lt;task&gt;</code>, here <code>context/decision/gift-payments</code>, and later work on the task is told it. A missing rating is never guessed: it counts against the option it&#x27;s missing from.</p>\n      <p>Concord is for real alternatives. If the members don&#x27;t yet agree on what the task is, their options won&#x27;t be about the same thing; run accord first.</p>"
-     }
-    ]
-   },
-   {
-    "title": "Practice",
-    "lessons": [
-     {
-      "id": "04-exercise",
-      "title": "Exercise: the right flow at the right time",
-      "minutes": 10,
-      "html": "      <p>First, pick the flow for each of these, then check your answers below.</p>\n      <ol class=\"steps\">\n        <li>A task moves from one agent to another halfway through. The new agent&#x27;s first question shows it read the task differently.</li>\n        <li>Three ways to fix a failing test are possible, and the last two attempts each tried a different one.</li>\n        <li>Two teams&#x27; agents are about to start on one feature together.</li>\n        <li>Search could match whole words or parts of words. Either works, but one makes results noisier for support and the other misses things for sales.</li>\n      </ol>\n      <p>Answers: 1 and 3 are accord, since the task is being read two ways or is about to be. 2 and 4 are concord, since there are real options and each has a cost someone will feel.</p>\n      <p>Then run one for real:</p>\n      <ol class=\"steps\">\n        <li>Take a task that two or more of your agents will work on, before anyone starts. Run accord on it, naming them.</li>\n        <li>Read the summary it saves. Settle every open item it lists, in the task&#x27;s thread or by editing the summary.</li>\n        <li>The next time the same team hits a choice with real options, run concord on it instead of letting the first agent pick.</li>\n        <li>Compare: how often did the work need redoing before, and after?</li>\n      </ol>\n      <p>As a rule, run accord when a task changes hands or a team is about to start, and concord when a choice would otherwise be made by whoever acts first. On a task where neither is true, you don&#x27;t need either.</p>"
-     }
-    ]
-   }
-  ],
-  "id": "agreeing"
  }
 ];

@@ -2,33 +2,22 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Backend-as-moderator SLIM channel provisioning for rooms.
+Each room's channel on the hub: its log, who is present, and its threads.
 
-Creating/opening a room **provisions a SLIM group channel**, and the always-on
-backend is its **moderator** — it creates the group session and invites members
-as they join. This registry holds one long-lived moderator session per room,
-tracks membership (SLIM's built-in presence), and enforces the episode↔channel
-lifecycle (a membership change mid-*negotiation* aborts that negotiation; the
-channel, and any task the negotiation was happening inside, are
-untouched).
-
-Everything here is **best-effort**. When no node is reachable (or no wheel is
-installed), the calls degrade to no-ops so room CRUD and the task suite stay
-green without a live fabric — the sole failure mode is "no SLIM channel," never
-"room create failed." A node-reachability pre-flight keeps the no-node path fast.
-
-On provision the moderator starts a
-long-lived :class:`~app.services.persister.RoomPersister` that consumes the
-channel — recording the transcript, re-serving missed messages to reconnecting
-members, and watching for ``@``-summon triggers. This
-module owns that task's start/stop lifecycle and surfaces the reconnect signal
-(a membership add for a handle the persister has seen before) into a re-serve.
+A room's channel is the room's timeline, kept by the hub. Every message is
+recorded by the room's :class:`~app.services.persister.RoomPersister` (its
+transcript, each member's read position, and the ``@``-summon and wake
+triggers), fed to the app's live stream, and read by agents with ``await``.
+This registry holds one per room, opened on first use, along with presence
+(``await`` leases and herdr), the herdr wake queue, the episode a negotiation
+freezes its parties for (a party leaving aborts it; the channel, and any task
+the negotiation was happening inside, are untouched), and the floors held in
+threads.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import secrets
@@ -38,40 +27,24 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from app.config import settings
-from app.services import custody, groups, message_format, slim_identity
+from app.services import groups, message_format
 from app.services.agent_registry import norm_handle
+from app.services.episode_lifecycle import EpisodeLifecycle, build_episode_abort_envelope
 from app.services.floor import Floor
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import (
-    EpisodeLifecycle,
-    MessageChannel,
-    build_episode_abort_envelope,
-    serialize_content,
-)
 from app.services.persister import (
     AskedHook,
     RoomPersister,
     SummonHook,
     TranscriptRecord,
-    bus_frame,
     envelope_message_id,
     envelope_sender,
     parse_mentions,
     record_episode,
-    record_from,
-    rename_cursors_on_disk,
-)
-from app.services.slim_client import (
-    SlimClient,
-    SlimIdentity,
-    node_reachable,
-    to_channel_name,
-    to_slim_name,
 )
 
 if TYPE_CHECKING:
-    from app.services.custody import CustodialSession
     from app.services.message_models import MyceliumMessage
 
 # The room-aware summon hook the manager holds: unlike the persister's
@@ -112,15 +85,9 @@ WAKE_RANK = {
     "resumed": 3,
 }
 
-# The moderator's app id (third Name segment) on every room channel. Distinct
-# from any real agent handle so it never collides with a participant, and
-# filtered out of presence.
+# The hub's own handle in a room. Distinct from any real agent handle so it
+# never collides with a participant, and never treated as one.
 BACKEND_AGENT = "backend"
-
-# Delay before a supervised persister/channel is re-provisioned after an
-# unexpected exit — long enough to avoid a hot restart loop against a flapping
-# node, short enough that a room recovers quickly.
-_PERSISTER_RESTART_BACKOFF_S = 5.0
 
 # Who a room has announced as joined, kept beside its memories so a join is
 # said once per member, not again after every restart.
@@ -191,94 +158,35 @@ def _registered_agent_handles(room: str) -> list[str]:
     return sorted(p.stem for p in agents_dir.glob("*.md"))
 
 
-def _prebuild_signerjwt_roster(room: str) -> None:
-    """Register every known member's signing key before the moderator App exists.
-
-    A SignerJwt moderator snapshots the roster JWKS into its verifier at app
-    creation, so a session whose JWK is absent then can't be MLS-verified when it is
-    later admitted. Registering the backend + every registered agent up front makes
-    the verifier complete for the room's known members. A session for an agent
-    registered *after* provisioning still self-registers on admit; the
-    moderator picks up such late arrivals on its next channel (re)provision.
-    """
-    slim_identity.ensure_agent_keypair(BACKEND_AGENT)
-    for handle in _registered_agent_handles(room):
-        try:
-            slim_identity.ensure_agent_keypair(handle)
-        except Exception:
-            logger.debug("roster pre-build skipped for @%s in room %s", handle, room)
-
-
 @dataclass
 class ManagedRoomChannel:
-    """One backend-moderated room channel and its live membership/episode state."""
+    """One room's channel: its log, and the episode and floors held in it."""
 
     room: str
-    workspace: str
-    client: SlimClient
-    channel: MessageChannel
-    members: set[str] = field(default_factory=set)
+    persister: RoomPersister
     lifecycle: EpisodeLifecycle = field(default_factory=EpisodeLifecycle)
     # Threads whose floor a run of backend code holds, keyed by episode URN
     # (:mod:`app.services.floor`). Independent of ``lifecycle``: a negotiation
     # freezes a roster, a floor names whose turn it is, and a room may hold
-    # several floors at once — one per thread a protocol is running in.
+    # several floors at once, one per thread a protocol is running in.
     floors: dict[str, Floor] = field(default_factory=dict)
-    persister: RoomPersister | None = None
-    persister_task: asyncio.Task[None] | None = None
-    # Per-actor custodial MLS sessions this backend holds for the room (#666), keyed by
-    # handle. Populated only under an identity tier (``custody.custody_enabled()``);
-    # empty under the PSK default, where the moderator is the single member.
-    custody: dict[str, CustodialSession] = field(default_factory=dict)
 
-    async def post(
-        self,
-        envelope: MyceliumMessage,
-        text: str,
-        *,
-        list_write: bool = False,
-        raise_on_send_failure: bool = False,
-    ) -> None:
-        """Serialize *envelope*, broadcast it, and ingest locally.
+    async def post(self, envelope: MyceliumMessage, text: str, *, list_write: bool = False) -> None:
+        """Record *envelope* with ``text`` as its content.
 
-        This is the canonical one-liner that replaces the repeated
-        ``serialize_content → channel.send → persister.ingest_local`` sequence
-        in the bridge, server, and engines. The caller builds the
-        message (since kind/recipients/payload vary per call site); this
-        method owns the three mechanical steps that follow it.
-
-        Args:
-            envelope: A fully constructed message from :func:`message_format.build_envelope`.
-            text: The human-readable message body, sent as the ``content`` extra.
-            list_write: Passed through to ``persister.ingest_local``. Set
-                ``True`` for agent replies that must appear in the in-memory
-                store list; ``False`` (default) for broker messages that ride
-                the transcript only.
-            raise_on_send_failure: When ``True``, re-raise after logging if
-                ``channel.send`` fails, so the caller can detect the failure and
-                skip waiting for a reply that will never arrive. When ``False``
-                (default) the failure is logged and local ingest still runs —
-                best-effort broadcast with a durable local record.
+        The caller builds the message (kind, recipients and payload vary per
+        call site); this records it. ``list_write`` is passed through to
+        ``persister.record``: ``True`` for agent replies that must appear in
+        the in-memory store list, ``False`` for broker messages that ride the
+        transcript only.
         """
         content = serialize_content(envelope, extra={"content": text})
-        try:
-            await self.channel.send(envelope, extra={"content": text})
-        except Exception as exc:
-            logger.warning(
-                "room %s: failed to broadcast envelope %s: %s",
-                self.room,
-                getattr(getattr(envelope, "header", None), "message", None),
-                exc,
-            )
-            if raise_on_send_failure:
-                raise
-        if self.persister is not None:
-            self.persister.ingest_local(envelope, content, list_write=list_write)
+        self.persister.record(envelope, content, list_write=list_write)
 
 
 @dataclass
 class HumanPublishResult:
-    """The outcome of publishing a human's message onto a room channel.
+    """The outcome of recording a person's message in a room.
 
     ``recipients`` are the message recipients the ``@``-parse resolved (present members
     that get woken).
@@ -299,14 +207,13 @@ class HumanPublishResult:
 class MemberPresence:
     """How a present room member is connected, for the presence surface.
 
-    ``kind`` is ``"slim"`` (live socket), ``"lease"`` (server-held
-    ``await``/``reply`` poll), or ``"herdr"`` (alive in a herdr-managed pane but
-    not currently joined — pushed by the host-side ``mycelium herdr sync`` bridge,
-    since the backend is containerized and herdr-blind). ``last_seen`` is the
-    wall-clock epoch of the member's most recent poll/sync (``None`` for SLIM).
-    ``status`` carries herdr's live agent state (``idle``/``working``/``blocked``/
-    ``done``) — set on a herdr member, or overlaid onto a slim/lease member that is
-    *also* mapped to a live herdr pane. ``wake_pending`` is True when a room mention
+    ``kind`` is ``"lease"`` (server-held ``await``/``reply`` poll) or
+    ``"herdr"`` (alive in a herdr-managed pane but not currently joined, pushed
+    by the host-side ``mycelium herdr sync`` bridge, since the backend is
+    containerized and herdr-blind). ``last_seen`` is the wall-clock epoch of
+    the member's most recent poll/sync. ``status`` carries herdr's live agent
+    state (``idle``/``working``/``blocked``/``done``), set on a herdr member,
+    or overlaid onto a lease member that is *also* mapped to a live herdr pane. ``wake_pending`` is True when a room mention
     is queued for this handle but held back until it goes idle (the hold-until-idle
     doorbell), so the UI can show "tagged, waking when free".
     """
@@ -320,33 +227,13 @@ class MemberPresence:
     title: str | None = None
 
 
-@dataclass
-class ChannelMetrics:
-    """Process-wide coordination counters, surfaced by the health endpoint.
-
-    These make the fabric's health inspectable at a glance instead of by log
-    spelunking.
-    """
-
-    provisions_ok: int = 0
-    provisions_failed: int = 0
-    invite_failures: int = 0
-
-
 class RoomChannelManager:
-    """Registry of backend-moderated room channels (one per room, per process)."""
+    """Registry of room channels (one per room, per process)."""
 
-    def __init__(self, *, endpoint: str, default_workspace: str) -> None:
-        self._endpoint = endpoint
-        self._default_workspace = default_workspace
+    def __init__(self) -> None:
         self._channels: dict[str, ManagedRoomChannel] = {}
-        self._lock = asyncio.Lock()
-        # Strong refs to in-flight background work: invites (invite_in_background) and
-        # the frozen-roster checks a lease-side join schedules.
+        # Strong refs to in-flight background work (notices raised from sync callers).
         self._tasks: set[asyncio.Task[object]] = set()
-        # Handles an @-mention would have invited while an episode held the
-        # membership frozen, applied once it closes (see flush_deferred_invites).
-        self._deferred_invites: dict[str, set[str]] = {}
         # Trigger hooks handed to every persister, both room-aware and wired at
         # startup (``main.py``): ``on_summon`` → every engine's
         # ``handle_summon``. Unset → the persister's log-only default.
@@ -359,14 +246,11 @@ class RoomChannelManager:
         # Fired for every recorded message, so something that reads the room as
         # it goes (the verifier) doesn't poll the transcript. Wakes nobody.
         self.on_recorded: RoomRecordedHook | None = None
-        self._metrics = ChannelMetrics()
         # Server-held presence: a handle that participates over HTTP (the CLI
-        # ``await``/``respond`` long-poll) never holds a client SLIM connection,
-        # so it isn't in ``managed.members``. The backend keeps it "present" via a
-        # lease (room → handle → monotonic expiry), refreshed on every await/reply,
-        # and unions it into ``members`` so an engine's roster includes it. This
-        # is how a turn-based agent (a Claude session) is a first-class member
-        # without holding a socket between turns.
+        # ``await``/``respond`` long-poll) holds no connection between turns, so
+        # the backend keeps it "present" via a lease (room → handle → monotonic
+        # expiry), refreshed on every await/reply, and ``members`` lists it so an
+        # engine's roster includes it.
         self._leases: dict[str, dict[str, float]] = {}
         # Wall-clock epoch of each handle's most recent await/reply, keyed like
         # ``_leases``. Monotonic time drives expiry (skew-proof); this parallel
@@ -397,96 +281,60 @@ class RoomChannelManager:
         # here and the host-side `herdr sync` bridge drains + runs the actual
         # `herdr agent prompt`. The "commands down" half of the bidirectional bridge.
         self._herdr_wakes: dict[str, list[dict]] = {}
-        # Set during teardown so a persister task ending is recognized as
-        # intentional (no restart) rather than a crash to recover from.
-        self._closing = False
-        # Strong refs to in-flight channel-restart tasks so they aren't GC'd.
-        self._restart_tasks: set[asyncio.Task[None]] = set()
 
     def get(self, room: str) -> ManagedRoomChannel | None:
-        return self._channels.get(room)
+        """The room's channel, opened on first use; ``None`` for a room the hub
+        has no folder for."""
+        existing = self._channels.get(room)
+        if existing is not None:
+            return existing
+        from app.services.filesystem import room_path
 
-    def status(self) -> dict:
-        """A snapshot of coordination health for the ``/health`` surface.
+        if not room_path(room).is_dir():
+            return None
+        return self.open(room)
 
-        Per-room: is the channel provisioned, is its persister task alive, who is
-        present, how many invites are deferred, is an episode active. Plus
-        process counters. Read-only and cheap — safe to call on every health hit.
-        """
-        rooms = []
-        for room, managed in sorted(self._channels.items()):
-            task = managed.persister_task
-            rooms.append(
-                {
-                    "room": room,
-                    "provisioned": True,
-                    "persister_alive": task is not None and not task.done(),
-                    # Union of SLIM-connected members and live server-held `await`
-                    # leases — the same roster `members()` serves the engines, so
-                    # a bare-CLI participant long-polling `await` is visible here.
-                    "members": self.members(room),
-                    "deferred_invites": len(self._deferred_invites.get(room, ())),
-                    "episode_active": managed.lifecycle.active,
-                    "reserves": managed.persister.reserves if managed.persister else 0,
-                    "reserve_failures": (
-                        managed.persister.reserve_failures if managed.persister else 0
-                    ),
-                    "reserve_skipped": (
-                        managed.persister.reserve_skipped if managed.persister else 0
-                    ),
-                    "receive_errors": managed.persister.receive_errors if managed.persister else 0,
-                    "transient_errors": (
-                        managed.persister.transient_errors if managed.persister else 0
-                    ),
-                    "knowledge_applied": (
-                        managed.persister.knowledge_applied if managed.persister else 0
-                    ),
-                    "knowledge_conflicts": (
-                        managed.persister.knowledge_conflicts if managed.persister else 0
-                    ),
-                }
-            )
-        return {
-            "endpoint": self._endpoint,
-            "slim_enabled": settings.SLIM_ENABLED,
-            "channels_live": len(self._channels),
-            "provisions_ok": self._metrics.provisions_ok,
-            "provisions_failed": self._metrics.provisions_failed,
-            "invite_failures": self._metrics.invite_failures,
-            "rooms": rooms,
-        }
+    def open(self, room: str) -> ManagedRoomChannel:
+        """Open (idempotently) the channel for ``room``: its log, read back
+        from the room's transcript and read positions on disk."""
+        existing = self._channels.get(room)
+        if existing is not None:
+            return existing
+        managed = ManagedRoomChannel(
+            room=room,
+            persister=RoomPersister(
+                room,
+                on_summon=self._summon_adapter(room),
+                on_asked=self._asked_adapter(room),
+                on_recorded=self._recorded_adapter(room),
+            ),
+        )
+        self._channels[room] = managed
+        return managed
 
-    def is_live(self, room: str) -> bool:
-        """True when a SLIM channel is provisioned for ``room``."""
-        return room in self._channels
+    async def provision(self, room: str) -> ManagedRoomChannel:
+        """:meth:`open`, for the async callers that set a room up."""
+        return self.open(room)
 
     def members(self, room: str) -> list[str]:
-        """Agent handles present in ``room`` — SLIM members plus server-held leases.
+        """Agent handles present in ``room``: those holding an ``await`` lease.
 
-        A client-connected agent shows up in ``managed.members`` (SLIM presence); a
-        server-held agent (HTTP ``await`` long-poll) shows up via a live lease. The
-        engines' roster is this union, so both kinds are first-class participants.
+        A turn-based agent (HTTP ``await`` long-poll) is present through its
+        lease; the engines' roster is this list.
         """
-        managed = self._channels.get(room)
-        slim_members = set(managed.members) if managed is not None else set()
-        return sorted(slim_members | self._live_leases(room))
+        return sorted(self._live_leases(room))
 
     def presence(self, room: str) -> dict[str, MemberPresence]:
         """Live presence breakdown: handle → :class:`MemberPresence` per member.
 
-        SLIM-socket members and server-held ``await``/``reply`` lease members are
-        both first-class; the ``kind`` distinguishes them and ``last_seen`` gives
-        a lease member's most recent poll time (``None`` for SLIM — a live socket
-        is continuously present).
+        ``await``/``reply`` lease members first, with ``last_seen`` their most
+        recent poll time, then herdr's agents overlaid.
         """
-        managed = self._channels.get(room)
-        slim = set(managed.members) if managed is not None else set()
-        lease_only = self._live_leases(room) - slim
         seen = self._last_seen.get(room, {})
-        out: dict[str, MemberPresence] = {h: MemberPresence(kind="slim") for h in slim}
-        for h in lease_only:
-            out[h] = MemberPresence(kind="lease", last_seen=seen.get(h))
-        # Overlay herdr liveness: a handle already present (slim/lease) just gains
+        out: dict[str, MemberPresence] = {
+            h: MemberPresence(kind="lease", last_seen=seen.get(h)) for h in self._live_leases(room)
+        }
+        # Overlay herdr liveness: a handle already present (lease) just gains
         # its herdr ``status``; a herdr-only handle appears as ``kind="herdr"`` so
         # the UI can surface "alive in herdr, not joined" without it becoming a
         # roster member.
@@ -677,44 +525,6 @@ class RoomChannelManager:
             w["handle"] == handle and message in w.get("messages", [])
             for w in self._herdr_wakes.get(room, [])
         )
-
-    def note_unrecorded_asks(
-        self, room: str, *, sender: str, text: str, episode: str | None = None
-    ) -> list[str]:
-        """Log, for each agent ``text`` asks, that no wake went for it.
-
-        A person's message posted while the room's channel isn't live is kept
-        and shown, but never reaches the transcript, which is where every
-        doorbell rings from (:meth:`ring_asked`) and what ``await`` and the
-        digest read. Nothing rings, so this says why in the wake log, read the
-        same way the persister would read the message. Returns the handles.
-        """
-        from app.services import wake_log
-        from app.services.asks import asked
-        from app.services.principals import classify_sender
-
-        extra, _by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
-        envelope = message_format.build_envelope(
-            kind=Kind.exchange,
-            episode=episode or message_format.live_episode_urn(room),
-            sender=sender,
-            sender_role="human",
-            recipients=parse_mentions(text),
-            topic=message_format.topic_urn(room),
-            payload_type="message",
-        )
-        noted: list[str] = []
-        for handle, why in asked(serialize_content(envelope, extra=extra), room).items():
-            if classify_sender(room, handle) != "agent":
-                continue
-            wake_log.dropped(
-                room,
-                {"handle": handle, "reason": why, "from": sender, "episode": episode},
-                "the room's channel isn't live, so the message isn't in the transcript yet",
-                outcome="unreached",
-            )
-            noted.append(handle)
-        return noted
 
     def ring_asked(
         self,
@@ -966,8 +776,8 @@ class RoomChannelManager:
         has been announced here before, across lapsed leases, reconnects and
         restarts. Only :meth:`remove` forgets it, so a member removed and added
         again is announced again. Called from every join path so the channel feed
-        shows arrivals consistently regardless of whether the agent joined via
-        HTTP session, SLIM invite, or server-held await lease.
+        shows arrivals consistently, whether the agent joined via an HTTP
+        session or an ``await`` lease.
         """
         announced = self._announced_in(room)
         if handle in announced:
@@ -1006,175 +816,14 @@ class RoomChannelManager:
             logger.debug("join notice bus publish failed for %s in room %s", handle, room)
         return True
 
-    async def provision(
-        self, room: str, *, workspace: str | None = None
-    ) -> ManagedRoomChannel | None:
-        """Provision (idempotently) the moderated group channel for ``room``.
-
-        Returns the managed channel, or ``None`` when SLIM is disabled/unreachable
-        or the handshake fails — in every ``None`` case the caller carries on
-        without a fabric. Never raises.
-        """
-        if not settings.SLIM_ENABLED:
-            return None
-        existing = self._channels.get(room)
-        if existing is not None:
-            return existing
-        if not node_reachable(self._endpoint):
-            logger.debug(
-                "SLIM node unreachable at %s; skipping channel for %s", self._endpoint, room
-            )
-            return None
-
-        async with self._lock:
-            existing = self._channels.get(room)
-            if existing is not None:
-                return existing
-            ws = workspace or self._default_workspace
-            try:
-                identity = SlimIdentity(ws, room, BACKEND_AGENT)
-                if slim_identity.resolve_identity_mode() == slim_identity.MODE_SIGNERJWT:
-                    # The moderator is a first-class identity (#476): self-register
-                    # its own signing key + roster entry before presenting a
-                    # SignerJwt identity. Under custody (#666) also register every
-                    # known member up front so the moderator's verifier — snapshotted
-                    # here — can MLS-verify their sessions on admit. No-op under PSK.
-                    if custody.custody_enabled():
-                        _prebuild_signerjwt_roster(room)
-                    else:
-                        slim_identity.ensure_agent_keypair(BACKEND_AGENT)
-                _prov_t0 = __import__("time").monotonic()
-                client = await SlimClient(identity).connect(self._endpoint)
-                session = await client.create_group(to_channel_name(ws, room))
-                _prov_ms = (__import__("time").monotonic() - _prov_t0) * 1000.0
-            except Exception as exc:
-                logger.warning("SLIM channel provisioning failed for room %s: %s", room, exc)
-                self._metrics.provisions_failed += 1
-                from app.services import metrics as _app_metrics
-
-                _app_metrics.record_slim_provision(room=room, duration_ms=0.0, error=True)
-                return None
-            managed = ManagedRoomChannel(
-                room=room, workspace=ws, client=client, channel=MessageChannel(client, session)
-            )
-            self._channels[room] = managed
-            self._start_persister(managed)
-            self._metrics.provisions_ok += 1
-            from app.services import metrics as _app_metrics
-
-            _app_metrics.record_slim_provision(room=room, duration_ms=_prov_ms)
-            logger.info("Provisioned SLIM channel for room %s (workspace=%s)", room, ws)
-            return managed
-
-    def _start_persister(self, managed: ManagedRoomChannel) -> None:
-        """Attach and start the durable-inbox persister for a channel.
-
-        The consumer loop is long-lived; the task ref is held on the managed
-        channel so it isn't GC'd, and canceled in :meth:`close`.
-        """
-        room = managed.room
-        managed.persister = RoomPersister(
-            room,
-            managed.channel,
-            # Real SLIM-connected members only — NOT `self.members(room)`, which
-            # also unions in server-held `await` leases. A lease holder never
-            # receives a push; it polls the transcript past its own cursor. If a
-            # lease-only handle were counted as "delivered", DeliveryLog.record
-            # would jump its cursor straight past a message that mentions it
-            # (see DeliveryLog.record), and its next `await` would silently never
-            # see it. A real SLIM member's cursor still advances live, and a
-            # lease-only handle correctly falls into the "recipients" branch
-            # (tracked at the message's own position on first sight), so its poll
-            # finds the mention as its undelivered tail.
-            members_provider=lambda: set(managed.members),
-            on_summon=self._summon_adapter(room),
-            on_asked=self._asked_adapter(room),
-            on_recorded=self._recorded_adapter(room),
-            on_member_left=lambda handle, _room=room: self._drop_member(_room, handle),
-        )
-        managed.persister_task = asyncio.create_task(managed.persister.run())
-        managed.persister_task.add_done_callback(
-            lambda t, _room=room: self._on_persister_done(_room, t)
-        )
-
-    def _drop_member(self, room: str, handle: str) -> None:
-        """A member dropped off the channel — update presence.
-
-        Removing on disconnect keeps ``members`` in sync with real SLIM presence,
-        so a later ``@``-mention re-invites them (instead of assuming
-        the stale member is still present) and a re-join doesn't hit 'already in
-        group'. Local bookkeeping only — the member is already gone from SLIM.
-        Clears the announced flag so the handle re-announces if they return.
-        """
-        managed = self._channels.get(room)
-        if managed is None or handle not in managed.members:
-            return
-        managed.members.discard(handle)
-        logger.info("dropped absent member %s from room %s membership", handle, room)
-
-    def _on_persister_done(self, room: str, task: asyncio.Task) -> None:
-        """Supervise the persister: restart it if it died unexpectedly.
-
-        A bare ``create_task(run())`` that ended left the channel a silent zombie
-        (nothing served/recorded) until re-provisioned. Now an unexpected exit
-        schedules a channel restart; an intentional teardown (cancel / ``close``)
-        does not.
-        """
-        if task.cancelled() or self._closing:
-            return
-        if self._channels.get(room) is None:
-            return
-        exc = task.exception()
-        logger.error(
-            "persister for room %s exited unexpectedly (%s) — restarting channel in %.0fs",
-            room,
-            exc,
-            _PERSISTER_RESTART_BACKOFF_S,
-        )
-        restart = asyncio.create_task(self._restart_channel(room))
-        self._restart_tasks.add(restart)
-        restart.add_done_callback(self._restart_tasks.discard)
-
-    async def _restart_channel(self, room: str) -> None:
-        """Tear down a dead channel and re-provision it fresh.
-
-        Retries with backoff until it succeeds: if the persister died because the
-        node went away, re-provision keeps failing until the node returns — a
-        one-shot attempt would leave the room a zombie for the rest of the outage.
-        """
-        managed = self._channels.pop(room, None)
-        workspace = managed.workspace if managed else None
-        # Members reconnecting to the fresh channel are the same members: their
-        # arrival was announced once already, so nothing is cleared here.
-        if managed is not None:
-            for cs in managed.custody.values():
-                with contextlib.suppress(Exception):
-                    await cs.close(graceful=False)
-            with contextlib.suppress(Exception):
-                await managed.client.close()
-        while not self._closing:
-            await asyncio.sleep(_PERSISTER_RESTART_BACKOFF_S)
-            if self._closing or room in self._channels:
-                return
-            # provision() re-connects, re-creates the group session, and starts a
-            # fresh supervised persister; None means the node is still unreachable.
-            if await self.provision(room, workspace=workspace) is not None:
-                # Revive custodial sessions against the fresh connection from their stores — the
-                # old Apps died with the dropped connection (spike D3/restart shape).
-                await self.restore_custody(room)
-                logger.info("recovered room %s channel after persister exit", room)
-                return
-
-    def _summon_adapter(self, room: str) -> SummonHook | None:
+    def _summon_adapter(self, room: str) -> SummonHook:
         """Bind ``room`` onto the room-aware ``on_summon`` hook.
 
         The persister calls its ``SummonHook`` with only ``(handle, envelope)``;
-        the engine wired to :attr:`on_summon` needs the room too. When no hook is
-        wired, return ``None`` so the persister keeps its log-only default.
+        the engine wired to :attr:`on_summon` needs the room too. The hook is
+        read at call time, so a room opened before the engines were wired still
+        reaches them.
         """
-        hook = self.on_summon
-        if hook is None:
-            return None
 
         def adapter(
             handle: str,
@@ -1183,6 +832,10 @@ class RoomChannelManager:
             message_text: str = "",
             _room: str = room,
         ) -> None:
+            hook = self.on_summon
+            if hook is None:
+                logger.info("@%s summoned in %s, with no engines wired", handle, _room)
+                return
             hook(_room, handle, envelope, co_summons, message_text)
 
         return adapter
@@ -1230,163 +883,6 @@ class RoomChannelManager:
 
         return adapter
 
-    async def invite(self, room: str, agent: str) -> bool:
-        """Invite ``agent`` into the room channel. Best-effort; returns success.
-
-        Under an identity tier (#666) this stands up the agent's **custodial session** — a
-        genuine per-actor MLS member the backend custodies — instead of inviting a
-        bare Name; under the PSK default it is byte-for-byte the prior single-member
-        invite.
-        """
-        managed = self._channels.get(room)
-        if managed is None or agent == BACKEND_AGENT:
-            return False
-        if custody.custody_enabled():
-            return await self._ensure_custody(managed, agent) is not None
-        try:
-            member = to_slim_name(managed.workspace, room, agent)
-            await managed.client.invite(managed.channel.session, member)
-        except Exception as exc:
-            # A registered agent's connector holds a live SLIM
-            # subscription, so a failed invite means it will NOT be woken — a real
-            # failure. Surface it loudly.
-            logger.warning("SLIM invite failed (room=%s agent=%s): %s", room, agent, exc)
-            self._metrics.invite_failures += 1
-            return False
-        await self._register_member(managed, agent)
-        return True
-
-    async def _register_member(self, managed: ManagedRoomChannel, agent: str) -> None:
-        """Post-admit bookkeeping shared by the PSK invite and the custody path.
-
-        Records presence, announces the join, and re-serves a reconnecting
-        member's missed tail. A join never ends a running negotiation.
-        """
-        managed.members.add(agent)
-        self.announce_join(managed.room, agent)
-        # Durable inbox: a membership add for a handle the persister has already
-        # seen is a *reconnect* — re-serve its missed tail.
-        if managed.persister is not None and managed.persister.note_join(agent):
-            await managed.persister.reserve(agent)
-
-    # -- per-actor custodial sessions (#666; identity tiers only) --
-
-    async def _ensure_custody(
-        self, managed: ManagedRoomChannel, agent: str
-    ) -> CustodialSession | None:
-        """Stand up (or reuse) ``agent``'s custodial session and admit it into the group.
-
-        The session's App subscribes and starts listening *before* the moderator invite
-        lands (they run concurrently, single process), so the MLS Welcome is
-        received. Idempotent: an already-joined session is returned as-is. Best-effort
-        — a failure returns ``None`` and the caller degrades (respond falls back to
-        a moderator send), never raising into the request path.
-        """
-        existing = managed.custody.get(agent)
-        if existing is not None and existing.joined:
-            return existing
-        try:
-            cs = await custody.create_session(
-                self._endpoint, managed.workspace, managed.room, agent
-            )
-            member = to_slim_name(managed.workspace, managed.room, agent)
-            join_task = asyncio.create_task(custody.join_session(cs))
-            try:
-                await managed.client.invite(managed.channel.session, member)
-                await join_task
-            except Exception:
-                join_task.cancel()
-                await cs.close(graceful=False)
-                raise
-        except Exception as exc:
-            logger.warning(
-                "custodial admit failed (room=%s agent=%s): %s", managed.room, agent, exc
-            )
-            self._metrics.invite_failures += 1
-            return None
-        cs.drain_task = asyncio.create_task(cs.drain())
-        managed.custody[agent] = cs
-        await self._register_member(managed, agent)
-        logger.info("admitted custodial session for @%s into room %s", agent, managed.room)
-        return cs
-
-    async def send_as_custodian(self, room: str, handle: str, data: bytes) -> bool:
-        """Publish ``data`` to the room as ``handle`` via its custodial session (real MLS send).
-
-        The wire sender is the actor's own MLS identity, not the backend's. Ensures the session on first participation. Returns whether
-        the send went out as the actor; ``False`` (with the caller falling back to a
-        moderator send) preserves liveness when a session can't be stood up.
-        """
-        if not custody.custody_enabled() or handle == BACKEND_AGENT:
-            return False
-        managed = self._channels.get(room)
-        if managed is None:
-            return False
-        try:
-            cs = managed.custody.get(handle)
-            if cs is None or not cs.joined:
-                cs = await self._ensure_custody(managed, handle)
-            if cs is None:
-                return False
-            await cs.publish(data)
-            return True
-        except Exception as exc:
-            logger.warning("custodial send failed (room=%s handle=%s): %s", room, handle, exc)
-            return False
-
-    async def restore_custody(self, room: str) -> int:
-        """Revive every persisted custodial session for ``room`` after a backend restart (#666).
-
-        Each session resumes from its own encrypted store via ``restore_sessions`` —
-        no re-invite, no MLS Welcome — and the always-draining moderator heals its
-        ``rejoin`` (spike D1). The durable transcript replays any gap; SLIM
-        persistence resumes crypto state only. Returns the count revived.
-        """
-        if not custody.custody_enabled():
-            return 0
-        managed = self._channels.get(room)
-        if managed is None:
-            return 0
-        restored = 0
-        for room_name, handle in custody.iter_persisted_sessions():
-            if room_name != room or handle in managed.custody:
-                continue
-            try:
-                cs = await custody.restore_session(self._endpoint, managed.workspace, room, handle)
-            except Exception as exc:
-                logger.warning(
-                    "custodial restore failed (room=%s handle=%s): %s", room, handle, exc
-                )
-                continue
-            if cs is None:
-                continue
-            cs.drain_task = asyncio.create_task(cs.drain())
-            managed.custody[handle] = cs
-            managed.members.add(handle)
-            self.announce_join(room, handle)
-            restored += 1
-        if restored:
-            logger.info(
-                "restored %d custodial session(s) for room %s (no re-invite)", restored, room
-            )
-        return restored
-
-    def invite_in_background(self, room: str, agent: str) -> None:
-        """Schedule :meth:`invite` without blocking the caller.
-
-        The SLIM invite handshake retries against an absent member before
-        failing, so awaiting it in an HTTP join would stall the request for the
-        whole retry budget. Until agents hold their own SLIM connection, that
-        failure is the norm — so fire-and-forget: the join returns at once
-        and ``members`` updates if/when the invite lands. ``invite`` swallows its
-        own errors, so the task never raises.
-        """
-        if self._channels.get(room) is None:
-            return
-        task = asyncio.create_task(self.invite(room, agent))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-
     # -- human-in-the-room --
 
     async def publish_human(
@@ -1399,35 +895,27 @@ class RoomChannelManager:
         parents: list[str] | None = None,
         episode: str | None = None,
         data: dict[str, Any] | None = None,
-    ) -> HumanPublishResult | None:
-        """Publish a human's message onto the room channel as their proxy.
+    ) -> HumanPublishResult:
+        """Record a person's message in the room, as their proxy.
 
-        The human runs no connector: the backend builds an ``exchange`` message on
-        their behalf, maps ``@agent-x`` tokens to message recipients, and broadcasts
-        it. In-room mentions wake through the connector's recipient match;
-        mentions of a registered agent **not** on the channel invite it.
-        Returns ``None`` when no channel is live.
+        The person runs no agent: the backend builds an ``exchange`` message on
+        their behalf and maps ``@agent-x`` tokens to message recipients, which
+        is who it wakes.
 
-        ``subkind``/``parents`` carry an ``amend`` revising an earlier message —
+        ``subkind``/``parents`` carry an ``amend`` revising an earlier message,
         the same publish in every other respect, since a revision is a message
         the room hears like any other, mentions included. A reaction rides the
         same way, with ``data`` carrying its ``reaction`` beside the text.
 
         ``episode`` names the **thread** the message lands in; without one it
         lands in the room itself. A thread is a tag over this same channel, so a
-        threaded message is broadcast and recorded exactly like any other — what
-        changes is only that it does not clutter the room. The :meth:`raise_ping`
-        that surfaces it there is the *caller's*: this publish is one of several
+        threaded message is recorded exactly like any other; what changes is
+        only that it does not clutter the room. The :meth:`raise_ping` that
+        surfaces it there is the *caller's*: this publish is one of several
         ways a message reaches a thread, and a ping raised from inside it would
         be silently skipped by every other one.
-
-        The published message is ingested locally via the persister so the
-        transcript and UI bus see it exactly once, independent of whether SLIM
-        loops a broadcast back to its own sender.
         """
-        managed = self._channels.get(room)
-        if managed is None:
-            return None
+        managed = self._channels.get(room) or self.open(room)
 
         mentioned = parse_mentions(text)
         # ``@here`` and ``@all`` reach who they reach now, kept on the message so
@@ -1435,9 +923,8 @@ class RoomChannelManager:
         extra, by_group = groups.on_message(room, text=text, episode=episode, sender=sender)
         if data:
             extra = {**data, **extra}
-        # Every mention is a message recipient (the semantic "to"); everyone else on
-        # the channel is an observer. Absent mentions stay recipients so the
-        # intent is recorded, but only present ones actually receive the broadcast.
+        # Every mention is a message recipient (the semantic "to"); everyone
+        # else in the room is an observer.
         envelope = message_format.build_envelope(
             kind=Kind.exchange,
             subkind=subkind,
@@ -1451,44 +938,19 @@ class RoomChannelManager:
         )
         content = serialize_content(envelope, extra=extra)
         message_id = envelope.header.message.id if envelope.header.message else None
-        try:
-            await managed.channel.send(envelope, extra=extra)
-        except Exception as exc:  # best-effort broadcast
-            logger.warning("failed to publish human message on room %s: %s", room, exc)
-        if managed.persister is not None:
-            # Transcript-only here (``list_write=False``): the POST route owns the
-            # ``in_memory_store`` row (its id/ledger), stamped with this envelope's id so
-            # a cold read dedups the two.
-            managed.persister.ingest_local(envelope, content, list_write=False)
+        # Transcript-only here (``list_write=False``): the POST route owns the
+        # ``in_memory_store`` row (its id/ledger), stamped with this envelope's id so
+        # a cold read dedups the two.
+        managed.persister.record(envelope, content, list_write=False)
 
-        # An @-mention of a registered agent that is not on the channel brings it
-        # in. The manifest check is the gate: everything else a human types after an
-        # @ — another person, their own handle, a typo — is addressed, not admitted,
-        # because only a room's own agents have somewhere to be invited to.
-        # "Present" is SLIM-connected members plus live server-held `await` leases. A
-        # bare-CLI agent long-polling `await` is a first-class participant — its
-        # turn is delivered via the durable transcript cursor its poll reads, not a
-        # SLIM broadcast — so an @-mention of it is a wake, not an invite.
+        # A mention of anyone who is neither present nor a registered agent of
+        # the room (another person, a typo) is addressed but reaches no one.
         present = set(self.members(room))
-        unrecognized: list[str] = []
-        for handle in mentioned:
-            if handle in present or handle == BACKEND_AGENT:
-                continue
-            if not _is_own_registered_agent(room, handle):
-                unrecognized.append(handle)
-                continue
-            if _is_engine(room, handle):
-                # An engine is a seat the backend plays, not a SLIM member: the
-                # summon seam answers the mention, and an invite would only fail.
-                continue
-            if managed.lifecycle.frozen:
-                # Adding a member mid-negotiation would abort it (the
-                # stable-membership rule), so hold the invite until the episode
-                # closes. Gated on ``frozen``, not ``active``: a task's thread is an
-                # episode too, and it must not hold invites hostage.
-                self._deferred_invites.setdefault(room, set()).add(handle)
-            else:
-                self.invite_in_background(room, handle)
+        unrecognized = [
+            h
+            for h in mentioned
+            if h not in present and h != BACKEND_AGENT and not _is_own_registered_agent(room, h)
+        ]
 
         recipients = [h for h in mentioned if h != BACKEND_AGENT]
         return HumanPublishResult(
@@ -1522,11 +984,6 @@ class RoomChannelManager:
         way presence doesn't — so a resident agent's ``await`` consumes
         it silently instead of spending a turn on it.
 
-        *It does not go out on the wire.* This is the
-        record-locally-don't-broadcast seam: ``ingest_local`` alone, so the ping
-        lands in the transcript and on the SSE bus for the GUI without being
-        published to the group. Nothing on the channel has to filter it out.
-
         Returns the ping's message id, or ``None`` when there is nothing to
         announce — a message in the room itself, which *is* the room.
         """
@@ -1545,19 +1002,9 @@ class RoomChannelManager:
                 **({"message": message_id} if message_id else {}),
             },
         )
-        content = serialize_content(ping)
-        managed = self._channels.get(room)
-        if managed is not None and managed.persister is not None:
-            managed.persister.ingest_local(ping, content, list_write=False)
-        else:
-            # No channel means no transcript to raise into — and the message this
-            # announces reached only the bus for the same reason. So the ping
-            # matches its reach rather than vanishing: the exact frame the
-            # persister would have pushed, built by the same projection, so a
-            # client decodes it identically either way.
-            from app.bus import bus, room_channel
-
-            bus.publish(room_channel(room), bus_frame(room, record_from(ping, content)))
+        (self._channels.get(room) or self.open(room)).persister.record(
+            ping, serialize_content(ping), list_write=False
+        )
         return ping.header.message.id if ping.header.message else None
 
     async def raise_notice(
@@ -1574,11 +1021,10 @@ class RoomChannelManager:
         """Raise a **notice** into ``live``: the room's timeline of board events.
 
         The sibling of :meth:`raise_ping`, and it holds the same two structural
-        properties — it wakes nobody (a ``notice`` payload, which asks nobody:
-        :func:`app.services.asks.asks`) and it does not go
-        out on the wire (``ingest_local`` alone) — so a task filed, claimed,
-        handed back or resolved reads in the channel in sequence with the chat
-        without spending an agent's turn or being filtered out on arrival.
+        property: it wakes nobody (a ``notice`` payload, which asks nobody:
+        :func:`app.services.asks.asks`), so a task filed, claimed, handed back or
+        resolved reads in the channel in sequence with the chat without
+        spending an agent's turn.
 
         Where a ping says a thread moved, a notice says the board did: it names
         the task (``key``/``title``), the thread to open (``episode``), and who
@@ -1597,57 +1043,33 @@ class RoomChannelManager:
             payload_type=message_format.NOTICE_PAYLOAD_TYPE,
             payload_data=data,
         )
-        content = serialize_content(notice)
-        managed = self._channels.get(room)
-        if managed is not None and managed.persister is not None:
-            managed.persister.ingest_local(notice, content, list_write=False)
-        else:
-            from app.bus import bus, room_channel
-
-            bus.publish(room_channel(room), bus_frame(room, record_from(notice, content)))
+        (self._channels.get(room) or self.open(room)).persister.record(
+            notice, serialize_content(notice), list_write=False
+        )
         if self.on_notice is not None:
             try:
                 self.on_notice(room, dict(data))
             except Exception:
                 logger.exception("notice hook failed for %s in %s", subkind, room)
 
-    # -- deferred invites (stable membership) --
-
-    async def flush_deferred_invites(self, room: str) -> None:
-        """Apply invites an @-mention deferred during an episode, now that it closed."""
-        for handle in sorted(self._deferred_invites.pop(room, set())):
-            await self.invite(room, handle)
-
     async def remove(self, room: str, agent: str) -> bool:
-        """Remove ``agent`` from the room channel. Best-effort; returns success.
-
-        Under an identity tier this is revocation (#590/#666): the custodial session gracefully
-        leaves the MLS group (one Commit; the other members heal with **no
-        room-wide re-key**) and its at-rest store is deleted so it can't be
-        revived. Under the PSK default it is the prior moderator-side remove.
-        """
+        """Take ``agent`` out of the room: its lease lapses, its arrival is
+        forgotten, and a negotiation it was a party to ends. True when it was
+        present or announced."""
         managed = self._channels.get(room)
-        if managed is None or agent not in managed.members:
+        if managed is None:
             return False
-        cs = managed.custody.pop(agent, None)
-        if cs is not None:
-            await cs.close(graceful=True)
-            custody.delete_store(room, agent)
-        else:
-            try:
-                member = to_slim_name(managed.workspace, room, agent)
-                await managed.client.remove_member(managed.channel.session, member)
-            except Exception as exc:
-                logger.debug("SLIM remove skipped (room=%s agent=%s): %s", room, agent, exc)
-                return False
-        managed.members.discard(agent)
+        leases = self._leases.get(room, {})
+        was_present = leases.pop(agent, None) is not None
+        self._last_seen.get(room, {}).pop(agent, None)
         # Removed from the room: if they're added again, that's a new arrival.
         announced = self._announced_in(room)
-        if agent in announced:
+        was_announced = agent in announced
+        if was_announced:
             announced.discard(agent)
             _save_announced(room, announced)
         await self._abort_if_party_left(managed, agent)
-        return True
+        return was_present or was_announced
 
     def rename_member(self, room: str, old: str, new: str) -> None:
         """Carry what the room holds for ``old`` over to ``new``.
@@ -1656,9 +1078,7 @@ class RoomChannelManager:
         floors it was given, whether it was announced, and its read positions, so
         the renamed agent is the same member under its new name: present if it
         was, woken by a mention of ``new`` before its machine's next sync pass,
-        and not handed the room again from the start. A SLIM member or custodial
-        session can't be renamed in place; it joins again under ``new`` the next
-        time it is invited.
+        and not handed the room again from the start.
         """
         for times in (self._leases.get(room), self._last_seen.get(room)):
             if times and old in times:
@@ -1674,21 +1094,15 @@ class RoomChannelManager:
             announced.discard(old)
             announced.add(new)
             _save_announced(room, announced)
-        managed = self._channels.get(room)
+        managed = self.get(room)
         if managed is None:
-            rename_cursors_on_disk(room, old, new)
             return
-        if old in managed.members:
-            managed.members.discard(old)
         for episode, floor in list(managed.floors.items()):
             holder = new if floor.holder == old else floor.holder
             speakers = frozenset(new if s == old else s for s in floor.speakers)
             if (holder, speakers) != (floor.holder, floor.speakers):
                 managed.floors[episode] = Floor(episode, holder, speakers, floor.since)
-        if managed.persister is not None:
-            managed.persister.rename_handle(old, new)
-        else:
-            rename_cursors_on_disk(room, old, new)
+        managed.persister.rename_handle(old, new)
 
     def open_episode(
         self,
@@ -1709,7 +1123,7 @@ class RoomChannelManager:
         — a task's thread — which nothing ends, because the task outlives what
         happens inside it.
         """
-        managed = self._channels.get(room)
+        managed = self.get(room)
         if managed is None:
             return False
         frozen = {h for h in (norm_handle(p) for p in parties) if h}
@@ -1725,10 +1139,10 @@ class RoomChannelManager:
 
         Replaces whatever floor the thread held, so a runner moving from one
         step to the next calls this once per step. ``None`` when the room has
-        no live channel, or when ``episode`` is the room itself — the room never
-        holds a floor, so a protocol cannot close the room around itself.
+        no folder, or when ``episode`` is the room itself: the room never holds
+        a floor, so a protocol cannot close the room around itself.
         """
-        managed = self._channels.get(room)
+        managed = self.get(room)
         if managed is None or message_format.is_live_episode(room, episode):
             return None
         previous = managed.floors.get(episode)
@@ -1812,16 +1226,11 @@ class RoomChannelManager:
         return managed.floors.get(episode)
 
     async def close_episode(self, room: str) -> bool:
-        """Close the room's active episode normally and flush deferred invites.
-
-        The membership-freeze a negotiation holds is released here, so invites
-        an ``@``-mention deferred mid-episode are now safe to apply.
-        """
+        """Close the room's active episode normally."""
         managed = self._channels.get(room)
         if managed is None:
             return False
         managed.lifecycle.close()
-        await self.flush_deferred_invites(room)
         return True
 
     async def _abort_if_party_left(self, managed: ManagedRoomChannel, agent: str) -> None:
@@ -1839,68 +1248,28 @@ class RoomChannelManager:
         if not episode:
             return
         logger.info("@%s left %s, ending the negotiation in %s", handle, managed.room, episode)
-        try:
-            envelope = build_episode_abort_envelope(
-                episode,
-                recipients=sorted(managed.lifecycle.members),
-                topic=message_format.topic_urn(managed.room),
-                reason="party_left",
-            )
-            await managed.channel.send(envelope)
-            # Record the abort locally so the transcript/UI see it — SLIM may not
-            # loop a broadcast back to its own sender.
-            if managed.persister is not None:
-                line = f"Negotiation stopped: {handle} left the room."
-                managed.persister.ingest_local(
-                    envelope, serialize_content(envelope, extra={"content": line})
-                )
-        except Exception as exc:  # pragma: no cover - best-effort notify
-            logger.warning("Failed to publish episode abort for %s: %s", episode, exc)
-        # The episode is closed now, so invites deferred while it was active can be
-        # applied — the normal close_episode path flushes for the same reason.
-        await self.flush_deferred_invites(managed.room)
+        envelope = build_episode_abort_envelope(
+            episode,
+            recipients=sorted(managed.lifecycle.members),
+            topic=message_format.topic_urn(managed.room),
+            reason="party_left",
+        )
+        line = f"Negotiation stopped: {handle} left the room."
+        managed.persister.record(envelope, serialize_content(envelope, extra={"content": line}))
 
     async def close(self, room: str) -> None:
-        """Tear down the room's channel (persister stopped; moderator leaves)."""
-        managed = self._channels.pop(room, None)
-        if managed is None:
-            return
-        if managed.persister_task is not None:
-            managed.persister_task.cancel()
-            try:
-                await managed.persister_task
-            except asyncio.CancelledError:
-                pass
-            except Exception as exc:  # pragma: no cover - best-effort teardown
-                logger.debug("persister task teardown error for room %s: %s", room, exc)
-            managed.persister_task = None
-        # Non-graceful custody teardown: leave the encrypted stores intact so a
-        # restart revives every session via ``restore_sessions`` (no re-invite).
-        for cs in managed.custody.values():
-            await cs.close(graceful=False)
-        managed.custody.clear()
-        await managed.client.close()
-        # Nothing is left to admit them into.
-        self._deferred_invites.pop(room, None)
-        logger.info("Closed SLIM channel for room %s", room)
+        """Forget the room's channel (the room was deleted)."""
+        if self._channels.pop(room, None) is not None:
+            logger.info("Closed the channel for room %s", room)
 
     async def close_all(self) -> None:
-        """Tear down every channel and drop the shared connection (shutdown)."""
-        self._closing = True  # a persister ending now is intentional, not a crash
-        for task in (*self._tasks, *self._restart_tasks):
+        """Forget every channel and cancel background work (shutdown)."""
+        for task in self._tasks:
             task.cancel()
         self._tasks.clear()
-        self._restart_tasks.clear()
-        for room in list(self._channels):
-            await self.close(room)
-        from app.services.slim_client import close_connection
-
-        await close_connection(self._endpoint)
+        self._channels.clear()
 
 
 # Process-wide registry: the backend is a single always-on process, so one
-# moderator per room lives here.
-manager = RoomChannelManager(
-    endpoint=settings.SLIM_NODE_ENDPOINT,
-    default_workspace=settings.SLIM_WORKSPACE,
-)
+# channel per room lives here.
+manager = RoomChannelManager()

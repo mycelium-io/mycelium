@@ -7,8 +7,7 @@ Julia and Bob each sign in to the same hub with a token from one identity
 provider, which names them under ``preferred_username`` and gives each an
 opaque ``sub``. Each runs a runner on their own laptop with their own agents,
 in one room. Everything goes through the real app and the real gate with real
-signed tokens; only the provider's JWKS fetch is stubbed, and the room's SLIM
-channel is one that sends nothing.
+signed tokens; only the provider's JWKS fetch is stubbed.
 """
 
 from __future__ import annotations
@@ -25,7 +24,6 @@ from app.services.agent_registry import write_agent_manifest
 from app.services.joins import joins
 from app.services.persister import RoomPersister
 from tests.issuer import SignedInHub, generate_key, sign
-from tests.wake_paths import _QuietChannel
 
 ROOM = "workshop"
 JULIA, BOB = "julia", "bob"
@@ -337,26 +335,18 @@ async def test_a_bad_token_is_a_readable_401(hub: Hub, what: str, says: str):
 
 
 def _live_room(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The room's channel as the hub runs it, over a channel that sends nothing."""
+    """The room's channel as the hub runs it, off the app's live stream."""
     manager = room_channels.manager
     monkeypatch.setattr(manager, "_herdr_wakes", {})
     monkeypatch.setattr(manager, "_herdr", {})
-    monkeypatch.setattr(manager, "invite_in_background", lambda *_a, **_k: None)
-    managed = room_channels.ManagedRoomChannel(
-        room=ROOM,
-        workspace="workshop",
-        client=None,  # ty: ignore[invalid-argument-type]  # nothing here dials SLIM
-        channel=_QuietChannel(),  # ty: ignore[invalid-argument-type]
-    )
-    managed.persister = RoomPersister(
+    persister = RoomPersister(
         ROOM,
-        channel=managed.channel,
-        members_provider=lambda: set(),
         on_summon=manager._summon_adapter(ROOM),
         on_asked=manager._asked_adapter(ROOM),
         on_recorded=manager._recorded_adapter(ROOM),
         feed_bus=False,
     )
+    managed = room_channels.ManagedRoomChannel(room=ROOM, persister=persister)
     monkeypatch.setitem(manager._channels, ROOM, managed)
 
 
@@ -389,7 +379,6 @@ async def _drain(hub: Hub, person: str) -> list[str]:
 async def test_a_mention_wakes_the_other_persons_agent_on_their_machine_every_round(
     hub: Hub, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr("app.config.settings.SLIM_ENABLED", True)
     _live_room(monkeypatch)
     for person in (JULIA, BOB):
         await hub.launch(person)

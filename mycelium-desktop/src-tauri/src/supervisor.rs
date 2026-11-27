@@ -3,7 +3,7 @@
 
 //! The one process the app starts: `mycelium desktop serve`.
 //!
-//! It runs everything else (the SLIM node, the hub, the UI, the runner) and
+//! It runs everything else (the hub, the UI, the runner) and
 //! says what state each is in, one JSON object per line on stdout. The app
 //! only reads that, restarts the supervisor if it dies, and stops it on quit.
 //! A restart bumps a generation number, so a loop left over from the previous
@@ -204,10 +204,6 @@ fn command(settings: &Settings) -> Result<Command, String> {
         cmd.arg(if settings.share_usage { "--share-usage" } else { "--no-share-usage" });
         cmd.arg(if settings.voice { "--voice" } else { "--no-voice" });
         cmd.args(["--voice-model", settings.voice_model.as_str()]);
-    }
-    // The SLIM node's slimctl, pinned to the 2.1.x the hub's bindings speak.
-    if let Some(slimctl) = paths::bundled("slimctl") {
-        cmd.env("MYCELIUM_SLIMCTL", slimctl);
     }
     without_appimage_env(&mut cmd);
     // stdin stays piped and open for the supervisor's whole life: it stops

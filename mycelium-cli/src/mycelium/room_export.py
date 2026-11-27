@@ -23,6 +23,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from mycelium.message_format import envelope_of, frame_kind
+
 if TYPE_CHECKING:
     from mycelium_backend_client import Client
     from mycelium_backend_client.types import Response
@@ -220,7 +222,7 @@ def read_roster(hub: Client, room: str) -> dict[str, str]:
 
 
 def short_id(urn: str | None) -> str | None:
-    """``urn:ioc:mycelium:episode:<room>:<id>`` → ``<id>``."""
+    """``urn:mycelium:episode:<room>:<id>`` → ``<id>``."""
     return urn.rsplit(":", 1)[-1] if urn else None
 
 
@@ -322,12 +324,13 @@ def record(frame: dict[str, Any], kinds: dict[str, str], task_of: dict[str, str]
     except json.JSONDecodeError:
         parsed = raw
     content: dict[str, Any] = parsed if isinstance(parsed, dict) else {"content": str(parsed)}
-    l9: dict[str, Any] = content.get("l9") or {}
-    header = l9.get("header") or {}
+    envelope = envelope_of(content)
+    header = envelope.get("header") or {}
     message = header.get("message") or {}
-    payload = l9.get("payload") or {}
+    payload = envelope.get("payload") or {}
     data = dict(payload.get("data") or {})
-    ptype = payload.get("type") or str(frame.get("message_type", "")).removeprefix("l9_")
+    message_type = str(frame.get("message_type", ""))
+    ptype = payload.get("type") or frame_kind(message_type) or message_type
     sender = frame.get("sender_handle") or ""
     actors = (header.get("participants") or {}).get("actors") or []
     role = next((a.get("role") for a in actors if a.get("id") == sender), None)

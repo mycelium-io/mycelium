@@ -309,41 +309,6 @@ def record_memory_search(
 
 
 @_safe
-def record_slim_provision(
-    *,
-    room: str = "",
-    duration_ms: float = 0.0,
-    error: bool = False,
-) -> None:
-    """Record the latency of provisioning a SLIM channel for a room.
-
-    Called after each successful or failed ``RoomChannelManager.provision``
-    attempt. Surfaces ``slim.provision_ms`` in ``/api/observability`` (#486).
-    """
-    _inc("slim", "provisions")
-    if error:
-        _inc("slim", "provision_errors")
-    if room:
-        _inc("slim", f"by_room.{room}.provisions")
-    if duration_ms > 0:
-        _record_histogram("slim.provision_ms", duration_ms)
-        _otel_record(
-            "mycelium.slim.provision.duration",
-            duration_ms,
-            attrs={"mycelium.room": room or "", "error": str(error).lower()},
-            description="SLIM channel provision latency",
-        )
-
-
-@_safe
-def record_slim_receive_error(*, room: str = "") -> None:
-    """Increment the SLIM receive-error counter for monitoring channel health."""
-    _inc("slim", "receive_errors")
-    if room:
-        _inc("slim", f"by_room.{room}.receive_errors")
-
-
-@_safe
 def record_await_poll(
     *,
     room: str = "",

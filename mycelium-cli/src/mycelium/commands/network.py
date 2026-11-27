@@ -1,23 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium network``: SLIM coordination fabric status.
+"""``mycelium network``: who is in each room, and what reaches it from outside.
 
-Surfaces the backend's live coordination telemetry (from ``/health``): the SLIM
-node endpoint, channel/provision counters, and, per room, who is present plus the
-durable-inbox counters. This is the read-only observability view over the fabric:
-who is on the channel and how each room's channel is doing.
+Lists the hub's rooms (``/api/rooms``) and, per room, who is present
+(``/api/rooms/{room}/sessions/members``): server-held ``await`` participants and
+herdr members. The hub is the authority on room membership.
 
-The backend is the authority on room membership: the SLIM node only forwards
-ciphertext and cannot report rosters, so "who is on the network" is the backend's
-union of SLIM-connected members and server-held ``await`` participants.
-
-A room can also reach members that are *not* on the channel: A2A agents, bridged
-over HTTP by the hub. They're rendered in their own block per room (from
-``/api/rooms/{room}/a2a/state``) rather than mixed into the members column, because
-the distinction is the point — a bridged agent is proxied by the hub and holds no
-group key, so it is not a member of the room's encrypted group. This is the CLI
-half of the same surface the GUI's Network pane shows.
+A room can also reach agents that are *not* its members: A2A agents, bridged over
+HTTP by the hub. They're rendered in their own block per room (from
+``/api/rooms/{room}/a2a/state``) rather than mixed into the members column,
+because the distinction is the point: a bridged agent is proxied by the hub, not
+a member of the room. This is the CLI half of the same surface the GUI's Network
+pane shows.
 """
 
 from __future__ import annotations
@@ -32,8 +27,6 @@ from mycelium.client import typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.exceptions import MyceliumError
-from mycelium.hub_check import health
 from mycelium.ui_status import print_title
 
 if TYPE_CHECKING:
@@ -73,8 +66,8 @@ def _clip(text: str | None, width: int = 60) -> str:
 def _print_a2a(room: str, state: dict) -> None:
     """One room's bridge block: bridged agents, the room's exposure, last calls."""
     typer.secho(f"  A2A bridge · {room}", fg=typer.colors.BRIGHT_BLACK)
-    typer.echo("    bridged agents are proxied by the hub over HTTP — not members of the")
-    typer.echo("    room's encrypted group, and the hub sees their traffic in plaintext")
+    typer.echo("    bridged agents are proxied by the hub over HTTP: not members of the")
+    typer.echo("    room, and the hub sees their traffic in plaintext")
 
     agents = state.get("agents") or []
     if agents:
@@ -116,9 +109,34 @@ def _print_a2a(room: str, state: dict) -> None:
     typer.echo()
 
 
+def _fetch_rooms(client: Client) -> list[str]:
+    """The names of the rooms the hub lists for this caller."""
+    from mycelium.client import answered
+    from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_api
+
+    rooms = answered(list_api.sync_detailed(client=client), list)
+    return [r.name for r in rooms]
+
+
+def _fetch_members(client: Client, room: str) -> list[dict]:
+    """Who is present in a room, as ``{handle, kind}``; empty when the read fails."""
+    from mycelium_backend_client.api.sessions import (
+        list_members_api_rooms_room_name_sessions_members_get as members_api,
+    )
+    from mycelium_backend_client.models import RoomPresenceRead
+
+    try:
+        present = members_api.sync(room, client=client)
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return []
+    if not isinstance(present, RoomPresenceRead):
+        return []
+    return [{"handle": m.handle, "kind": m.kind} for m in present.members]
+
+
 @doc_ref(
     usage="mycelium network [room]",
-    desc="Show SLIM fabric status: node, channels, members, and A2A bridges.",
+    desc="Show who is present in each room, and the A2A agents bridged into it.",
     group="setup",
 )
 def network(
@@ -126,13 +144,10 @@ def network(
     room: str | None = typer.Argument(None, help="Only show this room"),
 ) -> None:
     """
-    Show the SLIM coordination fabric status.
+    Show who is present in each room, and the A2A agents bridged into it.
 
-    Renders the backend's live coordination telemetry: the SLIM node endpoint,
-    live-channel and provision counters, and (per room) who is present (SLIM
-    members plus server-held ``await`` participants), invites an active episode is
-    holding, whether an episode is active, and durable-inbox counters (re-serves,
-    receive errors).
+    Lists the hub's rooms and, per room, who is present: server-held ``await``
+    participants (``lease``) and herdr members (``herdr``).
 
     Rooms with an A2A bridge get a block of their own: the bridged agents with
     their endpoint and advertised skills, whether the room's own Agent Card is
@@ -148,69 +163,32 @@ def network(
 
         config = MyceliumConfig.load()
 
-        said = health(config.server.api_url, timeout=30)
-        if not said.answered:
-            print_error(f"Cannot reach the backend at {config.server.api_url}: {said.error}")
-            return
-        if said.read is None:
-            raise MyceliumError(f"the hub at {said.url} didn't say: {said.error}")
-        # The hub's telemetry, printed as told and passed through ``--json``.
-        coord = said.coordination.to_dict() if said.coordination else {}
         with typed_client(config, timeout=30, raise_on_unexpected_status=False) as client:
-            rooms = coord.get("rooms") or []
+            names = _fetch_rooms(client)
             if room:
-                rooms = [r for r in rooms if r.get("room") == room]
-
-            a2a = {
-                name: state
-                for name in (r.get("room", "") for r in rooms)
-                if name and (state := _fetch_a2a(client, name)) is not None
-            }
+                names = [n for n in names if n == room]
+            present = {n: _fetch_members(client, n) for n in sorted(names)}
+            a2a = {n: state for n in names if (state := _fetch_a2a(client, n)) is not None}
 
         if json_output:
-            # `a2a` is null for a room with no bridge and no inbound traffic —
+            # `a2a` is null for a room with no bridge and no inbound traffic:
             # the same rooms the rendered view leaves undecorated.
-            enriched = [{**r, "a2a": a2a.get(r.get("room", ""))} for r in rooms]
-            typer.echo(json_module.dumps({**coord, "rooms": enriched}, indent=2, default=str))
+            rooms = [{"room": n, "members": m, "a2a": a2a.get(n)} for n, m in present.items()]
+            typer.echo(json_module.dumps({"rooms": rooms}, indent=2, default=str))
             return
 
-        endpoint = coord.get("endpoint") or "-"
-        enabled = bool(coord.get("slim_enabled"))
-        print_title("Mycelium Network", subtitle=f"SLIM node {endpoint}")
+        print_title("Mycelium Network", subtitle=config.server.api_url)
 
-        dot = typer.style("●", fg=typer.colors.GREEN if enabled else typer.colors.RED)
-        typer.echo(
-            f"  {dot} fabric {'enabled' if enabled else 'disabled'}   "
-            f"channels: {coord.get('channels_live', 0)} live   "
-            f"provisions: {coord.get('provisions_ok', 0)} ok / "
-            f"{coord.get('provisions_failed', 0)} failed   "
-            f"invite failures: {coord.get('invite_failures', 0)}"
-        )
-        typer.echo()
-
-        if not rooms:
+        if not present:
             suffix = f" matching '{room}'" if room else ""
-            typer.echo(f"  no provisioned rooms{suffix}")
+            typer.echo(f"  no rooms{suffix}")
             return
 
-        # MEMBERS goes last so a long roster extends the line instead of breaking
-        # the fixed columns before it.
-        name_w = max(len("ROOM"), *(len(r.get("room", "")) for r in rooms))
-        typer.secho(
-            f"  {'ROOM':<{name_w}}  DEFER  EPISODE  RESRV  RECV-ERR  MEMBERS",
-            fg=typer.colors.BRIGHT_BLACK,
-        )
-        for r in sorted(rooms, key=lambda x: x.get("room", "")):
-            members = r.get("members") or []
-            episode = "active" if r.get("episode_active") else "idle"
-            typer.echo(
-                f"  {r.get('room', ''):<{name_w}}  "
-                f"{r.get('deferred_invites', 0):>5}  "
-                f"{episode:<7}  "
-                f"{r.get('reserves', 0):>5}  "
-                f"{r.get('receive_errors', 0):>8}  "
-                f"{', '.join(members) if members else '-'}"
-            )
+        name_w = max(len("ROOM"), *(len(n) for n in present))
+        typer.secho(f"  {'ROOM':<{name_w}}  MEMBERS", fg=typer.colors.BRIGHT_BLACK)
+        for name, members in present.items():
+            listed = ", ".join(f"{m['handle']} ({m['kind']})" for m in members)
+            typer.echo(f"  {name:<{name_w}}  {listed or '-'}")
         typer.echo()
 
         for name in sorted(a2a):

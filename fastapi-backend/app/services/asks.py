@@ -86,10 +86,10 @@ def asks(content: dict[str, Any], handle: str, room: str) -> Reason | None:
     or ``None``.
 
     ``content`` is a transcript record's content: its text under ``content``
-    and its envelope under ``l9``. The room is whose subagents a mention of
-    ``parent:name`` is checked against.
+    and its envelope under ``envelope``. The room is whose subagents a mention
+    of ``parent:name`` is checked against.
     """
-    env = content.get("l9") or {}
+    env = message_format.envelope_of(content)
     header = env.get("header") or {}
     if header.get("kind") != "exchange":
         return None
@@ -120,7 +120,7 @@ def asked(content: dict[str, Any], room: str) -> dict[str, Reason]:
     """Everyone ``content`` in ``room`` asks, each with why, in the order
     they're named: whoever it mentions, then its recipients, each held to
     :func:`asks`."""
-    header = (content.get("l9") or {}).get("header") or {}
+    header = message_format.envelope_of(content).get("header") or {}
     actors = (header.get("participants") or {}).get("actors") or []
     text = content.get("content")
     mentioned = parse_mentions(text) if isinstance(text, str) else []

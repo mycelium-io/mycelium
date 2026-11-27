@@ -67,7 +67,7 @@ async def test_a_reply_does_not_ask_whoever_its_sender_last_heard_from(room):
 
     reply = room.log.records[-1]
     assert reply.sender == AGENT
-    assert PEER in [a["id"] for a in reply.content["l9"]["header"]["participants"]["actors"]]
+    assert PEER in [a["id"] for a in reply.content["envelope"]["header"]["participants"]["actors"]]
     got = await wake_paths.decided(room, PEER)
     assert got == wake_paths.Decided(doorbell=None, awaited=False, digest=False)
 
@@ -119,10 +119,10 @@ async def test_a_restart_between_the_mention_and_the_handover_loses_nothing(room
 
 
 @pytest.mark.asyncio
-async def test_a_mention_while_the_channel_is_down_says_why_nobody_came(room, monkeypatch):
-    # The SLIM node is restarting: the room's channel isn't live. The message is
-    # kept and shown, but it isn't in the transcript, so no doorbell rings; the
-    # wake log says so rather than leaving the agent's absence unexplained.
+async def test_a_mention_in_a_room_the_hub_just_opened_rings_and_is_handed_over(room, monkeypatch):
+    # The hub restarted and holds no channel for the room yet: the message
+    # opens it from disk, is recorded, rings the doorbell and is what ``await``
+    # hands over. Nothing has to be up for a room to work but the hub.
     monkeypatch.delitem(room_channels.manager._channels, ROOM)
     response = await room.client.post(
         f"/api/rooms/{ROOM}/messages",
@@ -134,8 +134,7 @@ async def test_a_mention_while_the_channel_is_down_says_why_nobody_came(room, mo
     )
     assert response.status_code in (200, 201), response.text
 
-    assert room_channels.manager._herdr_wakes.get(ROOM, []) == []
-    (entry,) = wake_log.read(ROOM)  # only who it asked: not the silent mention
-    assert (entry["agent"], entry["reason"], entry["from"]) == (AGENT, "mention", PERSON)
-    assert entry["outcome"] == "unreached"
-    assert "channel isn't live" in entry["why"]
+    rung = room_channels.manager._herdr_wakes.get(ROOM, [])
+    assert [(w["handle"], w["reason"]) for w in rung] == [(AGENT, "mention")]
+    turn = await wake_paths.await_turn(AGENT)
+    assert (turn["sender"], turn["prompt"]) == (PERSON, "@coder can you look? cc @~planner")

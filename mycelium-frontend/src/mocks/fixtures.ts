@@ -6,8 +6,8 @@
  *
  * These fixtures mirror the shapes the real backend serves (see
  * `src/lib/api.ts`), so with `MYCELIUM_UI_MOCK=1` the *real* UI renders every
- * surface — populated, in-progress, and empty — with no SLIM node, no LLM, and
- * no backend server. This is the frontend analogue of the backend/CLI fake
+ * surface — populated, in-progress, and empty — with no LLM and no backend
+ * server. This is the frontend analogue of the backend/CLI fake
  * stacks: one place to reach any state, for design + visual work.
  *
  * Every room is a small online coffee shop at work, so a screenshot reads as
@@ -26,7 +26,6 @@ import type {
   A2aBridgeState,
   EpisodeDetail,
   EpisodeSummary,
-  FlowStep,
   MyceliumMessage,
   MemoryGraph,
   MemoryGraphEdge,
@@ -123,8 +122,9 @@ export interface RoomFixture {
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
   /** Live presence set, served at GET /sessions/members. A resident agent
-   *  (one whose handle appears here) projects a board row; without a SLIM node
-   *  there is otherwise no presence, so the board's resident rows come from here. */
+   *  (one whose handle appears here) projects a board row; with no agents
+   *  running there is otherwise no presence, so the board's resident rows come
+   *  from here. */
   presence?: PresenceMember[];
   /** Floors held in the room's threads right now, served beside presence. */
   floors?: RoomFloor[];
@@ -204,7 +204,7 @@ const a2aManifest = (description: string, card: string, skills: string[]): strin
 // test orders on real phones.
 
 const checkoutEpisode = (shortId: string): string =>
-  `urn:ioc:mycelium:episode:checkout:${shortId}`;
+  `urn:mycelium:episode:checkout:${shortId}`;
 
 // The launch-day call the conductor brokered. It is an *orphan* episode — no board
 // row is bound to it — because a task's thread is the task's own, not the
@@ -265,7 +265,7 @@ const checkoutMessageChain: MyceliumMessage[] = [
       subkind: "tick",
       participants: { actors: [{ id: "conductor", role: "mediator" }, { id: m.who, role: "agent" }] },
       message: { id: `m${i + 1}`, parents: i ? [`m${i}`] : [], episode: CHECKOUT_EPISODE },
-      context: { topic: "urn:concept:mycelium:checkout" },
+      context: { topic: "urn:mycelium:topic:checkout" },
     },
     payload: { type: m.action, data: { round: m.round, offer: m.offer } },
   })),
@@ -282,11 +282,11 @@ const checkoutMessageChain: MyceliumMessage[] = [
         ],
       },
       message: { id: `m${checkoutMoves.length + 1}`, parents: [`m${checkoutMoves.length}`], episode: CHECKOUT_EPISODE },
-      context: { topic: "urn:concept:mycelium:checkout" },
+      context: { topic: "urn:mycelium:topic:checkout" },
     },
     payload: {
       type: "consensus",
-      data: { assignments: CHECKOUT_CONSENSUS, metrics: { mpc: 0.86, gar: 0.79, scr: 0.0 } },
+      data: { assignments: CHECKOUT_CONSENSUS },
     },
   },
 ];
@@ -320,7 +320,7 @@ const checkoutNegotiation: MockMessage[] = (() => {
 // The message chain as persister bus frames: bare `{header, payload}` under content,
 // with the flat sender_handle/message_type/created_at the channel and Stream read.
 const checkoutWireFrames: Record<string, unknown>[] = checkoutMessageChain.map((env, i) => ({
-  message_type: `l9_${env.header.kind}`,
+  message_type: `envelope_${env.header.kind}`,
   sender_handle: env.header.participants?.actors?.[0]?.id ?? "conductor",
   created_at: iso(44 - i),
   content: env,
@@ -346,12 +346,12 @@ function checkoutPing(
   return {
     id: `ping-${message}`,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "checkout",
     episode: CHECKOUT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: {
           kind: "exchange",
           message: { id: `ping-${message}`, parents: [], episode: CHECKOUT_LIVE },
@@ -387,12 +387,12 @@ function checkoutNotice(
   return {
     id,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "checkout",
     episode: CHECKOUT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: {
           kind: "exchange",
           message: { id, parents: [], episode: CHECKOUT_LIVE },
@@ -410,11 +410,10 @@ function checkoutNotice(
 const checkoutEpisodeSummary: EpisodeSummary = {
   short_id: "e4f1a2",
   episode: CHECKOUT_EPISODE,
-  topic: "urn:concept:mycelium:checkout",
+  topic: "urn:mycelium:topic:checkout",
   outcome: "converged",
   subkind: "converged",
   participants: ["operator", "builder", "conductor"],
-  metrics: { mpc: 0.86, gar: 0.79, scr: 0.91, provenance_weight: 0.74, participants: 3 },
   assignments: { launch: "friday am" },
   tasks: ["work/turn-on-apple-pay", "work/remove-old-card-form"],
   message_count: 3,
@@ -430,11 +429,10 @@ const checkoutEpisodeSummary: EpisodeSummary = {
 const checkoutGatedEpisode: EpisodeSummary = {
   short_id: "f10a2c",
   episode: LAUNCH_THREAD,
-  topic: "urn:concept:mycelium:checkout",
+  topic: "urn:mycelium:topic:checkout",
   outcome: "open",
   subkind: null,
   participants: ["builder", "operator", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 5,
@@ -468,11 +466,10 @@ const checkoutGatedEpisode: EpisodeSummary = {
 const checkoutFanOutEpisode: EpisodeSummary = {
   short_id: "a2b3c4",
   episode: OLD_FORM_THREAD,
-  topic: "urn:concept:mycelium:checkout",
+  topic: "urn:mycelium:topic:checkout",
   outcome: "open",
   subkind: null,
   participants: ["operator", "builder", "reviewer", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 4,
@@ -504,11 +501,10 @@ const checkoutFanOutEpisode: EpisodeSummary = {
 const checkoutRoundRobinEpisode: EpisodeSummary = {
   short_id: "c7d8e9",
   episode: LAUNCH_THREAD,
-  topic: "urn:concept:mycelium:checkout",
+  topic: "urn:mycelium:topic:checkout",
   outcome: "resolved",
   subkind: null,
   participants: ["builder", "reviewer", "operator", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 8,
@@ -540,11 +536,10 @@ const checkoutRoundRobinEpisode: EpisodeSummary = {
 const checkoutReleaseEpisode: EpisodeSummary = {
   short_id: "d4e5f6",
   episode: APPLE_PAY_THREAD,
-  topic: "urn:concept:mycelium:checkout",
+  topic: "urn:mycelium:topic:checkout",
   outcome: "open",
   subkind: null,
   participants: ["builder", "reviewer", "operator", "conductor"],
-  metrics: null,
   assignments: null,
   tasks: [],
   message_count: 14,
@@ -587,393 +582,6 @@ const checkoutReleaseEpisode: EpisodeSummary = {
     { step: "revise", turn: 10, asked: ["builder"], stances: { builder: null }, stance: null, next: "security", at: iso(3) },
   ],
 };
-
-// "Help them agree" (concord) run on the double-charge decision: reviewer
-// wants refunds automatic, builder wants support to check first, and Morgan
-// is least happy with the first pick. Morgan's fix answers everyone's
-// objection and meets the bar for all three, and the run ends agreed.
-// Scorecards and the close carry structured lines, so the thread draws each
-// member's view in words, with the numbers behind a toggle.
-const REFUND_THREAD = checkoutEpisode("a1c3e5");
-const REFUND_CAST = ["builder", "reviewer", "operator"];
-const refundOptions = [
-  {
-    label: "A",
-    text: "Refund the second charge automatically, right away.",
-    authors: ["reviewer"],
-    why: { reviewer: "The customer did nothing wrong and shouldn't have to wait." },
-  },
-  {
-    label: "B",
-    text: "Send every double charge to support to check before refunding.",
-    authors: ["builder"],
-    why: { builder: "Some double charges are two real orders, and refunding those loses money." },
-  },
-  {
-    label: "C",
-    text: "Refund automatically when the second charge is under $50; support checks anything larger within a day.",
-    authors: ["operator"],
-    why: { operator: "Small ones are nearly always the button bug, and big ones are worth a look." },
-  },
-];
-const refundTable = {
-  A: { builder: 60, reviewer: 90, operator: 40 },
-  B: { builder: 80, reviewer: 35, operator: 75 },
-  C: { builder: 78, reviewer: 85, operator: 88 },
-};
-const refundReasons = {
-  A: {
-    builder: "Risks refunding real repeat orders",
-    reviewer: "Fast, and the customer isn't blamed",
-    operator: "I can't refund big orders blind",
-  },
-  B: {
-    builder: "Safe, though slow for the customer",
-    reviewer: "Makes a customer wait on something that's our fault",
-    operator: "Slow, but nothing goes out unchecked",
-  },
-  C: {
-    builder: "Most real repeat orders are over $50, so this covers my worry",
-    reviewer: "Fast for nearly everyone, and a day is fine for the rest",
-    operator: "This is what I'd sign off on",
-  },
-};
-/** Every member rated the two reference outcomes 0 and 100, so a rating is
- *  placed where it reads. */
-const refundPlaced = Object.fromEntries(
-  Object.entries(refundTable).map(([label, row]) => [
-    label,
-    Object.fromEntries(Object.entries(row).map(([h, r]) => [h, r / 100])),
-  ]),
-);
-const refundFirstPick = {
-  outcome: "infeasible" as const,
-  pick: "A",
-  text: refundOptions[0].text,
-  threshold: 60,
-  options: refundOptions.slice(0, 2),
-  table: { A: refundTable.A, B: refundTable.B },
-  placed: { A: refundPlaced.A, B: refundPlaced.B },
-  reasons: { A: refundReasons.A, B: refundReasons.B },
-  cast: REFUND_CAST,
-  ratings: refundTable.A,
-  lowest: 0.4,
-  missing: [],
-  least_happy: "operator",
-  short: [{ member: "operator", placed: 0.4, why: refundReasons.A.operator }],
-};
-const refundAgreed = {
-  outcome: "feasible" as const,
-  pick: "C",
-  text: refundOptions[2].text,
-  threshold: 60,
-  options: refundOptions,
-  table: refundTable,
-  placed: refundPlaced,
-  reasons: refundReasons,
-  cast: REFUND_CAST,
-  ratings: refundTable.C,
-  lowest: 0.78,
-  missing: [],
-  least_happy: null,
-  short: [],
-};
-const concordSteps: FlowStep[] = [
-  { id: "anchor", to: "all", collect: "anchors", next: "propose" },
-  { id: "propose", to: "all", collect: "options", next: "score" },
-  { id: "score", to: "all", collect: "scores", next: "pick" },
-  {
-    id: "pick",
-    kind: "select",
-    threshold: 0.6,
-    max_repairs: 5,
-    next: { feasible: "agreed", infeasible: "repair", stuck: "best", nothing: "no_deal" },
-  },
-  { id: "repair", to: "bottleneck", collect: "options", next: "rescore" },
-  { id: "rescore", to: "all", collect: "scores", next: "pick" },
-  { id: "agreed", end: "converged" },
-  { id: "best", end: "resolved" },
-  { id: "no_deal", end: "rejected" },
-];
-const checkoutConcordEpisode: EpisodeSummary = {
-  short_id: "b9c1d3",
-  episode: REFUND_THREAD,
-  topic: "urn:concept:mycelium:checkout",
-  outcome: "converged",
-  subkind: "converged",
-  participants: [...REFUND_CAST, "conductor"],
-  // The summary carries the episode's quality numbers only; a run's
-  // satisfaction is in its record and on its close.
-  metrics: null,
-  assignments: { decision: refundOptions[2].text },
-  tasks: [],
-  message_count: 16,
-  updated_at: iso(2.6),
-  updated_by: "conductor",
-  within: REFUND_THREAD,
-  current_step: null,
-  flow: {
-    name: "concord",
-    description:
-      "Help them agree. Everyone rates two shared reference outcomes, proposes an option and says why, and rates every option with a reason; the member least happy with the best one proposes something new that answers the objections, until it meets everyone's bar or the best found stands.",
-    roles: [],
-    max_steps: 20,
-    bound: {},
-    cast: REFUND_CAST,
-    ask: "when someone is charged twice, refund it automatically or send it to support first?",
-    steps: concordSteps,
-  },
-  trace: [
-    { step: "anchor", turn: 1, asked: REFUND_CAST, stances: {}, stance: null, next: "propose", at: iso(5.4) },
-    { step: "propose", turn: 2, asked: REFUND_CAST, stances: {}, stance: null, next: "score", at: iso(5.2) },
-    { step: "score", turn: 3, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(4.6) },
-    {
-      step: "pick",
-      turn: 3,
-      select: { outcome: "infeasible", pick: "A", lowest: 0.4, missing: [], least_happy: "operator" },
-      next: "repair",
-      at: iso(4.5),
-    },
-    { step: "repair", turn: 4, asked: ["operator"], stances: {}, stance: null, next: "rescore", at: iso(3.8) },
-    { step: "rescore", turn: 5, asked: REFUND_CAST, stances: {}, stance: null, next: "pick", at: iso(2.8) },
-    {
-      step: "pick",
-      turn: 5,
-      select: { outcome: "feasible", pick: "C", lowest: 0.78, missing: [], least_happy: null },
-      next: "agreed",
-      at: iso(2.7),
-    },
-  ],
-};
-
-/** The run's posts in the decision's thread: the conductor's lines and what
- *  each member answered, oldest first. */
-function refundThread(): MockMessage[] {
-  let n = 0;
-  const at = (mins: number) => iso(mins);
-  const post = (sender: string, content: string, mins: number, conductor?: Record<string, unknown>): MockMessage => ({
-    id: `cc${++n}`,
-    sender_handle: sender,
-    message_type: "broadcast",
-    content,
-    created_at: at(mins),
-    episode: REFUND_THREAD,
-    ...(conductor ? { metadata: { conductor } } : {}),
-  });
-  const turn = (step: string, to: string, turnNo: number, mins: number) =>
-    post("conductor", `concord · ${step} · turn ${turnNo} of 20 · ${to}`, mins, {
-      event: "turn",
-      protocol: "concord",
-      step,
-      to,
-      turn: turnNo,
-      cap: 20,
-    });
-  const rated = (label: "A" | "B" | "C") => (h: keyof typeof refundReasons.A) =>
-    `${label}: ${refundTable[label][h]} - ${refundReasons[label][h]}`;
-  return [
-    post("conductor", "Running concord with builder, reviewer, operator as members.", 5.6, {
-      event: "open",
-      protocol: "concord",
-      roles: {},
-      members: REFUND_CAST,
-      steps: concordSteps,
-    }),
-    ...REFUND_CAST.map((h) => turn("anchor", h, 1, 5.55)),
-    post("builder", "bad: 0 - customers charged twice and nobody notices\nideal: 100 - every real double charge refunded the same day, nothing else", 5.5),
-    post("reviewer", "bad: 0 - customers wait days for our mistake\nideal: 100 - refunded before they notice", 5.5),
-    post("operator", "bad: 0 - we refund real orders and lose the money\nideal: 100 - only true duplicates go back, fast", 5.45),
-    ...REFUND_CAST.map((h) => turn("propose", h, 2, 5.4)),
-    post("builder", `${refundOptions[1].text}\nwhy: ${refundOptions[1].why.builder}`, 5.3),
-    post("reviewer", `${refundOptions[0].text}\nwhy: ${refundOptions[0].why.reviewer}`, 5.3),
-    post("operator", "Refund the second charge automatically, right away.", 5.2),
-    ...REFUND_CAST.map((h) => turn("score", h, 3, 5.0)),
-    post("builder", [rated("A")("builder"), rated("B")("builder")].join("\n"), 4.8),
-    post("reviewer", [rated("A")("reviewer"), rated("B")("reviewer")].join("\n"), 4.7),
-    post("operator", [rated("A")("operator"), rated("B")("operator")].join("\n"), 4.6),
-    post("conductor", "pick: A: operator is short of the bar, because i can't refund big orders blind", 4.5, {
-      event: "select",
-      step: "pick",
-      next: "repair",
-      select: refundFirstPick,
-    }),
-    turn("repair", "operator", 4, 4.4),
-    post("operator", `${refundOptions[2].text}\nwhy: ${refundOptions[2].why.operator}`, 3.8),
-    ...REFUND_CAST.map((h) => turn("rescore", h, 5, 3.6)),
-    post("builder", rated("C")("builder"), 3.2),
-    post("reviewer", rated("C")("reviewer"), 3.0),
-    post("operator", rated("C")("operator"), 2.9),
-    post("conductor", "pick: C: everyone meets the bar", 2.7, { event: "select", step: "pick", next: "agreed", select: refundAgreed }),
-    post("conductor", "✓ Everyone meets the bar: going with C.", 2.6, {
-      event: "close",
-      protocol: "concord",
-      outcome: "converged",
-      steps: 5,
-      reason: "reached `agreed`",
-      pick: "C",
-      text: refundOptions[2].text,
-    }),
-  ];
-}
-
-// "Get on the same page" (accord) run on the payment-alerts task before the
-// work starts: everyone says what the alert is for, what's out of scope and
-// what done means, a second round adds nothing new, "failing" turns out to
-// mean two things and is restated, and the points are merged into a shared
-// summary saved as a memory. The counts, the summary and the close carry
-// structured lines, so the thread draws them as lines rather than prose.
-const ALERTS_THREAD = checkoutEpisode("e7a9c1");
-const ALERTS_CAST = ["builder", "reviewer", "operator"];
-const ALERTS_SUMMARY = "context/summary/payment-alerts";
-const accordSteps: FlowStep[] = [
-  { id: "frame", to: "all", collect: "pieces", require: "pieces", next: "added" },
-  { id: "added", kind: "tally", of: "points", max_rounds: 3, next: { grew: "more", settled: "ground", empty: "nothing" } },
-  { id: "more", to: "all", collect: "pieces", next: "added" },
-  { id: "ground", to: "all", collect: "pieces", next: "words" },
-  { id: "words", kind: "tally", of: "terms", max_rounds: 2, next: { contested: "restate", clear: "lock" } },
-  { id: "restate", to: "contested", collect: "pieces", next: "words" },
-  { id: "lock", kind: "lock", next: { locked: "locked", empty: "nothing" } },
-  { id: "locked", end: "resolved" },
-  { id: "nothing", end: "rejected" },
-];
-const alertsFirstCount = {
-  of: "points" as const,
-  round: 1,
-  max_rounds: 3,
-  outcome: "grew" as const,
-  added: 5,
-  points: 5,
-  capped: false,
-};
-const alertsSecondCount = { ...alertsFirstCount, round: 2, outcome: "settled" as const, added: 0 };
-const alertsWordsSplit = {
-  of: "terms" as const,
-  round: 1,
-  max_rounds: 2,
-  outcome: "contested" as const,
-  words: 2,
-  contested: ["failing"],
-  asked: ["builder", "operator"],
-};
-const alertsWordsClear = { ...alertsWordsSplit, round: 2, outcome: "clear" as const, contested: [], asked: [] };
-const alertsLock = {
-  outcome: "locked" as const,
-  memory: ALERTS_SUMMARY,
-  saved: true,
-  points: 5,
-  shared: 3,
-  contested: 0,
-  checks: 1,
-  flagged: 2,
-  quiet: [],
-};
-const checkoutAccordEpisode: EpisodeSummary = {
-  short_id: "c3e5a7",
-  episode: ALERTS_THREAD,
-  topic: "urn:concept:mycelium:checkout",
-  outcome: "resolved",
-  subkind: "resolved",
-  participants: [...ALERTS_CAST, "conductor"],
-  metrics: null,
-  assignments: null,
-  tasks: [],
-  message_count: 22,
-  updated_at: iso(3.4),
-  updated_by: "conductor",
-  within: ALERTS_THREAD,
-  current_step: null,
-  flow: {
-    name: "accord",
-    description:
-      "Get on the same page. Everyone says what the task is, what's out of scope, what done means and what the key words mean; it's merged into one shared summary, with anything that doesn't line up flagged, and saved.",
-    roles: [],
-    max_steps: 8,
-    bound: {},
-    cast: ALERTS_CAST,
-    ask: "agree what the payment alert is for before building it",
-    steps: accordSteps,
-  },
-  trace: [
-    { step: "frame", turn: 1, asked: ALERTS_CAST, stances: {}, stance: null, next: "added", at: iso(9.0) },
-    { step: "added", turn: 1, tally: alertsFirstCount, next: "more", at: iso(8.9) },
-    { step: "more", turn: 2, asked: ALERTS_CAST, stances: {}, stance: null, next: "added", at: iso(7.6) },
-    { step: "added", turn: 2, tally: alertsSecondCount, next: "ground", at: iso(7.5) },
-    { step: "ground", turn: 3, asked: ALERTS_CAST, stances: {}, stance: null, next: "words", at: iso(6.2) },
-    { step: "words", turn: 3, tally: alertsWordsSplit, next: "restate", at: iso(6.1) },
-    { step: "restate", turn: 4, asked: ["builder", "operator"], stances: {}, stance: null, next: "words", at: iso(4.4) },
-    { step: "words", turn: 4, tally: alertsWordsClear, next: "lock", at: iso(4.3) },
-    { step: "lock", turn: 4, lock: alertsLock, next: "locked", at: iso(3.5) },
-  ],
-};
-
-/** The run's posts in the payment-alerts thread, oldest first. */
-function alertsThread(): MockMessage[] {
-  let n = 0;
-  const post = (sender: string, content: string, mins: number, conductor?: Record<string, unknown>): MockMessage => ({
-    id: `ac${++n}`,
-    sender_handle: sender,
-    message_type: "broadcast",
-    content,
-    created_at: iso(mins),
-    episode: ALERTS_THREAD,
-    ...(conductor ? { metadata: { conductor } } : {}),
-  });
-  const turn = (step: string, to: string, turnNo: number, mins: number) =>
-    post("conductor", `accord · ${step} · turn ${turnNo} of 8 · ${to}`, mins, {
-      event: "turn",
-      protocol: "accord",
-      step,
-      to,
-      turn: turnNo,
-      cap: 8,
-    });
-  return [
-    post("conductor", "Running accord with builder, reviewer, operator as members.", 9.6, {
-      event: "open",
-      protocol: "accord",
-      roles: {},
-      members: ALERTS_CAST,
-      steps: accordSteps,
-    }),
-    ...ALERTS_CAST.map((h) => turn("frame", h, 1, 9.5)),
-    post("builder", "It's for hearing about broken payments before customers do. Out of scope: alerts for slow pages. Done means the alert fires in a test where I make payments fail on purpose.", 9.3),
-    post("reviewer", "It's for hearing about broken payments before customers do. Done means one message to the team channel, not one per failed payment.", 9.2),
-    post("operator", "It's for catching a broken checkout during the sale. More than 3 failing payments in 10 minutes should alert us.", 9.1),
-    post("conductor", "Round 1: 5 new points, 5 in all", 8.9, { event: "tally", step: "added", next: "more", tally: alertsFirstCount }),
-    ...ALERTS_CAST.map((h) => turn("more", h, 2, 8.8)),
-    post("builder", "Nothing to add.", 8.0),
-    post("reviewer", "Nothing new from me.", 7.9),
-    post("operator", "That covers it.", 7.8),
-    post("conductor", "Nobody added anything new: 5 points", 7.5, { event: "tally", step: "added", next: "ground", tally: alertsSecondCount }),
-    ...ALERTS_CAST.map((h) => turn("ground", h, 3, 7.4)),
-    post("builder", "\"Failing\" means Stripe returned an error. \"The team channel\" is #checkout.", 6.8),
-    post("reviewer", "\"The team channel\" is #checkout.", 6.6),
-    post("operator", "\"Failing\" means the customer didn't get through checkout, whatever the reason.", 6.4),
-    post("conductor", "Words used in different senses: failing. Asking builder, operator again", 6.1, {
-      event: "tally",
-      step: "words",
-      next: "restate",
-      tally: alertsWordsSplit,
-    }),
-    turn("restate", "builder", 4, 6.0),
-    turn("restate", "operator", 4, 6.0),
-    post("builder", "Fair: a card the bank declines is the customer's problem, not ours. \"Failing\" means Stripe returned an error.", 5.0),
-    post("operator", "Agreed, a declined card isn't a broken checkout. \"Failing\" means Stripe returned an error.", 4.6),
-    post("conductor", "No word used in different senses", 4.3, { event: "tally", step: "words", next: "lock", tally: alertsWordsClear }),
-    post("conductor", "Shared summary: 5 points, 3 stated by more than one person, 1 check, 2 open items", 3.5, {
-      event: "lock",
-      step: "lock",
-      next: "locked",
-      lock: alertsLock,
-    }),
-    post(
-      "conductor",
-      `✓ accord: resolved after 4 step(s). 5 point(s), 3 stated by more than one person, 1 check(s). The shared summary is saved as ${ALERTS_SUMMARY}.`,
-      3.4,
-      { event: "close", protocol: "accord", outcome: "resolved", steps: 4, reason: "reached `locked`", memory: ALERTS_SUMMARY },
-    ),
-  ];
-}
 
 // Coordination-state memories the board projects into rows. Every one is what
 // the docs promise a task is: a markdown file with frontmatter — prose in the
@@ -1282,43 +890,11 @@ const checkout: RoomFixture = {
       updated_at: iso(38),
       episode: checkoutEpisode("b9d1f3"),
     },
-    // The shared summary the payment-alerts run saved, as the hub writes it.
-    {
-      key: ALERTS_SUMMARY,
-      value:
-        "# Shared summary: Alert us when payments start failing\n\n" +
-        "The ask: agree what the payment alert is for before building it\n\n" +
-        "Worked out by builder, reviewer, operator.\n\n" +
-        "## What it's for\n\n" +
-        "- **p1** Hear about broken payments before customers do (stated by 3 of 3: builder, reviewer, operator)\n\n" +
-        "## Constraints\n\n" +
-        "- **p2** Alert when more than 3 payments fail in 10 minutes (stated by 1 of 3: operator)\n\n" +
-        "## Out of scope\n\n" +
-        "- **p3** Alerts for slow pages (stated by 1 of 3: builder)\n\n" +
-        "## What gets delivered\n\n" +
-        "- **p4** One message to #checkout, not one per failed payment (stated by 2 of 3: reviewer, builder)\n" +
-        "- **p5** The alert fires in a test that makes payments fail on purpose (stated by 2 of 3: builder, operator)\n\n" +
-        "## Words\n\n" +
-        "- **failing**: Stripe returned an error; a card the bank declines is not a failure (builder, operator)\n" +
-        "- **the team channel**: #checkout (builder, reviewer)\n\n" +
-        "## How we'll check\n\n" +
-        "- Make payments fail on purpose on staging and see one message in #checkout (builder; covers p4, p5)\n\n" +
-        "## Open items\n\n" +
-        "- Only one person said this: p2 (operator)\n" +
-        "- Only one person said this: p3 (builder)\n",
-      content_text: "Shared summary for the payment alert: what it's for, what's out of scope, what done means, and what failing means.",
-      meta: { "part-of": ["work/payment-alerts"] },
-      created_by: "conductor",
-      updated_by: "conductor",
-      version: 1,
-      updated_at: iso(3.5),
-      episode: checkoutEpisode("d1f3b5"),
-    },
     ...checkoutBoardRows,
   ],
   // The channel is the room's whole history, so every row on the board is a thing
   // it once filed: the chat lines below set up each filing, and the task-created
-  // notices in the `l9` feed are the filings themselves. Read top to bottom it is
+  // notices in the envelope feed are the filings themselves. Read top to bottom it is
   // one arc — set up the room, move payments to Stripe, build Apple Pay, broker
   // the launch day, file what it breaks into, then chase the double charges.
   messages: [
@@ -1345,16 +921,16 @@ const checkout: RoomFixture = {
     { id: "q2", sender_handle: "operator", message_type: "broadcast", content: "no. the simulator doesn't use real cards. if it breaks on a real phone during the sale we lose orders. test first.", created_at: iso(51) },
     { id: "q3", sender_handle: "reviewer", message_type: "broadcast", content: "fair. i'll test on staging and keep it switched off until then.", created_at: iso(50) },
     // ── the launch-day call ──
-    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@conductor concord @~operator @~builder: we need a day to switch apple pay on.", created_at: iso(48) },
+    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@conductor round-robin @~operator @~builder: we need a day to switch apple pay on.", created_at: iso(48) },
     { id: "a2", sender_handle: "operator", message_type: "coordination_join", content: JSON.stringify({ handle: "operator", intent: "on before the sale email", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     { id: "a3", sender_handle: "builder", message_type: "coordination_join", content: JSON.stringify({ handle: "builder", intent: "a full day of test orders first", episode: CHECKOUT_EPISODE }), created_at: iso(47), episode: CHECKOUT_EPISODE },
     // The conductor brokers a couple of short rounds. Each reply is a chat
     // broadcast; the conductor reads it and emits a coordination_tick
     // from it. The chat is the source (see checkoutMoves).
     ...checkoutNegotiation,
-    { id: "a6", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: CHECKOUT_EPISODE },
+    { id: "a6", sender_handle: "conductor", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { launch: "friday am" }, episode: CHECKOUT_EPISODE }), created_at: iso(41), episode: CHECKOUT_EPISODE },
     // The room files the work the call breaks into. The two task-created notices
-    // land right after this line (see the `l9` feed below), so the chat reads
+    // land right after this line (see the envelope feed below), so the chat reads
     // "here is the work" → the tasks, in sequence.
     { id: "file1", sender_handle: "conductor", message_type: "broadcast", content: "settled: test orders thursday, apple pay on friday morning. filing the work:", created_at: iso(40) },
     { id: "a7", sender_handle: "builder", message_type: "broadcast", content: "stripe has been live a full day. 312 orders, no failed payments.", created_at: iso(30) },
@@ -1364,9 +940,9 @@ const checkout: RoomFixture = {
     // Two agents staging the "turn on Apple Pay" row talk inside its thread. The
     // channel does not carry this, so the room hears the pings below instead,
     // and the prose reads in the thread pane.
-    // After the run agrees, the decision is put to Morgan in its own task's
-    // thread: what the board's "Waiting on you" lists until Morgan answers there.
-    { id: "r1", sender_handle: "reviewer", message_type: "broadcast", content: "@operator we agreed to refund double charges under $50 automatically and send the rest to support. Can I close this?", created_at: iso(2), episode: REFUND_THREAD },
+    // The decision is put to Morgan in its own task's thread: what the board's
+    // "Waiting on you" lists until Morgan answers there.
+    { id: "r1", sender_handle: "reviewer", message_type: "broadcast", content: "@operator we agreed to refund double charges under $50 automatically and send the rest to support. Can I close this?", created_at: iso(2), episode: checkoutEpisode("a1c3e5") },
     { id: "t1", sender_handle: "builder", message_type: "broadcast", content: "apple pay is behind the `checkout.apple_pay` switch, off for now.", created_at: iso(22), episode: LAUNCH_THREAD },
     { id: "t2", sender_handle: "reviewer", message_type: "broadcast", content: "don't switch it on until i've placed test orders on a real phone. i'll post the results here.", created_at: iso(21), episode: LAUNCH_THREAD },
     { id: "t3", sender_handle: "builder", message_type: "broadcast", content: "sounds good, waiting on you.", created_at: iso(20), episode: LAUNCH_THREAD },
@@ -1534,10 +1110,6 @@ const checkout: RoomFixture = {
     // The old card form's own thread: a leftover chased down.
     { id: "r1", sender_handle: "builder", message_type: "broadcast", content: "12 orders last week still used the old card form after stripe went live. all from one cached page.", created_at: iso(16), episode: OLD_FORM_THREAD },
     { id: "r2", sender_handle: "builder", message_type: "broadcast", content: "cleared the cache. every order today went through stripe.", created_at: iso(15), episode: OLD_FORM_THREAD },
-    // The double-charge decision's thread: a "help them agree" run, start to finish.
-    ...refundThread(),
-    // The payment-alerts thread: a "get on the same page" run before the work.
-    ...alertsThread(),
     // Two deliberately long, multi-paragraph messages — the wall-of-text case the
     // channel has to handle without swallowing everything around it.
     {
@@ -1567,15 +1139,11 @@ const checkout: RoomFixture = {
   episodes: [
     checkoutReleaseEpisode,
     checkoutGatedEpisode,
-    checkoutConcordEpisode,
-    checkoutAccordEpisode,
     checkoutFanOutEpisode,
     checkoutEpisodeSummary,
     checkoutRoundRobinEpisode,
   ],
   episodeDetails: {
-    b9c1d3: { ...checkoutConcordEpisode, messages: [] },
-    c3e5a7: { ...checkoutAccordEpisode, messages: [] },
     e4f1a2: { ...checkoutEpisodeSummary, messages: checkoutMessageChain },
     f10a2c: { ...checkoutGatedEpisode, messages: [] },
     a2b3c4: { ...checkoutFanOutEpisode, messages: [] },
@@ -1595,12 +1163,12 @@ const checkout: RoomFixture = {
     { id: "5c1e0a7b", handle: "reviewer", kind: "task", target: "work/add-apple-pay", parts: true, task: null, created_at: iso(140), describe: "work/add-apple-pay and its parts", until: null },
     { id: "9d42f3e1", handle: "reviewer", kind: "notice", target: "upstream:merged", parts: false, task: null, created_at: iso(320), describe: "upstream:merged notices", until: null },
   ],
-  // builder holds an open SLIM socket; reviewer is present on a server-held
+  // builder is alive in a herdr pane; reviewer is present on a server-held
   // await lease. Both are agents in the roster, so the board projects a resident
-  // row for each — the presence signal that a live SLIM node would otherwise supply.
+  // row for each.
   presence: [
     // Builder is mid-turn, so a plain `@builder` waits for its turn to end.
-    { handle: "builder", kind: "slim", last_seen: null, status: "working" },
+    { handle: "builder", kind: "herdr", last_seen: null, status: "working" },
     { handle: "reviewer", kind: "lease", last_seen: iso(1) },
   ],
   // Two of builder's subagents, each with its own handle: one still at it,
@@ -1854,7 +1422,7 @@ checkout.links = buildMockGraph(checkout.memories, CHECKOUT_LINK_EDGES);
 // ── subscription-pricing: an in-progress negotiation, nothing compiled yet ────
 
 const pricingEpisode = (shortId: string): string =>
-  `urn:ioc:mycelium:episode:subscription-pricing:${shortId}`;
+  `urn:mycelium:episode:subscription-pricing:${shortId}`;
 
 const PRICING_EPISODE = pricingEpisode("b2d0");
 
@@ -1888,7 +1456,7 @@ const pricing: RoomFixture = {
     },
   ],
   messages: [
-    { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@conductor concord @~finance @~growth: what should the monthly subscription cost?", created_at: iso(12) },
+    { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@conductor round-robin @~finance @~growth: what should the monthly subscription cost?", created_at: iso(12) },
     { id: "p2", sender_handle: "finance", message_type: "coordination_join", content: JSON.stringify({ handle: "finance", intent: "margin at or above 40%", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p3", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "500 subscribers by summer", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
     { id: "p4", sender_handle: "finance", message_type: "broadcast", content: "$24 a month for two bags keeps us at 40%.", created_at: iso(9) },
@@ -1902,12 +1470,11 @@ const pricing: RoomFixture = {
     {
       short_id: "b2d0",
       episode: PRICING_EPISODE,
-      topic: "urn:concept:mycelium:subscription-pricing",
+      topic: "urn:mycelium:topic:subscription-pricing",
       outcome: "open",
       subkind: null,
       participants: ["finance", "growth", "conductor"],
-      metrics: null,
-      assignments: null,
+          assignments: null,
       tasks: [],
       message_count: 4,
       updated_at: iso(9),
@@ -2015,9 +1582,9 @@ const scratch: RoomFixture = {
 // system lines and three sentences anyone said. That is the shape the activity
 // design has to survive, so it is the shape the mock serves.
 
-const STOREFRONT_LIVE = "urn:ioc:mycelium:episode:storefront:live";
+const STOREFRONT_LIVE = "urn:mycelium:episode:storefront:live";
 function storefrontEpisode(short: string): string {
-  return `urn:ioc:mycelium:episode:storefront:${short}`;
+  return `urn:mycelium:episode:storefront:${short}`;
 }
 
 const storefrontMemories: MockMemory[] = [
@@ -2420,12 +1987,12 @@ function storefrontPing(key: string, sender: string, message: string, minutesAgo
   return {
     id: `gp-${message}`,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "storefront",
     episode: STOREFRONT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { id: `gp-${message}`, parents: [], episode: STOREFRONT_LIVE } },
         payload: { type: "ping", data: { episode, sender, message } },
       },
@@ -2445,12 +2012,12 @@ function storefrontNotice(
   return {
     id,
     sender_handle: "system",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: iso(minutesAgo),
     room_name: "storefront",
     episode: STOREFRONT_LIVE,
     content: {
-      l9: {
+      envelope: {
         header: { kind: "exchange", message: { id, parents: [], episode: STOREFRONT_LIVE } },
         payload: {
           type: "notice",
@@ -2473,12 +2040,12 @@ function storefrontKnowledge(key: string, updatedBy: string, minutesAgo: number)
   return {
     id: `gk-${key}-${minutesAgo}`,
     sender_handle: "system",
-    message_type: "l9_knowledge",
+    message_type: "envelope_knowledge",
     created_at: iso(minutesAgo),
     episode: STOREFRONT_LIVE,
     content: JSON.stringify({
       content: `memory updated → ${key}`,
-      l9: { payload: { type: "extraction", data: { key, updated_by: updatedBy, version: 3 } } },
+      envelope: { payload: { type: "extraction", data: { key, updated_by: updatedBy, version: 3 } } },
     }),
   };
 }
@@ -2597,11 +2164,11 @@ const storefront: RoomFixture = {
   // A handful live or awaiting; the rest read as idle. This is what splits the
   // roster into its lifecycle groups.
   presence: [
-    { handle: "task-462", kind: "slim", last_seen: null },
-    { handle: "fix-455", kind: "slim", last_seen: null },
-    { handle: "fix-456", kind: "slim", last_seen: null },
-    { handle: "task-461", kind: "slim", last_seen: null },
-    { handle: "task-428", kind: "slim", last_seen: null },
+    { handle: "task-462", kind: "herdr", last_seen: null, status: "working" },
+    { handle: "fix-455", kind: "herdr", last_seen: null, status: "working" },
+    { handle: "fix-456", kind: "herdr", last_seen: null, status: "working" },
+    { handle: "task-461", kind: "herdr", last_seen: null, status: "working" },
+    { handle: "task-428", kind: "herdr", last_seen: null, status: "working" },
     { handle: "task-454", kind: "lease", last_seen: iso(2) },
     { handle: "task-458", kind: "lease", last_seen: iso(4) },
     { handle: "task-459", kind: "lease", last_seen: iso(1) },

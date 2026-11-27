@@ -63,8 +63,8 @@ def test_await_prints_addressed_message(monkeypatch: pytest.MonkeyPatch) -> None
         "handle": "me",
         "prompt": "@me what is your position?",
         "sender": "mediator",
-        "episode": "urn:ioc:mycelium:episode:demo:live",
-        "topic": "urn:concept:mycelium:demo",
+        "episode": "urn:mycelium:episode:demo:live",
+        "topic": "urn:mycelium:topic:demo",
         "message_id": "tick-1",
     }
 

@@ -9,8 +9,7 @@
     "there gets the same refusal: {error: <code>, message, key}. The hub's own",
     "processes (the conductor, the synthesizer, leases, uploads) write through",
     "their own routes and own what this table keeps from people. `edit`: what a",
-    "person may write (`body`, `field` for a body drawn from `source`, or",
-    "`none`). `fixed`: frontmatter a person may not change. `checks`: what's run",
+    "person may write (`body` or `none`). `fixed`: frontmatter a person may not change. `checks`: what's run",
     "on the written content. The frontend's copy (mycelium-frontend/src/lib/",
     "memory-kinds.ts) says which kinds its editor offers. Asserted by",
     "fastapi-backend/tests/test_memory_kinds.py, mycelium-cli/tests/",
@@ -62,20 +61,6 @@
       "fixed": ["assignment", "owner", "claimed_at", "ttl_minutes", "assignment_note", "assignment_note_by"]
     },
     {
-      "id": "summary",
-      "patterns": ["context/summary/**"],
-      "edit": "field",
-      "source": "contract",
-      "checks": ["summary"]
-    },
-    {
-      "id": "decision",
-      "patterns": ["context/decision/**"],
-      "edit": "field",
-      "source": "decision",
-      "checks": ["decision"]
-    },
-    {
       "id": "synthesis",
       "patterns": ["context/synthesis"],
       "edit": "body",
@@ -105,7 +90,6 @@
     "memory.fixed_field": 422,
     "memory.claim_field": 422,
     "memory.read_only": 409,
-    "memory.rendered_body": 409,
     "memory.yaml_invalid": 422,
     "memory.schema_invalid": 422,
     "memory.not_owner": 403,

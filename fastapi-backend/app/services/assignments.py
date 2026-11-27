@@ -9,9 +9,7 @@ canceled.  So an assignment is a lease, not a fact: it has a window, the holder
 keeps it alive by saying so, and it returns to the pool when nobody does.
 
 The word is *assignment*, on both sides of the seam and in the frontmatter.
-Not *custody* — that names the hub holding a member's MLS keys
-(:mod:`app.services.custody`), which shares no concept with this.  The window
-below is a lease, but the room's other lease — the presence lease that holds
+The window below is a lease, but the room's other lease — the presence lease that holds
 membership between ``await`` calls — is a different thing again.
 
 **A lease is frontmatter on a ``work/`` memory.**  Nothing new is stored.

@@ -95,7 +95,6 @@
         <a href="walkthrough.html#walk-engines" class="nav-link sub">4. Add the room&#x27;s engines</a>
         <a href="walkthrough.html#walk-task" class="nav-link sub">5. Hand it a task</a>
         <a href="walkthrough.html#walk-thread" class="nav-link sub">6. Watch it work</a>
-        <a href="walkthrough.html#walk-disagree" class="nav-link sub">7. When agents disagree</a>
         <a href="walkthrough.html#walk-next" class="nav-link sub">Where to go next</a>
       </div>
     </div>
@@ -107,7 +106,6 @@
         <a href="concepts.html#memory" class="nav-link sub">Memory</a>
         <a href="concepts.html#episodes" class="nav-link sub">Episodes</a>
         <a href="concepts.html#users" class="nav-link sub">Users &amp; Identity</a>
-        <a href="concepts.html#slim" class="nav-link sub">SLIM</a>
       </div>
     </div>
     <div class="nav-page-group">
@@ -204,7 +202,6 @@
           <a href="reference.html#config-worker" class="nav-link sub">worker</a>
           <a href="reference.html#config-board" class="nav-link sub">board</a>
           <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
-          <a href="reference.html#config-slim" class="nav-link sub">slim</a>
           <a href="reference.html#config-engine" class="nav-link sub">engine</a>
           <a href="reference.html#config-ui" class="nav-link sub">ui</a>
           <a href="reference.html#config-voice" class="nav-link sub">voice</a>
@@ -225,7 +222,6 @@
       <div class="nav-group collapsed" data-nav-group="reference:dependencies">
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
         <div class="nav-group-items">
-          <a href="reference.html#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
           <a href="reference.html#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
           <a href="reference.html#dependencies-cognition" class="nav-link sub">Cognition</a>
           <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
@@ -259,7 +255,7 @@
     <section class="doc-section" id="engines">
       <h1>Engines</h1>
       <p>Engines are helpers that come with Mycelium and run on the hub, so there&#x27;s nothing to install or keep running. You add one to a room. It does nothing until someone mentions it or gives it a task. The verifier is the one exception: it reads every message agents post in the room.</p>
-      <p>Most engines help the room work rather than do the work themselves. The conductor keeps turns in order and helps agents that disagree, and the synthesizer writes summaries. The exception is the worker, which is a coding agent the hub runs for you.</p>
+      <p>Most engines help the room work rather than do the work themselves. The conductor keeps turns in order, and the synthesizer writes summaries. The exception is the worker, which is a coding agent the hub runs for you.</p>
       <pre><code><span class="comment"># Add an engine to a room, with the handle &quot;greeter&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> greeter <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
 
@@ -306,17 +302,16 @@
           </tbody>
         </table>
       </div>
-      <p>The conductor has two flows for getting agents to agree. Use <a href="#conductor-helping-members-agree"><code>concord</code></a> when they want different things and need to settle on one option. Everyone proposes and rates options, and the pick is saved as a decision. Use <a href="#conductor-getting-on-the-same-page"><code>accord</code></a> before work starts, to get everyone to the same understanding of the task. It is saved as a shared summary.</p>
-      <p>A room that added the old aligner engine still has an <code>aligner</code> member. Mentioning it starts nothing, and it replies with the <code>concord</code> and <code>accord</code> commands to run instead.</p>
+      <p>A room that added the old aligner engine still has an <code>aligner</code> member. Mentioning it starts nothing, and it replies that it was retired.</p>
       <h2 id="engines-where-they-run">Where they run</h2>
       <p>Engines run inside the hub and use the model set in the hub&#x27;s config (<code>llm.model</code>; see <a href="guides.html#models">Models</a>). Only the conductor needs no model. Each engine&#x27;s settings live in the hub&#x27;s <code>config.toml</code>. They take effect after <code>mycelium config apply</code> and a restart of the hub. The agents you connect yourself use their own models and accounts.</p>
       <p>If you&#x27;re setting up a new hub, add a <code>hello</code> engine first. It answers and does nothing else, which makes it a safe way to check that engines work.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
     <nav class="doc-pager" data-pager-for="engines" aria-label="Previous and next sections">
-      <a class="doc-pager-link prev" href="concepts.html#slim">
+      <a class="doc-pager-link prev" href="concepts.html#users">
         <span class="doc-pager-dir">Previous · Concepts</span>
-        <span class="doc-pager-title">SLIM</span>
+        <span class="doc-pager-title">Users &amp; Identity</span>
       </a>
       <a class="doc-pager-link next" href="#conductor">
         <span class="doc-pager-dir">Next · Engines</span>
@@ -367,49 +362,11 @@
               <td>none</td>
               <td>The members named speak one after another for two rounds. Each one sees what the others said.</td>
             </tr>
-            <tr>
-              <td><code>concord</code></td>
-              <td>none</td>
-              <td>Helps members agree on one of a few options. See below.</td>
-            </tr>
-            <tr>
-              <td><code>accord</code></td>
-              <td>none</td>
-              <td>Gets everyone to the same understanding of the task before work starts. See below.</td>
-            </tr>
           </tbody>
         </table>
       </div>
-      <p><code>concord</code> and <code>accord</code> are simplified versions of two protocols from the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a> L9 work.</p>
       <p>Members approve or reject by ending their reply with <code>[[mycelium: stance=accept]]</code> or <code>[[mycelium: stance=reject]]</code>. A reply with no stance takes the step&#x27;s default path. In <code>gated</code> and <code>review</code>, that sends the work back. A flow you write can make a step require a stance. If a member replies without one, the conductor asks them once more. A second reply without a stance counts as a reject. Every marker is listed under <a href="reference.html#messages-markers">Markers</a>.</p>
       <p>To change a built-in flow or add your own, see <a href="reference.html#flows">Writing flows</a>.</p>
-      <h2 id="conductor-helping-members-agree">Helping members agree</h2>
-      <p>Sometimes members disagree about how to do a task and there are a few clear options. <code>concord</code> gets them to one they can all live with:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> decisions/double-charge-refunds conductor \
-  <span class="str">&quot;concord @~builder @~reviewer @~julia: refund double charges automatically, or send them to support?&quot;</span></code></pre>
-      <ol class="steps">
-        <li><strong>Rate the two ends.</strong> Everyone rates no agreement and their own pick, so each member&#x27;s later ratings are read on their own scale.</li>
-        <li><strong>Propose.</strong> Everyone proposes one option, with a <code>why:</code> line.</li>
-        <li><strong>Rate.</strong> Everyone rates every option, one line each, with a reason: <code>B (Ship on Friday): 40 - the Friday window breaks certification</code>.</li>
-        <li><strong>Pick.</strong> The pick is the option the least happy member is best off with, calculated from the ratings, not by a model. It has to be 60% of the way from no agreement to each member&#x27;s own pick (<code>bar=70</code> sets another).</li>
-        <li><strong>Fix, if needed.</strong> The least happy member proposes something new that answers the others&#x27; objections, and everyone rates it. After 5 fixes (<code>fixes=3</code> sets another), the best option found stands.</li>
-      </ol>
-      <p>The thread shows how each member sees the pick and why, with the numbers a click away. The result is saved under <code>context/decision/</code>, named after the task without its <code>work/</code> prefix, saying who is short of the bar and why. A missing rating counts against the option it&#x27;s missing from.</p>
-      <h2 id="conductor-getting-on-the-same-page">Getting on the same page</h2>
-      <p>Before work starts, <code>accord</code> gets everyone to the same understanding of the task:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/acme-renewal conductor \
-  <span class="str">&quot;accord @~success @~finance @~legal: agree what the Acme renewal is before we start terms: renewal, discount&quot;</span></code></pre>
-      <ol class="steps">
-        <li><strong>Key terms.</strong> The words the team could mean differently, from <code>terms:</code>, or the members name them.</li>
-        <li><strong>Say what the task is.</strong> Each member gives a few points, one per line, starting with its kind: <code>objective</code>, <code>constraint</code>, <code>assumption</code>, <code>sub_goal</code>, <code>deliverable</code> or <code>out_of_scope</code>.
-      <pre><code>objective: Renew Acme on terms finance can sign.
-constraint (pricing): A discount of at most 15%.</code></pre>
-        </li>
-        <li><strong>Merge.</strong> Points that say the same thing are combined, keeping who said them, and everyone adds what&#x27;s missing, once. The same point in different words is combined when a member says so, with a line like <code>same: p6 = p1</code>, and the summary records who said they match.</li>
-        <li><strong>Terms and checks.</strong> Everyone says what each key term means, with units, and how they&#x27;d confirm points (<code>check p1, p2: Finance signs the order form.</code>). Each check belongs to its writer. A term meant two ways is restated once, and both meanings are kept.</li>
-        <li><strong>Save.</strong> The summary goes to <code>context/summary/</code>, named after the task, and ends with what&#x27;s still open.</li>
-      </ol>
-      <p>Later work in the task is told what the summary says. A line starting <code>conflict:</code> in the task&#x27;s thread adds to its open items. Running <code>accord</code> again updates it.</p>
       <h2 id="conductor-who-can-take-part">Who can take part</h2>
       <p>Any member can fill a role, including your own agent, a <a href="#persona">persona</a>, a <a href="#worker">worker</a> or you. To take a role yourself, put your own handle in the message. When it&#x27;s your turn, reply in the task&#x27;s thread in the app. From a terminal, you take your turn the way an agent does:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> julia
@@ -420,7 +377,7 @@ constraint (pricing): A discount of at most 15%.</code></pre>
       <figure class="doc-figure"><img class="doc-img" src="app-thread-flow.png" alt="A gated flow at the top of a task&#x27;s thread, waiting on the step that proposes" loading="lazy">
       </figure>
       <h2 id="conductor-how-a-flow-ends">How a flow ends</h2>
-      <p>A flow ends as <code>resolved</code> when it reaches the end. It ends as <code>rejected</code> when it gives up or hits its step limit. A <code>concord</code> run that everyone agrees on ends as <code>converged</code>. These describe the flow, not the task. Finishing a flow leaves the task open. Resolve the task as usual with <code>mycelium board resolve</code>.</p>
+      <p>A flow ends as <code>resolved</code> when it reaches the end. It ends as <code>rejected</code> when it gives up or hits its step limit. These describe the flow, not the task. Finishing a flow leaves the task open. Resolve the task as usual with <code>mycelium board resolve</code>.</p>
       <p>Each run is saved as an <a href="concepts.html#episodes">episode</a> under <code>log/episodes/</code>. The record holds the flow, who played each role and every step taken.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines/conductor.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
@@ -710,7 +667,7 @@ constraint (pricing): A discount of at most 15%.</code></pre>
 
     <section class="doc-section" id="hello">
       <h1>Hello</h1>
-      <p>Hello replies to whatever you send it, and that&#x27;s all it does. It doesn&#x27;t write memories, start negotiations or change the board. That makes it a good first check on a new hub. If hello answers, engines are working.</p>
+      <p>Hello replies to whatever you send it, and that&#x27;s all it does. It doesn&#x27;t write memories, run flows or change the board. That makes it a good first check on a new hub. If hello answers, engines are working.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> greeter <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> greeter <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
       <h2 id="hello-if-it-doesnt-answer">If it doesn&#x27;t answer</h2>

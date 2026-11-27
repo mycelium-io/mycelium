@@ -62,7 +62,7 @@ class EpisodeState:
     # The thread this episode was opened from, when it was opened inside a
     # task: the link back to the row a nested episode belongs to.
     within: str | None = None
-    # The memory a run saved its result to (a shared summary, a decision).
+    # The memory a run saved its result to, when it saved one.
     memory: str | None = None
 
 
@@ -70,7 +70,6 @@ def write_episode_record(
     ep: EpisodeState,
     *,
     outcome: str,
-    metrics: dict[str, Any] | None,
 ) -> None:
     """Persist the episode to ``log/episodes/{short_id}.md`` in the parent
     room's memory. Best-effort: never raises into the commit path."""
@@ -82,12 +81,6 @@ def write_episode_record(
             f"- outcome: **{outcome}**",
             f"- participants: {', '.join(ep.agents)}",
         ]
-        if metrics and metrics.get("min_satisfaction") is not None:
-            per_agent = metrics.get("satisfaction", {})
-            lines.append(
-                f"- satisfaction: min {metrics['min_satisfaction']:.2f} "
-                f"(least-happy of {len(per_agent)} members)"
-            )
         if ep.within:
             lines.append(f"- within: `{ep.within}`")
         if ep.memory:

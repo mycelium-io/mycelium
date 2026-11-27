@@ -272,7 +272,7 @@ describe("<MarkdownContent /> headings", () => {
 });
 
 describe("<MarkdownContent /> thread ids", () => {
-  const episode = "urn:ioc:mycelium:episode:checkout:251c83d6";
+  const episode = "urn:mycelium:episode:checkout:251c83d6";
   const threads = new Map([["251c83d6", { episode, title: "Add Apple Pay to checkout" }]]);
   const draw = (text: string, onOpenThread = vi.fn()) => {
     render(
@@ -313,7 +313,7 @@ describe("<MarkdownContent /> thread ids", () => {
 
   it("doesn't link an id inside longer code, a code block, a longer hash, a path or a URN", () => {
     draw(
-      "`board resolve 251c83d6` and\n```\n251c83d6\n```\n251c83d6ab12, refs/251c83d6, urn:ioc:mycelium:episode:checkout:251c83d6",
+      "`board resolve 251c83d6` and\n```\n251c83d6\n```\n251c83d6ab12, refs/251c83d6, urn:mycelium:episode:checkout:251c83d6",
     );
     expect(screen.queryByRole("button")).toBeNull();
   });

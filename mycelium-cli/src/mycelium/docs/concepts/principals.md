@@ -86,7 +86,3 @@ other, and it needs no setup.
 For a hub other people can reach, turn on [sign-in](#auth). Every request then
 carries a token from your identity provider, and every write is tied to a real
 account. Only a member's owner, or someone the member allows, can act for it.
-
-A separate setting, `slim.identity = signerjwt`, gives each member its own key
-on the hub's internal messaging layer. It doesn't affect who can use the API.
-See [Running a Shared Hub](#security-planes-per-member-slim-identity).

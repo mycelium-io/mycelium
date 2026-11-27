@@ -3,7 +3,7 @@
 
 """Usage events (app/services/analytics.py): recorded on the hub, forwarded only with consent.
 
-No network, no backend process, no SLIM node.
+No network, no backend process.
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ class TestRecordedOnTheHub:
 
     def test_finished_work_carries_a_running_count(self, hub):
         usage.record("mycelium.task_filed", kind="action")
-        usage.negotiation_completed("converged", 3)
+        usage.record("mycelium.negotiation_completed", outcome="converged", rounds=3)
         usage.flow_completed("review", "resolved", 5)
         counts = [e.get("work_count") for e in logged(hub)]
         assert counts == [None, 1, 2]
@@ -186,7 +186,7 @@ class TestKpis:
         usage.record("mycelium.task_resolved", kind="action", by="agent", hours_open=6.0)
         usage.flow_completed("review", "resolved", 4)
         usage.flow_completed("review", "rejected", 9)
-        usage.negotiation_completed("converged", 3)
+        usage.record("mycelium.negotiation_completed", outcome="converged", rounds=3)
         usage.agent_joined("claude_code")
 
         k = usage.kpis(7)

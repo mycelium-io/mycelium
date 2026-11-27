@@ -6,7 +6,7 @@
  *
  * With `MYCELIUM_UI_MOCK=1`, the Next route handlers serve fixtures instead of
  * proxying to a real backend — so the whole UI renders populated / in-progress /
- * empty states with no SLIM node, no LLM, and no backend server. This is the
+ * empty states with no LLM and no backend server. This is the
  * frontend analogue of the backend/CLI fake stacks: one command (`pnpm dev:mock`)
  * to reach any state, for design and visual-regression work.
  *

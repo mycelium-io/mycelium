@@ -14,7 +14,6 @@ function episode(over: Partial<EpisodeSummary>): EpisodeSummary {
     outcome: "resolved",
     subkind: null,
     participants: [],
-    metrics: null,
     assignments: null,
     tasks: [],
     message_count: 0,
@@ -35,7 +34,7 @@ describe("FlowPanel's steps", () => {
           flow: {
             name: "mixed",
             steps: [
-              { id: "terms", to: "all", collect: "keywords", next: "review" },
+              { id: "terms", to: "all", next: "review" },
               { id: "review", to: "reviewer", require: "stance", next: { accept: "done", reject: "terms" } },
               { id: "done", end: "resolved" },
             ],

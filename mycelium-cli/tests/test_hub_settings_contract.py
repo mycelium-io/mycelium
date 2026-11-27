@@ -74,8 +74,6 @@ def test_a_save_keeps_every_key_it_was_not_asked_to_change(isolated_home: Path):
         'model = "anthropic/claude-sonnet-4-6"\n'
         'api_key = "sk-ant-kept"\n'
         'base_url = "http://10.0.0.5:8080/v1"\n'
-        "[slim]\n"
-        f'master_secret = "{"k" * 64}"\n'
         "[worker]\n"
         "max_turns_per_room = 12\n"
     )

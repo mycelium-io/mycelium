@@ -10,6 +10,7 @@
 
 import { keyProblem } from "@/lib/memory-location";
 import { plainInline } from "@/lib/speakable";
+import { envelopeOf } from "@/lib/threads";
 
 /** An ask's markdown as one plain line, for a folded card or a waiting row:
  *  its first paragraph (the question; what follows is detail), with list,
@@ -162,7 +163,10 @@ function payloadData(content: unknown): Record<string, unknown> | null {
       return null;
     }
   }
-  return (content as { l9?: { payload?: { data?: Record<string, unknown> } } } | null)?.l9?.payload?.data ?? null;
+  const payload = envelopeOf(content as Record<string, unknown> | null)?.payload as
+    | { data?: Record<string, unknown> }
+    | undefined;
+  return payload?.data ?? null;
 }
 
 /** What an ask's `link` points at: a page on the web, one of the room's

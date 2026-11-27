@@ -209,7 +209,7 @@ def memory_set(
         mycelium memory set work/api-server "Built 12 endpoints with auth"
         mycelium memory set reference/spec --file spec.md
         cat notes.md | mycelium memory set context/notes -f -
-        mycelium memory set glossary/slim "SLIM is the messaging fabric." --expandable
+        mycelium memory set glossary/thread "A thread is a task's conversation." --expandable
         mycelium memory set decisions/db "Postgres" -m supersedes=decisions/db-v1
         mycelium memory set payments/retries-reuse-key "Retries reuse the key" \\
             --kind finding --derived-from payments/stripe-dedupes --task work/apple-pay

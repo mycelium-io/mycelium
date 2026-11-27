@@ -59,7 +59,7 @@ const YELLOW = "var(--yellow)";
 const ACCENT = "var(--accent)";
 const QUIET = "var(--muted-foreground)";
 
-/** What a board change did to a task, by notice subkind (`contracts/slim-wire.json`). */
+/** What a board change did to a task, by notice subkind (`contracts/message-wire.json`). */
 export const NOTICE_ICONS: Record<string, EventIcon> = {
   filed: { Icon: SquarePlus, tone: GREEN, label: "New task" },
   claimed: { Icon: Hand, tone: ACCENT, label: "Task claimed" },

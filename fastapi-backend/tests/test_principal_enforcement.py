@@ -97,9 +97,8 @@ async def test_reply_lets_registered_agent_past_the_guard(client: AsyncClient):
     await client.post("/api/rooms", json={"name": "r"})
     _seed_agent("r", "bot", adapter="claude_code", cwd="/tmp")
     resp = await client.post("/api/rooms/r/reply", json={"handle": "bot", "text": "hi"})
-    # The guard passes; with no live SLIM channel in the task env the route
-    # then 503s, not 403 — a registered agent is allowed to post.
-    assert resp.status_code != 403
+    # The guard passes: a registered agent is allowed to post.
+    assert resp.status_code == 200, resp.text
 
 
 # ── broadcast (human) route guard ─────────────────────────────────────────────

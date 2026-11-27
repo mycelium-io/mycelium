@@ -58,7 +58,6 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import activity, markers, message_format, room_settings, workspace
-from app.services.agreed import for_prompt as agreed_for_prompt
 from app.services.engine_kinds import norm as _norm
 from app.services.engine_kinds import registered_engine_kind
 from app.services.engines_model import failed_turn
@@ -381,18 +380,14 @@ def build_prompt(
     thread: str,
     ask: str,
     checkout: str = "",
-    agreed: str = "",
 ) -> str:
-    """Assemble one turn's prompt. Pure — no I/O, directly unit-testable.
-
-    ``agreed`` is what the team already agreed for the task, when it did."""
+    """Assemble one turn's prompt. Pure — no I/O, directly unit-testable."""
     others = ", ".join(h for h in team if _norm(h) != _norm(me)) or "nobody else yet"
     where = f"the thread of task {task[0]}: {task[1]}" if task else "the room"
     at = f"{checkout}\n" if checkout else ""
     return (
         f"You are @{me}, in room '{room}', working with {others}.\n"
         f"You are speaking in {where}.\n{at}\n"
-        f"{agreed}"
         f"The thread so far:\n{thread}\n\n"
         f"{ask}"
     )
@@ -681,7 +676,6 @@ class WorkerEngine:
             thread=_thread_so_far(room, episode),
             ask=ask,
             checkout=checkout.describe() if checkout else "",
-            agreed=await asyncio.to_thread(agreed_for_prompt, room, row[0]) if row else "",
         )
         system = f"{rules()}\n\n{_character(room, handle)}"
         activity.signal(room, handle, "responding", episode=episode)

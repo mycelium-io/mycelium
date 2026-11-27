@@ -247,7 +247,7 @@ describe("mock live writes", () => {
     stop();
     expect(status).toBe(201);
     expect(body.key).toBe("work/write-the-release-notes");
-    expect(String(body.episode)).toMatch(/^urn:ioc:mycelium:episode:scratch:[0-9a-f]{8}$/);
+    expect(String(body.episode)).toMatch(/^urn:mycelium:episode:scratch:[0-9a-f]{8}$/);
     expect(body.meta).toMatchObject({ kind: "action", status: "open", assignee: "bob" });
     const notice = heard.find((f) => JSON.stringify(f).includes('"subkind":"filed"'));
     expect(notice).toBeDefined();

@@ -225,8 +225,8 @@ export function AgentsPanel({
 
   // Who's here, shared with the composer's `@` popover: agents from the room's
   // manifests, people from the hub's record of who joined, others who hold a
-  // task or are present, and a presence entry for whoever holds a SLIM socket
-  // or an `await` lease.
+  // task or are present, and a presence entry for whoever holds an `await`
+  // lease or a herdr pane.
   const { agents, people, others: listed, presence, floors, subscriptions, paused, loading, refresh } =
     useRoomRoster(roomName);
   // An agent's subagents, from the hub's record: the running ones under their
@@ -650,11 +650,9 @@ function PersonRow({
     ? floorLabel(p.handle, floor)
     : memberPresence && isHerdr(memberPresence)
       ? (memberPresence.status ?? "alive")
-      : memberPresence?.kind === "slim"
-        ? "live"
-        : memberPresence?.kind === "lease"
-          ? "awaiting"
-          : null;
+      : memberPresence?.kind === "lease"
+        ? "awaiting"
+        : null;
   return (
     <AgentCardHover handle={p.handle} side="left">
       <div
@@ -696,7 +694,6 @@ function rowMeta(
   // An agent that can't reply needs a person, whatever else it's doing; its card says why.
   if (presence?.can_reply === false) return "can't reply";
   if (presence && isHerdr(presence)) return presence.status === "blocked" ? "waiting for input" : (presence.status ?? "alive");
-  if (presence?.kind === "slim") return "live";
   if (presence?.kind === "lease") return "awaiting";
   if (machine) return `on ${machine}`;
   return null;

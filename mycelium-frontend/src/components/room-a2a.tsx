@@ -10,19 +10,15 @@ import type { A2aBridgedAgent, A2aExchange } from "@/lib/api";
 
 /** The A2A bridge strip under Connection on the room's settings page: the room's off-channel traffic.
  *
- *  Everything else in this pane rides SLIM. A bridged agent doesn't: the hub
- *  calls it over HTTP and posts the reply back as that handle, so its turns
- *  would otherwise appear in the room with nothing here to explain them. This
- *  strip is that explanation — who is bridged, whether the room's own Agent Card
- *  is being read, and the last exchanges either way.
+ *  A bridged agent isn't in the room itself: the hub calls it over HTTP and
+ *  posts the reply back as that handle, so its turns would otherwise appear in
+ *  the room with nothing here to explain them. This strip is that explanation:
+ *  who is bridged, whether the room's own Agent Card is being read, and the
+ *  last exchanges either way.
  *
  *  It renders nothing at all for a room with no bridge, so the pane keeps its
  *  shape for the common case. Collapsed it's one summary line; expanded it lists
- *  the agents, the exposure, and the recent exchanges.
- *
- *  The boundary cue is deliberate and load-bearing: a bridged agent is proxied,
- *  never a member of the room's MLS group, and the pane says so rather than
- *  letting proximity to the SLIM rail imply otherwise. */
+ *  the agents, the exposure, and the recent exchanges. */
 export function RoomA2aView({ roomName }: { roomName: string }) {
   const { bridge } = useA2aBridge(roomName);
   const [open, setOpen] = useState(false);
@@ -154,15 +150,14 @@ function ExchangeRow({ exchange }: { exchange: A2aExchange }) {
   );
 }
 
-/** The honest cue: bridged agents are proxied by the hub over HTTP — they hold
- *  no group key, so they are not members of the room's encrypted group. */
+/** Bridged agents are proxied: the hub calls them over HTTP for the room. */
 function ProxiedBadge({ className = "" }: { className?: string }) {
   return (
     <span
       className={`rounded-md border border-border bg-surface px-1.5 py-0 text-micro text-muted-foreground ${className}`}
-      title="Bridged over HTTP by the hub: proxied, not a member of the room's MLS group — the hub sees this traffic in plaintext."
+      title="Bridged over HTTP: the hub calls this agent and posts its replies under its handle."
     >
-      proxied · not in the MLS group
+      proxied by the hub
     </span>
   );
 }

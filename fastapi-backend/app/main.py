@@ -120,7 +120,6 @@ async def lifespan(app: FastAPI):
     telemetry_service.setup()  # providers only — FastAPIInstrumentor wired at app-creation time
 
     # Usage: the hub coming up is the first thing it counts.
-    from app.services import agreed
     from app.services import analytics as usage
 
     await asyncio.to_thread(usage.hub_started)
@@ -274,14 +273,9 @@ async def lifespan(app: FastAPI):
     room_channel_manager.on_notice = _dispatch_notice
 
     # Every recorded message: the verifier reads agents' prose in rooms that
-    # added it, and adds a line under a claim the records don't back up; a
-    # `conflict:` line in a task's thread goes onto its shared summary.
+    # added it, and adds a line under a claim the records don't back up.
     def _dispatch_recorded(room: str, record: Any) -> None:
         app.state.verifier.handle_recorded(room, record)
-        try:
-            agreed.handle_recorded(room, record)
-        except Exception:
-            logger.exception("shared summary conflict handler failed in %s", room)
 
     room_channel_manager.on_recorded = _dispatch_recorded
     logger.info(
@@ -294,27 +288,13 @@ async def lifespan(app: FastAPI):
         settings.ALIGNER_PI_BINARY,
     )
 
-    # Re-provision every room's SLIM channel on startup. Provision is
-    # idempotent and best-effort; without this, a backend restart left every
-    # existing room channel-less (a zombie) with no recovery path until it was
-    # deleted + recreated. Runs after the engine hooks are wired so each
-    # restarted persister picks them up.
-    reprovisioned = 0
-    restored_custody = 0
+    # Open every room's channel on startup (its log, read back from disk), so
+    # the first request into a room doesn't pay for reading its transcript.
     for _room in list_room_names():
         try:
-            if await room_channel_manager.provision(_room) is not None:
-                reprovisioned += 1
-                # Two-process resume (#666): revive every per-actor custodial session
-                # from its encrypted store via ``restore_sessions`` — no re-invite/
-                # welcome. No-op under the PSK default. The transcript replays any gap.
-                restored_custody += await room_channel_manager.restore_custody(_room)
+            room_channel_manager.open(_room)
         except Exception:
-            logger.exception("startup re-provision failed for room %s", _room)
-    if reprovisioned:
-        logger.info("re-provisioned %d room channel(s) on startup", reprovisioned)
-    if restored_custody:
-        logger.info("restored %d custodial session(s) on startup (no re-invite)", restored_custody)
+            logger.exception("could not open the channel for room %s", _room)
 
     yield
     stop_watcher()
@@ -340,14 +320,9 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # pragma: no cover - best-effort teardown
         logger.warning("status runtime teardown failed (non-fatal): %s", exc)
 
-    # Tear down long-lived SLIM room channels + the shared node connection so a
-    # restart doesn't leak or reuse a stale dataplane connection.
     from app.services.room_channels import manager as room_channel_manager
 
-    try:
-        await room_channel_manager.close_all()
-    except Exception as exc:  # pragma: no cover - best-effort teardown
-        logger.warning("SLIM channel teardown failed (non-fatal): %s", exc)
+    await room_channel_manager.close_all()
 
     logger.info("Mycelium backend shutting down")
     log_queue.uninstall()
@@ -551,9 +526,6 @@ async def root(
 
     result["auth"] = auth_service.status()
 
-    # SLIM channel identity tier — psk (default) or signerjwt (#567).
-    result["identity"] = _check_slim_identity()
-
     # Embedding model
     result["embedding"] = _check_embedding()
 
@@ -567,21 +539,11 @@ async def root(
         llm = get_config_status()
     result["llm"] = llm.to_dict()
 
-    # Coordination fabric — channels/persisters/members (H1). Makes "is the fabric
-    # actually working" answerable in one GET.
-    from app.services.room_channels import manager as room_channel_manager
-
-    coordination = room_channel_manager.status()
-    result["coordination"] = coordination
-
     overall_issues = []
     if result["storage"]["status"] != "ok":
         overall_issues.append("storage")
     if result["llm"]["status"] not in ("ok", "unchecked"):
         overall_issues.append("llm")
-    # A live channel whose persister has died is a zombie room — surface it.
-    if any(r["provisioned"] and not r["persister_alive"] for r in coordination["rooms"]):
-        overall_issues.append("coordination")
 
     # Latency degradation thresholds (#453).  p95 above the configured limit
     # adds a "latency" issue so operators can see a degraded signal before
@@ -772,18 +734,6 @@ def _check_storage() -> dict:
     except Exception as exc:
         logger.warning("Storage health check failed: %s", exc)
         return {"status": "unreachable", "message": f"Cannot access data dir: {type(exc).__name__}"}
-
-
-def _check_slim_identity() -> dict:
-    """Report the SLIM channel identity tier the hub is running (#567).
-
-    Which tier a hub is on is otherwise only visible in its env, so /health answers
-    it in one GET.
-    """
-    from app.services import slim_identity
-
-    mode = slim_identity.resolve_identity_mode()
-    return {"status": "ok", "mode": mode, "message": mode}
 
 
 def _check_embedding() -> dict:

@@ -16,8 +16,8 @@ from app.services.persister import TranscriptRecord
 
 ROOM = "place-room"
 NOW = datetime(2026, 10, 13, 9, 0, tzinfo=UTC)
-T1 = "urn:ioc:mycelium:episode:place-room:t1"
-T2 = "urn:ioc:mycelium:episode:place-room:t2"
+T1 = "urn:mycelium:episode:place-room:t1"
+T2 = "urn:mycelium:episode:place-room:t2"
 
 
 def _said(n: int, sender: str, text: str, episode: str | None = None) -> TranscriptRecord:
@@ -28,7 +28,7 @@ def _said(n: int, sender: str, text: str, episode: str | None = None) -> Transcr
         subkind=None,
         content={
             "content": text,
-            "l9": {
+            "envelope": {
                 "header": {
                     "kind": "exchange",
                     "message": {"episode": episode or message_format.live_episode_urn(ROOM)},

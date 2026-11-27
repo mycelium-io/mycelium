@@ -10,22 +10,21 @@ what ``_read_messages`` returns.
 """
 
 from datetime import UTC, datetime
-from types import SimpleNamespace
 
 from app.routes.messages import _read_messages
-from app.services import in_memory_store, message_format, persister, room_channels
+from app.services import in_memory_store, message_format, persister
 from app.services.filesystem import get_room_dir
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
-from app.services.message_slim import serialize_content
 
 
 def _record(message_id: str, *, sender: str, text: str):
     env = message_format.build_envelope(
         kind=Kind.exchange,
-        episode="urn:ioc:mycelium:episode:r:s",
+        episode="urn:mycelium:episode:r:s",
         sender=sender,
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        topic="urn:concept:mycelium:r",
+        topic="urn:mycelium:topic:r",
         message_id=message_id,
         payload_type="reply",
     )
@@ -89,22 +88,15 @@ def test_read_merges_event_ledger_rows_that_only_live_in_memory(tmp_path, monkey
 
 
 def _knowledge_record(message_id: str, *, key: str, recorded_at: str | None):
-    """A raise-up ``knowledge`` record, optionally with its ``recorded_at`` stripped."""
-    from app.services import memory_sync
-
-    write = memory_sync.KnowledgeWrite(
-        key=key,
-        content="note",
-        version=1,
-        created_by="julia",
-        updated_by="julia",
-        updated_at="2026-08-19T09:48:00+00:00",
-    )
-    env = memory_sync.build_knowledge_envelope(
-        room="r",
-        write=write,
+    """A memory write's ``knowledge`` record, optionally with its ``recorded_at`` stripped."""
+    env = message_format.build_envelope(
+        kind=Kind.knowledge,
+        subkind="extraction",
+        episode=message_format.episode_urn("r", "knowledge"),
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
+        topic=message_format.topic_urn("r"),
+        payload_type="extraction",
+        payload_data={"key": key, "content": "note", "version": 1, "created_by": "julia"},
     )
     record = persister.record_from(
         env, serialize_content(env, extra={"content": f"memory updated → {key}"})
@@ -137,7 +129,7 @@ def test_a_record_with_no_stamp_holds_its_place_instead_of_dating_to_now(tmp_pat
     served = sorted(_read_messages(room, None), key=lambda m: m.created_at)
 
     # Beside the record it was appended after, not below the newest message.
-    assert [m.message_type for m in served] == ["broadcast", "l9_knowledge", "broadcast"]
+    assert [m.message_type for m in served] == ["broadcast", "envelope_knowledge", "broadcast"]
     assert served[1].created_at == served[0].created_at
 
 
@@ -180,23 +172,14 @@ async def test_a_sent_message_has_one_id_wherever_it_is_read(client, monkeypatch
     room = "one-id-room"
     await client.post("/api/rooms", json={"name": room})
     frames: list[dict] = []
+    frame_of = persister.bus_frame
 
-    async def publish(_channel, *, sender, text, episode=None):
-        env = message_format.build_envelope(
-            kind=Kind.exchange,
-            episode=message_format.live_episode_urn(room),
-            sender=sender,
-            topic=message_format.topic_urn(room),
-            payload_type="message",
-            message_id="w-1",
-        )
-        record = persister.record_from(env, serialize_content(env, extra={"content": text}))
-        persister.append_transcript(room, record)  # recorded, as the persister does
-        frames.append(persister.bus_frame(room, record))
-        return SimpleNamespace(message_id="w-1", unrecognized=[])
+    def capture(room_: str, record: persister.TranscriptRecord) -> dict:
+        frames.append(frame_of(room_, record))
+        return frames[-1]
 
-    monkeypatch.setattr(room_channels.manager, "is_live", lambda _channel: True)
-    monkeypatch.setattr(room_channels.manager, "publish_human", publish)
+    # The live frame the app's stream is sent, as the room's log builds it.
+    monkeypatch.setattr(persister, "bus_frame", capture)
     sent = await client.post(
         f"/api/rooms/{room}/messages",
         json={"sender_handle": "operator", "message_type": "broadcast", "content": "ship it"},

@@ -3,7 +3,7 @@
 
 """compose.yml and the CLI must agree on what the stack is made of.
 
-`mycelium up/down/logs/status/doctor` and `hub host` name compose services and
+`mycelium up/down/logs/status/doctor` name compose services and
 containers as strings; compose.yml is where those names are defined. Both
 directions are derived from it: every container the CLI addresses is one compose
 declares, and every container compose declares is one the CLI can clean up.
@@ -19,14 +19,14 @@ from pathlib import Path
 
 import yaml
 
-from mycelium.commands import doctor, hub, install, instance, ui
+from mycelium.commands import doctor, install, instance, ui
 
 _COMPOSE = Path(__file__).parent.parent / "src" / "mycelium" / "docker" / "compose.yml"
 
-# Containers the CLI manages that compose.yml does not declare: the CFN control
-# plane is a separate deployment the CLI can stop but does not define. Anything
-# else in _MANAGED_CONTAINERS must come from the compose file.
-_EXTERNAL_CONTAINERS = {"ioc-cfn-mgmt-plane-svc", "ioc-cfn-svc"}
+# Containers the CLI manages that compose.yml does not declare: mycelium-slim is
+# a node an older install may have left running. Anything else in
+# _MANAGED_CONTAINERS must come from the compose file.
+_EXTERNAL_CONTAINERS = {"mycelium-slim"}
 
 
 def _services() -> dict[str, dict]:
@@ -79,10 +79,6 @@ def test_install_removes_orphans_for_every_always_started_service() -> None:
         f"{sorted(always - known)} starts with `mycelium up` but is not in "
         f"install._KNOWN_CONTAINERS, so a stale copy blocks --force-recreate"
     )
-
-
-def test_hub_host_names_a_real_compose_service() -> None:
-    assert hub.SLIM_SERVICE in _services()
 
 
 def test_doctor_expects_containers_compose_declares() -> None:

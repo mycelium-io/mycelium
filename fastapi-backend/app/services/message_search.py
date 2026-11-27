@@ -32,7 +32,7 @@ fields a message has:
 =============  ================================================================
 
 By default the search covers what was *said* (the prose message types); the
-structured frames the feed also carries (``l9_*``, coordination lifecycle)
+structured frames the feed also carries (``envelope_*``, coordination lifecycle)
 hold serialized envelopes rather than text, so they come in only when a
 ``type:`` names them.
 """
@@ -86,7 +86,7 @@ ALIASES: dict[str, str] = {
 CLOSED_VALUES: dict[str, tuple[str, ...]] = {
     "in": ("channel", "thread"),
     "is": ("edited", "conductor"),
-    "has": ("mention", "link", "memory", "code", "scores"),
+    "has": ("mention", "link", "memory", "code"),
     "stance": ("accept", "reject"),
 }
 
@@ -101,7 +101,6 @@ class Side:
     recipients: tuple[str, ...] = ()
     stance: str | None = None
     subkind: str | None = None
-    scored: bool = False
 
 
 @dataclass
@@ -141,7 +140,7 @@ _side_cache: dict[str, tuple[tuple[int, int], dict[str, Side]]] = {}
 
 
 def _side_of(record: persister.TranscriptRecord) -> Side:
-    header = (record.content.get("l9") or {}).get("header") or {}
+    header = message_format.envelope_of(record.content).get("header") or {}
     actors = ((header.get("participants") or {}).get("actors")) or []
     ids = [a.get("id") for a in actors if isinstance(a, dict) and isinstance(a.get("id"), str)]
     recipients = tuple(h for h in ids[1:] if h and h != message_format.SYSTEM_ACTOR_ID)
@@ -149,7 +148,6 @@ def _side_of(record: persister.TranscriptRecord) -> Side:
         recipients=recipients,
         stance=markers.stance_of(record.content),
         subkind=record.subkind,
-        scored=bool(markers.scores_of(record.content)),
     )
 
 
@@ -216,8 +214,6 @@ def _has(doc: Doc) -> list[str]:
         out.append("memory")
     if "```" in text or "`" in text:
         out.append("code")
-    if doc.side.scored:
-        out.append("scores")
     return out
 
 
@@ -352,7 +348,6 @@ def search(
     sides = transcript_sides(room)
     rows = thread_rows(room)
     titles = {key: title for key, title in rows.values()}
-    live = message_format.live_episode_urn(room)
 
     named_types = {c.value.lower() for c in query.clauses if c.field == "type" and not c.negate}
     timeline = sorted(
@@ -363,7 +358,7 @@ def search(
     for m in timeline:
         if m.message_type not in PROSE_MESSAGE_TYPES and m.message_type.lower() not in named_types:
             continue
-        thread = m.episode if m.episode and m.episode != live else None
+        thread = m.episode if not message_format.is_live_episode(room, m.episode) else None
         row = rows.get(thread) if thread else None
         docs.append(
             Doc(

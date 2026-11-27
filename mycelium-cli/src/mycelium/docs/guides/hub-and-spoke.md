@@ -10,8 +10,7 @@ it talks to the hub over HTTP.
 │  Hub  (one machine, Docker)                 │
 │                                             │
 │  ├─ backend (API)    :8000                  │
-│  ├─ app (web UI)     :3000                  │
-│  └─ SLIM node        :46357  (hub only)     │
+│  └─ app (web UI)     :3000                  │
 │       rooms, memory, engines                │
 └──────────────────┬──────────────────────────┘
                    │
@@ -44,7 +43,7 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # on an Ap
 mycelium install
 ```
 
-This starts the backend, the app and the SLIM node. Check it with:
+This starts the backend and the app. Check it with:
 
 ```bash
 mycelium doctor
@@ -59,8 +58,7 @@ mycelium config apply
 mycelium up
 ```
 
-Spokes need port **8000** for the API and port **3000** for the app. Port 46357
-(SLIM) stays on the hub.
+Spokes need port **8000** for the API and port **3000** for the app.
 
 ### Behind an HTTPS proxy
 

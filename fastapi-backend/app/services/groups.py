@@ -84,7 +84,7 @@ def parse(text: str) -> dict[str, Form]:
 def _is_thread(room: str, episode: str | None) -> bool:
     from app.services import message_format
 
-    return bool(episode) and episode != message_format.live_episode_urn(room)
+    return bool(episode) and not message_format.is_live_episode(room, episode)
 
 
 def _statuses(room: str) -> dict[str, str]:

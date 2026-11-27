@@ -93,7 +93,7 @@ async def addressed_turn(
         if not text.startswith(f"@{bare}"):
             text = f"@{text}" if text.startswith(bare) else f"@{bare} {text}"
     try:
-        await managed.post(env, text, raise_on_send_failure=True)
+        await managed.post(env, text)
     except Exception:
         logger.warning("failed to put a turn to @%s in %s", handle, episode)
         return ""

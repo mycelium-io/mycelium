@@ -18,7 +18,6 @@ Load priority (highest to lowest):
 
 import os
 import re
-import warnings
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
@@ -69,88 +68,6 @@ class ServerConfig(BaseModel):
     def validate_url(cls, v: str) -> str:
         """Ensure URLs don't have trailing slashes."""
         return v.rstrip("/")
-
-
-class SlimConfig(BaseModel):
-    """SLIM messaging-fabric connection configuration.
-
-    ``node_endpoint`` is the address of the ``slim`` node this agent connects
-    to. It's the same value whether the node is self-hosted (``mycelium hub
-    host``) or a shared mycelium-hosted rendezvous; set it with ``mycelium
-    connect <address>``. MLS makes the node a blind ciphertext forwarder, so the
-    host is untrusted either way.
-    """
-
-    node_endpoint: str = Field(
-        default="http://127.0.0.1:46357",
-        description="SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357",
-    )
-
-    identity: str = Field(
-        default="psk",
-        description=(
-            "SLIM channel identity tier: 'psk' (default, off-by-default #567) is the "
-            "shared-secret credential every room member derives (zero infra, no "
-            "per-agent identity). 'signerjwt' opts into the SignerJwt floor (#476): "
-            "each member presents a per-agent self-signed ES256 identity so members "
-            "are cryptographically distinct, individually revocable MLS "
-            "participants. Selecting 'signerjwt' with no resolvable material "
-            "degrades to 'psk' unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
-        ),
-    )
-
-    master_secret: str | None = Field(
-        default=None,
-        description=(
-            "Hub-only SLIM PSK master secret. Auto-generated on first "
-            "``mycelium config apply`` / install when unset; rendered to "
-            "``MYCELIUM_SLIM_MASTER_SECRET`` in ~/.mycelium/.env for the backend "
-            "container. Spokes do not need this. Override with "
-            "``mycelium config set slim.master_secret …`` to rotate."
-        ),
-    )
-
-    @field_validator("master_secret")
-    @classmethod
-    def _validate_master_secret(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        stripped = v.strip()
-        if not stripped:
-            return None
-        if len(stripped) < 32:
-            raise ValueError("slim.master_secret must be at least 32 characters")
-        return stripped
-
-    @field_validator("identity")
-    @classmethod
-    def _validate_identity(cls, v: str) -> str:
-        """Only ``psk`` / ``signerjwt`` are valid identity tiers.
-
-        The retired ``spire`` tier (#668) degrades to ``psk`` with a warning rather
-        than raising: a config written before the removal would otherwise fail every
-        command, including the ``config set`` needed to correct it.
-        """
-        normalized = v.strip().lower()
-        if normalized == "spire":
-            warnings.warn(
-                "slim.identity='spire' has been retired; falling back to 'psk'. "
-                "Set slim.identity to 'psk' or 'signerjwt' to silence this.",
-                stacklevel=2,
-            )
-            return "psk"
-        if normalized not in ("psk", "signerjwt"):
-            raise ValueError(f"slim.identity must be 'psk' or 'signerjwt', got {v!r}")
-        return normalized
-
-    @field_validator("node_endpoint")
-    @classmethod
-    def normalize_endpoint(cls, v: str) -> str:
-        """Ensure the endpoint carries a scheme and no trailing slash."""
-        v = v.strip().rstrip("/")
-        if v and "://" not in v:
-            v = f"http://{v}"
-        return v
 
 
 class LLMConfig(BaseModel):
@@ -527,8 +444,7 @@ class A2aConfig(BaseModel):
 class AlignerConfig(BaseModel):
     """Hub settings still filed under ``[aligner]``, the engine that introduced them.
 
-    The aligner itself was retired (negotiation is the conductor's ``concord``
-    and ``accord`` flows). The section keeps its name so an existing
+    The aligner itself was retired. The section keeps its name so an existing
     ``config.toml`` keeps working, and keys it no longer has (``term_check``,
     ``round_timeout_s``, ``max_steps``) are ignored when it loads.
     """
@@ -727,7 +643,7 @@ class TelemetryConfig(BaseModel):
 
     ``enabled`` activates the OpenTelemetry SDK in the backend: traces and
     metrics are exported over OTLP on every coordinated path (HTTP RED,
-    engine runs, SLIM channel timing, await long-poll). Off by default;
+    engine runs, await long-poll). Off by default;
     never required for coordination or storage to work.
 
     ``send_product_analytics`` shares the hub's usage events. The hub records
@@ -1060,7 +976,6 @@ class MyceliumConfig(BaseModel):
 
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
-    slim: SlimConfig = Field(default_factory=SlimConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
     aligner: AlignerConfig = Field(default_factory=AlignerConfig)
@@ -1220,7 +1135,6 @@ class MyceliumConfig(BaseModel):
         """Load configuration overrides from environment variables."""
         env_config: dict[str, Any] = {
             "server": {},
-            "slim": {},
             "rooms": {},
             "llm": {},
             "engine": {},
@@ -1240,12 +1154,6 @@ class MyceliumConfig(BaseModel):
 
             # An agent's address for the app's hub, from before the app restarted.
             env_config["server"]["api_url"] = follow_app_hub(api_url)
-        if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
-            env_config["slim"]["node_endpoint"] = slim_endpoint
-        if slim_master := os.getenv("MYCELIUM_SLIM_MASTER_SECRET"):
-            env_config["slim"]["master_secret"] = slim_master
-        if slim_identity := os.getenv("MYCELIUM_SLIM_IDENTITY"):
-            env_config["slim"]["identity"] = slim_identity
         if active_room := os.getenv("MYCELIUM_ACTIVE_ROOM"):
             env_config["rooms"]["active"] = active_room
 
@@ -1344,7 +1252,7 @@ class MyceliumConfig(BaseModel):
             config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(config_path, "w") as f:
                 toml.dump(config_dict, f)
-            # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.
+            # Holds secrets (llm.api_key); keep it owner-only.
             config_path.chmod(0o600)
             self._write_json_snapshot(config_path.parent)
             return
@@ -1377,7 +1285,7 @@ class MyceliumConfig(BaseModel):
 
         with open(global_path, "w") as f:
             toml.dump(global_dict, f)
-        # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.
+        # Holds secrets (llm.api_key); keep it owner-only.
         global_path.chmod(0o600)
         self._write_json_snapshot(global_path.parent)
 
@@ -1402,8 +1310,8 @@ class MyceliumConfig(BaseModel):
             # rather than showing as `\u2014`.
             json.dump(snapshot, f, indent=2, ensure_ascii=False)
             f.write("\n")
-        # The snapshot is a full config dump (includes slim.master_secret,
-        # llm.api_key); keep it owner-only, same as config.toml.
+        # The snapshot is a full config dump (includes llm.api_key); keep it
+        # owner-only, same as config.toml.
         json_path.chmod(0o600)
 
     def get_data_dir(self) -> Path:

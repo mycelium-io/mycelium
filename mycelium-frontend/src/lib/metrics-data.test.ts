@@ -9,12 +9,11 @@ function ep(overrides: Partial<FleetEpisode> = {}): FleetEpisode {
   return {
     room: "atlas",
     short_id: "ep",
-    episode: "urn:ioc:episode:ep",
+    episode: "urn:mycelium:episode:demo:ep",
     topic: "cutover",
     outcome: "converged",
     subkind: "converged",
     participants: ["a", "b"],
-    metrics: { mpc: 0.8, gar: 0.6, scr: 0.2, provenance_weight: 0.48 },
     assignments: null,
     tasks: ["work/one"],
     message_count: 3,
@@ -29,8 +28,8 @@ describe("rollupEpisodes", () => {
     const rollup = rollupEpisodes([
       ep({ short_id: "a" }),
       ep({ short_id: "b", subkind: "resolved", outcome: "resolved" }),
-      ep({ short_id: "c", subkind: "rejected", outcome: "rejected", metrics: null }),
-      ep({ short_id: "d", subkind: null, outcome: "open", metrics: null }),
+      ep({ short_id: "c", subkind: "rejected", outcome: "rejected" }),
+      ep({ short_id: "d", subkind: null, outcome: "open" }),
     ]);
 
     expect(rollup.total).toBe(4);
@@ -39,24 +38,12 @@ describe("rollupEpisodes", () => {
     expect(rollup.open).toBe(1);
   });
 
-  it("averages quality over the episodes that carry metrics, not over all of them", () => {
+  it("averages the agents per episode", () => {
     const rollup = rollupEpisodes([
-      ep({ short_id: "a", metrics: { mpc: 0.9, gar: 0.8, scr: 0.1, provenance_weight: 0.72 } }),
-      ep({ short_id: "b", metrics: { mpc: 0.7, gar: 0.6, scr: 0.3, provenance_weight: 0.42 } }),
-      ep({ short_id: "c", subkind: null, outcome: "open", metrics: null }),
+      ep({ short_id: "a", participants: ["a", "b", "c"] }),
+      ep({ short_id: "b", subkind: null, outcome: "open", participants: ["a"] }),
     ]);
 
-    expect(rollup.scored).toBe(2);
-    expect(rollup.mpc).toBeCloseTo(0.8);
-    expect(rollup.gar).toBeCloseTo(0.7);
-    expect(rollup.scr).toBeCloseTo(0.2);
-  });
-
-  it("leaves quality unclaimed when nothing has committed", () => {
-    const rollup = rollupEpisodes([ep({ subkind: null, outcome: "open", metrics: null })]);
-
-    expect(rollup.scored).toBe(0);
-    expect(rollup.mpc).toBeNull();
     expect(rollup.avgParticipants).toBe(2);
   });
 

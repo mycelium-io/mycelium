@@ -5,38 +5,10 @@
 
 ``[[mycelium: confidence=0.85 stance=accept]]`` is the one convention a
 participant speaks: how sure it is, and whether it can live with what is on
-the table. A flow that asks for ratings reads them from the same marker, one
-capital letter per option: ``[[mycelium: A=82 B=41]]``. The reply route lifts the fields onto the message payload and
-strips the marker from the prose; the conductor
-reads a stance back off either place, since a human writing into a thread
-through the message route leaves the marker in the text.
-
-A marker can also **label** the text that follows it, up to the next marker
-or a blank line, so code can tell what kind of thing that text is without
-anyone writing JSON:
-
-    [[mycelium: constraint]] Refunds above 5000 need a person's approval.
-    [[mycelium: term=handoff]] Passing the account to the next owner.
-    [[mycelium: check covers=p2,p4]] Finance signs off the limits first.
-
-A point is one of :data:`POINT_TYPES` (and may say what it is ``about``),
-``term=<word>`` is the writer's meaning of that word, and ``check`` is how
-points would be confirmed. The label is lifted onto the payload as
-``pieces``; the labelled text stays in the prose where it was written.
-
-**Plain lines say the same things without the marker**, and are what the
-flows ask for, since a model writes them reliably:
-
-    B: 20 - the Friday window breaks certification     (a rating, and why)
-    bad: 10 - nothing ships this quarter               (a reference outcome's rating)
-    why: it keeps every refund inside a day             (why an option is proposed)
-    constraint: refunds above 5000 need a person's approval
-    refund window: 14 calendar days from delivery      (a key term the run named)
-    check p2, p4: finance signs off the limits
-    same: p6 = p1                                      (p6 says what p1 says)
-    conflict: the build needs 30 days, the summary says 14
-
-The markers keep working beside them.
+the table. The reply route lifts the fields onto the message payload and
+strips the marker from the prose; the conductor reads a stance back off
+either place, since a human writing into a thread through the message route
+leaves the marker in the text.
 """
 
 from __future__ import annotations
@@ -44,30 +16,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.services.message_format import envelope_of
+
 MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
 
-#: A marker and the spaces after it, so a label at the start of a line leaves
+#: A marker and the spaces after it, so a marker at the start of a line leaves
 #: the line's text where it was rather than indented by one space.
 _STRIP_RE = re.compile(MARKER_RE.pattern + r"[ \t]*", re.IGNORECASE | re.DOTALL)
 
 #: ``key=value`` inside a marker; a value may be quoted to hold spaces.
 _PAIR_RE = re.compile(r"""([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))""")
-
-#: What a point can be, in the order a summary lists them.
-POINT_TYPES = (
-    "objective",
-    "constraint",
-    "assumption",
-    "sub_goal",
-    "deliverable",
-    "out_of_scope",
-)
-
-#: A point's id as a check names it: ``p3``.
-_POINT_ID = re.compile(r"^p\d+$")
-
-#: Where labelled text stops when no marker follows it.
-_BLANK_LINE = re.compile(r"\n[ \t]*\n")
 
 STANCE_TO_ACTION = {
     "accept": "accept",
@@ -80,22 +38,6 @@ STANCE_TO_ACTION = {
 }
 
 
-#: An option's rating: one capital letter naming the option, a whole number 0-100.
-RATING_KEY = re.compile(r"^[A-Z]$")
-
-
-def _rating(raw: str) -> int | None:
-    """A whole number 0-100, or ``None``. Out of range is dropped, never clamped.
-
-    A trailing comma is how a list is written (``A=82, B=41``), so it is not
-    part of the number."""
-    raw = raw.rstrip(",;")
-    if not re.fullmatch(r"\d{1,3}", raw):
-        return None
-    value = int(raw)
-    return value if value <= 100 else None
-
-
 def _pairs(body: str) -> list[tuple[str, str]]:
     """``(key, value)`` for each ``key=value`` in a marker's body, quotes removed."""
     return [
@@ -104,207 +46,6 @@ def _pairs(body: str) -> list[tuple[str, str]]:
             (m.group(1), m.group(2), m.group(3), m.group(4)) for m in _PAIR_RE.finditer(body)
         )
     ]
-
-
-def _words(body: str) -> list[str]:
-    """The bare words in a marker's body (what is not a ``key=value``), normalised."""
-    rest = _PAIR_RE.sub(" ", body)
-    return [w.strip().lower().replace("-", "_") for w in re.split(r"[\s,]+", rest) if w.strip()]
-
-
-def _label(body: str) -> dict[str, Any] | None:
-    """What a marker labels the text after it as, or ``None`` when it labels nothing."""
-    pairs = {k.lower(): v for k, v in _pairs(body)}
-    words = _words(body)
-    point = next((w for w in words if w in POINT_TYPES), None)
-    if point is not None:
-        label: dict[str, Any] = {"label": point}
-        about = (pairs.get("about") or "").strip()
-        if about:
-            label["about"] = about
-        return label
-    term = (pairs.get("term") or "").strip()
-    if term:
-        return {"label": "term", "term": term}
-    if "check" in words:
-        covers = [c.strip().lower() for c in (pairs.get("covers") or "").split(",") if c.strip()]
-        # ``covers=p2, p4`` written with a space leaves ``p4`` as a bare word.
-        covers += [w for w in words if _POINT_ID.match(w) and w not in covers]
-        return {"label": "check", "covers": covers}
-    return None
-
-
-def labelled(text: str) -> list[dict[str, Any]]:
-    """Every piece of ``text`` a marker labels, in the order written.
-
-    A piece is the text after a labelling marker, up to the next marker or a
-    blank line. A label with no text after it labels nothing and is dropped.
-    """
-    found = list(MARKER_RE.finditer(text))
-    pieces: list[dict[str, Any]] = []
-    for i, match in enumerate(found):
-        label = _label(match.group(1))
-        if label is None:
-            continue
-        stop = found[i + 1].start() if i + 1 < len(found) else len(text)
-        body = text[match.end() : stop]
-        blank = _BLANK_LINE.search(body)
-        if blank:
-            body = body[: blank.start()]
-        body = body.strip()
-        if body:
-            pieces.append(label | {"text": body})
-    return pieces
-
-
-# ── plain lines ─────────────────────────────────────────────────────────────
-
-#: What may start a line before its label: a list bullet, or bold.
-_LEAD = r"^[ \t]*(?:[-*•][ \t]+)?\**"
-#: What may sit between a label's value and the reason after it: a hyphen, an
-#: en or em dash, a colon, a comma or a semicolon.
-_THEN = r"[ \t]*(?:[-–—:,;][ \t]*)?"  # noqa: RUF001
-
-#: ``B: 20 - why``, ``B (Ship at once…): 20 - why`` or ``B = 20, why``: one
-#: option's rating and its reason, with the option's name in brackets if given.
-_RATING_LINE = re.compile(
-    _LEAD
-    + r"(?:option[ \t]+)?([A-Z])\**(?:[ \t]*\([^)\n]*\))?\**[ \t]*[:=][ \t]*(\d{1,3})\b(?!%)"
-    + _THEN
-    + r"(.*)$",
-    re.MULTILINE,
-)
-#: ``bad: 10 - why`` / ``ideal: 95``: a reference outcome's rating.
-_ANCHOR_LINE = re.compile(
-    _LEAD + r"(bad|ideal)\**[ \t]*[:=][ \t]*(\d{1,3})\b" + _THEN + r"(.*)$",
-    re.MULTILINE | re.IGNORECASE,
-)
-#: ``why: <reason>``: why an option is proposed; the option is what comes before.
-_WHY_LINE = re.compile(_LEAD + r"why\**[ \t]*:[ \t]*", re.MULTILINE | re.IGNORECASE)
-#: ``constraint: text`` or ``constraint (pricing): text``: a typed point.
-_POINT_LINE = re.compile(
-    _LEAD
-    + r"(objective|constraint|assumption|sub[ _-]?goal|deliverable|out[ _-]of[ _-]scope)\**"
-    + r"[ \t]*(?:\(([^)\n]*)\))?[ \t]*:[ \t]*(.+)$",
-    re.MULTILINE | re.IGNORECASE,
-)
-#: ``check p2, p4: how``: a check of the points it names.
-_CHECK_LINE = re.compile(
-    _LEAD + r"check\**[ \t]+((?:p\d+[ \t]*,?[ \t]*)+)\**[ \t]*:[ \t]*(.+)$",
-    re.MULTILINE | re.IGNORECASE,
-)
-#: ``term <word>: meaning``: a meaning for a word the run didn't name.
-_TERM_LINE = re.compile(
-    _LEAD + r"term[ \t]+([^:\n]{1,60}?)\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE
-)
-#: ``same: p6 = p1``: a member saying two points already in the frame say the
-#: same thing, the first to be folded into the last. Several on one line are
-#: comma-separated (``same: p6 = p1, p9 = p2``); a chain folds all into the last.
-_SAME_LINE = re.compile(
-    _LEAD
-    + r"same\**[ \t]*:[ \t]*(p\d+(?:[ \t]*=[ \t]*p\d+)+(?:[ \t]*,[ \t]*p\d+(?:[ \t]*=[ \t]*p\d+)+)*)",
-    re.MULTILINE | re.IGNORECASE,
-)
-#: ``conflict: what``: work that doesn't fit what was agreed.
-_CONFLICT_LINE = re.compile(_LEAD + r"conflict\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE)
-
-
-def _reason(text: str) -> str:
-    return text.strip().strip("*").strip()
-
-
-def rating_lines(text: str) -> dict[str, tuple[int, str]]:
-    """Every ``B: 20 - why`` line in ``text``: ``{letter: (rating, reason)}``.
-
-    The last line for a letter wins. A rating over 100 is dropped, never
-    clamped; a reason may be empty."""
-    found: dict[str, tuple[int, str]] = {}
-    for match in _RATING_LINE.finditer(text):
-        value = _rating(match.group(2))
-        if value is not None:
-            found[match.group(1)] = (value, _reason(match.group(3)))
-    return found
-
-
-def anchor_lines(text: str) -> dict[str, tuple[int, str]]:
-    """``{"bad": (rating, reason), "ideal": (rating, reason)}`` as far as ``text`` says."""
-    found: dict[str, tuple[int, str]] = {}
-    for match in _ANCHOR_LINE.finditer(text):
-        value = _rating(match.group(2))
-        if value is not None:
-            found[match.group(1).lower()] = (value, _reason(match.group(3)))
-    return found
-
-
-def split_why(text: str) -> tuple[str, str]:
-    """``(the option, why it's proposed)``: what comes before a ``why:`` line,
-    and that line to the end. No ``why:`` line is all option and no reason."""
-    match = _WHY_LINE.search(text)
-    if match is None:
-        return text.strip(), ""
-    return text[: match.start()].strip(), _reason(text[match.end() :])
-
-
-#: ``term: <word>``: a key term named, with no meaning yet.
-_NAMED_TERM = re.compile(_LEAD + r"term\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE)
-
-
-def term_names(text: str) -> list[str]:
-    """The key terms ``text`` names on ``term: <word>`` lines, as written.
-    A name is a word or a short phrase, so anything long is left out."""
-    names = [_reason(m.group(1)).strip("`\"'") for m in _NAMED_TERM.finditer(text)]
-    return [n for n in names if n and len(n) <= 60]
-
-
-def conflict_lines(text: str) -> list[str]:
-    """What each ``conflict:`` line in ``text`` says."""
-    return [_reason(m.group(1)) for m in _CONFLICT_LINE.finditer(text) if _reason(m.group(1))]
-
-
-def _point_type(raw: str) -> str:
-    word = re.sub(r"[ -]+", "_", raw.strip().lower())
-    return "sub_goal" if word in ("subgoal", "sub_goal") else word
-
-
-def plain_pieces(text: str, terms: list[str] | None = None) -> list[dict[str, Any]]:
-    """The pieces ``text`` states in plain lines, in the order written: typed
-    points, checks, meanings of the run's key ``terms`` (or of any word after
-    ``term``), and points said to be the same (``same: p6 = p1``)."""
-    found: list[tuple[int, dict[str, Any]]] = []
-    for m in _POINT_LINE.finditer(text):
-        piece: dict[str, Any] = {"label": _point_type(m.group(1)), "text": _reason(m.group(3))}
-        about = (m.group(2) or "").strip()
-        if about:
-            piece["about"] = about
-        found.append((m.start(), piece))
-    for m in _CHECK_LINE.finditer(text):
-        covers = [c.lower() for c in re.findall(r"p\d+", m.group(1), re.IGNORECASE)]
-        found.append((m.start(), {"label": "check", "covers": covers, "text": _reason(m.group(2))}))
-    for m in _TERM_LINE.finditer(text):
-        found.append(
-            (m.start(), {"label": "term", "term": m.group(1).strip(), "text": _reason(m.group(2))})
-        )
-    for m in _SAME_LINE.finditer(text):
-        for group in m.group(1).split(","):
-            ids = [i.lower() for i in re.findall(r"p\d+", group, re.IGNORECASE)]
-            if len(ids) > 1:
-                found.append((m.start(), {"label": "same", "points": ids, "text": group.strip()}))
-    named: list[str] = [t.strip() for t in (terms or []) if t.strip()]
-    if named:
-        longest_first = sorted(named, key=lambda t: len(t), reverse=True)
-        alternatives = "|".join(re.escape(t) for t in longest_first)
-        line = re.compile(
-            _LEAD + rf"({alternatives})\**[ \t]*:[ \t]*(.+)$", re.MULTILINE | re.IGNORECASE
-        )
-        taken = {start for start, _p in found}
-        for m in line.finditer(text):
-            if m.start() in taken:
-                continue
-            word = next(t for t in named if t.strip().lower() == m.group(1).strip().lower())
-            found.append(
-                (m.start(), {"label": "term", "term": word.strip(), "text": _reason(m.group(2))})
-            )
-    return [p for _start, p in sorted(found, key=lambda sp: sp[0]) if p["text"]]
 
 
 #: The opening of a marker, where it can't be one: what is defanged in stored text.
@@ -318,27 +59,15 @@ def defang(text: str) -> str:
 
 
 def parse_marker(text: str) -> tuple[dict[str, Any], str]:
-    """Lift ``confidence``/``stance``, option ratings and labelled pieces out of
-    the markers in ``text``; strip the markers.
+    """Lift ``confidence``/``stance`` out of the markers in ``text``; strip the markers.
 
-    ``[[mycelium: A=82 B=41 stance=accept]]``: a key that is one capital letter
-    is a rating of that option (``payload["scores"]``); ``a=82`` is not. A
-    marker that labels text (``[[mycelium: constraint]] ...``) adds a piece to
-    ``payload["pieces"]`` and leaves the text in the prose. Returns the payload
-    fields found and the prose without the markers. A text that is nothing but
-    a marker keeps its original form rather than becoming empty.
+    Returns the payload fields found and the prose without the markers. A text
+    that is nothing but a marker keeps its original form rather than becoming
+    empty.
     """
     payload: dict[str, Any] = {}
-    scores: dict[str, int] = {}
     for match in MARKER_RE.finditer(text):
         for key, raw in _pairs(match.group(1)):
-            # Ratings are matched before anything is lowercased: `A` is an
-            # option, `a` is nothing.
-            if RATING_KEY.match(key):
-                value = _rating(raw)
-                if value is not None:
-                    scores[key] = value
-                continue
             k = key.lower()
             if k == "confidence":
                 try:
@@ -351,106 +80,8 @@ def parse_marker(text: str) -> tuple[dict[str, Any], str]:
                 action = STANCE_TO_ACTION.get(raw.lower())
                 if action:
                     payload["action"] = action
-    if scores:
-        payload["scores"] = scores
-    pieces = labelled(text)
-    if pieces:
-        payload["pieces"] = pieces
     clean = _STRIP_RE.sub("", text).strip() or text.strip()
     return payload, clean
-
-
-def _a_piece(raw: Any) -> dict[str, Any] | None:
-    """A lifted piece as it should look, or ``None`` for anything malformed."""
-    if not isinstance(raw, dict):
-        return None
-    label, text = raw.get("label"), raw.get("text")
-    if not isinstance(text, str) or not text.strip():
-        return None
-    piece: dict[str, Any] = {"label": label, "text": text.strip()}
-    if label in POINT_TYPES:
-        about = raw.get("about")
-        if isinstance(about, str) and about.strip():
-            piece["about"] = about.strip()
-        return piece
-    if label == "term":
-        term = raw.get("term")
-        return piece | {"term": term.strip()} if isinstance(term, str) and term.strip() else None
-    if label == "check":
-        covers = raw.get("covers")
-        ids = (
-            [c.strip().lower() for c in covers if isinstance(c, str) and c.strip()]
-            if isinstance(covers, list)
-            else []
-        )
-        return piece | {"covers": ids}
-    return None
-
-
-def pieces_of(content: dict[str, Any], terms: list[str] | None = None) -> list[dict[str, Any]]:
-    """The labelled pieces a transcript record states, in the order written.
-
-    The markers' pieces come from the message payload (the reply route lifted
-    them there) or, failing that, from markers still in the prose (a person
-    typing into the thread). The plain lines in the prose are added to those,
-    with meanings of the run's key ``terms``. Only well-formed pieces count.
-    """
-    payload = ((content.get("l9") or {}).get("payload") or {}).get("data") or {}
-    lifted = payload.get("pieces") if isinstance(payload, dict) else None
-    text = content.get("content")
-    text = text if isinstance(text, str) else ""
-    found = (
-        [p for p in (_a_piece(raw) for raw in lifted) if p is not None]
-        if isinstance(lifted, list)
-        else []
-    )
-    if not found and text:
-        found = labelled(text)
-    seen = {(p["label"], p["text"]) for p in found}
-    found += [p for p in plain_pieces(text, terms) if (p["label"], p["text"]) not in seen]
-    return found
-
-
-def rated_of(content: dict[str, Any]) -> dict[str, tuple[int, str]]:
-    """The option ratings a transcript record states, each with its reason:
-    ``{letter: (0-100, why)}``. A marker's rating carries no reason; a plain
-    ``B: 20 - why`` line does, and wins over a marker for the same letter."""
-    found = {k: (v, "") for k, v in scores_of(content).items()}
-    text = content.get("content")
-    if isinstance(text, str):
-        found.update(rating_lines(text))
-    return found
-
-
-def scores_of(content: dict[str, Any]) -> dict[str, int]:
-    """The option ratings a transcript record states, or ``{}``.
-
-    Read like :func:`stance_of`: the message payload first (the reply route lifted
-    the marker there), then a marker still in the prose. Only well-formed
-    ratings count; nothing is guessed from what the prose says.
-    """
-    payload = ((content.get("l9") or {}).get("payload") or {}).get("data") or {}
-    lifted = payload.get("scores") if isinstance(payload, dict) else None
-    if isinstance(lifted, dict):
-        found = {
-            k: v
-            for k, v in lifted.items()
-            if isinstance(k, str)
-            and RATING_KEY.match(k)
-            and isinstance(v, int)
-            and not isinstance(v, bool)
-            and 0 <= v <= 100
-        }
-    else:
-        found = {}
-    text = content.get("content")
-    if not isinstance(text, str):
-        return found
-    if not found:
-        parsed, _clean = parse_marker(text)
-        found = dict(parsed.get("scores") or {})
-    found.update({k: v for k, (v, _why) in rating_lines(text).items()})
-    return found
 
 
 def stance_of(content: dict[str, Any]) -> str | None:
@@ -460,7 +91,7 @@ def stance_of(content: dict[str, Any]) -> str | None:
     marker it stripped. A marker still in the prose (a human's write through
     the message route) is read next. Anything else stated no stance.
     """
-    payload = ((content.get("l9") or {}).get("payload") or {}).get("data") or {}
+    payload = (envelope_of(content).get("payload") or {}).get("data") or {}
     action = payload.get("action") if isinstance(payload, dict) else None
     if action in ("accept", "reject"):
         return action

@@ -234,7 +234,7 @@ function inAThread(event: Event, room: string): boolean {
  * subject, one place, in order.
  */
 function isActivity(event: Event): boolean {
-  return event.type === PING_TYPE || event.type === "l9_knowledge" || event.type === NOTICE_TYPE;
+  return event.type === PING_TYPE || event.type === "envelope_knowledge" || event.type === NOTICE_TYPE;
 }
 
 /**
@@ -276,10 +276,10 @@ function subjectOf(event: Event, threads: Map<string, ThreadOwner>): string | nu
     return owner && owner.keys.length === 1 ? owner.keys[0] : event.thread;
   }
   if (event.type === NOTICE_TYPE) return (event.raw.taskKey as string) || null;
-  if (event.type === "l9_knowledge") {
+  if (event.type === "envelope_knowledge") {
     const key = (event.raw.key as string) || null;
     // Only a task's own memory is a row here. Everything else written (an
-    // agent's manifest, a run's shared summary or decision) is the Memory
+    // agent's manifest, a synthesis) is the Memory
     // rail's news, and as a row it reads as a task standing open.
     return key?.startsWith("work/") ? key : null;
   }
@@ -294,7 +294,7 @@ function actorOf(ev: Event): string | null {
       ? ev.pingSenders[ev.pingSenders.length - 1]
       : ev.type === NOTICE_TYPE
         ? (ev.raw.by as string | undefined)
-        : ev.type === "l9_knowledge"
+        : ev.type === "envelope_knowledge"
           ? (ev.raw.updated_by as string | undefined)
           : ev.sender;
   return who || null;
@@ -310,7 +310,7 @@ function actorsOf(members: Event[]): string[] {
         ? ev.pingSenders
         : ev.type === NOTICE_TYPE
           ? [ev.raw.by as string | undefined]
-          : ev.type === "l9_knowledge"
+          : ev.type === "envelope_knowledge"
             ? [ev.raw.updated_by as string | undefined]
             : [ev.sender];
     for (const handle of from) if (handle && !who.includes(handle)) who.push(handle);
@@ -353,7 +353,7 @@ function activityLine(ev: Event): { label: string; detail: string } {
     }
     return { label, detail: by ? `@${by}` : "" };
   }
-  if (ev.type === "l9_knowledge") {
+  if (ev.type === "envelope_knowledge") {
     const version = ev.raw.version;
     const by = ev.raw.updated_by as string | undefined;
     return {

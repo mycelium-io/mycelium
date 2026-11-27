@@ -27,9 +27,7 @@ if TYPE_CHECKING:
 def pack(tmp_path, monkeypatch) -> Path:
     monkeypatch.setattr(xp, "experiences_dir", lambda: tmp_path / "experiences")
     monkeypatch.setattr("mycelium.config.MyceliumConfig.save", lambda self, *a, **k: None)
-    monkeypatch.setattr(
-        "mycelium.docker_utils.write_env_file", lambda config: (tmp_path / ".env", False)
-    )
+    monkeypatch.setattr("mycelium.docker_utils.write_env_file", lambda config: tmp_path / ".env")
     archive = tmp_path / "pack.zip"
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("scenarios/approval-gate-agent/scenario.yaml", "pattern: x\n")

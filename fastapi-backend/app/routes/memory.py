@@ -52,7 +52,6 @@ from app.services import (
     knowledge,
     links,
     memory_kinds,
-    memory_sync,
     principals,
     room_settings,
     search_index,
@@ -227,13 +226,7 @@ def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> N
             bus.publish(agent_channel(sub.subscriber), payload)
 
 
-# Strong refs for the fire-and-forget broadcasts below — an unreferenced
-# asyncio task can be garbage-collected mid-flight (mirrors
-# RoomChannelManager._tasks / PlanSyncEngine._tasks).
-_broadcast_tasks: set[asyncio.Task[Any]] = set()
-
-
-def _broadcast_memory_write(
+def _record_memory_write(
     room_name: str,
     *,
     key: str,
@@ -246,57 +239,47 @@ def _broadcast_memory_write(
     tags: list[str] | None = None,
     meta: dict[str, Any] | None = None,
 ) -> None:
-    """Schedule an ``extraction`` knowledge push mirroring a direct memory write.
+    """Record a ``knowledge:extraction`` message for a direct memory write, the
+    line the room's timeline shows for it.
 
-    Fire-and-forget: the write has already landed on disk and in the index, so a
-    broadcast failure must never surface as a write failure. A room with no live
-    channel is a silent no-op, same as the plan-sync consumer.
+    The write has already landed on disk and in the index, so a failure here
+    is logged, never surfaced as a write failure.
     """
-    from app.services import room_channels
+    from app.services import message_format, room_channels
+    from app.services.message_models import Kind
 
     managed = room_channels.manager.get(room_name)
     if managed is None:
         return
-    write = memory_sync.KnowledgeWrite(
-        key=key,
-        content=content,
-        version=version,
-        base_version=base_version,
-        created_by=created_by,
-        updated_by=updated_by,
-        updated_at=updated_at,
-        tags=tags,
-        meta=meta,
+    payload: dict[str, Any] = {
+        "key": key,
+        "content": content,
+        "version": version,
+        "base_version": base_version,
+        "created_by": created_by,
+        "updated_by": updated_by,
+        "updated_at": updated_at,
+    }
+    if tags is not None:
+        payload["tags"] = list(tags)
+    if meta is not None:
+        payload["meta"] = dict(meta)
+    envelope = message_format.build_envelope(
+        kind=Kind.knowledge,
+        subkind="extraction",
+        episode=message_format.episode_urn(room_name, "knowledge"),
+        recipients=room_channels.manager.members(room_name),
+        topic=message_format.topic_urn(room_name),
+        payload_type="extraction",
+        payload_data=payload,
     )
-    recipients = room_channels.manager.members(room_name)
-    task = asyncio.create_task(_send_memory_write_knowledge(room_name, managed, write, recipients))
-    _broadcast_tasks.add(task)
-    task.add_done_callback(_broadcast_tasks.discard)
-
-
-async def _send_memory_write_knowledge(
-    room_name: str, managed: Any, write: memory_sync.KnowledgeWrite, recipients: list[str]
-) -> None:
-    """Broadcast ``write`` on the room channel and record it locally.
-
-    ``ingest_local`` makes the transcript/UI bus see it even if SLIM never loops
-    the broadcast back; it only records, so it cannot re-enter this write path.
-    """
-    from app.services.message_slim import serialize_content
-
-    envelope = memory_sync.build_knowledge_envelope(
-        room=room_name,
-        write=write,
-        recipients=recipients,
-        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
-    )
-    content = serialize_content(envelope, extra={"content": f"memory updated → {write.key}"})
+    text = f"memory updated → {key}"
     try:
-        await managed.channel.send(envelope, extra={"content": content["content"]})
+        managed.persister.record(
+            envelope, message_format.serialize_content(envelope, extra={"content": text})
+        )
     except Exception:
-        logger.warning("failed to broadcast memory-write knowledge on room %s", room_name)
-    if managed.persister is not None:
-        managed.persister.ingest_local(envelope, content)
+        logger.warning("failed to record the memory write to %s in room %s", key, room_name)
 
 
 @router.post(
@@ -404,7 +387,6 @@ async def upsert_memories(
     # Every item is checked before any is saved, so a refused batch saves
     # nothing: its kind (from the memory route), a room setting's value, and
     # the version it was written over.
-    drawn: dict[int, str] = {}
     setting_values: dict[int, Any] = {}
     for i, item in enumerate(payload.items):
         value = item.value if isinstance(item.value, dict) else {"text": item.value}
@@ -414,11 +396,9 @@ async def upsert_memories(
 
         if people:
             try:
-                redrawn = memory_kinds.check(item.key, value_to_content(value), item.meta, existing)
+                memory_kinds.check(item.key, value_to_content(value), item.meta, existing)
             except memory_kinds.Refused as e:
                 raise HTTPException(status_code=e.status, detail=e.detail(item.key)) from e
-            if redrawn is not None:
-                drawn[i] = redrawn
             # What a memory says it is as knowledge: its kind, its task and
             # what it came from (``services/knowledge.py``).
             try:
@@ -466,11 +446,6 @@ async def upsert_memories(
     for i, item in enumerate(payload.items):
         value = item.value if isinstance(item.value, dict) else {"text": item.value}
         content_text = item.content_text or _flatten_value(item.value)
-        if i in drawn:
-            # A body drawn from its field (a summary, a decision): the field
-            # this write changed is the source, so the text follows it.
-            value = {"text": drawn[i]}
-            content_text = drawn[i]
         body = value_to_content(value)
 
         existing = read_memory_file(room_dir, item.key)
@@ -594,7 +569,7 @@ async def upsert_memories(
         if not notify:
             continue
         _notify_change(room_name, item.key, item.created_by, new_version)
-        _broadcast_memory_write(
+        _record_memory_write(
             room_name,
             key=item.key,
             content=body.rstrip("\n") + "\n",

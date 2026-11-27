@@ -23,7 +23,6 @@ import yaml
 from httpx import AsyncClient
 
 from app.services.filesystem import get_room_dir, read_memory_file, write_memory_file
-from app.services.persister import DeliveryLog
 
 ROOM = "bind-room"
 
@@ -216,52 +215,13 @@ async def test_reply_claiming_another_handle_is_refused(client: AsyncClient, as_
 
 
 @pytest.mark.asyncio
-async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_principal, monkeypatch):
+async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_principal):
     """Regression (#657): await_message already honored owner/allow_from
     delegation via authorize_handle; post_reply used the stricter, delegation-
     blind bind_actor instead, so an agent's owner could watch for its turns but
     never actually post the reply as it. mallory owns the agent here, so replying
     as it must succeed even though mallory isn't the agent's own literal handle.
     """
-    from app.services import room_channels
-
-    class _Persister:
-        def __init__(self) -> None:
-            self.log = DeliveryLog([])
-            self.ingested: list[Any] = []
-
-        def ingest_local(self, envelope: Any, content: dict, list_write: bool = False) -> None:
-            self.ingested.append(envelope)
-
-    class _Channel:
-        async def send(self, envelope: Any, *, extra: dict | None = None) -> None:
-            return None
-
-    class _Managed:
-        def __init__(self) -> None:
-            self.channel = _Channel()
-            self.persister = _Persister()
-
-    managed = _Managed()
-
-    class _Manager:
-        async def provision(self, room: str, **_kw: Any) -> _Managed:
-            return managed
-
-        def refresh_lease(self, room: str, handle: str) -> None:
-            return None
-
-        async def send_as_custodian(self, room: str, handle: str, data: bytes) -> bool:
-            # PSK default: no custodial session, so the reply falls back to a moderator send.
-            return False
-
-        async def raise_ping(self, room: str, **_kw: Any) -> None:
-            # A reply to the room itself pings nothing; the fake only has to answer
-            # the call the reply route makes every time.
-            return None
-
-    monkeypatch.setattr(room_channels, "manager", _Manager())
-
     await _make_room(client)
     _seed_agent(ROOM, "owned-agent", owner="mallory")
     as_principal("mallory")
@@ -274,47 +234,10 @@ async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_princi
 
 @pytest.mark.asyncio
 async def test_reply_stamps_the_token_handle_on_the_message_actor(
-    client: AsyncClient, as_principal, monkeypatch
+    client: AsyncClient, as_principal
 ):
-    """The published envelope names the token's handle, whatever the body said."""
-    from app.services import room_channels
-
-    class _Persister:
-        def __init__(self) -> None:
-            self.log = DeliveryLog([])
-            self.ingested: list[Any] = []
-
-        def ingest_local(self, envelope: Any, content: dict, list_write: bool = False) -> None:
-            self.ingested.append(envelope)
-
-    class _Channel:
-        async def send(self, envelope: Any, *, extra: dict | None = None) -> None:
-            return None
-
-    class _Managed:
-        def __init__(self) -> None:
-            self.channel = _Channel()
-            self.persister = _Persister()
-
-    managed = _Managed()
-
-    class _Manager:
-        async def provision(self, room: str, **_kw: Any) -> _Managed:
-            return managed
-
-        def refresh_lease(self, room: str, handle: str) -> None:
-            return None
-
-        async def send_as_custodian(self, room: str, handle: str, data: bytes) -> bool:
-            # PSK default: no custodial session, so the reply falls back to a moderator send.
-            return False
-
-        async def raise_ping(self, room: str, **_kw: Any) -> None:
-            # A reply to the room itself pings nothing; the fake only has to answer
-            # the call the reply route makes every time.
-            return None
-
-    monkeypatch.setattr(room_channels, "manager", _Manager())
+    """The recorded envelope names the token's handle, whatever the body said."""
+    from app.services import persister
 
     await _make_room(client)
     _seed_agent(ROOM, "alice")
@@ -322,9 +245,10 @@ async def test_reply_stamps_the_token_handle_on_the_message_actor(
     resp = await client.post(f"/api/rooms/{ROOM}/reply", json={"handle": "@Alice", "text": "x"})
     assert resp.status_code == 200
     assert resp.json()["handle"] == "alice"
-
-    envelope = managed.persister.ingested[0]
-    assert envelope.header.participants.actors[0].id == "alice"
+    replies = [r for r in persister.load_transcript(ROOM) if r.content.get("content") == "x"]
+    assert [r.sender for r in replies] == ["alice"]
+    actors = replies[0].content["envelope"]["header"]["participants"]["actors"]
+    assert actors[0]["id"] == "alice"
 
 
 # ── engine registration ───────────────────────────────────────────────────────

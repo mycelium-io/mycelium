@@ -39,7 +39,7 @@ const ROOM = "checkout";
 const BOOT = Date.now();
 const ago = (mins: number): string => new Date(BOOT - mins * 60_000).toISOString();
 const now = (): string => new Date().toISOString();
-const ep = (short: string): string => `urn:ioc:mycelium:episode:${ROOM}:${short}`;
+const ep = (short: string): string => `urn:mycelium:episode:${ROOM}:${short}`;
 const LIVE = liveEpisode(ROOM);
 
 /** The person the demo is recorded as; the machine's runner is theirs. */

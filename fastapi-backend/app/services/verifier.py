@@ -37,6 +37,7 @@ from typing import Any
 
 from app.config import settings
 from app.services import verifier_claims, verifier_records
+from app.services.message_format import envelope_of
 from app.services.persister import (
     TranscriptRecord,
     load_transcript,
@@ -127,7 +128,7 @@ def _context(records: list[TranscriptRecord], record: TranscriptRecord) -> str:
     for r in records:
         if verifier_records.episode_of(r) != episode:
             continue
-        payload = (r.content.get("l9") or {}).get("payload") or {}
+        payload = envelope_of(r.content).get("payload") or {}
         if payload.get("type") not in PROSE_TYPES:
             continue
         text = str(r.content.get("content") or "")
@@ -273,7 +274,7 @@ class VerifierEngine:
         """The persister's hook, for every recorded message: check agent prose."""
         if not settings.VERIFIER_ENABLED:
             return
-        payload = (record.content.get("l9") or {}).get("payload") or {}
+        payload = envelope_of(record.content).get("payload") or {}
         if payload.get("type") not in PROSE_TYPES:
             return
         if not str(record.content.get("content") or "").strip():
@@ -433,7 +434,7 @@ def check_lines(room: str, handle: str, since: list[Any]) -> list[str]:
     last turn and still shown. ``since`` is the records the digest is summarising."""
     raised = set()
     for record in since:
-        payload = (record.content.get("l9") or {}).get("payload") or {}
+        payload = envelope_of(record.content).get("payload") or {}
         data = payload.get("data") or {}
         if (
             payload.get("type") == "notice"

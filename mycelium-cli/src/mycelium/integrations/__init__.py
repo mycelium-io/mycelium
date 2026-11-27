@@ -12,7 +12,7 @@ are not CLIs and have packages of their own.
 
 One canonical family id is used everywhere internally: the **underscore**
 spelling (``claude_code``), since that is the value persisted in
-``agents/<handle>`` manifests and matched by ``sstp.AGENT_ADAPTERS``. The
+``agents/<handle>`` manifests. The
 **hyphen** spelling (``claude-code``) is accepted from people, as
 ``agent create --adapter claude-code``; :func:`normalize_family_id` is the
 one translation boundary.

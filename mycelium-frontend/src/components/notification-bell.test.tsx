@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 import { resetStreamHub } from "@/lib/stream-hub";
 
-const THREAD = "urn:ioc:mycelium:episode:sprint:t1";
-const NOTE_THREAD = "urn:ioc:mycelium:episode:sprint:n1";
+const THREAD = "urn:mycelium:episode:sprint:t1";
+const NOTE_THREAD = "urn:mycelium:episode:sprint:n1";
 
 /** What the hub's speech server was asked to say, with which voice and speed,
  *  and whether it has one. */
@@ -71,7 +71,7 @@ function message(text: string, episode: string | null = null) {
     id: `msg-${seq}`,
     room_name: "sprint",
     sender_handle: "alice",
-    message_type: "l9_exchange",
+    message_type: "envelope_exchange",
     created_at: CREATED,
     episode,
     content: JSON.stringify({ content: text }),
@@ -140,7 +140,7 @@ describe("<NotificationBell />", () => {
     expect(await screen.findByText("sprint · Zoom and pan images")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /which preset/ })).toHaveAttribute(
       "href",
-      "/room/sprint?focus=episode%3At1",
+      `/room/sprint?focus=${encodeURIComponent(`episode:${THREAD}`)}`,
     );
   });
 

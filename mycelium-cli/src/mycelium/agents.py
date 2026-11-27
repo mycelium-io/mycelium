@@ -220,8 +220,8 @@ def delete_manifest(client: Client, room: str, key: str) -> None:
 def is_resident(config: MyceliumConfig, room: str, handle: str) -> bool:
     """True if a runtime is currently present in the room for ``handle``.
 
-    Best-effort: queries the backend's live presence set (SLIM sockets + server-
-    held ``await`` leases). A network/parse failure returns ``False`` so the
+    Best-effort: queries the backend's live presence set (server-held ``await``
+    leases and herdr members). A network/parse failure returns ``False`` so the
     caller falls back to the honest "not resident, queued" message rather than
     claiming liveness it can't confirm.
     """

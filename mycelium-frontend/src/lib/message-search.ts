@@ -80,7 +80,7 @@ export const FIELDS: FieldDoc[] = [
   { name: "stance", value: "accept|reject", about: "how the message landed" },
   { name: "step", value: "<step>", about: "the conductor step it belongs to" },
   { name: "is", value: "edited|conductor", about: "revised since it was sent, or a conductor post" },
-  { name: "has", value: "mention|link|memory|code|scores", about: "what the message carries" },
+  { name: "has", value: "mention|link|memory|code", about: "what the message carries" },
   { name: "day", value: "<date>", about: "the UTC day it was said" },
   { name: "thread", value: "<episode>", about: "a thread by its episode id" },
 ];
@@ -109,7 +109,7 @@ export const SORTS: SortOrder[] = ["newest", "oldest", "relevance"];
 export const CLOSED_VALUES: Record<string, string[]> = {
   in: ["channel", "thread"],
   is: ["edited", "conductor"],
-  has: ["mention", "link", "memory", "code", "scores"],
+  has: ["mention", "link", "memory", "code"],
   stance: ["accept", "reject"],
 };
 

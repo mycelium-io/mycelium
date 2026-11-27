@@ -19,7 +19,7 @@ import yaml
 from app.services import message_format, probe_engine
 from app.services.filesystem import get_room_dir, list_memory_files, write_memory_file
 from app.services.message_models import Kind
-from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
+from tests.fakes import FakeManaged, FakeManager
 
 _ROOM = "hello-room"
 _EPISODE = message_format.episode_urn(_ROOM, "live")
@@ -27,7 +27,7 @@ _TOPIC = message_format.topic_urn(_ROOM)
 
 
 def _engine() -> tuple[probe_engine.ProbeEngine, FakeManaged]:
-    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    managed = FakeManaged(_ROOM)
     return probe_engine.ProbeEngine(FakeManager(managed, [])), managed  # type: ignore[arg-type]
 
 
@@ -51,7 +51,7 @@ def _register(handle: str, kind: str) -> None:
 
 
 def _said(managed: FakeManaged) -> list[str]:
-    return [(extra or {}).get("content", "") for _env, extra in managed.channel.sent]
+    return managed.persister.texts()
 
 
 @pytest.fixture(autouse=True)
@@ -186,7 +186,7 @@ async def test_empty_pi_response_posts_a_readable_reason(monkeypatch: pytest.Mon
 
 @pytest.mark.asyncio
 async def test_pi_timeout_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch) -> None:
-    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    managed = FakeManaged(_ROOM)
     engine = probe_engine.ProbeEngine(FakeManager(managed, []), timeout_s=-5.0)  # type: ignore[arg-type]
     monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "never gets here")
     monkeypatch.setattr(probe_engine.settings, "LLM_API_KEY", "sk-ant-test")

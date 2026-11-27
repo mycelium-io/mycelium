@@ -3,16 +3,13 @@
 
 """Unit tests for the backend persister / durable inbox (app/services/persister.py).
 
-Node-free: they exercise the delivery cursor, transcript persistence, and the
-trigger detection as pure logic over built envelopes. The live durable-inbox
-round trip over a real SLIM node is in ``test_message_over_slim_roundtrip.py``
-(guarded on a running node).
+They exercise the delivery cursor, transcript persistence, and the trigger
+detection as pure logic over built envelopes.
 """
 
-import pytest
-
-from app.services import memory_sync, message_format, persister
+from app.services import message_format, persister
 from app.services.filesystem import get_room_dir, read_memory_file
+from app.services.message_format import serialize_content
 from app.services.message_models import Kind
 
 
@@ -20,10 +17,10 @@ def _exchange(message_id: str, *, sender: str = "agent-a", text: str | None = No
     """A minimal exchange envelope (optionally naming a human-facing text)."""
     return message_format.build_envelope(
         kind=Kind.exchange,
-        episode="urn:ioc:mycelium:episode:r:s",
+        episode="urn:mycelium:episode:r:s",
         sender=sender,
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        topic="urn:concept:mycelium:r",
+        topic="urn:mycelium:topic:r",
         message_id=message_id,
         payload_type="reply",
         payload_data={"action": "offer", **({"text": text} if text is not None else {})},
@@ -34,8 +31,6 @@ def _record(
     message_id: str, *, sender: str = "agent-a", text: str = ""
 ) -> persister.TranscriptRecord:
     env = _exchange(message_id, sender=sender, text=text or None)
-    from app.services.message_slim import serialize_content
-
     return persister.record_from(
         env, serialize_content(env, extra={"text": text} if text else None)
     )
@@ -64,8 +59,8 @@ def test_cursor_yields_exactly_the_missed_tail_for_an_offline_agent():
     tail = log.undelivered("agent-a")
     assert [r.message_id for r in tail] == ["m2", "m3"]
 
-    # After re-serve it is caught up again.
-    log.mark_caught_up("agent-a")
+    # Once its await has read them it is caught up again.
+    log.advance("agent-a", len(log.records))
     assert log.undelivered("agent-a") == []
 
 
@@ -150,23 +145,6 @@ def test_cursors_survive_a_restart_so_an_offline_tail_is_still_reserved():
     )
     assert resumed.knows("agent-a")  # a reconnect, not a fresh join
     assert [r.message_id for r in resumed.undelivered("agent-a")] == ["m2", "m3"]
-
-
-def test_classify_receive_error_separates_churn_from_genuine_faults():
-    """Membership churn (a member leaving, a session re-keyed on a join) must be
-    classified apart from a real transport fault, so it doesn't spend the fatal
-    give-up budget and zombie the room under rapid invite/remove churn."""
-    classify = persister._classify_receive_error
-    assert (
-        classify(Exception("participant disconnected: acme/room/agent-a/inst"))
-        == "participant_left"
-    )
-    assert classify(Exception("SessionError: session closed")) == "transient"
-    assert classify(Exception("Session not found for 42")) == "transient"
-    assert classify(Exception("no active session")) == "transient"
-    # A genuine fault must remain fatal so a truly dead channel still gives up fast.
-    assert classify(Exception("connection reset by peer")) == "fatal"
-    assert classify(Exception("some unrecognized transport error")) == "fatal"
 
 
 def test_loaded_cursors_are_clamped_to_the_transcript_length():
@@ -264,114 +242,39 @@ def test_who_is_named_in_order_however_named():
 
 
 def _persister_for(room: str, *, summoned: list) -> persister.RoomPersister:
-    """A persister with no live channel, its summon hook capturing into ``summoned``."""
+    """A room's persister, its summon hook capturing into ``summoned``."""
+    get_room_dir(room)
     return persister.RoomPersister(
         room,
-        channel=None,  # ty: ignore[invalid-argument-type]  # not exercised: we call _ingest directly
-        members_provider=lambda: set(),
         on_summon=lambda handle, env, co, msg="": summoned.append(handle),
         feed_bus=False,
     )
 
 
-def test_ingest_fires_summon_hook_but_not_on_plain_message():
+def test_record_fires_summon_hook_but_not_on_plain_message():
     summoned: list[str] = []
     p = _persister_for("ingest-room", summoned=summoned)
 
-    from app.services.message_slim import serialize_content
-
     env = _exchange("m1", text="ping @conductor")
-    p._ingest(env, serialize_content(env, extra={"content": "ping @conductor"}))
+    p.record(env, serialize_content(env, extra={"content": "ping @conductor"}))
     assert summoned == ["conductor"]
 
     plain = _exchange("m2", text="no mention here")
-    p._ingest(plain, serialize_content(plain, extra={"content": "no mention here"}))
+    p.record(plain, serialize_content(plain, extra={"content": "no mention here"}))
     assert summoned == ["conductor"]  # unchanged
 
 
-def test_ingest_skips_keepalive_from_the_transcript():
-    """A connector's idle keepalive ping exists only to reset SLIM liveness — it
-    must never be recorded to the durable transcript (else the log fills with a
-    ping every ~20s per member). A real reply still records."""
-    p = _persister_for("keepalive-room", summoned=[])
+def test_record_writes_the_transcript_and_reloads_from_it():
+    """What ``record`` writes is the room's log on disk: a new persister for the
+    same room reads the same messages back, in order."""
+    room = "record-reload-room"
+    p = _persister_for(room, summoned=[])
+    for mid in ("r-1", "r-2"):
+        env, content = _msg_content(mid, sender="growth", text=mid, payload_type="reply")
+        p.record(env, content)
 
-    ping_env, ping_content = _msg_content("k-1", sender="growth", text="", payload_type="keepalive")
-    p._ingest(ping_env, ping_content)
-    assert p.log.records == []  # keepalive dropped, nothing recorded
-
-    reply_env, reply_content = _msg_content("r-1", sender="growth", text="hi", payload_type="reply")
-    p._ingest(reply_env, reply_content)
-    assert len(p.log.records) == 1  # a real message still records
-
-
-@pytest.mark.asyncio
-async def test_reserve_without_context_is_a_noop():
-    """No cached reply context (agent never spoke) → nothing to route to."""
-    p = _persister_for("reserve-room", summoned=[])
-    p.log.track("agent-a", caught_up=True)
-    from app.services.message_slim import serialize_content
-
-    env = _exchange("m1")
-    p.log.record(persister.record_from(env, serialize_content(env)), delivered_to=set())
-    # agent-a missed m1 but we have no context for it → 0 re-served, no raise.
-    assert await p.reserve("agent-a") == 0
-    # The skipped first-wake re-serve is now visible on the health surface.
-    assert p.reserve_skipped == 1
-    assert p.reserves == 0
-
-
-@pytest.mark.asyncio
-async def test_reserve_failure_is_counted_for_the_health_surface():
-    """A re-serve that has a route but fails to send is a lost delivery — counted
-    as reserve_failures, not silently swallowed."""
-
-    class _DeadChannel:
-        async def send_content_to(self, _context, _content):
-            raise RuntimeError("point-to-point send failed")
-
-    p = persister.RoomPersister(
-        "reserve-fail-room",
-        _DeadChannel(),  # ty: ignore[invalid-argument-type]
-        members_provider=lambda: set(),
-        feed_bus=False,
-    )
-    from app.services.message_slim import serialize_content
-
-    p.log.track("agent-a", caught_up=True)
-    env = _exchange("m1")
-    p.log.record(persister.record_from(env, serialize_content(env)), delivered_to=set())
-    # a route exists, but the send will fail (a stand-in context, not a real one)
-    p._contexts["agent-a"] = object()  # ty: ignore[invalid-assignment]
-    assert await p.reserve("agent-a") == 0
-    assert p.reserve_failures == 1
-    assert p.reserves == 0
-
-
-@pytest.mark.asyncio
-async def test_transient_churn_is_counted_apart_from_fatal_faults():
-    """Recoverable session churn increments transient_errors (retried, not lost)
-    and never spends the fatal receive_errors budget."""
-
-    class _ChurningChannel:
-        def __init__(self):
-            self.calls = 0
-
-        async def receive_with_context(self):
-            self.calls += 1
-            if self.calls > 3:
-                raise __import__("asyncio").CancelledError
-            raise RuntimeError("SessionError: session closed")
-
-    p = persister.RoomPersister(
-        "churn-room",
-        _ChurningChannel(),  # ty: ignore[invalid-argument-type]
-        members_provider=lambda: set(),
-        feed_bus=False,
-    )
-    with pytest.raises(__import__("asyncio").CancelledError):
-        await p.run()
-    assert p.transient_errors == 3
-    assert p.receive_errors == 0  # churn never counts as a fatal fault
+    reloaded = _persister_for(room, summoned=[])
+    assert [r.message_id for r in reloaded.log.records] == ["r-1", "r-2"]
 
 
 # ── list-store invariant: one store, source-partitioned producers ─────────────
@@ -379,14 +282,12 @@ async def test_transient_churn_is_counted_apart_from_fatal_faults():
 
 def _msg_content(message_id: str, *, sender: str, text: str, payload_type: str):
     """An envelope + serialized content with a top-level human-facing ``content``."""
-    from app.services.message_slim import serialize_content
-
     env = message_format.build_envelope(
         kind=Kind.exchange,
-        episode="urn:ioc:mycelium:episode:r:s",
+        episode="urn:mycelium:episode:r:s",
         sender=sender,
         recipients=[message_format.SYSTEM_ACTOR_ID],
-        topic="urn:concept:mycelium:r",
+        topic="urn:mycelium:topic:r",
         message_id=message_id,
         payload_type=payload_type,
     )
@@ -395,8 +296,8 @@ def _msg_content(message_id: str, *, sender: str, text: str, payload_type: str):
 
 def test_list_store_human_and_agent_each_appear_once_in_order():
     """The H2 invariant: a human message and an agent reply each land in the list
-    store exactly once, in order — the source partition (POST writes the human's,
-    the persister writes SLIM arrivals) + id-dedup hold, so nothing double-writes.
+    store exactly once, in order: the source partition (POST writes the human's,
+    the persister writes an agent's reply) + id-dedup hold, so nothing double-writes.
     """
     from app.services import in_memory_store
 
@@ -404,7 +305,7 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     p = _persister_for(room, summoned=[])
 
     # 1) The human's message: written by the POST route (its own producer, stamped
-    #    with the envelope id), and ingested by the persister with list_write=False
+    #    with the envelope id), and recorded by the persister with list_write=False
     #    so it is NOT double-written to the list store.
     human_env, human_content = _msg_content(
         "h-1", sender="avery", text="@smoke-agent hello", payload_type="message"
@@ -419,16 +320,16 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
             message_id="h-1",
         ),
     )
-    p._ingest(human_env, human_content, list_write=False)
-    # Its SLIM loopback arrives on the receive path — de-duped by id, no re-write.
-    p._ingest(human_env, human_content)
+    p.record(human_env, human_content, list_write=False)
+    # Recorded again (a retried request): de-duped by id, no re-write.
+    p.record(human_env, human_content, list_write=True)
 
-    # 2) The agent's reply: arrives only over SLIM (receive path) → the persister
-    #    is its sole producer.
+    # 2) The agent's reply: ``respond`` records it with list_write=True, so the
+    #    persister is its sole producer.
     agent_env, agent_content = _msg_content(
         "a-1", sender="smoke-agent", text="hi back", payload_type="reply"
     )
-    p._ingest(agent_env, agent_content)
+    p.record(agent_env, agent_content, list_write=True)
 
     stored = in_memory_store.list_messages(room)
     assert [(m.sender_handle, m.content) for m in stored] == [
@@ -447,11 +348,11 @@ def test_list_store_message_carries_its_episode():
     p = _persister_for(room, summoned=[])
 
     env, content = _msg_content("a-1", sender="growth", text="my position", payload_type="reply")
-    p._ingest(env, content)
+    p.record(env, content, list_write=True)
 
     stored = in_memory_store.list_messages(room)
     assert len(stored) == 1
-    assert stored[0].episode == "urn:ioc:mycelium:episode:r:s"
+    assert stored[0].episode == "urn:mycelium:episode:r:s"
 
 
 def test_conversational_messages_project_from_the_durable_transcript():
@@ -476,7 +377,7 @@ def test_conversational_messages_project_from_the_durable_transcript():
         ("avery", "h-1"),
         ("growth", "a-1"),
     ]
-    assert projected[1].episode == "urn:ioc:mycelium:episode:r:s"
+    assert projected[1].episode == "urn:mycelium:episode:r:s"
 
 
 def test_conversational_messages_survive_a_wiped_in_memory_store():
@@ -503,7 +404,7 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
     room = "conv-dedup-room"
     p = _persister_for(room, summoned=[])
     env, content = _msg_content("a-1", sender="growth", text="hello", payload_type="reply")
-    p._ingest(env, content)  # writes both the transcript and the list store
+    p.record(env, content, list_write=True)  # writes both the transcript and the list store
 
     disk = persister.conversational_messages(room)
     assert persister.conversational_messages(room)[0].id == disk[0].id  # stable across reads
@@ -514,13 +415,11 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
 
 def test_raise_up_message_frames_project_into_the_conversational_view():
     """A ``knowledge`` push and a ``commit`` consensus are promoted into the chat
-    feed on the cold read, carrying the whole envelope as their ``l9_<kind>`` frame
+    feed on the cold read, carrying the whole envelope as their ``envelope_<kind>`` frame
     — the exact shape the live SSE bus pushes. Without this the frontend promotes
     them live but a refresh drops them (the "temporary" raise-up rows bug).
     """
     import json
-
-    from app.services.message_slim import serialize_content
 
     room = "raise-up-room"
     get_room_dir(room)
@@ -528,8 +427,8 @@ def test_raise_up_message_frames_project_into_the_conversational_view():
     know_env = message_format.build_envelope(
         kind=Kind.knowledge,
         subkind="extraction",
-        episode="urn:ioc:mycelium:episode:raise-up-room:knowledge",
-        topic="urn:concept:mycelium:raise-up-room",
+        episode="urn:mycelium:episode:raise-up-room:knowledge",
+        topic="urn:mycelium:topic:raise-up-room",
         message_id="k-1",
         payload_type="extraction",
         payload_data={"key": "agents/x", "version": 1},
@@ -540,8 +439,8 @@ def test_raise_up_message_frames_project_into_the_conversational_view():
     commit_env = message_format.build_envelope(
         kind=Kind.commit,
         subkind="converged",
-        episode="urn:ioc:mycelium:episode:raise-up-room:neg",
-        topic="urn:concept:mycelium:raise-up-room",
+        episode="urn:mycelium:episode:raise-up-room:neg",
+        topic="urn:mycelium:topic:raise-up-room",
         message_id="c-1",
         payload_type="data",
         payload_data={"memory": "context/decision/x"},
@@ -557,13 +456,13 @@ def test_raise_up_message_frames_project_into_the_conversational_view():
 
     projected = persister.conversational_messages(room)
     assert [(m.message_type, m.message_id) for m in projected] == [
-        ("l9_knowledge", "k-1"),
-        ("l9_commit", "c-1"),
+        ("envelope_knowledge", "k-1"),
+        ("envelope_commit", "c-1"),
     ]
     # The content is the full envelope JSON, so the frontend decodes a refresh
     # identically to the live frame it pushes over SSE.
-    assert json.loads(projected[0].content)["l9"]["header"]["kind"] == "knowledge"
-    assert projected[0].episode == "urn:ioc:mycelium:episode:raise-up-room:knowledge"
+    assert json.loads(projected[0].content)["envelope"]["header"]["kind"] == "knowledge"
+    assert projected[0].episode == "urn:mycelium:episode:raise-up-room:knowledge"
 
 
 def test_addressed_absent_recipient_holds_the_triggering_message():
@@ -585,44 +484,6 @@ def test_addressed_absent_recipient_holds_the_triggering_message():
     assert log.undelivered("bystander") == []
 
 
-def test_handle_from_disconnect_parses_the_leaving_handle():
-    m = "message='participant disconnected: mycelium/smoke3/smoke-agent/ffffffffffffffff'"
-    assert persister._handle_from_disconnect(m) == "smoke-agent"
-    assert persister._handle_from_disconnect("participant disconnected: ws/room/bob") == "bob"
-    assert persister._handle_from_disconnect("some other error") is None
-
-
-@pytest.mark.asyncio
-async def test_participant_disconnect_is_membership_not_fatal():
-    """A member dropping is presence: on_member_left fires and the loop keeps
-    serving (it must NOT spend the failure budget and zombie the room).
-    """
-
-    class _FlappyChannel:
-        def __init__(self):
-            self.calls = 0
-
-        async def receive_with_context(self):
-            self.calls += 1
-            if self.calls > 5:  # let several disconnects go by, then stop the loop
-                raise __import__("asyncio").CancelledError
-            raise RuntimeError("participant disconnected: mycelium/r/agent-x/abcd")
-
-    left: list[str] = []
-    p = persister.RoomPersister(
-        "flappy-room",
-        _FlappyChannel(),  # ty: ignore[invalid-argument-type]
-        members_provider=lambda: set(),
-        on_member_left=left.append,
-        feed_bus=False,
-    )
-    with pytest.raises(__import__("asyncio").CancelledError):
-        await p.run()
-    # Five disconnects, all treated as membership events (not the 3-strike give-up).
-    assert left == ["agent-x"] * 5
-    assert p.receive_errors == 0
-
-
 def test_list_store_skips_presence_and_non_conversational():
     """Presence/control payloads stay out of the chat list (transcript/bus only)."""
     from app.services import in_memory_store
@@ -633,139 +494,6 @@ def test_list_store_skips_presence_and_non_conversational():
     pres_env, pres_content = _msg_content(
         "p-1", sender="smoke-agent", text="joined the room", payload_type="presence"
     )
-    p._ingest(pres_env, pres_content)
+    p.record(pres_env, pres_content, list_write=True)
 
     assert in_memory_store.list_messages(room) == []
-
-
-# ── knowledge apply: inbound memory-sync writes converge the local store ─────
-
-
-@pytest.fixture(autouse=True)
-def _stub_embeddings(monkeypatch):
-    """Applying a knowledge write reindexes through the embedder; stub it so
-    these tests never load the fastembed ONNX model (matches
-    ``test_memory_sync.py``'s fixture)."""
-    monkeypatch.setattr("app.services.embedding._STUB", True)
-
-
-def _knowledge_envelope(
-    *,
-    room: str,
-    key: str = "plan/tasks.md",
-    content: str = "# Plan\n\n- [ ] first task\n",
-    version: int = 1,
-    base_version: int | None = None,
-    subkind: str = memory_sync.KNOWLEDGE_SUBKIND,
-):
-    """A `knowledge` envelope; `build_knowledge_envelope` mints a fresh random
-    message id per call, so distinct calls are never deduped against each other."""
-    from app.services.message_slim import serialize_content
-
-    write = memory_sync.KnowledgeWrite(
-        key=key,
-        content=content,
-        version=version,
-        created_by="system",
-        updated_by="system",
-        updated_at="2026-08-04T00:00:00+00:00",
-        base_version=base_version,
-    )
-    env = memory_sync.build_knowledge_envelope(
-        room=room, write=write, recipients=["bob"], subkind=subkind
-    )
-    return env, serialize_content(env)
-
-
-@pytest.mark.asyncio
-async def test_ingest_applies_inbound_knowledge_write_to_local_store():
-    """A `knowledge` envelope arriving on the channel writes the carried markdown
-    into this backend's local store — the receive half of cross-store memory
-    convergence (#549)."""
-    room = "knowledge-room-1"
-    p = _persister_for(room, summoned=[])
-
-    env, content = _knowledge_envelope(room=room, version=1)
-    p._ingest(env, content)
-    for task in list(p._knowledge_tasks):
-        await task
-
-    got = read_memory_file(get_room_dir(room), "plan/tasks.md")
-    assert got is not None
-    assert got[1] == "# Plan\n\n- [ ] first task"
-    assert p.knowledge_applied == 1
-    assert p.knowledge_conflicts == 0
-
-
-@pytest.mark.asyncio
-async def test_ingest_applies_extraction_subkind_the_same_way():
-    """`extraction` (a raw ``memory set``) applies identically to `distillation`
-    — the applier is subkind-agnostic."""
-    room = "knowledge-room-2"
-    p = _persister_for(room, summoned=[])
-
-    env, content = _knowledge_envelope(
-        room=room,
-        key="notes/idea.md",
-        content="an idea\n",
-        version=1,
-        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
-    )
-    p._ingest(env, content)
-    for task in list(p._knowledge_tasks):
-        await task
-
-    got = read_memory_file(get_room_dir(room), "notes/idea.md")
-    assert got is not None
-    assert got[1] == "an idea"
-    assert p.knowledge_applied == 1
-
-
-@pytest.mark.asyncio
-async def test_ingest_knowledge_loopback_is_idempotent_not_a_double_write():
-    """The sender's own broadcast loops back through ``ingest_local`` /
-    ``_ingest`` too. Applying it again must be a silent no-op (same version) —
-    never a re-broadcast or a double-write — so two hosts can't ping-pong."""
-    room = "knowledge-room-3"
-    p = _persister_for(room, summoned=[])
-
-    env, content = _knowledge_envelope(room=room, version=1)
-    p._ingest(env, content)
-    for task in list(p._knowledge_tasks):
-        await task
-    assert p.knowledge_applied == 1
-
-    # Same write, same version, arriving again (e.g. a second connector's own
-    # loopback of the same broadcast, or a redelivery).
-    env2, content2 = _knowledge_envelope(room=room, version=1)
-    p._ingest(env2, content2)
-    for task in list(p._knowledge_tasks):
-        await task
-
-    assert p.knowledge_applied == 1  # unchanged: idempotent, not a second write
-    assert p.knowledge_conflicts == 0
-
-
-@pytest.mark.asyncio
-async def test_ingest_knowledge_stale_base_is_a_conflict_not_a_merge():
-    """An incoming write behind the local version is rejected (last-write-wins);
-    the newer local content survives untouched."""
-    room = "knowledge-room-4"
-    p = _persister_for(room, summoned=[])
-
-    newer, newer_content = _knowledge_envelope(room=room, content="v2 content\n", version=2)
-    p._ingest(newer, newer_content)
-    for task in list(p._knowledge_tasks):
-        await task
-    assert p.knowledge_applied == 1
-
-    stale, stale_content = _knowledge_envelope(room=room, content="v1 content\n", version=1)
-    p._ingest(stale, stale_content)
-    for task in list(p._knowledge_tasks):
-        await task
-
-    got = read_memory_file(get_room_dir(room), "plan/tasks.md")
-    assert got is not None
-    assert got[1] == "v2 content"  # the newer local content was not overwritten
-    assert p.knowledge_applied == 1  # the stale write did not count as applied
-    assert p.knowledge_conflicts == 1

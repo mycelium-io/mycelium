@@ -9,8 +9,8 @@ Every message on a room's channel carries an envelope: a fixed header
 plus a typed payload. It is how the hub labels and records what passes through
 a room, which is what the Network pane shows.
 
-A message's content JSON carries its envelope under the ``l9`` key. The key
-is additive: agents and UIs that ignore it keep working.
+A message's content JSON carries its envelope under the ``envelope`` key. The
+key is additive: agents and UIs that ignore it keep working.
 
 In the subkind vocabulary below, a failed negotiation commits as ``rejected``.
 """
@@ -32,9 +32,29 @@ from app.services.message_models import (
     ParticipantSet,
 )
 
-PROTOCOL = "SSTP"
-VERSION = "0.0.6"
+#: The key a message's envelope sits under inside its content JSON.
+CONTENT_ENVELOPE_KEY = "envelope"
+#: The key older records carry their envelope under; read, never written.
+LEGACY_CONTENT_ENVELOPE_KEY = "l9"
+#: How a frame that carries a whole recorded envelope names its type:
+#: ``envelope_<kind>`` (``envelope_exchange``, ``envelope_knowledge``, ...).
+FRAME_TYPE_PREFIX = "envelope_"
+
+#: What a message's header names its format and version as.
+PROTOCOL = "MYCP"
+VERSION = "1.0.0"
 SUBPROTOCOL_MYCELIUM = "mycelium"
+
+#: How an episode's URN starts: ``urn:mycelium:episode:{room}:{id}``.
+EPISODE_URN_PREFIX = "urn:mycelium:episode:"
+#: How a room's topic URN starts: ``urn:mycelium:topic:{room}``.
+TOPIC_URN_PREFIX = "urn:mycelium:topic:"
+#: The prefixes a hub before 3.1 gave ids. Stored ids keep them; a comparison
+#: reads them as the ones above (:func:`same_episode`).
+LEGACY_URN_PREFIXES = {
+    "urn:ioc:mycelium:episode:": EPISODE_URN_PREFIX,
+    "urn:concept:mycelium:": TOPIC_URN_PREFIX,
+}
 
 # The handle mycelium's *backend itself* speaks as inside envelopes — genuine
 # system messages (plan-updated events, joins, knowledge distillation, aborts),
@@ -101,7 +121,7 @@ PING_PAYLOAD_TYPE = "ping"
 NOTICE_PAYLOAD_TYPE = "notice"
 
 #: What a notice can be about, as a closed set frozen in
-#: ``contracts/slim-wire.json``. ``filed`` also carries the row's board
+#: ``contracts/message-wire.json``. ``filed`` also carries the row's board
 #: ``kind`` (so the line reads "New decision", not always "New task") and who it
 #: is ``for``; the custody and lifecycle subkinds carry ``by`` (who moved it).
 #: ``expired`` is the one nobody writes: a held lease drained by the clock, and
@@ -151,7 +171,27 @@ class MessageValidationError(ValueError):
 
 def episode_urn(parent_room: str, session_id: str) -> str:
     """Mint the episode URN scoping all messages of one coordination session."""
-    return f"urn:ioc:mycelium:episode:{parent_room}:{session_id}"
+    return f"{EPISODE_URN_PREFIX}{parent_room}:{session_id}"
+
+
+def canonical_urn(urn: str) -> str:
+    """``urn`` with a legacy prefix (:data:`LEGACY_URN_PREFIXES`) replaced by
+    the current one; any other string as it is.
+
+    For comparing only. A stored id is never rewritten: a thread recorded
+    before 3.1 keeps its ``urn:ioc:`` id, and matches itself as written.
+    """
+    for old, new in LEGACY_URN_PREFIXES.items():
+        if urn.startswith(old):
+            return new + urn[len(old) :]
+    return urn
+
+
+def same_episode(a: str | None, b: str | None) -> bool:
+    """Whether ``a`` and ``b`` name the same episode, in either form."""
+    if a is None or b is None:
+        return a is b
+    return canonical_urn(a) == canonical_urn(b)
 
 
 def live_episode_urn(parent_room: str) -> str:
@@ -164,12 +204,12 @@ def is_live_episode(parent_room: str, episode: str | None) -> bool:
 
     ``None`` is the room: a caller that names no thread is talking to the room.
     """
-    return episode is None or episode == live_episode_urn(parent_room)
+    return episode is None or canonical_urn(episode) == live_episode_urn(parent_room)
 
 
 def topic_urn(parent_room: str) -> str:
-    """The concept URI a room's negotiations are about."""
-    return f"urn:concept:mycelium:{parent_room}"
+    """The URN of what a room's messages are about: the room."""
+    return f"{TOPIC_URN_PREFIX}{parent_room}"
 
 
 def validate_subkind(kind: Kind, subkind: str | None) -> None:
@@ -183,8 +223,7 @@ def validate_subkind(kind: Kind, subkind: str | None) -> None:
         )
 
 
-# The v0.0.6 binding has no participant_type field on Actor; by convention
-# (matching the hcpanel reference implementation's bus) the first actor in the
+# An Actor carries no participant type; by convention the first actor in the
 # list is the sender and the rest are recipients.
 
 
@@ -207,10 +246,7 @@ def build_envelope(
 ) -> MyceliumMessage:
     """Build a validated message.
 
-    ``workspace_id``/``mas_id`` land in ``participants.groups``: the Go CFN's
-    content-based routing extracts them from there, so both are required for
-    envelopes that will be POSTed to the CFN (optional for envelopes that only
-    annotate mycelium's own coordination messages).
+    ``workspace_id``/``mas_id``, when given, land in ``participants.groups``.
     """
     validate_subkind(kind, subkind)
 
@@ -253,6 +289,31 @@ def envelope_to_dict(envelope: MyceliumMessage) -> dict[str, Any]:
     return data
 
 
+def serialize_content(
+    envelope: MyceliumMessage, *, extra: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """The content a message is recorded as: ``extra`` (its text and any
+    payload fields) with the envelope under :data:`CONTENT_ENVELOPE_KEY`."""
+    content: dict[str, Any] = dict(extra or {})
+    content[CONTENT_ENVELOPE_KEY] = envelope_to_dict(envelope)
+    return content
+
+
+def envelope_of(content: dict[str, Any]) -> dict[str, Any]:
+    """The envelope inside a message's content dict, or ``{}`` if it has none.
+
+    Reads :data:`CONTENT_ENVELOPE_KEY`, then :data:`LEGACY_CONTENT_ENVELOPE_KEY`
+    for a record written before the key was renamed.
+    """
+    env = content.get(CONTENT_ENVELOPE_KEY) or content.get(LEGACY_CONTENT_ENVELOPE_KEY)
+    return env if isinstance(env, dict) else {}
+
+
+def frame_type(kind: str) -> str:
+    """The ``message_type`` a recorded envelope of ``kind`` rides as on a frame."""
+    return f"{FRAME_TYPE_PREFIX}{kind}"
+
+
 def parse_envelope(raw: dict[str, Any] | str) -> MyceliumMessage:
     """Parse and validate an envelope from content JSON (raises on invalid)."""
     if isinstance(raw, str):
@@ -270,6 +331,6 @@ def extract_parent_id(content: str | dict[str, Any]) -> str | None:
     """
     try:
         data = json.loads(content) if isinstance(content, str) else content
-        return data["l9"]["header"]["message"]["id"]
-    except (json.JSONDecodeError, KeyError, TypeError):
+        return envelope_of(data)["header"]["message"]["id"]
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
         return None

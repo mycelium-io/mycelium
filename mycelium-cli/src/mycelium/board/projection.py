@@ -141,10 +141,9 @@ def _memory_item(memory: dict) -> LiveItem:
 def _agent_item(agent: dict, presence: dict, now: str) -> LiveItem:
     """Residency, as the lease it already is.
 
-    A SLIM member holds a live socket, so the hub sees it now; a server-held
-    member's lease is only as good as its last poll.  Stamping both with "now"
-    made a dead agent's row draw a full TTL bar forever — the row asserted a
-    future its holder had already stopped having.
+    A server-held member's lease is only as good as its last poll, so the row's
+    clock starts at ``last_seen`` and a dead agent's row runs out rather than
+    drawing a full TTL bar forever.
     """
     handle = agent.get("handle", "")
     last_seen = presence.get("last_seen") or now
@@ -152,7 +151,7 @@ def _agent_item(agent: dict, presence: dict, now: str) -> LiveItem:
         id=f"agent:{handle}",
         title=f"@{handle} is resident and awaiting work",
         source=ItemSource(
-            "agent", f"{agent.get('adapter', 'agent')} · {presence.get('kind', 'slim')}"
+            "agent", f"{agent.get('adapter', 'agent')} · {presence.get('kind', 'lease')}"
         ),
         fields={
             "status": "open",

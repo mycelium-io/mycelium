@@ -7,9 +7,8 @@
  * Metrics — what this hub has actually done since it came up.
  *
  * Every number on this page is read from something the running stack produces:
- * the backend's in-process counters (`/api/observability`), the coordination
- * fabric and posture blocks of `/health`, and the episode records the conductor
- * writes per run. Nothing is derived from a service the stack no longer
+ * the backend's in-process counters (`/api/observability`) and the episode
+ * records the conductor writes per run. Nothing is derived from a service the stack no longer
  * ships, and nothing is shown as `0` that is merely unmeasured — an untouched
  * counter reads `-`, and a panel with no data says what would put data in it.
  *
@@ -18,8 +17,7 @@
  *     ├─ Usage tab            <UsageView />: what the hub is used for, its KPIs;
  *     │                       <ActivityPanel />: one room's days, streak and who did what
  *     └─ System tab
- *         ├─ <Kpi /> × 3          memory · fabric · cognition
- *         ├─ <FabricPanel />      SLIM node, posture, one row per live channel
+ *         ├─ <Kpi /> × 2          memory · cognition
  *         ├─ <EpisodesPanel />    negotiations across every room, and how they ended
  *         ├─ <MemoryPanel />      writes, retrieval hit rate, search latency
  *         ├─ <EmbeddingPanel />   the local model, and the spend it avoids
@@ -29,11 +27,10 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Pause, Play } from "lucide-react";
-import type { AuthStatus, CoordinationStatus, IdentityStatus } from "@/lib/api";
 import { Dot, Figure, Figures, Label, Note, Nothing, Panel } from "@/components/metrics-parts";
 import { UsageView } from "@/components/usage-view";
 import { ActivityPanel } from "@/components/activity-log";
-import { useNetworkStatus, useRooms } from "@/lib/room-data";
+import { useRooms } from "@/lib/room-data";
 import {
   episodeState,
   rollupEpisodes,
@@ -193,140 +190,12 @@ function Kpi({ label, value, sub }: { label: string; value: ReactNode; sub: Reac
   );
 }
 
-// ── Coordination fabric ──────────────────────────────────────────────────────
-
-function identityColor(identity: IdentityStatus | null): string {
-  if (!identity) return "var(--faint)";
-  if (identity.status === "error") return "var(--red)";
-  if (identity.status === "degraded") return "var(--yellow)";
-  return "var(--green)";
-}
-
-function FabricPanel({
-  coordination,
-  identity,
-  auth,
-  loaded,
-}: {
-  coordination: CoordinationStatus | null;
-  identity: IdentityStatus | null;
-  auth: AuthStatus | null;
-  loaded: boolean;
-}) {
-  const enabled = coordination?.slim_enabled ?? false;
-  const rooms = coordination?.rooms ?? [];
-  return (
-    <Panel
-      title="Coordination fabric"
-      meta={
-        <>
-          <Dot color={coordination ? (enabled ? "var(--green)" : "var(--red)") : "var(--faint)"} />
-          <span className="font-mono">{coordination?.endpoint ?? "…"}</span>
-        </>
-      }
-    >
-      <Figures cols={5}>
-        <Figure label="Channels live" value={coordination?.channels_live ?? "-"} />
-        <Figure
-          label="Provisions"
-          value={coordination ? `${coordination.provisions_ok}✓ ${coordination.provisions_failed}✗` : "-"}
-          color={(coordination?.provisions_failed ?? 0) > 0 ? "var(--red)" : undefined}
-        />
-        <Figure
-          label="Invite failures"
-          value={coordination?.invite_failures ?? "-"}
-          color={(coordination?.invite_failures ?? 0) > 0 ? "var(--yellow)" : undefined}
-        />
-        <Figure
-          label="Identity"
-          value={identity?.mode ?? "-"}
-          color={identityColor(identity)}
-          hint={identity?.message}
-        />
-        <Figure
-          label="API gate"
-          value={auth ? (auth.enabled ? "on" : "off") : "-"}
-          hint={auth?.issuers.length ? `issuers: ${auth.issuers.join(", ")}` : undefined}
-        />
-      </Figures>
-
-      {rooms.length === 0 ? (
-        <Nothing>
-          {loaded
-            ? "No room channel is provisioned. A channel comes up the first time a room is joined or posted to."
-            : "Reading the fabric…"}
-        </Nothing>
-      ) : (
-        <div className="overflow-x-auto border-t border-border">
-          <table className="w-full min-w-[560px] border-collapse text-micro">
-            <thead>
-              <tr className="border-b border-border text-left text-faint">
-                <th className="px-4 py-1.5font-medium">Room</th>
-                <th className="px-4 py-1.5font-medium">Channel</th>
-                <th className="px-4 py-1.5font-medium">Members</th>
-                <th className="px-4 py-1.5font-medium">Episode</th>
-                <th className="px-4 py-1.5font-medium">Invites</th>
-                <th className="px-4 py-1.5font-medium">Inbox</th>
-                <th className="px-4 py-1.5text-right font-medium">Errors</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rooms.map((r) => {
-                const errors = r.receive_errors + r.transient_errors + r.reserve_failures;
-                const healthy = r.provisioned && r.persister_alive;
-                return (
-                  <tr key={r.room} className="border-b border-border/50 last:border-b-0">
-                    <td className="px-4 py-1.5font-medium text-text">{r.room}</td>
-                    <td className="px-4 py-2">
-                      <span className="flex items-center gap-1.5 text-muted-foreground">
-                        <Dot color={healthy ? "var(--green)" : "var(--yellow)"} />
-                        {r.provisioned ? (r.persister_alive ? "live" : "no persister") : "pending"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-1.5text-muted-foreground">
-                      {r.members.length > 0 ? r.members.join(", ") : "-"}
-                    </td>
-                    <td className="px-4 py-2" style={{ color: r.episode_active ? "var(--accent)" : undefined }}>
-                      <span className={r.episode_active ? "" : "text-muted-foreground"}>
-                        {r.episode_active ? "active" : "idle"}
-                      </span>
-                    </td>
-                    <td
-                      className="px-4 py-1.5tabular text-muted-foreground"
-                      style={{ color: r.deferred_invites > 0 ? "var(--yellow)" : undefined }}
-                    >
-                      {r.deferred_invites}
-                    </td>
-                    <td className="px-4 py-1.5tabular text-muted-foreground">
-                      {r.reserves} held{r.reserve_skipped > 0 ? ` · ${r.reserve_skipped} skipped` : ""}
-                    </td>
-                    <td
-                      className="px-4 py-1.5text-right tabular"
-                      style={{ color: errors > 0 ? "var(--red)" : "var(--muted-foreground)" }}
-                    >
-                      {errors}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Panel>
-  );
-}
-
 // ── Negotiations ─────────────────────────────────────────────────────────────
 
 function stateColor(state: string): string {
   if (state === "converged" || state === "resolved") return "var(--green)";
   if (state === "rejected") return "var(--yellow)";
   return "var(--accent)";
-}
-
-function fmtRatio(n: number | null): string {
-  return n == null ? "-" : n.toFixed(2);
 }
 
 function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number }) {
@@ -339,12 +208,12 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
       {rollup.total === 0 ? (
         <Nothing>
           No episode recorded yet. Each run of the conductor —{" "}
-          <span className="font-mono text-text">mycelium board coordinate &lt;row&gt; conductor &quot;concord …&quot;</span> — is
+          <span className="font-mono text-text">mycelium board coordinate &lt;row&gt; conductor &quot;review …&quot;</span> — is
           one episode, and lands here with how it ended.
         </Nothing>
       ) : (
         <>
-          <Figures cols={5}>
+          <Figures cols={6}>
             <Figure label="Episodes" value={fmtNum(rollup.total)} />
             <Figure label="Converged" value={fmtNum(rollup.converged)} color="var(--green)" />
             <Figure
@@ -354,20 +223,9 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
             />
             <Figure label="Open" value={fmtNum(rollup.open)} color={rollup.open > 0 ? "var(--accent)" : undefined} />
             <Figure label="Work rows" value={fmtNum(rollup.tasks)} />
-          </Figures>
-
-          <Figures cols={5}>
             <Figure
               label="Avg agents"
               value={rollup.avgParticipants == null ? "-" : rollup.avgParticipants.toFixed(1)}
-            />
-            <Figure label="MPC" value={fmtRatio(rollup.mpc)} hint="Mean posterior confidence" />
-            <Figure label="GAR" value={fmtRatio(rollup.gar)} hint="Genuine agreement ratio" />
-            <Figure label="SCR" value={fmtRatio(rollup.scr)} hint="Sycophantic collapse risk" />
-            <Figure
-              label="Provenance"
-              value={fmtRatio(rollup.provenance)}
-              hint="(1 - SCR) x GAR — agreement discounted by how much of it was deference"
             />
           </Figures>
 
@@ -376,12 +234,6 @@ function EpisodesPanel({ rollup, rooms }: { rollup: EpisodeRollup; rooms: number
               <RecentEpisode key={`${ep.room}/${ep.short_id}`} episode={ep} />
             ))}
           </ul>
-
-          <Note>
-            Quality ratios are averaged over the {rollup.scored}{" "}
-            {rollup.scored === 1 ? "episode" : "episodes"} that committed with IoC metrics; an
-            episode still in progress contributes to the counts above but not to the ratios.
-          </Note>
         </>
       )}
     </Panel>
@@ -589,7 +441,6 @@ export function MetricsScreen() {
   const refreshInterval = paused ? 0 : cadence * 1000;
 
   const { metrics, loading } = useBackendMetrics(refreshInterval);
-  const { network, loading: networkLoading } = useNetworkStatus({ refreshInterval });
   const { rooms } = useRooms({ refreshInterval });
   const roomNames = useMemo(() => rooms.map((r) => r.name), [rooms]);
   const { episodes } = useFleetEpisodes(roomNames, refreshInterval);
@@ -629,13 +480,6 @@ export function MetricsScreen() {
 
   const counters = metrics?.counters ?? {};
   const histograms = metrics?.histograms ?? {};
-  const coordination = network?.coordination ?? null;
-
-  const membersPresent = useMemo(
-    () => new Set((coordination?.rooms ?? []).flatMap((r) => r.members)).size,
-    [coordination],
-  );
-  const episodesActive = (coordination?.rooms ?? []).filter((r) => r.episode_active).length;
 
   if (!metrics && !loading) {
     return (
@@ -662,7 +506,7 @@ export function MetricsScreen() {
           </div>
         ) : (
         <div className="mx-auto flex max-w-5xl flex-col py-2">
-          <div className="grid md:grid-cols-3">
+          <div className="grid md:grid-cols-2">
             <Kpi
               label="Memory"
               value={fmtNum(memory?.writes)}
@@ -671,16 +515,6 @@ export function MetricsScreen() {
                   written <span className="text-faint">·</span> {fmtNum(searches)} searches{" "}
                   <span className="text-faint">·</span> {fmtPct(memory?.search_hits, searches)} hit
                   rate
-                </>
-              }
-            />
-            <Kpi
-              label="Fabric"
-              value={coordination?.channels_live ?? "-"}
-              sub={
-                <>
-                  channels live <span className="text-faint">·</span> {membersPresent} present{" "}
-                  <span className="text-faint">·</span> {episodesActive} negotiating
                 </>
               }
             />
@@ -696,13 +530,6 @@ export function MetricsScreen() {
               }
             />
           </div>
-
-          <FabricPanel
-            coordination={coordination}
-            identity={network?.identity ?? null}
-            auth={network?.auth ?? null}
-            loaded={!networkLoading}
-          />
 
           <EpisodesPanel rollup={rollup} rooms={roomNames.length} />
 

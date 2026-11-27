@@ -20,7 +20,6 @@ KIND_STYLE = {
     "fact": "",
     "finding": "",
     "dead-end": "red",
-    "decision": "green",
 }
 
 
