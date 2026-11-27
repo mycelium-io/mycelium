@@ -1087,11 +1087,16 @@ select.field {
 .terminal-page {
   background: var(--bg);
   overflow: hidden;
+  /* A press at the window's edge resizes it; it shouldn't select anything. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
+/* Off every edge, so a press at the corner where the window resizes lands on
+ * the page rather than in the terminal. */
 #terminal {
   position: absolute;
-  inset: 8px 0 0 8px;
+  inset: 8px;
 }
 
 /* One line over herdr: what this window is, or who is waiting in it. */
