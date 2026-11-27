@@ -30,6 +30,24 @@ term.loadAddon(fit);
 term.open(document.getElementById("terminal")!);
 fit.fit();
 
+// Resizing or moving the window can start with a press that reaches the
+// terminal, while macOS keeps the release for itself. The terminal would then
+// go on selecting with every move of the pointer, as if the button were still
+// down. When the pointer moves with no button held, or the window loses focus,
+// hand the terminal the release it missed.
+let pressed = false;
+function release(at?: MouseEvent) {
+  if (!pressed) return;
+  pressed = false;
+  document.dispatchEvent(
+    new MouseEvent("mouseup", { bubbles: true, button: 0, clientX: at?.clientX ?? 0, clientY: at?.clientY ?? 0 }),
+  );
+}
+document.addEventListener("mousedown", () => (pressed = true), true);
+document.addEventListener("mouseup", () => (pressed = false), true);
+document.addEventListener("mousemove", (e) => e.buttons === 0 && release(e), true);
+window.addEventListener("blur", () => release());
+
 function say(text: string) {
   note.textContent = text;
   note.hidden = false;
